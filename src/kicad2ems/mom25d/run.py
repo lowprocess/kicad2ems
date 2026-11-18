@@ -65,6 +65,8 @@ def solve_band(sim, fmin, fmax, points=401, zref=50.0, linear=None,
     sim.kept = {}
 
     def solve(fr):
+        if fr in ends:
+            return ends[fr]
         log(f"  solving {fr / 1e9:.4f} GHz")
         keep = float(fr) in keep_at
         S = renorm(sim.sparams(fr, keep=keep), _zc(sim, fr), zr)
@@ -74,11 +76,21 @@ def solve_band(sim, fmin, fmax, points=401, zref=50.0, linear=None,
         if progress:
             progress(len(done), int(linear) if linear else max_solves, fr)
         return S
+    ends = {}
     if linear:
         fs = f = np.linspace(fmin, fmax, int(linear))
-        S = np.array([solve(fi) for fi in f])
+        # seven frequencies across the band first: the via blocks filled
+        # there serve the others (blocks.py)
+        first = np.round(np.linspace(0, len(f) - 1, 7)).astype(int).tolist()
+        S = {i: solve(f[i]) for i in dict.fromkeys(first + list(range(len(f))))}
+        S = np.array([S[i] for i in range(len(f))])
     else:
         from kicad2ems.emsdev.afs import adaptive_sweep
+        # the band's ends before the sweep's other samples (which it solves
+        # in order: an antenna run's pattern frequencies each beyond the
+        # ones before): the via blocks filled at the two bracket the rest
+        # (blocks.py)
+        ends.update([(f, solve(f)) for f in (fmin, fmax)])
         f, S, fs, _, hist = adaptive_sweep(
             solve, fmin, fmax, tol=afs_tol, ngrid=points,
             max_points=max_solves, log=log, on_step=on_step,

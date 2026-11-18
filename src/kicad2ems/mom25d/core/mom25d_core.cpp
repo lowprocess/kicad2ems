@@ -33,6 +33,7 @@
 //                   layer's strip triangles (slots.py)
 //   scale_c64     : D Z D (equilibration) as a complex64 copy, one pass
 //                   (the GPU LU's input)
+//   blend         : s (F0 + sum c[k] D[k]), one pass (blocks.py)
 //   loop_transform: T^T Z T for T = I + W, W in a few columns (the sides'
 //                   loops, sides.Sides.loops)
 //   fan_q         : G_q moments between every triangle and the via fan
@@ -2536,6 +2537,58 @@ void loop_transform(py::array_t<cd, py::array::c_style> Z, arr<i64> V,
 }
 
 // -----------------------------------------------------------------------------
+// blend: out = s (F0 + sum_k c[k] D[k]) in one pass, row-parallel (the via
+// blocks between their anchors, blocks.py): out (rows x cols, complex128,
+// its rows of any stride: a block of Z), F0 complex128 or None (zeros), the
+// D complex64, c real.
+// -----------------------------------------------------------------------------
+void blend(py::array_t<cd> out, py::object F0, py::list D, arr<double> c,
+           cd s) {
+    auto ob = out.request(true);
+    if (ob.ndim != 2 || ob.strides[1] != (py::ssize_t)sizeof(cd) ||
+        (py::ssize_t)D.size() != c.shape(0))
+        throw std::invalid_argument("blend: out (rows, cols), a c each D");
+    const i64 R = ob.shape[0], C = ob.shape[1], st = ob.strides[0],
+              nk = (i64)D.size();
+    arr<cd> f0h;
+    if (!F0.is_none()) f0h = F0.cast<arr<cd>>();
+    std::vector<py::array_t<cf, py::array::c_style>> keep;
+    std::vector<const float *> d;
+    for (auto h : D) {
+        keep.push_back(h.cast<py::array_t<cf, py::array::c_style>>());
+        d.push_back(reinterpret_cast<const float *>(keep.back().data()));
+    }
+    for (auto &k : keep)
+        if (k.ndim() != 2 || k.shape(0) != R || k.shape(1) != C)
+            throw std::invalid_argument("blend: the shapes differ");
+    if (!F0.is_none() &&
+        (f0h.ndim() != 2 || f0h.shape(0) != R || f0h.shape(1) != C))
+        throw std::invalid_argument("blend: the shapes differ");
+    const double *f0 = F0.is_none() ? nullptr
+                                    : reinterpret_cast<const double *>(
+                                          f0h.data()),
+                 *cc = c.data(), sr = s.real(), si = s.imag();
+    char *o = static_cast<char *>(ob.ptr);
+    py::gil_scoped_release nogil;
+#pragma omp parallel for schedule(static)
+    for (i64 r = 0; r < R; ++r) {
+        double *x = reinterpret_cast<double *>(o + r * st);
+        if (f0) std::copy(f0 + 2 * r * C, f0 + 2 * (r + 1) * C, x);
+        else std::fill(x, x + 2 * C, 0.0);
+        for (i64 k = 0; k < nk; ++k) {
+            const float *dk = d[k] + 2 * r * C;
+            const double ck = cc[k];
+            for (i64 j = 0; j < 2 * C; ++j) x[j] += ck * dk[j];
+        }
+        for (i64 j = 0; j < C; ++j) {
+            const double a = x[2 * j], b = x[2 * j + 1];
+            x[2 * j] = a * sr - b * si;
+            x[2 * j + 1] = a * si + b * sr;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
 // diag(d) Z diag(d) as a complex64 copy, and in place where asked (one pass
 // over the matrix, row-parallel)
 // -----------------------------------------------------------------------------
@@ -2718,6 +2771,7 @@ PYBIND11_MODULE(_core, m) {
           "(slots.py)");
     m.def("loop_transform", &loop_transform,
           "Z <- T^T Z T in place, T = I + W in a few columns");
+    m.def("blend", &blend, "out = s (F0 + sum c[k] D[k]), one pass");
     m.def("scale_c64", &scale_c64,
           "D Z D as a complex64 copy; in place too (Z <- D Z D) where asked",
           py::arg("Z"), py::arg("d"), py::arg("inplace") = true);

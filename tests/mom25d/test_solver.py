@@ -678,6 +678,46 @@ def test_a_wideband_stack_is_its_constant_stack_at_each_frequency():
                            Layer(0.3e-3, 3.5, 0.004)], solver)).max() > 0.01)
 
 
+def test_the_via_blocks_between_the_frequencies_filled():
+    """A sweep's via and sides blocks (mom25d.blocks): its first seven
+    frequencies' are filled and kept, the frequencies between them take the
+    polynomial through them (and the Green tables with them): S as with
+    every block filled (a wideband stack, thick copper's sides, lossy
+    barrels and an element in a via: what is not smooth in f is added at
+    each frequency), and no frequency outside the kept ones is
+    interpolated."""
+    from shapely.geometry import box, Point
+    from kicad2ems.mom25d.sim import Metal, rlc
+    w, L = 0.35e-3, 8e-3
+    geo2 = [box(-L / 2, -w / 2, L / 2, w / 2), Point(L / 2, 0).buffer(0.25e-3),
+            Point(0, 1e-3).buffer(0.25e-3)]
+    geo1 = [box(-L / 2, -2e-3, L / 2 + 1e-3,
+                2e-3).difference(Point(L / 2, 0).buffer(0.5e-3))]
+    st = LayerStack([Layer(0.2e-3, 4.4, 0.02, fref=1e9),
+                     Layer(0.3e-3, 3.5, 0.004, fref=1e9)])
+
+    def run(mode, fs):
+        vz = Via(0, 1e-3, 1, 2, 0.1e-3, Z=rlc(R=5.0, L=1e-9, C=1e-12))
+        sim = Simulation(st, {1: geo1, 2: geo2},
+                         [ViaPort(Via(-L / 2, 0, 1, 2, 0.1e-3)),
+                          ViaPort(Via(L / 2, 0, 0, 2, 0.1e-3))], vias=[vz],
+                         dmax=0.4e-3, dmax_layer={1: 0.6e-3},
+                         w_ref={2: w, 1: 1e-3}, metal=Metal(5.8e7, 35e-6),
+                         sides=dict(t={2: 35e-6}, up={2: True}),
+                         verbose=False)
+        sim.interp = mode
+        S = np.array([sim.sparams(f) for f in fs])
+        return S, [r[0] for r in sim.log.records if 'via kernels' in r[0]]
+
+    fs = [*np.linspace(4e9, 6e9, 7), 4.6e9, 5.8e9, 4.1e9, 5e9, 6.5e9]
+    S, how = run('auto', fs)
+    assert how == ['via kernels'] * 7 + ['via kernels (interpolated)'] * 4 + [
+        'via kernels']
+    S0, how = run('off', fs)
+    assert set(how) == {'via kernels'}
+    assert np.abs(S - S0).max() < 1e-5
+
+
 def test_core_matches_numpy_and_solvers_agree(monkeypatch):
     """The compiled core's far field against the NumPy reference, and
     direct/mixed/BLR agreement."""

@@ -335,6 +335,9 @@ class Simulation:
         self.reuse = 'auto'
         # 'auto' | 'on' | 'off': the direct
         self.loop_tree = os.environ.get('MOM25D_LOOP_TREE', 'auto')
+        # 'auto' | 'off': the via and sides blocks, and the Green tables
+        # with them, between the frequencies that filled theirs (blocks.py)
+        self.interp = os.environ.get('MOM25D_INTERP', 'auto')
         # solver in the loop/tree basis
         # (looptree.py) at low frequency
         # (auto: below policy.LOOP_TREE_BELOW
@@ -912,7 +915,7 @@ class Simulation:
         self._via_geo = (len(ch), geo)
         return geo
 
-    def _via_blocks(self, f, QF, charges=True):
+    def _via_blocks(self, f, QF, charges=True, loss=True):
         """Via rows/columns: B (Ne x Nv) strip-via coupling, C (Nv x Nv) via-via
         (incl. elements in vias); after the chains, the holes of the PEC planes
         inside the stack (_frill_blocks). charges=False: without the chains'
@@ -920,7 +923,8 @@ class Simulation:
         what the loop/tree basis (looptree.py) has, the charges being in its
         charge matrix. The rest (the D and R kernels, the barrel's own term) is
         the current's: its static part cancels the end charges', so it goes as
-        jw."""
+        jw. loss=False: without _via_loss (the kernels' part alone, smooth in
+        f: mom25d.blocks)."""
         w, r = 2 * np.pi * f, self.rwg
         # the sides' folds' halves on the sheet (mom25d.sides.Sides.virtual):
         # their rows as the edges' (Bv), into the folds' rows of C at the end
@@ -1005,15 +1009,24 @@ class Simulation:
                      else vk.R(sm, sn, dd)) + vk.homog(sm, sn, dd))
             C[m, n] += vals  # each pair once, in one group
             C[n[m != n], m[m != n]] += vals[m != n]
+        if loss:
+            n = np.arange(len(self.chains))
+            C[n, n] += self._via_loss(f)
+        return B, C
+
+    def _via_loss(self, f):
+        """Each chain's own impedance besides the kernels' (C's diagonal): an
+        element in its via, the barrel's wall loss."""
         seen, zs = set(), self.metal.zs(f) if self.metal is not None else 0.0
+        out = np.zeros(len(self.chains), complex)
         for n, (v, kb, kt) in enumerate(self.chains):
             # an element in a via: in its lowest chain
             if v.Z is not None and id(v) not in seen:
-                C[n, n] += v.Z(f)
+                out[n] += v.Z(f)
             seen.add(id(v))
             # wall loss
-            C[n, n] += zs * (self.st.z[kt] - self.st.z[kb]) / (2 * np.pi * v.a)
-        return B, C
+            out[n] += zs * (self.st.z[kt] - self.st.z[kb]) / (2 * np.pi * v.a)
+        return out
 
     def _frill_blocks(self, f, B, C, V=None, Bv=None):
         """The columns and rows of the holes' unknowns (frill.py: c and -Y),

@@ -24,7 +24,8 @@ from scipy import sparse
 from .base import gram_matrix
 from . import _core  # python -m kicad2ems.mom25d.core.build
 from kicad2ems.emsdev.memory import available as available_memory
-from .policy import LOOP_TREE_BELOW, RETRY, choose, device
+from .blocks import Anchors
+from .policy import LOOP_TREE_BELOW, RETRY, REUSE_KEEP, SPARE, choose, device
 
 
 def fast_cores():
@@ -95,6 +96,11 @@ def cap_core_threads():
         threadpool_limits(limits=n, user_api='openmp')
 
 
+# bytes the via blocks kept over a sweep may take on a small board (a large
+# one: a double Z's; FastOperator._vias). rf_crosstalk, 2.1k unknowns of
+# which a fifth are the sides': 8 anchors in a double Z's bytes, and 14 of
+# its 15 frequencies filled
+ANCHOR_ROOM = 2.0 ** 29
 # near-field triplets per piece of the sum into the sparse matrix (_near_csr)
 NEAR_CHUNK = 8_000_000
 
@@ -226,20 +232,22 @@ def _equilibrate(Z, dsc=None):
     return dsc
 
 
-def _border(Z, B, C):
+def _border(Z, B, C, both=True):
     """Z's border from the vias', holes' and sides' blocks: Z[:Ne, Ne:] = B,
     Z[Ne:, :Ne] = B^T, Z[Ne:, Ne:] = C, a block of rows at a time on the
     fast cores (B^T whole strides through B a column at a time: with the
-    sides' 2,176 columns at 10.1k edges 0.2 s of a 3.5 s solve)."""
+    sides' 2,176 columns at 10.1k edges 0.2 s of a 3.5 s solve). both=False:
+    B^T alone (B and C are Z's own blocks)."""
     Ne = B.shape[0]
 
     def copy(a, b):
-        if a < Ne:
+        if a < Ne and both:
             Z[a:min(b, Ne), Ne:] = B[a:min(b, Ne)]
         if b > Ne:
             a = max(a, Ne)
             Z[a:b, :Ne] = B[:, a - Ne:b - Ne].T
-            Z[a:b, Ne:] = C[a - Ne:b - Ne]
+            if both:
+                Z[a:b, Ne:] = C[a - Ne:b - Ne]
     _row_blocks(Z, copy)
 
 
@@ -402,6 +410,8 @@ class FastOperator:
         self.nP32, self.nQ32 = (self.nP.astype(np.int32),
                                 self.nQ.astype(np.int32))
         self._near_pat = None  # _near_csr: the structure of these pairs
+        # the via blocks kept over a sweep; the frequency's weights of them
+        self.anchors, self._kw = Anchors(), None
         # the near pairs' analytic parts (geometry only, most of a pair's
         # cost) kept across frequencies by the core: 96 bytes a pair; the
         # via transition's 11.3 M pairs, 1.1 GB: its near field into the
@@ -466,12 +476,49 @@ class FastOperator:
         if 'stat' in self.q:
             self.q['stat_ready'] = True
 
-    def _vias(self, f):
-        """The via rows / columns B and block C (sim._via_blocks with this
-        operator's fan columns)."""
-        if self.sim.Nv:
-            with self.sim.log.timer('via kernels', f"{self.sim.Nv} chains"):
-                self.B, self.C = self.sim._via_blocks(f, self._fan_columns())
+    def _vias(self, f, Z=None, z=True):
+        """The via rows / columns B and block C: sim._via_blocks with this
+        operator's fan columns, or between the frequencies that were filled
+        as setup found (blocks.Anchors: kept in at most a double Z's bytes,
+        or ANCHOR_ROOM, and where the memory policy.choose's rules ask for
+        stays available: the hybrid's matrices (z: Z is there), the LUs a
+        CPU's plan keeps, and the next fill's own arrays). Z (complex128):
+        into its border, B and C not kept."""
+        sim, an, kw = self.sim, self.anchors, self._kw
+        if not sim.Nv:
+            return
+        Ne, N = sim.Ne, sim.Ne + sim.Nv
+        if kw is None:
+            with sim.log.timer('via kernels', f"{sim.Nv} chains"):
+                self.B, self.C = sim._via_blocks(f, self._fan_columns(),
+                                                 loss=False)
+            if getattr(sim, 'interp', 'auto') != 'off':
+                lus = (REUSE_KEEP if getattr(sim, 'plan', {}).get('path')
+                       == 'cpu-mixed' else 0)
+                an.add(f, self.B, self.C, self._s(f),
+                       {k: self.tb[k] for k in ('A', 'Q', 'cA', 'cq', 'cAi',
+                                                'cqi')},
+                       max(16.0 * N * N, ANCHOR_ROOM),
+                       (14.0 + 8.0 * lus + (0.0 if z else 16.0)) * N * N
+                       + 2.0 * (self.B.nbytes + self.C.nbytes) + 1.25 * SPARE)
+        else:
+            with sim.log.timer('via kernels (interpolated)',
+                               f"{len(kw)} of {len(an.f)} frequencies"):
+                self.B, self.C = an.mix(
+                    kw, self._s(f),
+                    Z is not None and (Z[:Ne, Ne:], Z[Ne:, Ne:]))
+        n = np.arange(len(sim.chains))
+        self.C[n, n] += sim._via_loss(f)
+        if Z is not None:
+            _border(Z, self.B, self.C, both=kw is None)
+            self.B = self.C = None
+
+    def _s(self, f):
+        """What the via blocks are smooth with (blocks.py): jw and the
+        permittivity about the metal interface of the most triangles."""
+        sim = self.sim
+        k = max(sim.layers, key=lambda k: len(sim.tri_idx[k]))
+        return 2j * np.pi * f * sim.st.at(f).eps_sum(k)
 
     # ---- assemble & solve ---------------------------------------------------
     def matvec_exact(self, X, Sx=None):
@@ -508,9 +555,37 @@ class FastOperator:
     def setup(self, f, mode='direct'):
         """mode: 'direct' (the tables only: the core fills Z), 'sparse' (the
         tables and the sparse near field, dZ)."""
-        sim = self.sim
-        self.f, self.w, self.tables = f, 2 * np.pi * f, sim.green_tables(f)
-        # the tables as the compiled core takes them
+        sim, an = self.sim, self.anchors
+        self.f, self.w = f, 2 * np.pi * f
+        # between the frequencies whose via blocks were kept (blocks.py):
+        # theirs and the tables', as one
+        self._kw = (an.at(f) if sim.Nv and getattr(sim, 'interp', 'auto')
+                    != 'off' and self.kh2(f) >= LOOP_TREE_BELOW else None)
+        if self._kw is not None:
+            self.tb = dict(self.tb, **an.tables(self._kw, f, self._s(f)))
+        else:
+            self._tables(f)
+        if mode == 'direct':
+            return
+        # MemoryError, saying so, where the sparse near-field correction cannot
+        # fit: memory_plan counts the solver's own matrices, not it, and on a
+        # fine mesh of several layers it is the larger (antenna_aperture's whole
+        # stack, 78k unknowns: 37 M near pairs, ~15 GB, which a 16 GB cap killed
+        # without a word)
+        need, avail = self.NEAR_BYTES * len(self.nP), available_memory()
+        if need > 0.85 * avail:
+            raise MemoryError(
+                f"the near-field correction of {sim.Ne:,} unknowns needs "
+                f"~{need / 1e9:.1f} GB ({len(self.nP):,} near triangle pairs), "
+                f"{avail / 1e9:.1f} GB available: larger cells (a coarser "
+                "dmax, or coarsen) on the widest copper")
+        with sim.log.timer('near-field correction'):
+            self.dZ = self._near_exact()
+        self._vias(f, z=False)
+
+    def _tables(self, f):
+        """The Green tables at f as the compiled core takes them (tb)."""
+        self.tables = self.sim.green_tables(f)
         keys = sorted(self.tables)
         T = [self.tables[k] for k in keys]
         tab = np.zeros((len(self.layers),) * 2, np.int32)
@@ -532,23 +607,6 @@ class FastOperator:
                                        self.q.get('stat_kind'))):
             # other parts extracted: computed again
             self.q.update(stat_ready=False, stat_kind=self.tb['kind'])
-        if mode == 'direct':
-            return
-        # MemoryError, saying so, where the sparse near-field correction cannot
-        # fit: memory_plan counts the solver's own matrices, not it, and on a
-        # fine mesh of several layers it is the larger (antenna_aperture's whole
-        # stack, 78k unknowns: 37 M near pairs, ~15 GB, which a 16 GB cap killed
-        # without a word)
-        need, avail = self.NEAR_BYTES * len(self.nP), available_memory()
-        if need > 0.85 * avail:
-            raise MemoryError(
-                f"the near-field correction of {sim.Ne:,} unknowns needs "
-                f"~{need / 1e9:.1f} GB ({len(self.nP):,} near triangle pairs), "
-                f"{avail / 1e9:.1f} GB available: larger cells (a coarser "
-                "dmax, or coarsen) on the widest copper")
-        with sim.log.timer('near-field correction'):
-            self.dZ = self._near_exact()
-        self._vias(f)
 
     def extra_blocks(self, f):
         """Lumped elements and metal loss: a sparse N x N addition to Z."""
@@ -738,11 +796,14 @@ class FastOperator:
                                                         self.q, self.nP32,
                                                         self.nQ32, self.w)
                 self._near_kept()
-        if not ready:
-            self._vias(f)
+        if plan.dense:  # (B, C into Z: the refinement's products are Z's)
+            self._vias(f, Z)
+        else:
+            if not ready:
+                self._vias(f)
+            if Nv:
+                _border(Z, self.B, self.C)
         self._ready = None
-        if Nv:
-            _border(Z, self.B, self.C)
         if Sx.nnz:
             Sc = Sx.tocoo()
             np.add.at(Z, (Sc.row, Sc.col), Sc.data.astype(dt))
@@ -900,7 +961,7 @@ class FastOperator:
         if self._ready != f:
             with sim.log.timer('near-field correction'):
                 self.dZ_exact = self._near_exact()
-            self._vias(f)
+            self._vias(f, z=False)
         d = k.dsc[:, None]
         Y = self._reused(
             f, k, lambda V: d * down(self.matvec_exact(up(d * V), Sx)),
