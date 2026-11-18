@@ -255,6 +255,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **mom25d is 2.5 times faster on the Solver Matrix's boards: 45 in 9.8 min, 24.7 before (2026-11-18).** Each
+  example's own config, lumped ports, RX 7800 XT, two runs each (9.9 and 9.7; 25.5 and 23.9); the RMS against
+  openEMS median 0.0632 (0.0645), mean 0.0987
+  (0.1009), 44 boards within 0.005 of what they were and the 16-port array 0.108 closer; against gfdtd's solid
+  copper on the 17 boards median 0.0359 (0.0360), mean 0.0506 (0.0506). As sheets (`--mom-thickness off`, as the
+  Solver Matrix of 15 November ran, openEMS's copper being sheets): 7.2 min, median 0.0511, mean 0.0957; then
+  30.7 min for 44 boards (0.0493, 0.0946) and 11.2 min with the *fast* setting (0.0526, 0.0968). What changed:
+  - *the sweep* (Fixed, above), *the plates as cells* and their far pairs: 25.5 → 15.2 min. A plate of thick
+    copper's sides is one cell of one charge density, as a quad cell of the sheet, so its diagonal is no
+    unknown: two functions a plate, not three (the 17 boards' S moved by an RMS of 0.0002–0.006). Plate pairs
+    more than five sizes apart take one point each in the compiled core, as the strips' far field (S within
+    1e-4);
+  - *the cells grow to twice `--mom-dmax`* away from the features (`--mom-coarsen`, now 2 by default: the
+    coarsening of the old *fast* setting), where that is no more than a wavelength / 15 (a plane's cells: / 8),
+    and to a wavelength / `--mom-cells` (30) where that is larger, each layer by its own narrowest trace: the
+    8–13 GHz boards, where a wavelength / 30 left the 0.3 mm cells nearly as they were, have 0.6 mm cells away
+    from the features (rf_bends 11.8k unknowns → 7.1k, rf_siw 17.0k → 11.3k, rf_ebg 17.3k → 14.7k), no board
+    more than 0.003 further from openEMS (docs/mom.md#cells). `--mom-coarsen 0`: as before;
+  - *a solve's passes over its matrix*: the refinement's residual from the products GMRES made (one product
+    of the double Z less a solve: 0.3 s of 5 at 17k unknowns); a kept LU given up after three iterations where
+    its rate cannot reach the tolerance in its eight (rf_ebg: 5 of 15 had run all eight for nothing); the
+    double Z equilibrated in its products and its complex64 copy, not in place; the border blocks copied a
+    block of rows at a time (14 % on the twelve largest boards before the residual and the kept LUs). With the
+    cells: 15.2 → 9.8 min.
+
+  The quad cells of the old *fast* setting do not pay on today's mesh (docs/mom.md#quads): `--mom-quads on
+  --mom-quad-tol 60` on 14 of the larger boards 6.2 min against 6.1, six of them further from openEMS; the old
+  flags whole (`--mom-coarsen 2` too) on the 45 before these changes: 16.6 min against 25.5, eight further.
 - **mom25d's copper thickness decided in one place (`mom25d.thickness.resolve`).** The request, the board's
   planes and stack and its ports give the mode (`sides` becomes `edge` with meshed planes or the whole stack,
   sheets with holed or slot planes; `edge` becomes sheets with wave ports, see Fixed), and its reason is the

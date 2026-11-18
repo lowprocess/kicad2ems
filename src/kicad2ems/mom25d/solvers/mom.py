@@ -493,17 +493,18 @@ class MoM25D(Solver):
             'mom_cells', 30.0,
             "cells per wavelength the mesh grows to away from corners, line "
             "ends, vias and ports, where it keeps --mom-dmax (the edge rings "
-            "kept; at most 4 x the narrowest trace; default {default}; 0: "
-            "--mom-dmax everywhere; docs/mom.md#cells)", float, name='cells',
-            gui='MoM cells per wavelength', group=G, cli=dict(metavar='N')),
+            "kept; at most 4 x a layer's narrowest trace; default {default}; "
+            "0: not by the wavelength; docs/mom.md#cells)", float,
+            name='cells', gui='MoM cells per wavelength', group=G,
+            cli=dict(metavar='N')),
         Option(
-            'mom_coarsen', 0.0,
-            "experimental: cells grow away from corners, vias and ports, up to "
-            "this times --mom-dmax along straight runs and inside wide copper "
-            "(the edge rings kept; docs/mom.md#coarsen): 0 (default: off), "
-            "e.g. 2", float, name='coarsen',
-            gui='MoM coarsening (experimental)', group=G,
-            cli=dict(metavar='X')),
+            'mom_coarsen', 2.0,
+            "the cells grow away from corners, vias and ports to this times "
+            "--mom-dmax at least, along straight runs and inside wide copper "
+            "(the edge rings kept; no further than a wavelength / 15, a "
+            "plane's cells / 8; docs/mom.md#coarsen): default {default}; 0 or "
+            "1: only by --mom-cells", float, name='coarsen',
+            gui='MoM coarsening', group=G, cli=dict(metavar='X')),
         Option(
             'mom_zone', 'off',
             "experimental: mesh detail only within 0.5 mm of the signal copper "

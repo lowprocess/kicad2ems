@@ -553,7 +553,8 @@ class Simulation:
                     nd, tr, vids = mesh_polygons(
                         geoms[k], dm_mesh, wr, ncross, grade, lines=seg,
                         vias=vpts, fine=fine, dmax_fine=dm_fine,
-                        coarsen=coarsen, grow=grow,
+                        coarsen=(coarsen.get(k) if isinstance(coarsen, dict)
+                                 else coarsen), grow=grow,
                         coarsen_fine=not (dm > 1.2 * dmax), structured=struct,
                         gap_rings=gap_rings, **zkw)
                 for (i, v), vid in zip(vias_here, vids):

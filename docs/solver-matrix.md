@@ -31,7 +31,9 @@ and 0.1 is a clear miss. The matrix can show the magnitude-only figure instead.
   0.111 to 0.038.
 - **mom25d fast** (`--mom-quads on --mom-quad-tol 60 --mom-coarsen 2`): the same median deviation as mom25d (0.049 over
   the 44 boards both solve), within 0.01 of it on 38, in 9.3 min against 30.2 min. It also solves antenna_aperture,
-  whose 78k unknowns on the standard mesh are past a 31 GB machine's direct solve.
+  whose 78k unknowns on the standard mesh are past a 31 GB machine's direct solve. (Since 2026-11-18 its
+  coarsening is mom25d's default, with thick copper's sides and a sweep that many ports do not confuse: the 45
+  boards in 9.8 min against 24.7, [mom.md](mom.md#cells); its quad cells no longer pay.)
 - **Where mom25d is still off:** rf_siw (1.11: its group delay is 0.425 ns against openEMS's 0.466 ns) and rf_ebg
   (0.32, cause not yet found); the shielded filter (0.15) is modelled without its can.
 - **mixed** cuts lines on only three boards, and on rf_bends (0.51) its adaptive sweep stopped at its solve cap

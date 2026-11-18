@@ -50,9 +50,13 @@ class Result:
     sim: object = None              # the Simulation
 
 
-# cells per wavelength the mesh grows to away from the features (0: dmax
-# everywhere)
+# cells per wavelength the mesh grows to away from the features (0: not by
+# the wavelength)
 CELLS = 30.0
+# ... and to this x dmax at least (cell_growth; 0 or 1: not), where that is
+# no more than a wavelength / OPEN (a plane's cells: / PLANE)
+COARSEN = 2.0
+OPEN, PLANE = 15.0, 8.0
 # zone=: cells up to this x dmax outside the zone around the signal copper
 ZONE_OUT = 5.0
 
@@ -62,7 +66,7 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
                 max_solves=60, afs_tol=5e-3, log=print, progress=None,
                 on_step=None, quads=False, zone=None,
                 stitching_vias='auto',
-                keep_at=(), quad_tol=35.0, coarsen=None, planes='pec',
+                keep_at=(), quad_tol=35.0, coarsen=COARSEN, planes='pec',
                 stitching_pads='drop', wideband=None, cells=CELLS,
                 thickness=THICKNESS):
     """S-parameters of a board (a <name>_board.json path, or its content) on
@@ -129,7 +133,7 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
 def build_board(board, fmin, fmax, dmax=0.3e-3, plane_factor=3.0, port='auto',
                 pairs=False, mesher='auto', metal=None, ground=None, log=print,
                 quads=False, zone=None, stitching_vias='auto', quad_tol=35.0,
-                coarsen=None, planes='pec', stitching_pads='drop',
+                coarsen=COARSEN, planes='pec', stitching_pads='drop',
                 wideband=None, title=None, mesh_only=False, characterize=True,
                 cells=CELLS, thickness=THICKNESS):
     """(BoardModel, Simulation) of a board as solve_board builds them, with its
@@ -154,10 +158,9 @@ def build_board(board, fmin, fmax, dmax=0.3e-3, plane_factor=3.0, port='auto',
         }
         # layers not modelled: none
         metal.on = {k: v for k, v in metal.on.items() if not isinstance(k, str)}
-    if cells and cells > 0:
-        coarsen = wavelength_coarsen(model, fmax, dmax, cells, coarsen, log)
     layer_dmax = {k: plane_factor * dmax for k, gs in model.shapes.items()
                   if sum(g.area for g in gs) > 0.5 * model.outline_area}
+    coarsen = cell_growth(model, layer_dmax, fmax, dmax, cells, coarsen, log)
     sim = model.simulation(
         dmax=dmax, dmax_layer=layer_dmax, fmin=fmin, fmax=fmax, solver='auto',
         verbose=False, wave_down_to=fmin, mesher=mesher, title=title or 'board',
@@ -168,35 +171,51 @@ def build_board(board, fmin, fmax, dmax=0.3e-3, plane_factor=3.0, port='auto',
     return model, sim
 
 
-def wavelength_coarsen(model, fmax, dmax, cells, coarsen=None, log=None):
-    """The coarsening that takes the cells to the wavelength's size: dmax stays
-    at the features (corners, line ends, vias, ports; the edge rings as they
-    are) and the cells grow away from them to lambda / cells in the densest
-    dielectric at fmax, at most 4 x the narrowest conductor (longer cells cannot
-    follow its current). As planar MoM tools size their cells (30 per
-    wavelength: the current along a line within about 1 %). Never under
-    `coarsen`. On 16 Solver Matrix boards against openEMS: 38 % of dmax's
-    unknowns, a quarter of the time, the median RMS 0.059 against 0.057
-    (2026-11-15); the same size everywhere, not graded, lost 0.04 on resonators
-    and via boards."""
+def cell_growth(model, planes, fmax, dmax, cells=CELLS, coarsen=COARSEN,
+                log=None):
+    """{layer: x}: how far each layer's cells grow away from the features
+    (corners, line ends, vias, ports; the edge rings as they are), x times
+    their size there (dmax; a plane's, planes[layer]: the layers whose metal
+    covers more than half the board), None where they do not. To the larger
+    of two sizes:
+    - a wavelength / cells in the densest dielectric at fmax, on a signal
+      layer at most 4 x its narrowest conductor (longer cells cannot follow
+      its current), on a plane x its cells' factor. As planar MoM tools size
+      their cells (30 per wavelength: the current along a line within about
+      1 %). On 16 Solver Matrix boards against openEMS: 38 % of dmax's
+      unknowns, a quarter of the time, the median RMS 0.059 against 0.057
+      (2026-11-15); the same size everywhere, not graded, lost 0.04 on
+      resonators and via boards;
+    - coarsen x the layer's size, where that is no more than a wavelength /
+      OPEN (a plane's: / PLANE). At 8-13 GHz the first is 0.4-0.6 mm, under
+      2 x 0.3 mm: the 45 Solver Matrix boards in 10.6 min against 15.2 with
+      it, 44 within 0.005 of their RMS against openEMS without it (median
+      0.0632 both; 2026-11-18, before the bounds). Past a wavelength / 15
+      patch arrays moved (cells of / 9: 0.036 to 0.041), and a slot along
+      plane cells of a wavelength / 6.7 by 0.024.
+    cells 0: the second alone; coarsen 0 or 1: the first alone."""
     from .sim import Simulation
-    planes = {
-        k
-        for k, gs in model.shapes.items()
-        if sum(g.area for g in gs) > 0.5 * model.outline_area
-    }
     er = max(l.er for l in model.stack.layers)
     lam = 299792458.0 / (fmax * er ** 0.5)
-    ws = [
-        Simulation._guess_wref(g, []) for k, gs in model.shapes.items()
-        if k not in planes for g in gs if not g.is_empty
-    ]
-    size = min([lam / cells] + ([4 * min(ws)] if ws else []))
-    x = max(coarsen or 1.0, size / dmax)
-    if log is not None and x > (coarsen or 1.0):
-        log(f"  cells grow from {dmax * 1e3:g} mm at the features to "
-            f"{x * dmax * 1e3:.3g} mm (a wavelength / {cells:g} at "
-            f"{fmax / 1e9:g} GHz, er {er:g}"
-            + (", 4 x the narrowest conductor" if size < lam / cells else "")
-            + ")")
-    return x if x > 1.0 else None
+    out, said = {}, []
+    for k, gs in model.shapes.items():
+        own = planes.get(k, dmax)
+        ws = [] if k in planes else [
+            Simulation._guess_wref(g, []) for g in gs if not g.is_empty]
+        by_wl = (min([lam / cells * own / dmax] + [4 * w for w in ws])
+                 if cells and cells > 0 else 0.0)
+        by_x = (min(coarsen * own, lam / (PLANE if k in planes else OPEN))
+                if coarsen and coarsen > 1 else 0.0)
+        x = max(by_wl, by_x) / own
+        out[k] = x if x > 1.0 else None
+        if out[k]:
+            said.append(
+                f"{'planes ' if k in planes else ''}{own * 1e3:.3g} to "
+                f"{x * own * 1e3:.3g} mm (a wavelength / {lam / (x * own):.3g}"
+                + (f", {coarsen:g} x" if by_x > by_wl
+                   and by_x == coarsen * own else "") + ")")
+    if log is not None and said:
+        log("  cells grow away from the features, at "
+            f"{fmax / 1e9:g} GHz in er {er:g}: "
+            + "; ".join(dict.fromkeys(said)))
+    return out

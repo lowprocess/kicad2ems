@@ -112,7 +112,7 @@ def test_solve_board_is_the_steps_it_wraps():
     """api.solve_board: the same S-parameters as building the model and sweeping
     by hand."""
     pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
-    from kicad2ems.mom25d.api import solve_board
+    from kicad2ems.mom25d.api import cell_growth, solve_board
     from kicad2ems.mom25d.run import solve_band
     data = board('lowpass')
     f = np.linspace(1e9, 3e9, 5)
@@ -121,12 +121,15 @@ def test_solve_board_is_the_steps_it_wraps():
                       progress=lambda *a: calls.append(a))
     m = BoardModel(data, log=quiet)
     planes = {
-        k: 2.4e-3
+        k: 4.8e-3
         for k, gs in m.shapes.items()
         if sum(g.area for g in gs) > 0.5 * m.outline_area
     }
+    grow = cell_growth(m, planes, 3e9, 1.6e-3)
+    assert grow == {1: 2.0}  # (twice dmax: under a wavelength / 15)
     sim = m.simulation(dmax=1.6e-3, dmax_layer=planes, fmin=1e9, fmax=3e9,
-                       solver='auto', verbose=False, wave_down_to=1e9)
+                       solver='auto', verbose=False, wave_down_to=1e9,
+                       coarsen=grow)
     fs, S, info = solve_band(sim, 1e9, 3e9, points=5, zref=m.port_z0,
                              max_solves=5, afs_tol=5e-3, log=quiet)
     assert np.allclose(res.S, S) and res.names == info['names'] == ['P1', 'P2']
@@ -136,6 +139,41 @@ def test_solve_board_is_the_steps_it_wraps():
     # (without the core) exactly
     assert (np.abs(res.S).max() <= 1 + 1e-6
             and np.abs(res.S - res.S.transpose(0, 2, 1)).max() < 1e-3)
+
+
+def test_cells_grow_to_the_wavelength_or_twice_dmax():
+    """api.cell_growth, each layer's own: to a wavelength / cells (a signal
+    layer: at most 4 x its narrowest conductor; a plane: x its cells'
+    factor), or coarsen x its cells where that is under a wavelength / 15
+    (a plane: / 8), whichever is larger."""
+    from types import SimpleNamespace as NS
+    from shapely.geometry import box
+    from kicad2ems.mom25d.api import cell_growth
+    m = NS(stack=NS(layers=[NS(er=4.4)]), shapes={
+        1: [box(0, 0, 20e-3, 2e-3)],                      # a 2 mm line
+        2: [box(0, 0, 20e-3, 20e-3)],                     # a plane
+        3: [box(0, 0, 8e-3, 8e-3) - box(0, 0, 7.9e-3, 7.9e-3)]})  # 0.1 mm
+    lam = lambda f: 299792458.0 / (f * 4.4 ** 0.5)
+    planes, d = {2: 0.9e-3}, 0.3e-3
+    g = cell_growth(m, planes, 10e9, d)      # a wavelength / 30: 0.48 mm
+    assert g[1] == g[3] == 2.0               # twice dmax
+    assert g[2] == pytest.approx(lam(10e9) / 8 / 0.9e-3) and 1.9 < g[2] < 2
+    g = cell_growth(m, planes, 3.2e9, d)     # a wavelength / 30: 1.49 mm
+    assert g[1] == pytest.approx(lam(3.2e9) / 30 / d)
+    assert g[2] == pytest.approx(g[1])       # 3 x it on the plane
+    assert g[3] == 2.0                       # 4 x 0.1 mm: under twice dmax
+    g = cell_growth(m, planes, 30e9, d)      # a wavelength / 15: 0.32 mm
+    assert g[1] == pytest.approx(lam(30e9) / 15 / d) and g[1] < 1.1
+    assert g[2] is None
+    g = cell_growth(m, {2: 6e-3}, 3e9, 2e-3)  # an array's own 2 mm cells
+    assert g[1] == pytest.approx(lam(3e9) / 15 / 2e-3) and 1.5 < g[1] < 1.7
+    assert cell_growth(m, planes, 10e9, d, coarsen=None) == {
+        1: pytest.approx(lam(10e9) / 30 / d), 2: pytest.approx(
+            lam(10e9) / 30 / d), 3: pytest.approx(0.4e-3 / d, rel=0.02)}
+    assert cell_growth(m, planes, 3.2e9, d, cells=0) == {
+        1: 2.0, 2: 2.0, 3: 2.0}
+    assert cell_growth(m, planes, 3.2e9, d, 0, 0) == {
+        1: None, 2: None, 3: None}
 
 
 def test_wave_ports_with_the_characterised_gamma():

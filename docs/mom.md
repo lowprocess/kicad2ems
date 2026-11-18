@@ -429,28 +429,58 @@ in double precision on the CPU (8 cores).*
 The preview's mesh has the structured runs but no quads: they are paired when the run starts, and the run writes
 the mesh it solved on. Quads work with the direct solver on the CPU and the GPU; the compressed solvers ignore them.
 
+These figures are of 0.3 mm cells everywhere (before `--mom-cells`), and the fast setting was then the fastest
+full-wave run of the Solver Matrix: its 44 boards in 9.3 min against 30.7 (2026-11-15). On today's mesh the two
+halves of it part ways (2026-11-18, the 45 boards with thick copper's sides):
+
+- its coarsening is the default ([above](#coarsen)): what it gained at 8–13 GHz, where a wavelength / 30 left the
+  cells at 0.3 mm;
+- its quad cells no longer pay. The cells already grow away from the features, and the structured runs' grid has
+  more triangles than the equilateral cells it replaces (hairpin 1,298 against 1,114; over the 45 boards 5 % more
+  unknowns to fill, 15 % fewer to factor). The LU is a quarter to a third of a solve (on the GPU above 3,000
+  unknowns); the fill, the near field and the sides' blocks go by the triangles. `--mom-quads on --mom-quad-tol 60`
+  on 14 of the larger boards: 6.2 min against 6.1 without, and six of them further from openEMS (rf_msvia 0.051 →
+  0.114, sma_launch 0.049 → 0.065, demo_transition 0.052 → 0.064, antenna_array2x2 0.096 → 0.103). The plates of
+  thick copper's sides stand on the mesh's boundary edges whatever the cells inside are: no quad touches the
+  outline (`on`), so quads take nothing off the sides' unknowns; a plate is a cell of its own
+  ([thickness](#thickness)).
+
 <a id="cells"></a>
-### The mesh's cells and the wavelength
+### The mesh's cells: the features, the wavelength, twice `--mom-dmax`
 
 The mesher keeps `--mom-dmax` (0.3 mm) at the features (the outline's corners and bends, line ends, vias, ports) and
-the edge rings as they are, and lets the cells grow away from the features to a wavelength / `--mom-cells` (30) in
-the densest dielectric at `fmax`, at most 4 × the narrowest trace: as planar MoM tools size their cells (30 per
-wavelength: the current along a line within about 1 %). Inside the copper the cells are equilateral (a hexagonal
-seed, smoothed; the triangulation is mesh2d's, in the compiled core). On 16 of the Solver Matrix's boards against
-openEMS (2026-11-15): 38 % of the unknowns of 0.3 mm cells everywhere and a quarter of the time, the median RMS
-0.059 against 0.057; three boards moved by more than 0.005 (antenna_cp_patch 0.098 → 0.115, 208 s → 3 s). The same
-size everywhere, not graded from the features, lost 0.04 on resonators and via boards; fewer edge rings lost as much
-on resonant filters. `--mom-cells 0`: `--mom-dmax` everywhere, as before.
+the edge rings as they are, and lets the cells grow away from the features, by half the distance to the nearest
+one, along the outline, the edge rings and inside them (the spacing across an edge is kept), to the larger of two
+sizes:
 
-<a id="coarsen"></a>
-### Coarsening (experimental)
+- **a wavelength / `--mom-cells`** (30) in the densest dielectric at `fmax`, on each layer at most 4 × its
+  narrowest trace: as planar MoM tools size their cells (30 per wavelength: the current along a line within
+  about 1 %). On 16 of the Solver Matrix's boards against openEMS (2026-11-15): 38 % of the unknowns of 0.3 mm
+  cells everywhere and a quarter of the time, the median RMS 0.059 against 0.057; three boards moved by more than
+  0.005 (antenna_cp_patch 0.098 → 0.115, 208 s → 3 s). The same size everywhere, not graded from the features,
+  lost 0.04 on resonators and via boards; fewer edge rings lost as much on resonant filters.
+- <a id="coarsen"></a>**`--mom-coarsen` × `--mom-dmax`** (2), where that is no more than a wavelength / 15. At
+  8–13 GHz a wavelength / 30 is 0.4–0.6 mm, so the first size leaves the default 0.3 mm cells nearly as they are
+  and those boards were the slow ones (rf_bends 11.8k unknowns, rf_siw 17.0k, rf_ebg 17.3k); with cells of 0.6 mm
+  away from the features they are 7.1k, 11.3k and 14.7k. This is the coarsening of the old *fast* setting (below),
+  now the default: 2 and 3 gave nearly the same error, the error coming from larger cells inside wide copper, not
+  along the outline. On the 45 Solver Matrix boards against openEMS (2026-11-18): 10.6 min against 15.2, 44 boards
+  within 0.005 of their RMS without it (median 0.0632 both, mean 0.0989 against 0.0987). The bound at a wavelength
+  / 15 is for boards whose own `--mom-dmax` is already the wavelength's size: patch arrays at 2–3 mm moved by
+  0.002–0.005 with cells of a wavelength / 12 to / 9, and at 30 GHz twice 0.3 mm would be a wavelength / 8.
 
-`--mom-coarsen X` lets the cells grow away from the features (the outline's corners and bends, vias, port and cut
-lines): from dmax at a feature by half the distance to the nearest one, up to X × dmax, along the outline, the edge
-rings and inside them; the spacing across an edge is kept. The error comes from larger cells inside wide copper,
-not along the outline, and X = 2 and 3 give nearly the same error: 2 is the useful setting. A meshed plane is coarsened
-outside its fine regions only: under the copper of the layers near it, where the return current runs, its cells
-keep their size (coarsened there, rf_msvia's S at 10 GHz is 0.05–0.10 further from openEMS).
+Inside the copper the cells are equilateral (a hexagonal seed, smoothed; the triangulation is mesh2d's, in the
+compiled core). A meshed plane (a layer whose copper covers more than half the board) has cells of 3 ×
+`--mom-dmax` at its features and grows from there: to 3 × a wavelength / `--mom-cells` (a tenth of a wavelength),
+or `--mom-coarsen` × its cells where that is no more than a wavelength / 8, whatever the traces of the other
+layers are (rf_ebg's patch plane had been held at the 0.38 mm of the line above it). Under the copper of the layers
+near it, where the return current runs, its cells keep their size (coarsened there, rf_msvia's S at 10 GHz is
+0.05–0.10 further from openEMS). Coarser planes are not safe: with a wavelength / 20 on every layer (planes: /
+6.7) the 45 boards took 12.5 min, 44 within 0.005, but antenna_slot, whose slot runs along the plane's cells,
+moved from 0.048 to 0.072.
+
+`--mom-cells 0`: not by the wavelength; `--mom-coarsen 0` (or 1): only by the wavelength, as before 2026-11-18;
+both: `--mom-dmax` everywhere.
 
 <a id="stitching"></a>
 With `--mom-stitching-vias square` each fence via snaps to a whole cell of the structured grid, its four triangles
