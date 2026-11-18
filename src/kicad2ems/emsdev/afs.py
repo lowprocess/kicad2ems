@@ -17,35 +17,53 @@ only where numpy is).
 import numpy as np
 
 
-# entries below this fraction of the largest are fitted apart (see aaa)
-SMALL = 1e-4
+# The sweep's models stop at FIT of each entry's scale (aaa's tol): above
+# the solves' noise (a mixed-precision solve's S: 1e-5 to 1e-4, by the
+# roughness of 201 solves a board), well under the sweep's own tolerance. At
+# 1e-10 a model chased the noise: with 4 ports (16 entries) it took a support
+# at every sample until 36 of them left it free, rf_diffvia's 37 solves; its
+# poles between the samples (|S| up to 6) kept two models apart, rf_ebg's 46.
+FIT = 3e-4
+# an entry's scale: its largest value, at least this x the largest of all (an
+# entry near the noise's level otherwise weighs as the others do)
+FLOOR = 0.3
+# entries below this x the largest are not in the model: straight lines
+# between their samples (a cut network's, at the noise's level: fitted, they
+# took poles)
+SMALL = 1e-3
 
 
 def aaa(z, F, tol=1e-10, mmax=80):
     """Set-valued AAA (Nakatsukasa, Sete, Trefethen 2018; Lietaert et al. 2022).
-    z: (n,) sample points, F: (n, m) values.  Returns r(zz) -> (len(zz), m)."""
+    z: (n,) sample points, F: (n, m) values.  Returns r(zz) -> (len(zz), m).
+    Supports are added until every sample is within tol of each entry's scale
+    (FLOOR), at most as many as the samples determine: (n - supports) m rows
+    for supports - 1 weights. (Past that the fit has no rows left: 6 ports' 36
+    entries took every sample as a support up to 37 of them, the model one
+    constant, rf_bends' 60 solves; 16 ports' never came back from it.) Entries
+    under SMALL of the largest: straight lines between the samples."""
     z, F = np.asarray(z, complex), np.asarray(F, complex)
     F = F[:, None] if F.ndim == 1 else F
     n, m = F.shape
-    small = np.abs(F).max(0) < SMALL * np.abs(F).max()
+    top = max(np.abs(F).max(), 1e-300)
+    small = np.abs(F).max(0) < SMALL * top
     if small.any() and not small.all():
-        # entries below SMALL of the largest (ports with no path between them: a
-        # cut network's, at the solver's noise) fitted on their own: in the
-        # shared denominator they had decided the poles the large entries left
-        # free, and spoilt the large entries' model between the samples
-        big_r, small_r = (aaa(z, F[:, ~small], tol,
-                              mmax), aaa(z, F[:, small], tol, mmax))
+        big, o = aaa(z, F[:, ~small], tol, mmax), np.argsort(z.real)
+        zo, Fo = z.real[o], F[o][:, small]
 
         def r(zz):
-            a, b = big_r(zz), small_r(zz)
-            out = np.empty((len(a), m), complex)
-            out[:, ~small], out[:, small] = a, b
+            x = np.atleast_1d(np.asarray(zz, complex)).real
+            out = np.empty((len(x), m), complex)
+            out[:, ~small] = big(zz)
+            out[:, small] = np.stack(
+                [np.interp(x, zo, c.real) + 1j * np.interp(x, zo, c.imag)
+                 for c in Fo.T], 1)
             return out
-        r.support, r.weights = big_r.support, big_r.weights
+        r.support, r.weights = big.support, big.weights
         return r
-    Fs = F / np.maximum(np.abs(F).max(0), 1e-300)
+    Fs = F / np.maximum(np.abs(F).max(0), FLOOR * top)
     J, sup, R, w = np.ones(n, bool), [], np.tile(Fs.mean(0), (n, 1)), None
-    for _ in range(min(mmax, n)):
+    for _ in range(max(1, min(mmax, (n * m + 1) // (m + 1)))):
         err = np.abs(Fs - R).max(1)
         err[~J] = -1
         j = int(np.argmax(err))
@@ -54,6 +72,9 @@ def aaa(z, F, tol=1e-10, mmax=80):
         sup.append(j)
         J[j] = False
         zs, Fsup = z[sup], Fs[sup]
+        if not J.any():  # (one sample)
+            w = np.ones(len(sup))
+            break
         C = 1.0 / (z[J][:, None] - zs[None, :])
         A = np.vstack(
             [C * (Fs[J, k][:, None] - Fsup[None, :, k]) for k in range(m)])
@@ -63,8 +84,6 @@ def aaa(z, F, tol=1e-10, mmax=80):
         w = Vh[-1].conj()
         R = Fs.copy()
         R[J] = (C @ (w[:, None] * Fsup)) / (C @ w)[:, None]
-        if not J.any():
-            break
     zs, Fsup = z[sup], F[sup]
 
     def r(zz):
@@ -143,10 +162,11 @@ def adaptive_sweep(solve, fmin, fmax, n0=5, tol=2e-3, max_points=40, ngrid=2001,
     Ss = [checked(f) for f in fs]
     P, sc = Ss[0].shape[0], 1e9
     prev, hist, ok, pred_err = None, [], 0, np.inf
+    gap_ok = gap_try = False
     while True:
         o = np.argsort(fs)
         fz, Fz = np.array(fs)[o] / sc, np.array([Ss[i].ravel() for i in o])
-        model = aaa(fz, Fz)
+        model = aaa(fz, Fz, tol=min(FIT, 0.2 * tol))
         Mg = model(grid / sc)
         if prev is not None:
             dif = np.abs(Mg - prev).max(1)
@@ -159,10 +179,16 @@ def adaptive_sweep(solve, fmin, fmax, n0=5, tol=2e-3, max_points=40, ngrid=2001,
             log(f"  AFS: {len(fs)} solves, max model change {dif[k]:.1e} at "
                 f"{grid[k] / 1e9:.3f} GHz, prediction error {pred_err:.1e}")
             ok = ok + 1 if dif[k] < tol and pred_err < tol else 0
-            if ok >= 2 or len(fs) >= max_points:
+            gap_ok = gap_ok and ok > 0
+            if ok >= 2 and not gap_ok and len(fs) < max_points:
+                # agreed: one more solve where the samples are furthest apart
+                # (two models can be wrong alike where neither was asked)
+                fnew, gap_try = widest_gap(), True
+            elif ok >= 2 or len(fs) >= max_points:
                 hist[-1]['converged'] = ok >= 2
                 break
-            fnew = grid[k]
+            else:
+                fnew = grid[k]
         else:
             fnew = widest_gap()
         # keep new samples away from
@@ -175,6 +201,9 @@ def adaptive_sweep(solve, fmin, fmax, n0=5, tol=2e-3, max_points=40, ngrid=2001,
         Snew = checked(fnew)
         pred_err = float(
             np.abs(model(np.array([fnew / sc]))[0] - Snew.ravel()).max())
+        if gap_try:
+            gap_ok, gap_try = pred_err < tol, False
+            ok = ok if gap_ok else 0
         fs.append(fnew); Ss.append(Snew)
     o = np.argsort(fs)
     return grid, Mg.reshape(ngrid, P, P), np.array(fs)[o], np.array(Ss)[o], hist

@@ -176,6 +176,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **A sweep of many ports, or of noisy solves, lost its model (`emsdev.afs`).** The sweep's rational model was
+  fitted to 1e-10, through each solve's noise (a mixed-precision solve's S: 1e-5 to 1e-4), so it took a support
+  at every sample and put poles between them; and with P ports' P² entries it had no rows left to fit until P²
+  + 1 solves: a constant until then. A 16-port array's sweep stopped at its 60 solves 0.87 from its own solves
+  between the samples (its S not causal, 0.144 from openEMS: 0.036 now, in 16 solves), rf_bends' 6 ports at 60
+  solves 0.056 off (now 34, within 3e-4), 4 ports took 37. The model now stops at 3e-4 of each entry's scale
+  (at most a fifth of the sweep's tolerance), keeps no more supports than the samples determine, leaves entries
+  under 1e-3 of the largest out (straight lines between their samples) and, once two models agree, must
+  predict one more solve in the middle of its widest gap. Against 201 solves across each band, twelve boards'
+  sweeps took 221 solves where they had taken 351, every model within 1.3e-3 of the solves between its samples
+  (docs/mom.md#sweep). pcbqs's S-parameters use the same sweep.
 - **mom25d's sides with wave ports (`WAVE_SIDES` on).** A fold's half on the sheet is an RWG half there, but
   it met the sheet's triangles, the vias and the holes through the plates' own rules (3 × 3 points) where the
   sheet's edges have the strips' (centroids, their near pairs): a loop of a vertical with its folds and the

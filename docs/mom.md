@@ -171,8 +171,17 @@ the hole's own field, which is not in the current dumps, the near field or the f
 <a id="sweep"></a>
 **The adaptive sweep.** mom25d solves only some frequencies. It fits one rational model through all of S (AAA)
 and adds a solve where two successive models disagree most, until the model changes by less than the tolerance
-(5e-3 in |S|) and predicted the newest solve as closely, twice in a row, or after `--mom-solves` (60). The GUI's Run
+(5e-3 in |S|) and predicted the newest solve as closely, twice in a row, and then predicts one more solve in the
+middle of the widest gap between its samples; or after `--mom-solves` (60). The GUI's Run
 page plots the model change and the prediction error per solve; the run summary keeps them (`solved.mom25d.afs`).
+The model is fitted to 3e-4 of each entry's scale, not to rounding: a mixed-precision solve's S carries noise
+of 1e-5 to 1e-4, and a model fitted through it took a support at every sample and put poles between them. With
+many ports it had no rows left to fit at all (16 entries: until 36 solves; 36 entries: until its 60), so a board's
+solves went by its port count, not its response: against 201 solves across each band (2026-11-18) the sweeps
+of twelve boards took 221 solves where they had taken 351, the model within 1.3e-3 of the solves between its
+samples on every one (rf_bends, 6 ports: 34 solves, within 3e-4, where 60 had left it 0.056 off; the 16-port
+array: 12, within 3e-4, where 60 had left it 0.87 off, its S not causal; rf_crosstalk_guard 37 → 14, rf_diffvia
+37 → 22; hairpin, rf_branchline, rf_coupler, rf_combline, double precision: 45 → 46).
 
 <a id="the-board"></a>
 mom25d reads the board file every solver gets, `<name>_board.json`, and runs on its own too:

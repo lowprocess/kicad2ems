@@ -29,10 +29,13 @@ nothing installed; free memory is the driver's budget (`VK_EXT_memory_budget`). 
 host-cached memory the GPU reaches by address, as a numpy array: 24 GB/s over PCIe 4.0, where slangpy's own
 read-back buffers read at 0.2-0.5 GB/s on RADV.
 
-**The adaptive sweep** (`kicad2ems.emsdev.afs`): `aaa(z, F)` fits one rational model to all S entries at once
-(set-valued AAA), and `adaptive_sweep(solve, fmin, fmax, grid=f)` solves where two successive models disagree
-most until they agree on the grid. mom25d's sweep and pcbqs's S-parameters use it; it needs numpy, which
-they have (the rest of emsdev needs nothing).
+**The adaptive sweep** (`kicad2ems.emsdev.afs`): `aaa(z, F, tol)` fits one rational model to all S entries at
+once (set-valued AAA: supports until every sample is within `tol` of each entry's scale, never more than the
+samples determine; entries under 1e-3 of the largest are straight lines between their samples), and
+`adaptive_sweep(solve, fmin, fmax, grid=f)` solves where two successive models disagree most until they agree
+on the grid and the model predicts a solve in its widest gap. Its models are fitted to `FIT` (3e-4, at most a
+fifth of the sweep's tolerance), above the noise of a mixed-precision solve. mom25d's sweep and pcbqs's
+S-parameters use it; it needs numpy, which they have (the rest of emsdev needs nothing).
 
 **Compiled cores** (`kicad2ems.emsdev.build`): `build_core(__file__, 'x_core.cpp', arch_env='X_ARCH')` builds a package's
 `core/x_core.cpp` with pybind11 and OpenMP into `<package>/_core*.so` (`.pyd` on Windows; the `build` extra
