@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **`--mom-thickness mixed` (mom25d).** Plates of thick copper's sides only where copper faces copper within
+  0.5 mm or is narrower than 1 mm, the other edges with `edge`'s correction: unknowns of the 44 boards 177.5k →
+  160.7k (rf_bends 7.1k → 5.7k, sma_launch 15.1k → 13.3k), the suite 14.6 → 11.5 min on a loaded machine. Not the
+  default: against gfdtd's solid copper the 17 boards' median 0.0379 (sides 0.0359), and against openEMS six boards
+  further than 0.005 (antenna_patch +0.057). With wave ports it is `sides` (docs/mom.md#thickness).
 - **The window's Runs page, in place of the toolbar's Results of.** A table of the board's runs: when, what each
   answered, the engines, how it ended, how long it took, its size, and *≠ settings* (which differ from the form's,
   in its tooltip); the preview last, *current* or *stale*. *This config* by default (a run's mark names the config
@@ -255,6 +260,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **mom25d's sides cost less a frequency, the sweep a solve less a board (2026-11-18).** The plates' blocks in
+  the compiled core with the observers in colours (each observer's sums at once into its rows, not through a
+  chunk's buffer) and the folds' far block a triangle at a time: a frequency's blocks rf_bends 0.29 → 0.085 s,
+  sma_launch 0.70 → 0.32 s, the matrices the same to 5e-16 (the 17 boards' S and the wave ports' as they were).
+  The adaptive sweep's solve in the widest gap comes after its first agreement, not its second: rf_bends 31 → 29
+  solves, sma_launch 11 → 10, the 44 boards 683 → 635 (rf_ebg 39 → 40); their RMS against openEMS all within
+  0.0003 of before (median 0.0628, mean 0.0962). pcbqs's sweep is the same function.
 - **mom25d is 2.5 times faster on the Solver Matrix's boards: 45 in 9.8 min, 24.7 before (2026-11-18).** Each
   example's own config, lumped ports, RX 7800 XT, two runs each (9.9 and 9.7; 25.5 and 23.9); the RMS against
   openEMS median 0.0632 (0.0645), mean 0.0987

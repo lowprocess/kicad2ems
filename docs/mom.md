@@ -137,10 +137,13 @@ inward from its edge (`board.MIXED_GAP`, `MIXED_WIDE`), and gives the other edge
 triangles under a plate left out of it). The edges it leaves are those of wide copper facing nothing: rf_bends'
 lines 676 plates → 1, sma_launch's pour 1113 → 195, the arrays' patches and feeds all. Against gfdtd with solid
 copper (17 boards): median 0.0379, mean 0.0515 against `sides`' 0.0359 and 0.0506, S 0.0044 (median) from
-`sides`' (rf_steplpf 0.013, rf_combline and rf_pcoupled 0.011: their wide sections); against openEMS on six
-boards within 0.006 of `sides` but antenna_patch (+0.057: a resonant patch's edges, the edge correction on its
-2 mm cells). With wave ports it is `sides` (`edge`'s part not checked with them). Not the default: the 17
-boards' median is 0.002 worse. (Plates dropped on such edges with no correction instead moved S as far as
+`sides`' (rf_steplpf 0.013, rf_combline and rf_pcoupled 0.011: their wide sections); against openEMS (44 boards,
+lumped ports) within 0.005 of `sides` on 36, further on 6: antenna_patch +0.057 (a resonant patch's edges, the
+edge correction on its 2 mm cells), rf_shielded +0.024, antenna_cp_patch +0.014, the 16-port array +0.013,
+rf_pcoupled +0.009, rf_combline +0.006; unknowns 177.5k → 160.7k, the suite 14.6 → 11.5 min on a loaded machine
+(`sides` with the faster blocks in the same rounds 16.8: the times there not comparable). With wave ports it is
+`sides` (`edge`'s part not checked with them). Not the default: the 17 boards' median 0.002 worse and the
+openEMS gate failed on six. (Plates dropped on such edges with no correction instead moved S as far as
 sheets do: antenna_array2x2 0.096 → 0.141 against openEMS, `off` 0.141.)
 
 <a id="planes"></a>
