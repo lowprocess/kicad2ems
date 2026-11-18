@@ -32,9 +32,13 @@ def window(tmp_path, monkeypatch):
     # the window lists the registry as it was when it was imported: the
     # stand-ins', in a run of every test
     listed = study.installed()
-    for module in (study, gui):
-        monkeypatch.setattr(module, 'ANALYSES', listed)
-        monkeypatch.setattr(module, 'BY_KEY', {a.key: a for a in listed})
+    # (and the window's parts that read them: winstudy.py, ...)
+    from kicad2ems.gui import winstudy, winconfigs, winrun
+    for module in (study, gui, winstudy, winconfigs, winrun):
+        for name, v in (('ANALYSES', listed),
+                        ('BY_KEY', {a.key: a for a in listed})):
+            if hasattr(module, name):
+                monkeypatch.setattr(module, name, v)
     # and the questions with their engines
     monkeypatch.setattr(study, 'TREE', study.tree())
     app = application()

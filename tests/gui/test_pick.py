@@ -36,9 +36,13 @@ def window(tmp_path, monkeypatch):
     from kicad2ems.gui import application, study, app as gui
     from kicad2ems.gui.app import MainWindow
     listed = study.installed()
-    for module in (study, gui):
-        monkeypatch.setattr(module, 'ANALYSES', listed)
-        monkeypatch.setattr(module, 'BY_KEY', {a.key: a for a in listed})
+    # (and the window's parts that read them: winstudy.py, ...)
+    from kicad2ems.gui import winstudy, winconfigs, winrun
+    for module in (study, gui, winstudy, winconfigs, winrun):
+        for name, v in (('ANALYSES', listed),
+                        ('BY_KEY', {a.key: a for a in listed})):
+            if hasattr(module, name):
+                monkeypatch.setattr(module, name, v)
     monkeypatch.setattr(study, 'TREE', study.tree())
     app = application()
     QSettings('kicad2ems', 'gui').clear()

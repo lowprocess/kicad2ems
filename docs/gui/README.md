@@ -129,7 +129,13 @@ It needs PySide6, pyqtgraph and PyOpenGL (installed with it).
 
 | Module | Contents |
 |---|---|
-| `app.py` | `MainWindow`: the docks (the study, the settings, the pages in their workspace), a run of the ticked analyses and its events, what a run still needs |
+| `app.py` | `MainWindow`, made of the parts below, and `main`: the window's pages, widgets and docks built, its closing |
+| `windocks.py` | the window's shape: the pages as docks of the workspace, which are there, the toolbar and menus, the layout remembered |
+| `winconfigs.py` | configs and examples: open, recent, a config's study and analyses read and written, a file dropped on the window |
+| `winstudy.py` | the study in the list, what a run still needs, a result's proposal for another analysis, a setting picked on the board |
+| `winrun.py` | the runs as they go: the study's queue, kicad2ems's own run and its events, Stop, the estimate |
+| `winresults.py` | this board's runs (Results of) and the one shown in the pages, a run deleted |
+| `winparts.py` | the Solvers window, the second Viewer, a page's dock, the example and layout threads |
 | `setuptab.py`, `runtab.py`, `resultstab.py` | the study and the settings of what is selected in it; the Log page (the runs and their logs); the Plots page (S-parameter, antenna and curve plots) |
 | `study.py` | the study with no window (no Qt): the runs a board can have (the solvers', then each analysis), what follows what, and `StudyModel`: what is asked, who answers each question, the Fields ticks, what cannot run here, each run's state |
 | `studytree.py` | the list in the Study dock, the model's view: a row per question, who answers it, its Fields tick and its state |

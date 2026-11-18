@@ -975,8 +975,9 @@ def test_stop_asks_the_run_then_ends_its_process(window, tmp_path, monkeypatch):
         [sys.executable,
          str(script), self.toml, '--events', self.events])
     asked = []
-    import kicad2ems.gui.app as gui_app
-    monkeypatch.setattr(gui_app, 'stop_runs', lambda out: asked.append(out))
+    # (Stop is the window's runs' part: winrun.py)
+    import kicad2ems.gui.winrun as winrun
+    monkeypatch.setattr(winrun, 'stop_runs', lambda out: asked.append(out))
     w.setup.set_values(dict(board=str(board), out=str(tmp_path / 'out')))
     w.study.set_ticked(['rf'])
     w.preview()
