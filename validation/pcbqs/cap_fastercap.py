@@ -3,7 +3,7 @@ charge per triangle on zero-thickness copper sheets; homogeneous er, or
 dielectric='stack' with laterally infinite slabs by images) against FasterCap
 (3D boundary elements, adaptive refinement, explicit dielectric interfaces).
 
-    python validation/cap_fastercap.py [plates traces_air traces_fr4]
+    python validation/pcbqs/cap_fastercap.py [plates traces_air traces_fr4]
 
 FasterCap: `FASTERCAP` or ~/opt/src/FasterCap-build/FasterCap (headless). Its
 copper is boxes of the real 35 um thickness: a conductor names one surrounding
@@ -22,7 +22,6 @@ from pathlib import Path
 import numpy as np
 from shapely.geometry import box, mapping
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from common import OUT, write_json  # noqa: E402
 
 FASTERCAP = os.environ.get(

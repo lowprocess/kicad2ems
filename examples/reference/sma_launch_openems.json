@@ -2,7 +2,7 @@
  "name": "sma_launch",
  "version": "261013-r1",
  "mode": "S-parameters",
- "command": "kicad2ems examples/sma_launch.toml --out /tmp/claude-1000/-home-bt-projects-kicad2ems/8ed451e7-340e-44a4-801b-aab01d4cc0f9/scratchpad/smaref --solvers openems",
+ "command": "kicad2ems examples/sma_launch.toml --out out --solvers openems",
  "solvers": [
   "openems",
   "qucs"
@@ -16,8 +16,8 @@
   "fast": "auto",
   "mode": "sparams",
   "drive": [],
-  "board": "/home/bt/projects/kicad2ems/examples/sma_launch.kicad_pcb",
-  "pos": "/home/bt/projects/kicad2ems/examples/sma_launch-all.pos",
+  "board": "examples/sma_launch.kicad_pcb",
+  "pos": "examples/sma_launch-all.pos",
   "nets": [
    "REF_SMA_N",
    "GND"
@@ -44,7 +44,7 @@
   "no_report": false,
   "dump_animate": null,
   "events": null,
-  "out": "/tmp/claude-1000/-home-bt-projects-kicad2ems/8ed451e7-340e-44a4-801b-aab01d4cc0f9/scratchpad/smaref",
+  "out": "out",
   "res": 20.0,
   "fine": null,
   "air": null,
@@ -262,7 +262,7 @@
   }
  },
  "model": {
-  "board": "/home/bt/projects/kicad2ems/examples/sma_launch.kicad_pcb",
+  "board": "examples/sma_launch.kicad_pcb",
   "outline_mm": [
    30.0,
    14.0
@@ -1068,15 +1068,15 @@
   "  0 coupled section(s); discontinuities: 1 open, 1 step",
   "mesh: 170 x 198 x 34 = 1.14 M cells (fine 0.050 mm, max 1.16 mm in dielectric / 2.50 mm in air, air margin 5.0 mm), boundaries xmin=MUR xmax=MUR ymin=MUR ymax=MUR zmin=PEC zmax=MUR (PEC on the bottom plane), time step 0.065 ps, ~0.2 GB",
   "vias: 28 snapped onto existing lines (moved <= 0.124 mm), 0 with their own lines",
-  "wrote /tmp/claude-1000/-home-bt-projects-kicad2ems/8ed451e7-340e-44a4-801b-aab01d4cc0f9/scratchpad/smaref/sma_launch_mesh.png",
+  "wrote out/sma_launch_mesh.png",
   "excitation pulse ~16678 timesteps (estimate); --max-steps 1000000 allows 60 pulse lengths",
   "openems changes: vias: moved onto the mesh (12, up to 0.124 mm); edge_walls: moved onto a mesh line (9, up to 0.0111 mm)",
   "line model (qucsator): 29 ms",
-  "openEMS: exciting P1 -> /tmp/claude-1000/-home-bt-projects-kicad2ems/8ed451e7-340e-44a4-801b-aab01d4cc0f9/scratchpad/smaref/openems/exc_P1",
+  "openEMS: exciting P1 -> out/openems/exc_P1",
   "  P1 done in 32 s, ~18872 timesteps",
   "note: P2 not excited - their reflection and the terms between unexcited ports are unknown (written as 0)",
-  "openEMS (FDTD): -> /tmp/claude-1000/-home-bt-projects-kicad2ems/8ed451e7-340e-44a4-801b-aab01d4cc0f9/scratchpad/smaref/sma_launch_openems.s2p",
-  "line model (qucsator): -> /tmp/claude-1000/-home-bt-projects-kicad2ems/8ed451e7-340e-44a4-801b-aab01d4cc0f9/scratchpad/smaref/sma_launch_qucs.s2p"
+  "openEMS (FDTD): -> out/sma_launch_openems.s2p",
+  "line model (qucsator): -> out/sma_launch_qucs.s2p"
  ],
  "runtime_s": 33.13969564437866,
  "ports": [

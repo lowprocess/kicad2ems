@@ -2,7 +2,7 @@
 sheets) against Palace (3D FEM, copper as zero-thickness PEC sheets, vias as
 PEC-walled holes, an air box) and Grover's closed form where there is one.
 
-    python validation/mqs_palace.py [case ...]       # cases: loop, plane_return
+    python validation/pcbqs/mqs_palace.py [case ...]       # cases: loop, plane_return
 
 The port is a flat lumped-port sheet across a gap in the copper (Palace) and
 pcbqs's source between the two pads at part height 0. Palace's PEC copper is the
@@ -17,7 +17,6 @@ from pathlib import Path
 import numpy as np
 from shapely.geometry import Point, box, mapping
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from common import OUT, IMAGES, write_json  # noqa: E402
 import palace  # noqa: E402
 

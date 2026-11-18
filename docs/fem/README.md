@@ -71,7 +71,7 @@ python -m kicad2ems.fem.elmer.dc board.kicad_pcb --net VHB --source L3 --load Q1
   tet`, were removed in 2026-11: 1.1 M of them took 3.5 GB for the same drop.)
 
 Against pcbqs's 2D DC solve this agreed within 0.2% on the wpthb VHB rail and 1.5% on Jetson +1V15
-(pcbqs/validation). wpthb VHB, L3 to the two high-side FETs, at h 0.1 / 0.02 mm (1.1 M tetrahedra): Q1 0.3835 mV,
+(validation/pcbqs). wpthb VHB, L3 to the two high-side FETs, at h 0.1 / 0.02 mm (1.1 M tetrahedra): Q1 0.3835 mV,
 Q2 0.6179 mV; on the layered mesh at its default (39,681 wedges, 0.8 s and 120 MB, R-D23) 0.3842 and 0.6194 mV.
 
 Elmer is found as `K2E_ELMER` (the folder with `ElmerSolver` and `ElmerGrid`), the folder kicad2ems's installer
@@ -223,7 +223,7 @@ side.
 
 On the Jetson baseboard's U69 (a SOT-563 buck from +5V, C35 and C76 at its input): Palace 0.219 to 0.198 nH from
 0.6 to 12 MHz (123,000 tetrahedra at `hmin` 0.25 mm, 2.3 min, ~12 GB); pcbqs 0.420 to 0.338 nH. On the validation
-suite's simple loops the two agree within 2% (`pcbqs/validation/mqs_palace.py`), so the 40% here is in how each
+suite's simple loops the two agree within 2% (`validation/pcbqs/mqs_palace.py`), so the 40% here is in how each
 models this loop, which is open: zero-thickness PEC against 35 µm copper (1.7 skin depths at 12 MHz) in a loop
 this small, the capacitors as straps in the copper plane against pcbqs's filaments, and pcbqs's source across all
 the converter's input and ground pads against one port. The finest mesh (`hmin` 0.02 mm, the board's narrowest
@@ -302,7 +302,7 @@ curves, each part's time to 63 % of its rise), `thermal-transient.png`, and the 
 | Check | Result |
 |---|---|
 | A 10 mm square on a 0.2 mm board, heated over its whole top, against one lump (C / hA = 24.87 s) | 63 % at 24.81 s, the curve within 2% at 0.3, 1 and 3 time constants |
-| wpthb, 0.3 W in each FET and 0.4 W in L3, to 2000 s, against pcbqs's grid (`pcbqs/validation/thermal_elmer.py --transient`) | 63 % at 82, 85, 90 s (Q1, L3, Q2); pcbqs 89, 88, 97 s (+3 to +9%), within 0.5 K at 200 s. 331,000 wedges, 15 min |
+| wpthb, 0.3 W in each FET and 0.4 W in L3, to 2000 s, against pcbqs's grid (`validation/pcbqs/thermal_elmer.py --transient`) | 63 % at 82, 85, 90 s (Q1, L3, Q2); pcbqs 89, 88, 97 s (+3 to +9%), within 0.5 K at 200 s. 331,000 wedges, 15 min |
 
 The wpthb run found pcbqs's grid counting an inner layer's copper as laminate too (its laminate share took the
 layer's own thickness): 4.8% too much heat capacity, its parts 13% late, now 3 to 9% (pcbqs, R-E21). Elmer's

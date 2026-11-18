@@ -2,7 +2,7 @@
 discs) against Palace (3D FEM: the dielectric between PEC planes, open sides,
 vertical lumped ports between the planes) and the analytic modal sum.
 
-    python validation/pdn_palace.py [case ...]       # cases: rect, lshape
+    python validation/pcbqs/pdn_palace.py [case ...]       # cases: rect, lshape
 
 Both use lossless (PEC) planes and the dielectric's loss tangent, so the
 comparison is of the cavity itself:
@@ -16,7 +16,6 @@ from pathlib import Path
 import numpy as np
 from shapely.geometry import Polygon, box
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from common import OUT, IMAGES, write_json  # noqa: E402
 import palace  # noqa: E402
 

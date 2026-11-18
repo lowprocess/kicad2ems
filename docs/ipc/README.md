@@ -7,7 +7,7 @@
 [kicad2ems](https://github.com/lowprocess/kicad2ems)'s plugin for KiCad's PCB editor. It talks to KiCad through
 KiCad's IPC API (KiCad 9 and later) and reads the board as it is open in KiCad, unsaved edits included.
 
-![The plugin beside KiCad, set up to simulate an HDMI pair](img/kicad_plugin.jpg)
+![The plugin beside KiCad, set up to simulate an HDMI pair](../img/readme/kicad_plugin.jpg)
 
 A toolbar button opens a window with:
 
@@ -25,9 +25,9 @@ A toolbar button opens a window with:
   S-parameters tab shows the results against the line model.
 
 <p align="center">
-  <img src="docs/img/plugin_map.gif" width="32%" alt="The impedance map filling in">
-  <img src="docs/img/plugin_section.jpg" width="32%" alt="An HDMI section read on the map">
-  <img src="docs/img/plugin_results.png" width="32%" alt="The pair's S-parameters against the line model">
+  <img src="../img/readme/plugin_map.gif" width="32%" alt="The impedance map filling in">
+  <img src="../img/readme/plugin_section.jpg" width="32%" alt="An HDMI section read on the map">
+  <img src="../img/readme/plugin_results.png" width="32%" alt="The pair's S-parameters against the line model">
 </p>
 
 *KiCad's CM5 Minima demo: the map of its 94 signal nets filling in; its HDMI pairs against their 100 ohm class,

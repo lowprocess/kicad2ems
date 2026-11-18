@@ -105,9 +105,10 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
 
 ## The window, from a clean slate
 
-kicad2ems-gui's `docs/redesign.md`. The few settings first and the list of what a run still needs are built.
-Its fixed layout was built and taken back (2026-11-12, the user's word): the settings belong on the left, under
-the questions, and the window keeps its docks, as a studio application's. What follows is to be read with
+The design was kicad2ems-gui's `docs/redesign.md` (removed 2026-11; the git history has it). The few settings
+first and the list of what a run still needs are built. Its fixed layout was built and taken back (2026-11-12,
+the user's word): the settings belong on the left, under the questions, and the window keeps its docks, as a
+studio application's. What follows is to be read with
 that: nothing in it may fix a panel in place. Left:
 
 1. **The study as a model without Qt, the rest** (its step 1). `study.StudyModel` has the questions' side
@@ -265,8 +266,7 @@ that does not need N² memory. In this order:
 5. **The numerics shared with pcbqs** (R-F4): one copy since 2026-11-16, `kicad2ems.emsdev.numerics` (the RWG
    functions, the mesher with pcbqs's minimum-angle option, the off-plane integrals, Biot-Savart), mesh2d in
    `emsdev/native`. Left to port: mom25d's singular rule over the smaller triangle into pcbqs (`mom25d.sing` wraps
-   the shared `offplane_pairs` with it), with pcbqs's compiled static, compressed and layered kernels and its CuPy
-   kernel (they integrate over p too; ported in Python alone, fourteen of pcbqs's tests held them apart).
+   the shared `offplane_pairs` with it), with pcbqs's compiled static, compressed and layered kernels (they integrate over p too; ported in Python alone, fourteen of pcbqs's tests held them apart).
 6. **mixed's band fit at its cap, unconverged, says nothing.** On `rf_bends` (14 ports after four cuts) the
    adaptive sweep stops at its 60 solves with its models still apart and the curve between the solved frequencies
    wrong (0.507 from openEMS on the Solver Matrix of 2026-11-15, as on 2026-11-06); mom25d's own runs warn nowhere
@@ -374,7 +374,7 @@ In order:
    - a trace close over a plane, the largest error: one sheet is 19–30 % low in R, two faces were 12.5 % low when
      last compared, the reference is within 5 %. The validation board's second structure decides;
    - the 2–3 % drop in inductance with face sheets;
-   - side charge in a layered dielectric (it is homogeneous only), and the tree preconditioner with face sheets;
+   - the tree preconditioner with face sheets;
    - the compressed backend as the default for `slab`, once the CM5 loop agrees;
    - one sheet or two in the circuit: two move wpthb's settled ripple by 6 % at 2.6 times the time, which the
      powered ripple cannot resolve until the parts are vendor models. It needs a measurement that isolates the
@@ -382,15 +382,15 @@ In order:
 2. **Capacitance in narrow gaps, with thickness.** Graded edge rings resolve the edge charge (2026-11-13:
    two sheets 0.1 mm apart −2.5 % self and −3.6 % mutual against FasterCap, from −10 % and −23 %, on a third of
    the triangles; `kicad2ems.pcbqs.sparams` uses them with the charge). Left: the same with the copper's thickness (face
-   sheets and side charge were −5.5..−7.5 % and −10..−13 % against FasterCap's boxes, on plain cells), and
-   whether the rings should be `MQS(capacitance=True)`'s default.
-3. **A real converter loop, converged.** CM5 U702 (`validation/mqs_cm5.py`): one sheet is within 4 % of Palace's
+   sheets and side charge, since removed, were −5.5..−7.5 % and −10..−13 % against FasterCap's boxes, on plain
+   cells), and whether the rings should be `MQS(capacitance=True)`'s default.
+3. **A real converter loop, converged.** CM5 U702 (`validation/pcbqs/mqs_cm5.py`): one sheet is within 4 % of Palace's
    PEC sheets at the finest meshes, both still converging; two meshes differ by up to 3.8 % in L. The Jetson's
    eight bucks run, no more. Mesh and crop convergence per board, with measured local refinement before any
    whole-board compression.
 4. **Measurements (the plan is ready; waiting on a VNA).** `validation/measurements.md`: shunt-through at TP7 / TP6
    unpowered (as built, and with one 1206 jumper for the ceramics), VHB ripple at the regression operating point,
-   the near field at 1–3 mm; predictions in `validation/wpthb_vhb_port.py`. A purpose-made validation board:
+   the near field at 1–3 mm; predictions in `validation/pcbqs/wpthb_vhb_port.py`. A purpose-made validation board:
    `validation/test-board.md` lists its structures (no layout or predictions yet).
 5. **Models.** Vendor or fitted MOSFET models (MCG8D2N06YL), datasheet capacitor ESR and ESL, measured coil Q;
    switch internal capacitances as explicit elements, so a warm start can initialise them; package and gate

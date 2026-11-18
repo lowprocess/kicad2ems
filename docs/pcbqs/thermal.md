@@ -161,7 +161,7 @@ The grid-mesh tables above were taken before the edges lost heat.
 
 ## Against Elmer
 
-`validation/thermal_elmer.py` runs each demo circuit and gives its lossiest case's part losses to the grid
+`validation/pcbqs/thermal_elmer.py` runs each demo circuit and gives its lossiest case's part losses to the grid
 (0.5 mm) and Elmer through kicad2ems-fem (`elmer/thermal.py`: 3D conduction in the copper,
 the barrels and an anisotropic laminate, wedge elements, the same film on every exposed face), with the same
 film, ambient and conductivities. Each part's temperature is the mean under its pads in both.

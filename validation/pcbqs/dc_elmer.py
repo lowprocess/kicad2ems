@@ -2,7 +2,7 @@
 (3D conduction in the copper and solid barrels of the plated annulus's
 conductance).
 
-    python validation/dc_elmer.py [case ...]  # cases: strip, via_single,
+    python validation/pcbqs/dc_elmer.py [case ...]  # cases: strip, via_single,
                                               # via_hop, wpthb_vhb, jetson_1v15
 
 Each case: one net's copper, a source terminal held at 0 V and loads drawing
@@ -16,7 +16,6 @@ from pathlib import Path
 
 from shapely.geometry import box, mapping
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from common import (  # noqa: E402
     OUT, IMAGES, SIGMA_CU, copper_model, elmergrid, elmer, save_scalars,
     write_json)

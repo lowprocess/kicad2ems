@@ -2,7 +2,7 @@
 (volume-filament PEEC: skin and proximity effect resolved across width and
 thickness), on mqs_palace.py's cases.
 
-    python validation/mqs_fasthenry.py [loop plane_return]
+    python validation/pcbqs/mqs_fasthenry.py [loop plane_return]
 
 FastHenry: `FASTHENRY` or ~/opt/src/FastHenry2/bin/fasthenry (MIT FastHenry 3.0,
 built with gcc -std=gnu89 -fcommon). pcbqs's results are read from
@@ -20,7 +20,6 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from common import OUT, IMAGES, write_json  # noqa: E402
 
 FASTHENRY = os.environ.get(

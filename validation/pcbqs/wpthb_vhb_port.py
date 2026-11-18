@@ -8,7 +8,7 @@ resonance (~1-3 MHz) the reading is inductive: the parts' own ESL plus the
 board's mounting and spreading inductance, which is where pcbqs's copper model
 and its part contacts (C13) show.
 
-    python validation/wpthb_vhb_port.py [dmax] [termination,pad,edge] [only]
+    python validation/pcbqs/wpthb_vhb_port.py [dmax] [termination,pad,edge] [only]
 
 `only`: a comma-separated subset of the caps to keep (the rest removed), e.g.
 C21 for measurement 1(b), one 1206 jumper in C21's place: its board-only result

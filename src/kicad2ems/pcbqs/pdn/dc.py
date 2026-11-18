@@ -41,7 +41,7 @@ from .mesh import net_sheets, stiffness, gradient, stack_z, SIGMA_CU
 # vertex, not shared: current enters a pad through the few vertices on its edge,
 # and a total of 1e6 S split over thousands of vertices left a pad ~20 uV from
 # equipotential per amp (+1% on a 40 mm strip, growing with mesh refinement;
-# validation/dc_elmer.py).
+# validation/pcbqs/dc_elmer.py).
 TIE_G = 1e6
 
 
@@ -83,7 +83,7 @@ class Network:
         pts = [(v['x'], v['y'], v['r']) for v in self.vias]
         # quality: a minimum angle, so the cells grow out from each via's ring
         # instead of reaching from it to far vertices in slivers (which
-        # underestimated every via junction's spreading: validation/dc_elmer.py)
+        # underestimated every via junction's spreading: validation/pcbqs/dc_elmer.py)
         self.mesh_info = {}
         self.sheets = net_sheets(
             board, self.nets, pts, dmax=dmax, regions=regions, fine=fzone,

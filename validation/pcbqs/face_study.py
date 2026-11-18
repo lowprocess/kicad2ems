@@ -2,11 +2,11 @@
 FastHenry on a trace over a plane, the plane close or far and thin or thick (the
 CM5 loop's In1 case, without its port-region convergence).
 
-    python validation/face_study.py fasthenry H TP FREQ
+    python validation/pcbqs/face_study.py fasthenry H TP FREQ
         # one FastHenry run (single-threaded: run side by side)
-    python validation/face_study.py pcbqs [DMAX ...]
+    python validation/pcbqs/face_study.py pcbqs [DMAX ...]
         # every case, one sheet and two faces
-    python validation/face_study.py report
+    python validation/pcbqs/face_study.py report
 
 A 1 mm trace 20 mm long on top (35 um), down a via (r 0.15) to a 26 x 6 mm
 plane, back up a via to a pad; the port across the 0.5 mm gap between the pad
@@ -19,12 +19,10 @@ thickness, -p diag.
 """
 import json
 import sys
-from pathlib import Path
 
 import numpy as np
 from shapely.geometry import Point, box, mapping
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from common import OUT, write_json  # noqa: E402
 
 DIR = OUT / 'face_study'

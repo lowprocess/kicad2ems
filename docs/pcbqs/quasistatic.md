@@ -205,7 +205,7 @@ current divides between the faces, which is the proximity effect a single
 sheet's slab cannot give. DC resistance and low-frequency inductance are
 unchanged.
 
-AC resistance against FastHenry (`validation/mqs_fasthenry.py`, review C14),
+AC resistance against FastHenry (`validation/pcbqs/mqs_fasthenry.py`, review C14),
 10 / 100 MHz:
 
 | Case | One sheet | Two face sheets |

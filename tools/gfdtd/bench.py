@@ -12,12 +12,8 @@ three fused launches) with a probe sample every 25 steps, synchronised once at
 the end. The breakdown below it times each operation run on its own (Vulkan:
 each operation `steps` times between two syncs).
 """
-import argparse, contextlib, io, os, sys, time
+import argparse, contextlib, io, time
 
-sys.path.insert(
-    0,
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                 'src'))
 import numpy as np
 
 from kicad2ems.gfdtd import ContinuousStructure, openEMS

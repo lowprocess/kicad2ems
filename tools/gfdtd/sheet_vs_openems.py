@@ -7,12 +7,8 @@ loss the sheets add.
     python tools/gfdtd/sheet_vs_openems.py RUN_FOLDER [--openems PATH] \\
         [--backend core]
 """
-import argparse, os, subprocess, sys, time
+import argparse, os, subprocess, time
 
-sys.path.insert(
-    0,
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                 'src'))
 import numpy as np
 
 from kicad2ems.gfdtd import ContinuousStructure, openEMS

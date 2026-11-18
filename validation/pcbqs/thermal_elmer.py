@@ -2,12 +2,12 @@
 Elmer (kicad2ems-fem's elmer/thermal.py: 3D heat conduction in the copper, the
 barrels and an anisotropic laminate, a film on every exposed face).
 
-    python validation/thermal_elmer.py [example ...]
+    python validation/pcbqs/thermal_elmer.py [example ...]
         # circuit examples, e.g. 05_buck_synchronous (default: all)
-    python validation/thermal_elmer.py --wpthb
+    python validation/pcbqs/thermal_elmer.py --wpthb
         # the as-built 24 V bridge, 4 layers, Q1 Q2 L3
 
-    python validation/thermal_elmer.py --wpthb --transient 2000
+    python validation/pcbqs/thermal_elmer.py --wpthb --transient 2000
         # the heating from cold too, over 2000 s
 
 Each example's circuit is run (python -m kicad2ems.pcbqs.circuit) and its

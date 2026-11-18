@@ -141,7 +141,7 @@ NAV = [('Using kicad2ems', [
        ]),
        ('Working on kicad2ems', [
            'architecture', 'api', 'kicad-import', 'model', 'testing',
-           'maintenance', 'gui/redesign', 'pcbqs/power-tools-review',
+           'maintenance', 'pcbqs/power-tools-review',
            'pcbqs/ROADMAP', 'pcbqs/CHANGELOG'
        ]), ('Code reference', ['reference/index'])]
 

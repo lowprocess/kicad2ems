@@ -35,7 +35,8 @@ its matrix. The fastest field solver on each board is in bold (the line model is
 
 The same boards with each GPU solver through Vulkan as well (`--out build/bench-vulkan --skip openems "line model"
 "mom25d fast"`; `GFDTD_BACKEND=vulkan`, `MOM25D_GPU=vulkan`): the path for AMD cards on Windows, where CuPy has no
-ROCm wheel. Same machine, RADV (Mesa 26.2) against ROCm 7, medians of three runs:
+ROCm wheel. Same machine, RADV (Mesa 26.2) against ROCm 7, medians of three runs (gfdtd's CuPy backend was
+removed in 2026-11):
 
 | Example | gfdtd CuPy | gfdtd Vulkan | gfdtd CPU | mom25d CuPy | mom25d Vulkan | mom25d CPU |
 |---|---|---|---|---|---|---|

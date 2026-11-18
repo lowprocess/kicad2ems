@@ -2,7 +2,7 @@
 C704-C706) in pcbqs.mqs.MQS, Palace (PEC sheets) and FastHenry (volume
 filaments), the three given the same copper.
 
-    python validation/mqs_cm5.py \\
+    python validation/pcbqs/mqs_cm5.py \\
         [geometry|pcbqs|palace|fasthenry|figure|report] ...
 
 The copper is the +5V and GND copper of all six layers inside a 9.4 x 13.7 mm
@@ -19,13 +19,11 @@ import os
 import pickle
 import sys
 import time
-from pathlib import Path
 
 import numpy as np
 from shapely.geometry import Point, box, mapping, shape
 from shapely.ops import unary_union
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from common import OUT, IMAGES, write_json  # noqa: E402
 
 CM5 = '/usr/share/kicad/demos/cm5_minima/CM5_MINIMA_3.kicad_pcb'

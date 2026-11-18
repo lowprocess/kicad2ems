@@ -27,7 +27,7 @@ is invalid or a named solver cannot run. Settings and solvers are checked before
 | Name | Solver | Needs |
 |---|---|---|
 | `openems` (or `fdtd`) | openEMS, 3D FDTD | openEMS |
-| `gfdtd` | gfdtd, 3D FDTD on the GPU or the CPU: openEMS's model, its own engine ([details](gfdtd.md)) | CuPy for the GPU, or its compiled core |
+| `gfdtd` | gfdtd, 3D FDTD on the GPU or the CPU: openEMS's model, its own engine ([details](gfdtd.md)) | slangpy (Vulkan) for the GPU, or its compiled core |
 | `mom25d` (or `mom`) | mom25d, 2.5D method of moments ([details](mom.md)) | nothing extra |
 | `mixed` | mom25d with long straight runs as transmission lines ([details](mom.md#mixed)) | nothing extra |
 | `qucs` | the [line model](transmission-lines.md), solved by qucsator | qucsator on PATH |

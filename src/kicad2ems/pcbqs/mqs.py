@@ -316,7 +316,7 @@ class MQS:
         # +200% R at 100 MHz with a plane 0.1 mm away, while the uncorrected
         # faces are within ~10% everywhere tested). The external field sets how
         # the current divides: the proximity effect a single sheet's slab cannot
-        # give (C14, validation/mqs_fasthenry.py). thickness_sheets: default two
+        # give (C14, validation/pcbqs/mqs_fasthenry.py). thickness_sheets: default two
         # face sheets with conductor_loss='slab' (validated against FastHenry
         # for inductance and FasterCap for capacitance, validation/README.md;
         # with capacitance a node's two faces share its charge,
@@ -1066,7 +1066,7 @@ class MQS:
         Requires capacitance=True; see pcbqs.peec.capacitance_matrix. Keep
         terminals small: a terminal's triangles share one charge density, so a
         terminal covering a whole conductor forbids its edge charge (a 0.3 mm
-        trace lost half its capacitance; validation/cap_fastercap.py).
+        trace lost half its capacitance; validation/pcbqs/cap_fastercap.py).
         """
         if not self.capacitance:
             raise ValueError('capacitance_matrix requires capacitance=True')

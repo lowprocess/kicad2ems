@@ -235,14 +235,14 @@ current. The scripts behind the CHANGELOG's figures, against stored answers (`re
 
 ```sh
 export PYTHONPATH=src:../kicad2ems/src
-python validation/dc_elmer.py [strip via_single via_hop wpthb_vhb jetson_1v15]    # ElmerSolver, ElmerGrid, gmsh
-python validation/pdn_palace.py [rect lshape jetson_1v15]                          # Palace (podman image or native)
-python validation/mqs_palace.py [loop plane_return]
-python validation/mqs_fasthenry.py [loop plane_return]                             # after mqs_palace.py
-python validation/mqs_cm5.py geometry|pcbqs DMAX [SHEETS] [hier] [overlap]|palace H...|fasthenry P...|figure|report
-python validation/thermal_elmer.py [05_buck_synchronous ...] | --wpthb [--transient 2000]   # + ../kicad2ems-fem/src
-python validation/dc_elmer.py --plot        # redraw from saved results (also mqs_palace.py --plot)
-python validation/edge_rings_gap.py traces_air 0.5: 0.5:edge_rings=6    # the edge-ring scripts (no other solver)
+python validation/pcbqs/dc_elmer.py [strip via_single via_hop wpthb_vhb jetson_1v15]    # ElmerSolver, ElmerGrid, gmsh
+python validation/pcbqs/pdn_palace.py [rect lshape jetson_1v15]                          # Palace (podman image or native)
+python validation/pcbqs/mqs_palace.py [loop plane_return]
+python validation/pcbqs/mqs_fasthenry.py [loop plane_return]                             # after mqs_palace.py
+python validation/pcbqs/mqs_cm5.py geometry|pcbqs DMAX [SHEETS] [hier] [overlap]|palace H...|fasthenry P...|figure|report
+python validation/pcbqs/thermal_elmer.py [05_buck_synchronous ...] | --wpthb [--transient 2000]   # + ../kicad2ems-fem/src
+python validation/pcbqs/dc_elmer.py --plot        # redraw from saved results (also mqs_palace.py --plot)
+python validation/pcbqs/edge_rings_gap.py traces_air 0.5: 0.5:edge_rings=6    # the edge-ring scripts (no other solver)
 ```
 
 FastHenry 3.0 (MIT, FastFieldSolvers' Linux fixes) is K&R C that GCC 15+ rejects by default (C23: `f()` means no

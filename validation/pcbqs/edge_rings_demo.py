@@ -1,9 +1,9 @@
 """demo_transition (mom25d's test board): pcbqs with the charge, with and
 without edge rings, against mom25d solved at each frequency: the CHANGELOG's
-0.040 to 0.019 in |S| at 1 GHz (R-C10). Needs mom25d (beside pcbqs in the
-project's checkout, or MOM25D_DEMO for its tests/boards/demo.json).
+0.040 to 0.019 in |S| at 1 GHz (R-C10). The board: tests/mom25d/boards/demo.json
+(or MOM25D_DEMO).
 
-    python validation/edge_rings_demo.py
+    python validation/pcbqs/edge_rings_demo.py
 """
 import json, os, time
 from pathlib import Path
@@ -15,7 +15,7 @@ from kicad2ems.mom25d.run import renorm, _zc, out_refs
 d = json.load(
     open(
         os.environ.get('MOM25D_DEMO') or Path(__file__).resolve().parents[2]
-        / 'mom25d' / 'tests' / 'boards' / 'demo.json'))
+        / 'tests' / 'mom25d' / 'boards' / 'demo.json'))
 f = np.array([5e7, 1e8, 2e8, 5e8, 1e9])
 quiet = lambda *a, **k: None
 model, sim = build_board(d, f[0], f[-1], port='via', log=quiet)

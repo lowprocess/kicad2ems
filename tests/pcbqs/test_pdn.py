@@ -175,7 +175,7 @@ def test_full_width_pads_are_equipotential():
     their inner edges, at every mesh density. (The terminal ties were once a
     total of 1e6 S split over the pad's vertices: current entering through the
     edge vertices left the pads ~1% off equipotential, worse with refinement;
-    validation/dc_elmer.py.)"""
+    validation/pcbqs/dc_elmer.py.)"""
     b = board([('F.Cu', 0.0, 0.035)], {'F.Cu': [('P', box(0, 0, 50, 5))]})
     R0 = 40e-3 / (5.8e7 * 35e-6 * 5e-3)
     for dmax in (1.0, 0.5, 0.25):

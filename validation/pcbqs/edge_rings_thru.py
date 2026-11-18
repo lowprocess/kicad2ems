@@ -1,13 +1,12 @@
 """The thru with the charge solved: |S11| against the line of the 2D field
 solver's L' and C', with edge rings: the CHANGELOG's 8.8 % to 0.1 % (R-C10).
 
-    python validation/edge_rings_thru.py
+    python validation/pcbqs/edge_rings_thru.py
 """
 import sys
 from pathlib import Path
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "src"))
-sys.path.insert(0, str(HERE.parent / "tests"))
+sys.path.insert(0, str(HERE.parents[1] / "tests" / "pcbqs"))
 import time
 import numpy as np
 import kicad2ems.pcbqs.mqs as M

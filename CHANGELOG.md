@@ -304,6 +304,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   with ngspice's VDMOS and a generic MOSFET's capacitances (Cgs 1 nF, Cgd 50 pF, Cds 500 pF) unless the part's are
   given, so a switching loss is a device's, not the drive ramp's; pcbqs's CHANGELOG has the figures.
 
+### Removed
+- **Superseded code, tools and examples (2026-11-18).** pcbqs: the PEEC PDN trial
+  (`pdn/peec_trial.py`, its tools and the `pdn-peec-trial` and `peec-memory`
+  examples; the compressed backend stays, `docs/pcbqs/peec-memory.md`), the skin
+  demo and `peec-skin` example, `cm5_converter_fields.py` (`pcbqs.mqs
+  --converter` does it), the CuPy fill (`static_cupy*.py`, `--fill-device`;
+  OpenMP took 0.9 s where it took 39.6 s), the thermal mesh solver (`--method
+  mesh|both`, `tri_locate`: the grid is the one solver) and `side_charge`.
+  fem: Elmer's capacitance tool (`elmer_cap`, `kicad2ems-fem-cap-elmer`) and the
+  DC drop's `--mesh tet` (and `--h-fine`). core: the line model's tensor-grid
+  solve (`xsection.MESH = False`; the grid stays for `potential()` and the
+  finish's loss share). gfdtd: the CuPy backend (Vulkan, the core and numpy
+  stay). The old names `kicad2openems`, `kicad2openems-gui`, `from kicad2ems
+  import <core name>` and `parts._kind_value`. Tools: `perf/{cli_prof,dcfix,
+  dcmesh,dcsolve}.py`, `mom25d/hodlr_study.py`, power-workflow's 05, the
+  Windows workflow and `ci_deps.py`. `pcbqs.wpt` is `pcbqs.power_spice`'s, and
+  `pdn.rail.parse_value` is `kicad2ems.core.parts`'.
+
 ## 2026-11-14 (0.3.0)
 
 ### Changed

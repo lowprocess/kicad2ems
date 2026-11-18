@@ -19,7 +19,7 @@ package reaches kicad2ems only through `kicad2ems.core.api.solver`.
   CSX model (`build_fdtd`)
 - `run.py`, `progress.py`: the runs, their end criteria (port watch) and the progress line
 - `antenna.py`: antenna-mode runs; `readback.py`: the model as an engine gets it, for the parity checks
-- `engines.py`: the engines by name (`'openems'`, `'gfdtd:cupy'`): their `ContinuousStructure` / `openEMS`
+- `engines.py`: the engines by name (`'openems'`, `'gfdtd:gpu'`): their `ContinuousStructure` / `openEMS`
   classes. They ship here, with the FDTD layer that drives them
 - `openems/`: the solver `openems` (alias `fdtd`): openEMS's engine and its import check (`kicad2ems --check`),
   an openEMS in another environment (`openems_venv`); `--converge` (`converge.py`) is the FDTD layer's, on either

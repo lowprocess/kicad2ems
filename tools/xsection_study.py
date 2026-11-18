@@ -16,7 +16,7 @@ box 96 heights out): the errors and the solver's time. The CM5 Minima demo's
 board isn't in the repository (CERN-OHL-S, KiCad's demos):
     curl -O https://gitlab.com/kicad/code/kicad/-/raw/master/demos/cm5_minima/CM5_MINIMA_3.kicad_pcb
 """
-import argparse, math, multiprocessing, os, sys, time
+import argparse, math, multiprocessing, os, time
 
 import numpy as np
 

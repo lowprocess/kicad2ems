@@ -2,13 +2,13 @@
 FastHenry's stored answers (results/face_study). The CHANGELOG's edge-ring
 figures for --thickness (R-C10).
 
-    python validation/edge_rings_faces.py [h,tp ...]
+    python validation/pcbqs/edge_rings_faces.py [h,tp ...]
         # h: the trace's height, tp: the plane's thickness (mm)
 """
 import sys
 from pathlib import Path
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "src"))
+sys.path.insert(0, str(HERE))
 import json, time
 import numpy as np
 import face_study as FS

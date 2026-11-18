@@ -5,25 +5,21 @@
 ## Running the tests
 
 ```bash
-pip install '.[test]'      # pytest, scikit-rf, h5py
-python -m pytest -q        # about 460 tests, under a minute: no solver package or openEMS needed
-tools/test_all.sh          # this suite, then kicad2ems-gui's, kicad2ems-fdtd's, mom25d's, gfdtd's (checkouts beside it)
+pip install '.[test]'           # pytest, scikit-rf, h5py
+python -m pytest -q tests/core  # the core's suite: no solver or openEMS needed
+tools/test_all.sh               # every part's suite, each in its own pytest
 ```
 
-kicad2ems's own tests run on stand-in solvers (`tests/standins.py`), whatever is installed: they need none of the
-solver packages and give the same result on every machine. Tests that need an optional package are skipped without
-it: scikit-rf, h5py, qucsator, PySide6 for the GUI, PyOpenGL for the 3D view.
+The core's tests run on stand-in solvers (`tests/standins.py`), whatever is installed: they need none of the
+solvers and give the same result on every machine. Tests that need an optional package are skipped without it:
+scikit-rf, h5py, qucsator, PySide6 for the GUI, PyOpenGL for the 3D view.
 
-`tools/test_all.sh` runs each package's suite from its checkout
-(`../kicad2ems-gui`, `../kicad2ems-fdtd`, `../mom25d`, `../gfdtd`, or
-`KICAD2EMS_GUI_SRC`, `KICAD2EMS_FDTD_SRC`, `MOM25D_SRC`, `GFDTD_SRC`), so the
-GUI and the real solvers are tested against this checkout. It uses `$PYTHON`,
-the active venv or this checkout's `.venv`, warns when that Python imports a
-package from somewhere other than its checkout, and keeps your settings out (a
-scratch `XDG_CONFIG_HOME`, the GUI offscreen). `--core` runs kicad2ems's suite
-alone, `--openems` adds openEMS to the conformance test, and arguments after
-`--` go to every pytest (`tools/test_all.sh -- -x -k antenna`). kicad2ems-ipc,
-dfsynth and emsdev run their own (`python -m pytest` in each).
+`tools/test_all.sh` (`tools/test_all.py`) runs one pytest for each part's folder under `tests/` (core, gui, fdtd,
+gfdtd, mom25d, pcbqs, fem, ipc, dfsynth, emsdev), since their conftests set up their own paths and fixtures. It
+uses `$PYTHON`, the active venv or this checkout's `.venv`, and keeps your settings out (a scratch
+`XDG_CONFIG_HOME`, the GUI offscreen). Parts named run alone (`tools/test_all.sh core mom25d`), `--openems` adds
+openEMS to the conformance test, and arguments after `--` go to every pytest (`tools/test_all.sh -- -x -k
+antenna`).
 
 ## What is covered
 
@@ -37,13 +33,11 @@ dfsynth and emsdev run their own (`python -m pytest` in each).
 | runs started by another program, the report, meshes, the installer | `test_runs.py`, `test_report.py`, `test_meshes.py`, `test_install.py` |
 | boards with a known answer, on the real solvers | `test_conformance.py` |
 
-The solvers' tests are in their parts' folders: the FDTD layer (mesh, model,
-runs, dielectrics, antenna runs, progress, parity, the pipeline with canned
-runs, the preview, openEMS's import check, `openems_venv`, `--converge`, gfdtd's
-connection) in kicad2ems-fdtd; the mom25d and mixed solvers, their parity and
-mesh file in mom25d (`test_kicad2ems*.py`); gfdtd's engine in gfdtd; the window
-(the form, the pages offscreen, the 3D view's arrays) in kicad2ems-gui, on the
-same stand-in solvers.
+The table is `tests/core`'s. The solvers' tests are in their parts' folders: the FDTD layer (mesh, model, runs,
+dielectrics, antenna runs, progress, parity, the pipeline with canned runs, the preview, openEMS's import check,
+`openems_venv`, `--converge`, gfdtd's connection) in `tests/fdtd`; the mom25d and mixed solvers, their parity and
+mesh file in `tests/mom25d` (`test_kicad2ems*.py`); gfdtd's engine in `tests/gfdtd`; the window (the form, the
+pages offscreen, the 3D view's arrays) in `tests/gui`, on the same stand-in solvers.
 
 `test_conformance.py` is the one test that runs the real solver packages, each run `python -m kicad2ems` in a
 process of its own; a solver that is not installed or not usable is skipped. It runs openEMS only with
@@ -51,7 +45,7 @@ process of its own; a solver that is not installed or not usable is skipped. It 
 
 ## Fixtures
 
-`tests/k2e_fixtures.py` holds the fixtures, shared with the solver packages' tests (their `conftest.py` imports it
+`tests/core/k2e_fixtures.py` holds the fixtures, shared with the solver packages' tests (their `conftest.py` imports it
 from this checkout):
 
 - `boards`: every generated example board, made once per session.
@@ -62,7 +56,7 @@ from this checkout):
 
 A fixture's name must not start with `_`: `import *` leaves those out, so the solver packages would not get it.
 
-`tests/standins.py` holds the stand-in solvers, which `tests/conftest.py` puts
+`tests/standins.py` holds the stand-in solvers, which `tests/core/conftest.py` puts
 in place of the installed ones before anything reads the registry: `openems` and
 `gfdtd` (kicad2ems-fdtd's real solver class on a stand-in engine;
 `standins.engine_check` is their import check), and `mom25d`, which refuses gap
