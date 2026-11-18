@@ -652,6 +652,9 @@ class AnalysisPanel(QWidget):
         asked, row = tuple(getattr(self, 'asked', None) or ()), dict(vals)
         if asked:
             vals = self.a.for_questions(vals, asked)
+        # what the engine chosen fixes (Analysis.variants: the crosstalk's
+        # full-wave check; the mark names that engine)
+        vals = dict(vals, **(getattr(self, 'sets', None) or {}))
         unset = sorted(k for k in self.required
                        if not str(vals.get(k, '')).strip())
         if unset:
@@ -685,7 +688,9 @@ class AnalysisPanel(QWidget):
         from kicad2ems.core.study import provided
         # whose run this folder is
         win = self.win
-        mark_run(self.out, self.a.name, asked or provided(self.a), preview,
+        mark_run(self.out,
+                 getattr(self, 'engine', None) or self.a.name,
+                 asked or provided(self.a), preview,
                  config=getattr(getattr(win, 'setup', None), 'path', None),
                  settings=row)
         self.say('$ ' + ' '.join(

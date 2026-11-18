@@ -507,6 +507,81 @@ class Rails(Drop):
         ]
 
 
+class Coupled(Analysis):
+    """Its variants: its own check, or a solver's beside it (as the
+    crosstalk's); writes the check it was given."""
+    name, label, tool, engine = 'crosstalk', 'Crosstalk', 'fake.xt', 'lines'
+    about, result, order, provides = ('crosstalk', 'xt.json', 15,
+                                      ('crosstalk', ))
+    variants = (('', 'lines', dict(check='')),
+                ('mom25d', 'lines + mom25d', dict(check='mom25d')),
+                ('gone', 'lines + gone', dict(check='gone')))
+
+    def check_with(self, sets):
+        return sets['check'] != 'gone', 'gone: not installed'
+
+    def command(self, values, board, out, preview=False, results=None):
+        import sys
+        code = ("import json, os, sys; os.makedirs(sys.argv[1], exist_ok=True);"
+                " json.dump(dict(check=sys.argv[2], nets=sys.argv[3]), "
+                "open(os.path.join(sys.argv[1], 'xt.json'), 'w'))")
+        return [sys.executable, '-c', code, out, values.get('check', ''),
+                values.get('nets', '')]
+
+
+def test_an_analysis_s_variants_are_engines_of_its_question(
+        fakes, tmp_path, capsys, demo_files):
+    """Each variant an engine (crosstalk_mom25d: the analysis run with check =
+    mom25d), named by its label's last word too; one whose solver is missing
+    says so; the engine chosen sets the setting, over a table's own; a table's
+    check of before the variants is that engine; the run's mark names it."""
+    import json
+    from kicad2ems.core.cli import main
+    fakes(Coupled)
+    es = study.engines_of('crosstalk')
+    assert ([(e.name, e.label, e.run, e.sets) for e in es] == [
+        ('crosstalk', 'lines', 'crosstalk', dict(check='')),
+        ('crosstalk_mom25d', 'lines + mom25d', 'crosstalk',
+         dict(check='mom25d')),
+        ('crosstalk_gone', 'lines + gone', 'crosstalk', dict(check='gone'))
+    ])
+    assert es[1].check()[0] and es[2].check() == (False, 'gone: not installed')
+    assert ([study.engine_named('crosstalk', t)
+             for t in ('mom25d', 'lines + MoM25D', 'lines', 'crosstalk_gone')]
+            == ['crosstalk_mom25d', 'crosstalk_mom25d', 'crosstalk',
+                'crosstalk_gone'])
+    base, _ = demo_files
+    out = tmp_path / 'runs'
+    head = (f"out = '{out}'\n[study]\nrun = ['crosstalk']\n")
+    tab = "[analysis.crosstalk]\nnets = 'A,B'\n"
+    cfg = _config(tmp_path, head + "[study.crosstalk]\nengine = 'mom25d'\n"
+                  + tab + "check = 'gone'\n", board=base + '.kicad_pcb')
+    assert study.read_config(cfg).asked == {'crosstalk': ['crosstalk_mom25d']}
+    assert (study.describe(study.plan(study.read_config(cfg)))
+            == ['  Crosstalk: lines + mom25d (fake.xt)'])
+    assert main(['study', cfg]) == 0
+    (d, ) = list(out.iterdir())
+    assert (json.load(open(d / 'xt.json')) == dict(check='mom25d', nets='A,B')
+            and study.marked(str(d))['engine'] == 'crosstalk_mom25d'
+            and analyses.analysis_of(str(d)) == ('crosstalk', False))
+    assert '(lines + mom25d)' in capsys.readouterr().out.split('study:')[-1]
+    # a table's check, no engine named: that variant; the line model named:
+    # no check, whatever the table says
+    old = _config(tmp_path, head + tab + "check = 'mom25d'\n", name='o.toml')
+    assert study.read_config(old).asked == {'crosstalk': ['crosstalk_mom25d']}
+    old = _config(tmp_path, "[analysis]\nrun = ['crosstalk']\n" + tab
+                  + "check = 'mom25d'\n", name='o.toml')
+    assert study.read_config(old).asked == {'crosstalk': ['crosstalk_mom25d']}
+    lines = _config(tmp_path, head + "[study.crosstalk]\nengine = 'lines'\n"
+                    + tab + "check = 'mom25d'\n", board=base + '.kicad_pcb',
+                    name='l.toml')
+    assert main(['study', lines]) == 0
+    new = max(out.iterdir(), key=os.path.getmtime)
+    assert json.load(open(new / 'xt.json'))['check'] == ''
+    study.write_config(cfg, study.Study({'crosstalk': ['crosstalk_gone']}))
+    assert study.read_config(cfg).asked == {'crosstalk': ['crosstalk_gone']}
+
+
 def test_an_analysis_given_several_tables_is_a_run_for_each(
         fakes, tmp_path, capsys):
     """[[analysis.pdn]]: a board's rails, each a run of its own in its own

@@ -188,9 +188,16 @@ def test_the_question_as_the_study_has_it(result):
         r['question'].name == 'crosstalk' for r in g['questions']))
     row = next(r for r in group['questions']
                if r['question'].name == 'crosstalk')
-    assert [e.name for e in row['engines']] == ['crosstalk']
+    # who answers: the line model, or a full-wave solver beside it (the
+    # setting `check`, which the engine sets: not in the form)
+    assert ([(e.name, e.label, e.sets['check']) for e in row['engines']] == [
+        ('crosstalk', 'line model', ''),
+        ('crosstalk_gfdtd', 'line model + gfdtd', 'gfdtd'),
+        ('crosstalk_openems', 'line model + openEMS', 'openems'),
+        ('crosstalk_mom25d', 'line model + mom25d', 'mom25d')
+    ])
     opts = {o['key']: o for o in a.options()}
-    assert (opts['nets']['kind'] == 'list'
+    assert (opts['nets']['kind'] == 'list' and 'check' not in opts
             and opts['mode']['choices'] == ['both', 'next', 'fext'])
     with pytest.raises(ValueError, match='two nets'):
         a.command(dict(nets=['D0']), BUS, out)
@@ -210,7 +217,7 @@ def test_the_question_as_the_study_has_it(result):
                   gap_mm=0.2)]))[0][1] == dict(nets=['A', 'B']))
     rep = a.report(out)
     titles = [s['title'] for s in rep['sections']]
-    assert ('NOT met' in rep['summary']
+    assert ('NOT met' in rep['summary'] and 'by line model' in rep['summary']
             and 'Where the layout couples them' in titles)
     assert ('What a wider gap would give' in titles
             and 'Each victim, all its aggressors together' in titles)
@@ -299,3 +306,42 @@ def test_the_time_grid_holds_a_long_coupler():
     assert next_peak(40e9 / 400, 401) < 2.0  # the old grid, short
     assert (time_grid(40e9, 30.0, 4.0)[1] == 401
             and time_grid(40e9, 1e5, 4.0)[1] == 16001)
+
+
+@pytest.mark.slow
+def test_gfdtd_beside_the_line_model_agrees(tmp_path):
+    """The crosstalk by a full-wave solver (gfdtd: the GPU's, else its CPU
+    core; measured 11 s and 71 s): its figures the answer, the line model's
+    beside them. On the bus: NEXT 5.99 % (line model 6.01 %) from a neighbour,
+    1.47 % (1.44 %) from the next but one; FEXT 7.41 % (6.55 %) and 2.47 %
+    (2.45 %)."""
+    import subprocess
+    import sys
+    code = ("from kicad2ems.core.solvers import get\n"
+            "ok, what = get('gfdtd').check()\nprint('ok' if ok else what)")
+    p = subprocess.run([sys.executable, '-c', code], capture_output=True,
+                       text=True)  # (this process has the stand-ins)
+    if p.stdout.strip().splitlines()[-1:] != ['ok']:
+        pytest.skip(f"gfdtd: {p.stdout.strip() or p.stderr.strip()[-200:]}")
+    p = subprocess.run([
+        sys.executable, '-m', 'kicad2ems.core.si', BUS, '--nets', 'D0,D1,D2',
+        '--ground', 'In1.Cu', '--solvers', 'lines,gfdtd', '--out',
+        str(tmp_path)
+    ], capture_output=True, text=True)
+    assert p.returncode == 0, p.stdout[-2000:] + p.stderr[-2000:]
+    d = json.load(open(tmp_path / si.RESULT, encoding='utf-8'))
+    lines = next(k for k in d['solved'] if k != d['answer'])
+    assert (d['solved'][d['answer']]['label'].startswith('gfdtd')
+            and d['solved'][lines]['label'].startswith('line model'))
+    by = {k: {(r['aggressor'], r['victim']): r
+              for r in o['pairs']}
+          for k, o in d['solved'].items()}
+    for pair in (('D0', 'D1'), ('D0', 'D2')):
+        fw, lm = by[d['answer']][pair], by[lines][pair]
+        assert fw['next_pct'] == pytest.approx(lm['next_pct'], abs=0.5), pair
+        assert fw['fext_pct'] == pytest.approx(lm['fext_pct'], abs=1.5), pair
+    assert by[d['answer']][('D0', 'D1')]['next_pct'] > 4.5
+    rep = si.Crosstalk().report(str(tmp_path))
+    assert ('by gfdtd' in rep['summary']
+            and any(s['title'].startswith('Against line model')
+                    for s in rep['sections']))

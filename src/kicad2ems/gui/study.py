@@ -134,6 +134,12 @@ AUTO = 'auto'
 short = lambda label: label.split(' (')[0]          # 'mom25d (MoM)' -> 'mom25d'
 
 
+def run_key(e):
+    """The run an analysis engine makes: its analysis's name (a variant's:
+    the analysis it is one of); None for none."""
+    return (getattr(e, 'run', '') or e.name) if e is not None else None
+
+
 class StudyModel:
     """The study with no window: the questions by group with the engines that
     answer each (TREE as it is when this is made), and what the
@@ -168,7 +174,7 @@ class StudyModel:
                 self.labels[q.name], self.about[q.name] = q.label, q.about
                 self.engines[q.name] = [
                     e for e in row['engines']
-                    if q.name in SOLVER_QUESTIONS or e.name in BY_KEY
+                    if q.name in SOLVER_QUESTIONS or run_key(e) in BY_KEY
                 ]
                 self.missing[q.name] = (row['missing']
                                         or 'no engine for it is installed')
@@ -192,8 +198,48 @@ class StudyModel:
     def usable(self, q):
         """The engines of a question that can run here, in their order."""
         return [
-            e.name for e in self.engines.get(q, []) if e.name not in self.why
+            e.name for e in self.engines.get(q, [])
+            if e.name not in self.why and run_key(e) not in self.why
         ]
+
+    def why_not(self, q, name):
+        """Why an engine of a question cannot run here ('' it can): its own
+        reason (a variant's solver missing) or its run's."""
+        e = self._engine(q, name)
+        return (self.why.get(name)
+                or (self.why.get(run_key(e), '') if e is not None else ''))
+
+    def _engine(self, q, name):
+        return next((e for e in self.engines.get(q, []) if e.name == name),
+                    None)
+
+    def runs_for(self, q):
+        """The runs (analyses) of the engines that answer a question as it
+        stands: engines_for's, a variant as the analysis it runs."""
+        return list(
+            dict.fromkeys(
+                run_key(self._engine(q, n)) or n for n in self.engines_for(q)))
+
+    def _chosen(self, key):
+        """The engine chosen for a run among the questions asked (one of an
+        analysis's variants, or the analysis), or None."""
+        for q in self.asked():
+            for n in self.engines_for(q):
+                e = self._engine(q, n)
+                if e is not None and run_key(e) == key:
+                    return e
+        return None
+
+    def engine_of(self, key):
+        """The name of the engine chosen for a run (a variant's:
+        crosstalk_gfdtd; the run's own name when none is)."""
+        e = self._chosen(key)
+        return e.name if e is not None else key
+
+    def sets_of(self, key):
+        """The settings the engine chosen for a run fixes (a variant's: the
+        crosstalk's full-wave check), {} for none."""
+        return dict(getattr(self._chosen(key), 'sets', None) or {})
 
     def can_ask(self, q):
         return (bool(self.engines.get(q)) if self.is_solver(q) else bool(
@@ -211,10 +257,10 @@ class StudyModel:
 
     def run_of(self, q):
         """The run a question's settings and page belong to: 'rf', or its first
-        engine."""
+        engine's."""
         if self.is_solver(q) or not self.engines.get(q):
             return RF
-        return (self.engines_for(q) or [self.engines[q][0].name])[0]
+        return (self.runs_for(q) or [run_key(self.engines[q][0])])[0]
 
     def panels_of(self, q):
         """The runs whose settings a question shows: 'rf' for the solvers', else
@@ -222,7 +268,8 @@ class StudyModel:
         run, so that their settings can still be read)."""
         if self.is_solver(q):
             return [RF]
-        return self.engines_for(q) or [e.name for e in self.engines.get(q, [])]
+        return self.runs_for(q) or list(
+            dict.fromkeys(run_key(e) for e in self.engines.get(q, [])))
 
     def solver_names(self, q):
         """The solvers ticked that answer a solver question, and whether auto
@@ -342,7 +389,7 @@ class StudyModel:
             qs = list(self.asked())
         keys = set()
         for q in qs:
-            keys |= {RF} if self.is_solver(q) else set(self.engines_for(q))
+            keys |= {RF} if self.is_solver(q) else set(self.runs_for(q))
         return run_order(keys, preview, self.available())
 
     def asked_of(self, key, only=None):
@@ -351,7 +398,7 @@ class StudyModel:
         qs = [only] if only in self.labels else list(self.asked())
         return tuple(
             q for q in qs
-            if (self.is_solver(q) if key == RF else key in self.engines_for(q)))
+            if (self.is_solver(q) if key == RF else key in self.runs_for(q)))
 
     def set_fields(self, q, on):
         """A question's Fields tick, as its settings say (no default filled in:
@@ -370,13 +417,17 @@ class StudyModel:
 
     def choose(self, q, name, on):
         """Tick or untick an engine of a question that analyses answer ('auto':
-        its default alone)."""
+        its default alone). The variants of one analysis are one run: ticking
+        one unticks the others."""
         names = [e.name for e in self.engines[q]]
         if name == AUTO:
             self.choice[q] = []
         elif name in names:
             cur = (set(self.choice[q] or self.engines_for(q))
                    if on else set(self.choice[q]))
+            if on:
+                run = run_key(self._engine(q, name))
+                cur = {n for n in cur if run_key(self._engine(q, n)) != run}
             cur = (cur | {name}) if on else (cur - {name})
             self.choice[q] = [n for n in names if n in cur]
         self.changed('engines', q)
@@ -413,7 +464,7 @@ class StudyModel:
         where it is one of several engines: the others stay as they are): what a
         result proposed for it is to be run."""
         for q in self.questions:
-            if key != RF and key in self.engines_for(q):
+            if key != RF and key in self.runs_for(q):
                 self.tick(q, True)
 
     def set_available(self, key, ok, why=''):
@@ -452,11 +503,12 @@ class StudyModel:
             return 'not installed', self.missing[q], 'gray'
         if not self.can_ask(q):
             why = '; '.join(
-                f"{e.label}: {self.why[e.name]}" for e in self.engines[q]
-                if e.name in self.why)
+                f"{e.label}: {self.why_not(q, e.name)}" for e in self.engines[q]
+                if self.why_not(q, e.name))
             return 'not available', why, 'gray'
-        keys = [RF] if self.is_solver(q) else self.engines_for(q)
-        by = {e.name: e.label for e in self.engines[q]}
+        keys = [RF] if self.is_solver(q) else self.runs_for(q)
+        by = {run_key(e): e.label for e in self.engines[q]
+              if e.name in self.engines_for(q)}
         got = [(k, *self.states[k])
                for k in keys
                if self.states.get(k, ('', ''))[0]]

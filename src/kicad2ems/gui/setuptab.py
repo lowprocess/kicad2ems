@@ -15,7 +15,7 @@ from .runner import (FIELDS, SEMICOLON_LISTS, SECTION_SOLVERS, SECTION_TITLES,
 from kicad2ems.core.api.frontend import G_DUMP
 from .panels import Section, NeededList
 from .meters import duration
-from .study import BY_KEY
+from .study import BY_KEY, run_key
 
 
 def _helps():
@@ -330,7 +330,12 @@ class SetupTab(QWidget):
                 if question in self.study.rows else ['rf'])
         for k, w in self.panels.items():
             w.setVisible(k in keys)
-        labels = {e.name: e.label for e in self.study.engines.get(question, [])}
+        labels = {
+            run_key(e): e.label
+            for e in self.study.engines.get(question, [])
+            if e.name in self.study.engines_for(question)
+            or run_key(e) == e.name
+        }
         for k, lab in self.engine_titles.items():
             lab.setText(f"{labels.get(k, k)}  ·  {BY_KEY[k].tool}" if k in
                         BY_KEY else k)
@@ -416,7 +421,7 @@ class SetupTab(QWidget):
             return
         for name in st.engines_for(question):
             e = next(x for x in st.engines[question] if x.name == name)
-            box = self.fields_box(name, e.fields) if e.fields else None
+            box = self.fields_box(run_key(e), e.fields) if e.fields else None
             if box is not None and box.isChecked() != bool(on):
                 box.setChecked(bool(on))
 
@@ -434,7 +439,7 @@ class SetupTab(QWidget):
         st = self.study
         for q, es in st.engines.items():
             for e in es:
-                box = (self.fields_box(e.name, e.fields)
+                box = (self.fields_box(run_key(e), e.fields)
                        if e.kind == 'analysis' and e.fields else None)
                 if box is not None:
                     box.toggled.connect(

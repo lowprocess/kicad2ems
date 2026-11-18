@@ -223,6 +223,8 @@ class PowerCircuitTab(QWidget):
 
     def start(self,preview=False):
         self.panel.asked=self.asked
+        self.panel.engine=getattr(self,'engine',None)
+        self.panel.sets=getattr(self,'sets',None)
         self.panel.start()
 
     def stop(self):

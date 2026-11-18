@@ -56,6 +56,13 @@ An analysis declares (class attributes)
                           ('fields'); '': none
   env                     environment variables its command runs with (a thread
                           cap), or {}
+  variants                its engines, when it is several to choose from beside
+                          a question: ((suffix, label, {option: value}), ...),
+                          each an engine of the name <name>_<suffix> (suffix
+                          '': <name>) that runs it with those settings (the
+                          crosstalk's line model alone, or with a full-wave
+                          solver: crosstalk_gfdtd); the settings it fixes are
+                          not in its options. (): one engine, itself
 and implements
   check()                 (usable, one line): its version and origin, or what is
                           missing and how to get it
@@ -178,6 +185,7 @@ class Analysis:
     uses = ()
     several = ''
     several_keys = ()
+    variants = ()
 
     def for_questions(self, values, asked):
         """The settings for a run asked only the questions `asked` of those it
@@ -193,6 +201,11 @@ class Analysis:
         """(usable, one line): its version and origin, or what is missing and
         how to get it."""
         return True, ''
+
+    def check_with(self, sets):
+        """(usable, one line) of one of its variants (the settings `sets`
+        fixes): its own check."""
+        return self.check()
 
     def options(self):
         """Its settings, [dict(key, flag, kind, default, help, group,
@@ -299,12 +312,18 @@ def get(name):
 def analysis_of(folder):
     """(name, preview) of the analysis whose result (or preview) the folder
     holds, or None: not an analysis's. The mark whoever started the run left
-    says (study.mark); without one, the first analysis that owns the folder."""
+    says (study.mark: its engine, a variant's being the analysis it runs);
+    without one, the first analysis that owns the folder."""
     from .study import marked
     reg = registry()
     m = marked(folder)
-    if m and m['engine'] in reg and reg[m['engine']].owns(folder, m['preview']):
-        return m['engine'], m['preview']
+    # (a variant's engine: crosstalk_gfdtd is the crosstalk's)
+    name = m and next((n for n, a in reg.items()
+                       for suffix, *_ in (a.variants or (('', ), ))
+                       if m['engine'] == n + ('_' + suffix if suffix else '')),
+                      None)
+    if name and reg[name].owns(folder, m['preview']):
+        return name, m['preview']
     for name, a in reg.items():
         for preview in (False, True):
             if a.owns(folder, preview):

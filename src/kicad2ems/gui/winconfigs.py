@@ -7,7 +7,7 @@ import os
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QMessageBox
 from .analysispanel import config_values
-from .study import BY_KEY, RF
+from .study import BY_KEY, RF, run_key
 from .winparts import _Preparing
 
 MAX_RECENT = 8
@@ -223,7 +223,7 @@ class WindowConfigs:
             e = next(
                 (x for x in st.engines.get(question, []) if x.name == name),
                 None)
-            box = (self.setup.fields_box(name, e.fields)
+            box = (self.setup.fields_box(run_key(e), e.fields)
                    if e is not None and e.fields else None)
             if box is not None and box.isChecked():
                 return True

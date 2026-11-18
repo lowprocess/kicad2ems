@@ -149,10 +149,17 @@ class Engine:
     fields: str = ''
     previewed: bool = False
     order: int = 50
+    # an analysis engine: the analysis it runs (its own name, or that of the
+    # analysis it is a variant of: Analysis.variants, run with the settings
+    # `sets` fixes); a solver: ''
+    run: str = ''
+    sets: dict = field(default_factory=dict, compare=False)
 
     def check(self):
-        """(usable, one line): the Solver's or the Analysis's own check."""
-        return self.impl.check()
+        """(usable, one line): the Solver's or the Analysis's own check (a
+        variant's: Analysis.check_with its settings)."""
+        return (self.impl.check_with(self.sets) if self.sets else
+                self.impl.check())
 
 
 def provided(a):
@@ -195,11 +202,13 @@ def engines():
                            fields='dump' if dumps else '',
                            previewed=bool(sv.previewed), order=sv.order)
     for name, a in registry().items():
-        out[name] = Engine(name,
-                           (getattr(a, 'engine', '') or a.label), 'analysis',
-                           provided(a), a, fields=(getattr(a, 'fields', '')
-                                                   or ''),
-                           previewed=bool(a.previewed), order=a.order)
+        kw = dict(fields=getattr(a, 'fields', '') or '',
+                  previewed=bool(a.previewed), order=a.order, run=name)
+        for suffix, label, sets in (getattr(a, 'variants', ()) or
+                                    (('', '', {}),)):
+            e = name + ('_' + suffix if suffix else '')
+            out[e] = Engine(e, label or getattr(a, 'engine', '') or a.label,
+                            'analysis', provided(a), a, sets=dict(sets), **kw)
     return out
 
 
@@ -425,10 +434,11 @@ class Step:
 
 def engine_named(question, text, es=None):
     """The registry name of the engine `text` means among those that answer a
-    question: its name ('elmer_thermal', 'mom25d'), a solver's alias ('mom',
-    'lines'), or the name a list shows it by ('pcbqs', 'Elmer'), in any case;
-    None for 'auto' (the default engine). ValueError when nothing matches, or
-    more than one does."""
+    question: its name ('elmer_thermal', 'mom25d', 'crosstalk_gfdtd'), a
+    solver's alias ('mom', 'lines'), the name a list shows it by ('pcbqs',
+    'Elmer', 'line model + gfdtd') or a variant's last word ('gfdtd'), in any
+    case; None for 'auto' (the default engine). ValueError when nothing
+    matches, or more than one does."""
     from .solvers import LINES, aliases
     want = str(text).strip().lower()
     if want in ('', 'auto'):
@@ -443,7 +453,8 @@ def engine_named(question, text, es=None):
         e.name
         for e in have
         if want in (e.name.lower(), e.label.lower(),
-                    e.label.split(' (')[0].lower()) or (
+                    e.label.split(' (')[0].lower(),
+                    e.label.split(' + ')[-1].lower()) or (
                         e.kind == 'solver' and solver == e.name)
     ]
     if len(hits) == 1:
@@ -505,7 +516,7 @@ def read_config(path, strict=True):
                     name = text
                 if name and name not in names:
                     names.append(name)
-            asked[q] = names
+            asked[q] = names or _variant(q, path, es)
             if 'fields' in tab:
                 fields[q] = bool(tab['fields'])
         return Study(asked, fields, 'study')
@@ -519,14 +530,35 @@ def read_config(path, strict=True):
             asked.setdefault('sparams', [])
         elif name in reg:
             for q in provided(reg[name]):
-                if name not in asked.setdefault(q, []):
-                    asked[q].append(name)
+                e = (_variant(q, path, run=name) or [name])[0]
+                if e not in asked.setdefault(q, []):
+                    asked[q].append(e)
         elif strict:
             raise ValueError(f"[analysis] run: no analysis {name!r}: one of "
                              f"{', '.join([RF, *reg])}")
         else:
             asked.setdefault(name, [name])
     return Study(asked, {}, 'analysis')
+
+
+def _variant(q, path, es=None, run=None):
+    """[the variant engine] that a config's analysis table asks for by the
+    settings it fixes (a crosstalk table's check = "gfdtd", written before the
+    variants were engines: crosstalk_gfdtd), else []. run: of that analysis
+    only."""
+    from .analyses import read_config as read_analyses
+    try:
+        tabs = read_analyses(path)[1]
+    except (OSError, ValueError):
+        return []
+    for e in (es or engines()).values():
+        tab = (tabs.get(e.run) if e.kind == 'analysis'
+               and run in (None, e.run) else None)
+        if (tab is not None and q in e.provides and any(e.sets.values())
+                and all(str(tab.get(k) or '') == str(v)
+                        for k, v in e.sets.items())):
+            return [e.name]
+    return []
 
 
 def write_config(path, study):
@@ -633,7 +665,7 @@ def describe(steps, sets=None):
         else:
             a = es[st.engines[0]]
             who, extra = f"{a.label} ({a.impl.tool})", ''
-            many = (sets or {}).get(a.name) or []
+            many = (sets or {}).get(a.run) or []
             if len(many) > 1:
                 extra = (f", {len(many)} runs: "
                          f"{', '.join(a.impl.tag(dict(v)) for v in many)}")
@@ -708,17 +740,16 @@ def run(config, only=None, preview=False, out=None, echo=print, extra=None):
                 "that in this study "
                 f"({', '.join(study.asked) or 'which asks nothing'})")
             return 2
+    es = engines()
     if preview:
-        reg = registry()
         steps = [
             st for st in steps
-            if st.kind == 'solvers' or reg[st.engines[0]].previewed
+            if st.kind == 'solvers' or es[st.engines[0]].previewed
         ]
     board = base_s.board
     base = os.path.abspath(out or base_s.out or default_out(board))
-    count = sum(
-        1 if st.kind == 'solvers' else len(tables.get(st.engines[0]) or [1])
-        for st in steps)
+    count = sum(1 if st.kind == 'solvers' else len(
+        tables.get(es[st.engines[0]].run) or [1]) for st in steps)
     echo(f"study of {os.path.basename(board or config)}: {count} run(s)")
     for line in describe(steps, tables):
         echo(line)
@@ -748,7 +779,8 @@ def run(config, only=None, preview=False, out=None, echo=print, extra=None):
                 echo(f"study: {st.name}: not started: {e}")
                 code = 2
         else:
-            a = registry()[st.engines[0]]
+            eng = es[st.engines[0]]
+            a = registry()[eng.run]
             need = [n for n in a.needs if n in failed]
             if need:
                 echo(
@@ -765,8 +797,10 @@ def run(config, only=None, preview=False, out=None, echo=print, extra=None):
                 values = dict(table)
                 own, named = values.pop('board', None), values.pop('out', None)
                 tag = a.tag(values) if len(many) > 1 else ''
-                who = a.label + (f": {tag}" if tag else '')
-                values = a.for_questions(values, st.questions)
+                who = ((eng.label if eng.name != a.name else a.label)
+                       + (f": {tag}" if tag else ''))
+                values = dict(a.for_questions(values, st.questions),
+                              **eng.sets)
                 if st.fields is not None and a.fields:
                     values[a.fields] = bool(st.fields)
                 try:
@@ -781,7 +815,7 @@ def run(config, only=None, preview=False, out=None, echo=print, extra=None):
                     state.append((st, f"not started: {e}", '', 0.0, tag))
                     failed.add(a.name)
                     continue
-                mark(folder, a.name, st.questions, preview, config=config)
+                mark(folder, eng.name, st.questions, preview, config=config)
                 shown = (['python', *argv[1:]] if argv[0] == sys.executable
                          else argv)
                 echo(f"study: {who}: {' '.join(shown)}")

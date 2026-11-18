@@ -592,7 +592,7 @@ def run(a, echo=print):
         f"crosstalk: NEXT {w['next_pct']:.2f} % ({w['next_victim']} from "
         f"{w['next_aggressor']}), FEXT {w['fext_pct']:.2f} % "
         f"({w['fext_victim']} from {w['fext_aggressor']}) for a {a.rise:g} ps "
-        "edge"
+        f"edge, by {solved[ref]['label']}"
         +
         (f"; limit {a.limit:g} %: {verdict(w)}" if a.limit is not None else ''))
     echo(f"-> {os.path.join(out, RESULT)}")
@@ -748,6 +748,13 @@ class Crosstalk(Analysis):
     provides = ('crosstalk',)
     engine = 'line model'
     finds = 'traces side by side'
+    # who answers: the line model alone, or a full-wave solver on the same
+    # ports beside it (its figures the answer; the line model's beside them
+    # and the layout's stretches as before): the setting `check`
+    variants = (('', 'line model', dict(check='')),
+                ('gfdtd', 'line model + gfdtd', dict(check='gfdtd')),
+                ('openems', 'line model + openEMS', dict(check='openems')),
+                ('mom25d', 'line model + mom25d', dict(check='mom25d')))
 
     def check(self):
         from . import __version__
@@ -756,6 +763,16 @@ class Crosstalk(Analysis):
             f"kicad2ems {__version__}: the line model's coupled sections, a "
             "full-wave solver beside it on request"
         )
+
+    def check_with(self, sets):
+        ok, what = self.check()
+        if not ok or not sets.get('check'):
+            return ok, what
+        from .solvers import get
+        try:
+            return get(sets['check']).check()
+        except ValueError as e:
+            return False, str(e)
 
     def options(self):
         o = lambda key, kind, default, help, group='Traces', **kw: dict(
@@ -790,12 +807,6 @@ class Crosstalk(Analysis):
                 'Edge', level='basic'),
             o('z0', 'float', 50.0, "each trace's termination at both ends, ohm",
               'Edge'),
-            o(
-                'check', 'str', '',
-                "a full-wave solver to solve the same ports beside the line "
-                "model: mom25d, gfdtd or openems (empty: the line model "
-                "alone)", 'Solve',
-                choices=['', 'mom25d', 'gfdtd', 'openems']),
             o(
                 'ground', 'str', '',
                 "the copper layer taken as a solid plane (In1.Cu; empty: the "
@@ -836,6 +847,7 @@ class Crosstalk(Analysis):
             v = values.get(key)
             if v not in (None, '', []):
                 cmd += ['--' + key, str(v)]
+        # (the engine's: variants; a config's [analysis.crosstalk] check)
         if values.get('check'):
             cmd += ['--solvers', 'lines,' + str(values['check'])]
         return cmd
@@ -871,7 +883,7 @@ class Crosstalk(Analysis):
             f"NEXT {w['next_pct']:.2f} % ({w['next_victim']} from "
             f"{w['next_aggressor']}), FEXT {w['fext_pct']:.2f} % "
             f"({w['fext_victim']} from {w['fext_aggressor']}) of the swing, "
-            f"for a {d['rise_ps']:g} ps edge"
+            f"for a {d['rise_ps']:g} ps edge, by {ans['label']}"
         )
         if d.get('limit_pct') is not None:
             head += f"; limit {d['limit_pct']:g} %: {verdict(w)}"

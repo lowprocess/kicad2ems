@@ -19,7 +19,7 @@ from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (QTreeWidget, QTreeWidgetItem, QHeaderView,
                                QAbstractItemView, QMenu)
 
-from .study import RF, AUTO, StudyModel
+from .study import RF, AUTO, StudyModel, run_key
 
 TONES = {'': None, 'gray': 'gray', 'bad': '#c62828'}
 C_Q, C_BY, C_FIELDS, C_STATE = range(4)             # the columns
@@ -199,8 +199,8 @@ class StudyTree(QTreeWidget):
     def set_available(self, key, ok, why=''):
         self.m.set_available(key, ok, why)
         q = self.current_question()
-        if (q is not None
-                and any(e.name == key for e in self.m.engines.get(q, []))):
+        if (q is not None and any(key in (e.name, run_key(e))
+                                  for e in self.m.engines.get(q, []))):
             self.selected.emit(q)  # its settings: the engines that can run now
 
     def state(self, key):  # (QAbstractItemView has a state() of its own)
@@ -253,7 +253,7 @@ class StudyTree(QTreeWidget):
         else:
             qs = [
                 q for q in self.rows if (m.is_solver(q) if key == RF else any(
-                    e.name == key for e in m.engines[q]))
+                    run_key(e) == key for e in m.engines[q]))
             ]
             if key != RF and self.current_question() in qs:
                 return
@@ -261,7 +261,7 @@ class StudyTree(QTreeWidget):
                 return
             asked = [
                 q for q in qs
-                if q in m.asked() and (key == RF or key in m.engines_for(q))
+                if q in m.asked() and (key == RF or key in m.runs_for(q))
             ]
             q = (asked or qs or [None])[0]
         if q is not None and self.current_question() != q:
@@ -361,9 +361,9 @@ class StudyTree(QTreeWidget):
             a = m.addAction(f"{e.label}  ({e.impl.tool})")
             a.setCheckable(True)
             a.setChecked(e.name in self.m.choice[q])
-            if e.name in self.m.why:
+            if self.m.why_not(q, e.name):
                 a.setEnabled(False)
-                a.setToolTip(self.m.why[e.name])
+                a.setToolTip(self.m.why_not(q, e.name))
             a.toggled.connect(lambda on, n=e.name: self.choose(q, n, on))
         return m
 

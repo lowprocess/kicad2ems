@@ -83,6 +83,9 @@ class WindowRun:
         page = self.pages[key]
         # what this run is asked
         page.asked = self.study.asked_of(key, getattr(self, '_only', None))
+        # the engine chosen (one of the analysis's variants), its settings
+        page.engine = self.study.engine_of(key)
+        page.sets = self.study.sets_of(key)
         page.start(preview=True) if preview else page.start()
         proc = page.proc
         if proc is None:  # the page said why on its status line

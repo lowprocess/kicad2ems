@@ -164,7 +164,10 @@ other engine is an analysis (pcbqs's power integrity, near field, circuit and
 thermal; Elmer for a rail's drop and the temperature, Elmer and Palace for
 capacitance: those need the `fem` extra's gmsh), found through kicad2ems's
 [registry](api.md#study-api); the window knows none by name. A question no
-engine answers is greyed.
+engine answers is greyed. An analysis may be several engines of one run
+(`variants`): *Crosstalk* is answered by the line model, or by it with gfdtd,
+openEMS or mom25d beside it, one at a time; the choice sets its full-wave check,
+which its settings no longer show.
 
 Selecting a row shows its engines' settings in the Settings dock, each a panel
 made from the analysis's options (two engines: each under its name). **Run**

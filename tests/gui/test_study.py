@@ -1145,3 +1145,114 @@ def test_an_exception_in_a_slot_is_shown_not_only_printed(window, capsys):
             b.close()
     finally:
         sys.excepthook = before
+
+
+@pytest.fixture
+def xt_window(tmp_path, monkeypatch):
+    """The window with kicad2ems's own crosstalk question beside the
+    stand-ins, openEMS not installed for it, and its command a stand-in's
+    child process that writes the arguments it was given."""
+    pytest.importorskip('PySide6')
+    pytest.importorskip('pyqtgraph')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
+    import json
+    import sys
+    from kicad2ems.core import analyses
+    from kicad2ems.core.si import Crosstalk
+    command = Crosstalk.command
+
+    def child(self, values, board, out, preview=False, results=None):
+        argv = command(self, values, board, out)
+        code = ("import json, os, sys; os.makedirs(sys.argv[1], exist_ok="
+                "True); json.dump(sys.argv[2:], open(os.path.join(sys.argv[1],"
+                " 'argv.json'), 'w'))")
+        return [sys.executable, '-c', code, out, *argv[1:]]
+    monkeypatch.setattr(Crosstalk, 'command', child)
+    monkeypatch.setattr(
+        Crosstalk, 'check_with', lambda self, sets:
+        (False, 'no openEMS') if sets['check'] == 'openems' else (True, ''))
+    reg = dict(analyses.registry(), crosstalk=Crosstalk())
+    monkeypatch.setattr(analyses, '_registry', reg)
+    from PySide6.QtCore import QSettings
+    from kicad2ems.gui import application, study as gstudy, app as gui
+    from kicad2ems.gui import winstudy, winconfigs, winrun
+    from kicad2ems.gui.app import MainWindow
+    listed = gstudy.installed()
+    for module in (gstudy, gui, winstudy, winconfigs, winrun):
+        for name, v in (('ANALYSES', listed),
+                        ('BY_KEY', {a.key: a for a in listed})):
+            if hasattr(module, name):
+                monkeypatch.setattr(module, name, v)
+    monkeypatch.setattr(gstudy, 'TREE', gstudy.tree())
+    app = application()
+    QSettings('kicad2ems', 'gui').clear()
+    w = MainWindow()
+    yield w, app, json
+    w.setup.dirty = False
+    w.system.stop()
+    w.meters.stop()
+    w.close()
+    QSettings('kicad2ems', 'gui').clear()
+
+
+def test_the_crosstalk_s_full_wave_solvers_are_its_engines(xt_window,
+                                                            tmp_path):
+    """Answered by: the line model, or a full-wave solver beside it, one at a
+    time (one run: the analysis with its check set), openEMS not offered where
+    it is missing; the setting is the engine's, not the form's; saved and read
+    back as [study.crosstalk] engine, a config's check of before read as that
+    engine; Run gives the analysis --solvers lines,<it> and marks the folder
+    with the engine."""
+    from kicad2ems.core.api.frontend import Study, read_study
+    from kicad2ems.core.study import marked
+    w, app, json = xt_window
+    tree, xt = w.study, w.pages['crosstalk']
+    texts = lambda q: [(a.text(), a.isEnabled())
+                       for a in tree.engine_menu(q).actions()
+                       if not a.isSeparator()]
+    assert (texts('crosstalk') == [
+        ('auto (line model)', True),
+        ('line model  (kicad2ems.core.si)', True),
+        ('line model + gfdtd  (kicad2ems.core.si)', True),
+        ('line model + openEMS  (kicad2ems.core.si)', False),
+        ('line model + mom25d  (kicad2ems.core.si)', True)
+    ])
+    assert 'check' not in xt.w
+    tree.set_study(Study({'crosstalk': []}))
+    assert tree.rows['crosstalk'].text(1) == 'line model  ▾'
+    tree.choose('crosstalk', 'crosstalk_gfdtd', True)
+    tree.choose('crosstalk', 'crosstalk_mom25d', True)  # in its place
+    assert (tree.choice['crosstalk'] == ['crosstalk_mom25d']
+            and tree.rows['crosstalk'].text(1) == 'line model + mom25d  ▾')
+    assert (tree.jobs() == ['crosstalk']
+            and tree.panels_of('crosstalk') == ['crosstalk']
+            and tree.sets_of('crosstalk') == dict(check='mom25d')
+            and tree.engine_of('crosstalk') == 'crosstalk_mom25d')
+    cfg = tmp_path / 'xt.toml'
+    cfg.write_text(f"board = '{tmp_path / 'b.kicad_pcb'}'\n", encoding='utf-8')
+    xt.set_values(dict(nets='D0\nD1'))
+    w.save_analyses(str(cfg))
+    text = cfg.read_text(encoding='utf-8')
+    assert ('engine = "crosstalk_mom25d"' in text and 'check' not in text
+            and read_study(str(cfg)).asked == {
+                'crosstalk': ['crosstalk_mom25d']})
+    old = tmp_path / 'old.toml'
+    old.write_text("[study]\nrun = ['crosstalk']\n[analysis.crosstalk]\n"
+                   "nets = ['D0', 'D1']\ncheck = 'gfdtd'\n", encoding='utf-8')
+    w.load_analyses(str(old))
+    assert (tree.choice['crosstalk'] == ['crosstalk_gfdtd']
+            and xt.values()['nets'].split() == ['D0', 'D1'])
+    board = tmp_path / 'b.kicad_pcb'
+    board.write_text('')
+    w.setup.set_values(dict(board=str(board), out=str(tmp_path / 'out')))
+    w.run()
+    run_to_the_end(w, app)
+    argv = json.load(open(os.path.join(xt.out, 'argv.json')))
+    assert (argv[argv.index('--solvers') + 1] == 'lines,gfdtd'
+            and marked(xt.out)['engine'] == 'crosstalk_gfdtd')
+    tree.choose('crosstalk', 'crosstalk', True)  # the line model alone
+    w.run()
+    run_to_the_end(w, app)
+    assert '--solvers' not in json.load(open(os.path.join(xt.out,
+                                                          'argv.json')))

@@ -9,7 +9,17 @@ python -m kicad2ems.core.si board.kicad_pcb --nets D0,D1,D2 --rise 100 --limit 3
 kicad2ems study examples/si_bus.toml          # the same from a config: [analysis.crosstalk]
 ```
 
-In the window it is **Crosstalk** under *Signal integrity* in the study's questions. *Find traces side by side*
+In the window it is **Crosstalk** under *Signal integrity* in the study's questions. Its *Answered by* cell
+offers the line model (the default) or a full-wave solver beside it: *line model + gfdtd*, *line model +
+openEMS*, *line model + mom25d*; one not installed is greyed with the reason. A config says it the same way:
+
+```toml
+[study.crosstalk]
+engine = "gfdtd"     # crosstalk_gfdtd, or "line model + gfdtd"; "line model" or none: the line model alone
+```
+
+(An `[analysis.crosstalk]` table's `check = "gfdtd"`, from before these were engines, is read as that engine
+when `[study.crosstalk]` names none.) *Find traces side by side*
 lists the pairs of nets that run close together on the board, to pick from; **Pick** beside *Nets* takes them
 from clicks on the board ([picking](gui.md#pick)).
 
@@ -23,8 +33,10 @@ from clicks on the board ([picking](gui.md#pick)).
    first end. The log says which end is which.
 2. **The solve.** The S-parameters between all the ends, by the [line model](transmission-lines.md): its coupled
    sections come from the 2D field solver on the board's own cross-section, and it takes a second or two. Name a
-   full-wave solver beside it (`--solvers lines,mom25d`; *Check* in the window) and the same ports are solved by
-   both, the report's figures then being the full-wave solver's.
+   full-wave solver beside it (`--solvers lines,gfdtd`; the engine in the window or `[study.crosstalk]`) and the
+   same ports are solved by both: the headline, the tables and the curves are then the full-wave solver's (the
+   headline ends "by gfdtd ..."), the line model's figures beside them (*Against line model*), and the layout's
+   stretches still the line model's. mom25d runs with lumped ports here.
 3. **NEXT and FEXT.** With trace *a* driven at its near end, a victim's NEXT is S(victim near, *a* near) and its
    FEXT is S(victim far, *a* near): over frequency in dB, and in time for an edge of `--rise` ps (10 to 90 %),
    as the largest voltage at each end in percent of the aggressor's swing. Each trace is the aggressor in turn
@@ -51,13 +63,17 @@ from clicks on the board ([picking](gui.md#pick)).
 
 `examples/si_bus.toml`: three 50 Ω traces on a 4-layer board, 0.2 mm apart for 30 mm. For a 100 ps edge:
 
-| | line model | mom25d |
-|---|---|---|
-| NEXT, a neighbour | 6.0 % | 5.9 % |
-| FEXT, a neighbour | −6.5 % | −7.1 % |
-| NEXT, the next trace but one | 1.4 % | 1.4 % |
-| the middle trace, both neighbours switching | 12.0 % and 13.1 % | |
-| run time | 2 s | 30 s |
+| | line model | gfdtd | mom25d |
+|---|---|---|---|
+| NEXT, a neighbour | 6.0 % | 6.0 % | 6.5 % |
+| FEXT, a neighbour | −6.5 % | −7.4 % | −8.0 % |
+| NEXT, the next trace but one | 1.4 % | 1.5 % | |
+| FEXT, the next trace but one | −2.5 % | −2.5 % | |
+| the middle trace, both neighbours switching | 12.0 % and 13.1 % | | |
+| run time | 2 s | 11 s (GPU; 71 s on the CPU core) | 76 s |
+
+mom25d's sweep stopped unconverged at its 60 solves here; gfdtd is the full-wave check to use on this board
+(`tests/core/test_si.py` runs it: NEXT within 0.5 and FEXT within 1.5 percentage points of the line model's).
 
 The stretch's own estimate is 7.1 % for both (Kc 0.090, Kl 0.193): the edge's ramp of 125 ps is shorter than
 twice the stretch's delay of 176 ps, so NEXT is saturated and only a wider gap lowers it: 4.8 % at 0.3 mm,
@@ -74,7 +90,7 @@ twice the stretch's delay of 176 ps, so NEXT is saturated and only a wider gap l
 | `--rise` | 100 | the aggressor's edge, ps (10 to 90 %) |
 | `--limit` | none | the most crosstalk allowed, percent of the swing |
 | `--z0` | 50 | each trace's termination at both ends, Ω |
-| `--solvers` | lines | `lines,mom25d` (or `gfdtd`, `openems`): a full-wave solver beside the line model |
+| `--solvers` | lines | `lines,gfdtd` (or `openems`, `mom25d`): a full-wave solver beside the line model; in a study, the engine |
 | `--ground` | as drawn | the copper layer taken as a solid plane |
 | `--fmax` | 1 / rise | the highest frequency solved, GHz |
 | `--sigma` | lossless | copper conductivity, S/m |

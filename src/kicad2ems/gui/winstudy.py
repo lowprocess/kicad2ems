@@ -36,6 +36,14 @@ class WindowStudy:
         for a in ANALYSES:  # listed without an analysis here (a test's)
             if a.key != RF and a.key not in self.pages:
                 self.study.set_available(a.key, False, 'not installed')
+        # an analysis's variants: the solver each takes (openEMS missing)
+        for es in self.study.engines.values():
+            for e in es:
+                if (getattr(e, 'sets', None) and e.name != e.run
+                        and e.run in self.pages):
+                    ok, why = e.check()
+                    if not ok:
+                        self.study.set_available(e.name, False, why)
         self.study.set_study(self._saved_study())
         self.setup.follow_fields()
         self.study.opened.connect(self.show_analysis)

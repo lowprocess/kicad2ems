@@ -141,6 +141,7 @@ its `Analysis` class is the only part that imports
 | `engine` | the program's name as a list shows it beside a question: `'pcbqs'`, `'Elmer'` |
 | `questions` | `Question` objects of its own, for what kicad2ems has no question for |
 | `fields` | the bool option that makes it write field dumps too (`'fields'`), or `''` |
+| `variants` | its engines when it is several to choose from beside a question: `((suffix, label, {option: value}), ...)`, each the engine `<name>_<suffix>` (suffix `''`: `<name>`) that runs it with those settings, which are then not among its options (the crosstalk: `('gfdtd', 'line model + gfdtd', dict(check='gfdtd'))`); `check_with(sets)` is a variant's check. `()`: one engine, itself |
 
 and implements:
 
