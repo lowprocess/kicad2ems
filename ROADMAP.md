@@ -448,9 +448,22 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
    blocking, conformal PEC for curved copper.
 9. **Materials**: Lorentz and Drude, anisotropy; openEMS's Debye run has 0.5 dB more loss than gfdtd's on the same
     material (which is right is not checked).
-10. **openEMS's interface**: cylindrical grids, the one option gfdtd refuses (no use for them yet; the rest of
-    R-B18 is in the CHANGELOG). The magnetic materials run on the NumPy backend: the compiled kernels' H update with
-    a per-edge μ and loss would put them on the GPU.
+10. **openEMS's interface** (kept, to be widened; measured 2026-11-18 against openEMS's own Python tutorials,
+    upstream 1b46454, run unchanged with the two imports swapped: `~/pcbqs-bench/openems-compat`). Where both run,
+    the answers agree (MSL_NotchFilter |ΔS| ≤ 0.006, StripLine2MSL ≤ 0.007, Rect_Waveguide ≤ 0.001; gfdtd 1.2 s and
+    1.6 s against openEMS's 8.6 s and 17.1 s), but only 1 of the 16 tutorials runs as it stands. In order:
+    - CSXCAD's mesh helpers: `CSRectGrid.SmoothMeshLines` (15 of 16 tutorials; CSXCAD's is pure Python, LGPL-3.0,
+      so a faithful port gives openEMS's very meshes), `GetLine`, `AddEdges2Grid`, `GetSimArea`, `Sort`, `Clear`:
+      11 of 16;
+    - primitives and transforms: `AddSphere`, `AddRotPoly`, `AddTransform` / `GetTransform`, `AddDiscMaterial`:
+      15 of 16;
+    - the getters and setters scripts read back (of the 572 public members of CSXCAD's and openEMS's classes gfdtd
+      lacks, most are these, and the display colours), wires, polyhedra, Lorentz and Drude materials (9);
+    - cylindrical grids (CylindricalWave_CC), the one option gfdtd refuses (no use for them yet);
+    - the tutorials as a test: gfdtd against openEMS where openEMS is installed, gfdtd alone (it runs) where not;
+    - the docs ("a model made for openEMS runs here unchanged") to say what is covered.
+    The magnetic materials run on the NumPy backend: the compiled kernels' H update with a per-edge μ and loss
+    would put them on the GPU.
 
 ## kicad2ems-fem
 
