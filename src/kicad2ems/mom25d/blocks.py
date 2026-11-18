@@ -67,8 +67,9 @@ def _weights(xa, x):
 
 
 class Anchors:
-    """The blocks kept over a sweep. at(f): the weights of f's polynomial, or
-    None; mix: the blocks from them; add: blocks filled, kept."""
+    """The blocks kept over a sweep (any number of them a frequency, each a
+    matrix). at(f): the weights of f's polynomial and which blocks it holds
+    for, or None; mix: a block from them; add: blocks filled, kept."""
 
     def __init__(self):
         # the anchors' frequencies, s and tables (the core's: fast.setup);
@@ -78,10 +79,10 @@ class Anchors:
         self.base = self.bs = self.sc = self.rows = None
 
     def at(self, f):
-        """[(anchor, weight)] of the polynomial through the anchors about f
-        (its neighbours first, then outwards), or None: outside them, fewer
-        than P, or the estimate above TOL. (Anchor 0 is the base: its
-        weight what the others leave of 1.)"""
+        """([(anchor, weight)], [each block's estimate within TOL]) of the
+        polynomial through the anchors about f (its neighbours first, then
+        outwards), or None: outside them, or fewer than P. (Anchor 0 is the
+        base: its weight what the others leave of 1.)"""
         s, x = np.array(self.f), float(f)
         if len(s) < P or not s.min() <= x <= s.max():
             return None
@@ -96,22 +97,23 @@ class Anchors:
             else:
                 k.append(o[hi]); hi += 1
         w1 = _weights(s[k], x)
-        dw = w1 - np.r_[_weights(s[k[:-1]], x), 0.0]
+        dw, ok = w1 - np.r_[_weights(s[k[:-1]], x), 0.0], []
         for j, sc in enumerate(self.sc):
             T = [np.empty_like(self.bs[j]) for _ in (0, 1)]
             for O, F0, ws in ((T[0], self.bs[j], w1), (T[1], None, dw)):
-                _core.blend(O, F0, [self.Ds[i][j] for i in k if i],
-                            [w for i, w in zip(k, ws) if i], 1.0)
-            if np.linalg.norm(T[1] * sc) > TOL * np.linalg.norm(T[0] * sc):
-                return None
-        return list(zip(k, w1))
+                if O.size:
+                    _core.blend(O, F0, [self.Ds[i][j] for i in k if i],
+                                [w for i, w in zip(k, ws) if i], 1.0)
+            ok.append(bool(np.linalg.norm(T[1] * sc)
+                           <= TOL * np.linalg.norm(T[0] * sc)))
+        return list(zip(k, w1)), ok
 
-    def mix(self, kw, s, out=None):
-        """(B, C) from at(f)'s weights and f's s, into out's two arrays
-        (blocks of Z) where given."""
-        out = out or [np.empty_like(F) for F in self.base]
-        for j in (0, 1):
-            _core.blend(out[j], self.base[j],
+    def mix(self, j, kw, s, out=None):
+        """Block j from at(f)'s weights and f's s, into out (a block of Z)
+        where given."""
+        out = np.empty_like(self.base[j]) if out is None else out
+        if out.size:
+            _core.blend(out, self.base[j],
                         [self.D[i][j] for i, _ in kw if i],
                         [w for i, w in kw if i], 1.0 / s)
         return out
@@ -128,29 +130,29 @@ class Anchors:
                                for ci, (i, _) in zip(c, kw))
         return out
 
-    def add(self, f, B, C, s, tb, room, spare):
-        """Keep the blocks filled at f, s x them (what is smooth in f),
+    def add(self, f, X, s, tb, scales, room, spare):
+        """Keep the blocks X filled at f, s x them (what is smooth in f),
         and f's tables, where the anchors stay within `room` bytes and
-        that leaves `spare` bytes of memory available."""
+        that leaves `spare` bytes of memory available. scales: each
+        block's (rows', columns') scales for the estimate (None: 1)."""
         from .fast import _row_blocks
-        n, size = len(self.f), B.size + C.size
+        n, size = len(self.f), sum(M.size for M in X)
         held, need = (8.0 + 8.0 * n) * size if n else 0.0, (
             8.0 if n else 16.0) * size
         if (n >= KEEP or held + need > room
                 or available_memory() - need < spare):
             return
         if self.base is None:
-            self.base = (s * B, s * C)
-            d = 1.0 / np.sqrt(np.abs(np.diagonal(self.base[1])) + 1e-300)
-            self.rows = [np.unique(np.linspace(0, len(M) - 1, ROWS).astype(
-                int)) for M in (B, C)]
-            self.sc = (d[None, :], d[self.rows[1], None] * d[None, :])
+            self.base = [s * M for M in X]
+            self.rows = [np.unique(np.linspace(0, max(len(M) - 1, 0),
+                                               ROWS).astype(int)) for M in X]
+            self.sc = [(1.0 if r is None else r[rows, None]) * c[None, :]
+                       for (r, c), rows in zip(scales, self.rows)]
             self.bs = [F[r] for F, r in zip(self.base, self.rows)]
             D = None
         else:
-            D = (np.empty(B.shape, np.complex64),
-                 np.empty(C.shape, np.complex64))
-            for M, F0, Dj in zip((B, C), self.base, D):
+            D = [np.empty(M.shape, np.complex64) for M in X]
+            for M, F0, Dj in zip(X, self.base, D):
                 def fn(a, b):
                     Dj[a:b] = s * M[a:b] - F0[a:b]
                 _row_blocks(Dj, fn)

@@ -706,15 +706,17 @@ def test_the_via_blocks_between_the_frequencies_filled():
                          sides=dict(t={2: 35e-6}, up={2: True}),
                          verbose=False)
         sim.interp = mode
-        S = np.array([sim.sparams(f) for f in fs])
-        return S, [r[0] for r in sim.log.records if 'via kernels' in r[0]]
+        S, n = [], []
+        for f in fs:
+            S.append(sim.sparams(f))
+            n.append(list(sim.fast.nblocks))
+        return np.array(S), n
 
     fs = [*np.linspace(4e9, 6e9, 7), 4.6e9, 5.8e9, 4.1e9, 5e9, 6.5e9]
-    S, how = run('auto', fs)
-    assert how == ['via kernels'] * 7 + ['via kernels (interpolated)'] * 4 + [
-        'via kernels']
-    S0, how = run('off', fs)
-    assert set(how) == {'via kernels'}
+    S, n = run('auto', fs)
+    assert n[6] == [7, 0] and n[10] == [7, 4] and n[11] == [8, 4]
+    S0, n = run('off', fs)
+    assert n[-1] == [12, 0]
     assert np.abs(S - S0).max() < 1e-5
 
 

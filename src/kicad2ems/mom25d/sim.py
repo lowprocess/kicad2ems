@@ -915,7 +915,7 @@ class Simulation:
         self._via_geo = (len(ch), geo)
         return geo
 
-    def _via_blocks(self, f, QF, charges=True, loss=True):
+    def _via_blocks(self, f, QF, charges=True, loss=True, sides=True):
         """Via rows/columns: B (Ne x Nv) strip-via coupling, C (Nv x Nv) via-via
         (incl. elements in vias); after the chains, the holes of the PEC planes
         inside the stack (_frill_blocks). charges=False: without the chains'
@@ -924,7 +924,7 @@ class Simulation:
         charge matrix. The rest (the D and R kernels, the barrel's own term) is
         the current's: its static part cancels the end charges', so it goes as
         jw. loss=False: without _via_loss (the kernels' part alone, smooth in
-        f: mom25d.blocks)."""
+        f: mom25d.blocks); sides=False: without _side_blocks' part."""
         w, r = 2 * np.pi * f, self.rwg
         # the sides' folds' halves on the sheet (mom25d.sides.Sides.virtual):
         # their rows as the edges' (Bv), into the folds' rows of C at the end
@@ -956,18 +956,10 @@ class Simulation:
             C[:Nc, :Nc] += (dF.T @ T[self.F]) / (1j * w)
             if V is not None:
                 Bv[:, :Nc] += (V[0].T @ T) / (1j * w)
-        if self.sides is not None and charges:
-            # the sides' functions (mom25d.sides): with the strips', each
-            # other's and the via chains' fan charges
-            with self.log.timer('sides', f"{len(self.sides)} functions"):
-                Bw, Cw, QF = self.sides.blocks(self, f)
-                c0 = self.Nv - len(self.sides)
-                B[:, c0:] += Bw
-                C[c0:, c0:] += Cw
-                if len(self.F) and c0:
-                    X = np.asarray(geo['dF'][:, :c0].T @ QF) / (1j * w)
-                    C[:c0, c0:] += X
-                    C[c0:, :c0] += X.T
+        if self.sides is not None and charges and sides:
+            Bw, Cw = self._side_blocks(f)
+            B[:, self.Nv - len(self.sides):] += Bw
+            C += Cw
         # smooth via -> strip kernel D(rho), Galerkin-tested with the RWG
         # divergence: in the compiled core the chains of a span a block at a
         # time (a chain and a layer at a time, NumPy's, had been 1.5 s of an 8 s
@@ -1013,6 +1005,22 @@ class Simulation:
             n = np.arange(len(self.chains))
             C[n, n] += self._via_loss(f)
         return B, C
+
+    def _side_blocks(self, f):
+        """(Bw (Ne x sides), Cw (Nv x Nv)): the sides' functions
+        (mom25d.sides) with the strips', each other's and the via chains'
+        fan charges: their columns of B, and their part of C."""
+        w, sd = 2 * np.pi * f, self.sides
+        with self.log.timer('sides', f"{len(sd)} functions"):
+            Bw, Cs, QF = sd.blocks(self, f)
+            c0, Cw = self.Nv - len(sd), np.zeros((self.Nv,) * 2, complex)
+            Cw[c0:, c0:] = Cs
+            if len(self.F) and c0:
+                X = np.asarray(
+                    self._via_geometry()['dF'][:, :c0].T @ QF) / (1j * w)
+                Cw[:c0, c0:] = X
+                Cw[c0:, :c0] = X.T
+        return Bw, Cw
 
     def _via_loss(self, f):
         """Each chain's own impedance besides the kernels' (C's diagonal): an

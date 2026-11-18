@@ -189,12 +189,11 @@ def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
     gpu_n, cpu_n = factorisations(res.sim.log)
     n_re = reused(res.sim.log)
     # benchmarks: where the solves ran
-    st = [r[0] for r in getattr(res.sim.log, 'records', ())]
-    n_bl = st.count('via kernels (interpolated)')
+    nb = getattr(getattr(res.sim, 'fast', None), 'nblocks', (0, 0))
     log(f"mom25d: factorisations: {gpu_n} on the GPU, {cpu_n} on the CPU"
         + (f"; {n_re} solves reused one" if n_re else '')
-        + (f"; the via blocks filled at {st.count('via kernels')} "
-           f"frequencies, {n_bl} between them" if n_bl else ''))
+        + (f"; the via blocks filled at {nb[0]} frequencies, {nb[1]} "
+           "between them" if nb[1] else ''))
     S = res.S
     if pairs:  # mom25d's modal ports -> kicad2ems order
         _, names, zref = mixed_mode(np.zeros((1, len(m.ports), len(m.ports))),

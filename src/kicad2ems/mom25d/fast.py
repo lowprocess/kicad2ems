@@ -412,6 +412,8 @@ class FastOperator:
         self._near_pat = None  # _near_csr: the structure of these pairs
         # the via blocks kept over a sweep; the frequency's weights of them
         self.anchors, self._kw = Anchors(), None
+        # frequencies whose via blocks were filled, and taken between them
+        self.nblocks = [0, 0]
         # the near pairs' analytic parts (geometry only, most of a pair's
         # cost) kept across frequencies by the core: 96 bytes a pair; the
         # via transition's 11.3 M pairs, 1.1 GB: its near field into the
@@ -477,41 +479,64 @@ class FastOperator:
             self.q['stat_ready'] = True
 
     def _vias(self, f, Z=None, z=True):
-        """The via rows / columns B and block C: sim._via_blocks with this
-        operator's fan columns, or between the frequencies that were filled
-        as setup found (blocks.Anchors: kept in at most a double Z's bytes,
-        or ANCHOR_ROOM, and where the memory policy.choose's rules ask for
-        stays available: the hybrid's matrices (z: Z is there), the LUs a
-        CPU's plan keeps, and the next fill's own arrays). Z (complex128):
+        """The via rows / columns B and block C. Filled: the sides' part
+        (sim._side_blocks) and the rest, the chains' (sim._via_blocks with
+        this operator's fan columns), both kept (blocks.Anchors: in at most
+        a double Z's bytes, or ANCHOR_ROOM, and where the memory
+        policy.choose's rules ask for stays available: the hybrid's
+        matrices (z: Z is there), the LUs a CPU's plan keeps, and the next
+        fill's own arrays). Between the frequencies kept, as setup found:
+        the sides' part from them, and the chains' where theirs holds too,
+        else filled (the via kernels' own tables are rougher than the
+        Green tables: antenna_array4x4_phased's 16 chains 1e-5 between
+        seven anchors of a 20 % band, its sides 1e-9). Z (complex128):
         into its border, B and C not kept."""
-        sim, an, kw = self.sim, self.anchors, self._kw
+        sim, an = self.sim, self.anchors
         if not sim.Nv:
             return
-        Ne, N = sim.Ne, sim.Ne + sim.Nv
+        Ne, Nv, N = sim.Ne, sim.Nv, sim.Ne + sim.Nv
+        c0 = Nv - (len(sim.sides) if sim.sides is not None else 0)
+        kw, ok = self._kw or (None, [False] * 4)
+        B = Z[:Ne, Ne:] if Z is not None else np.empty((Ne, Nv), complex)
+        if not (ok[2] and ok[3]):
+            with sim.log.timer('via kernels', f"{c0} chains"):
+                Bc, C = sim._via_blocks(f, self._fan_columns(), loss=False,
+                                        sides=False)
+            B[:, :c0] = Bc[:, :c0]
+        self.nblocks[kw is not None] += 1
         if kw is None:
-            with sim.log.timer('via kernels', f"{sim.Nv} chains"):
-                self.B, self.C = sim._via_blocks(f, self._fan_columns(),
-                                                 loss=False)
+            Bw, Cw = (sim._side_blocks(f) if c0 < Nv else
+                      (np.zeros((Ne, 0), complex), np.zeros_like(C)))
             if getattr(sim, 'interp', 'auto') != 'off':
                 lus = (REUSE_KEEP if getattr(sim, 'plan', {}).get('path')
                        == 'cpu-mixed' else 0)
-                an.add(f, self.B, self.C, self._s(f),
+                d = 1.0 / np.sqrt(np.abs(np.diagonal(C) + np.diagonal(Cw))
+                                  + 1e-300)
+                an.add(f, [Bw, Cw, Bc[:, :c0], C], self._s(f),
                        {k: self.tb[k] for k in ('A', 'Q', 'cA', 'cq', 'cAi',
                                                 'cqi')},
+                       [(None, d[c0:]), (d, d), (None, d[:c0]), (d, d)],
                        max(16.0 * N * N, ANCHOR_ROOM),
                        (14.0 + 8.0 * lus + (0.0 if z else 16.0)) * N * N
-                       + 2.0 * (self.B.nbytes + self.C.nbytes) + 1.25 * SPARE)
+                       + 2.0 * 16.0 * Nv * N + 1.25 * SPARE)
         else:
             with sim.log.timer('via kernels (interpolated)',
                                f"{len(kw)} of {len(an.f)} frequencies"):
-                self.B, self.C = an.mix(
-                    kw, self._s(f),
-                    Z is not None and (Z[:Ne, Ne:], Z[Ne:, Ne:]))
+                s = self._s(f)
+                Bw, Cw = an.mix(0, kw, s, B[:, c0:]), an.mix(1, kw, s)
+                if ok[2] and ok[3]:
+                    an.mix(2, kw, s, B[:, :c0])
+                    C = an.mix(3, kw, s)
+        if kw is None:
+            B[:, c0:] = Bw
+        C += Cw
         n = np.arange(len(sim.chains))
-        self.C[n, n] += sim._via_loss(f)
+        C[n, n] += sim._via_loss(f)
         if Z is not None:
-            _border(Z, self.B, self.C, both=kw is None)
-            self.B = self.C = None
+            Z[Ne:, Ne:] = C
+            _border(Z, B, C, both=False)
+        else:
+            self.B, self.C = B, C
 
     def _s(self, f):
         """What the via blocks are smooth with (blocks.py): jw and the
@@ -559,10 +584,16 @@ class FastOperator:
         self.f, self.w = f, 2 * np.pi * f
         # between the frequencies whose via blocks were kept (blocks.py):
         # theirs and the tables', as one
-        self._kw = (an.at(f) if sim.Nv and getattr(sim, 'interp', 'auto')
-                    != 'off' and self.kh2(f) >= LOOP_TREE_BELOW else None)
-        if self._kw is not None:
-            self.tb = dict(self.tb, **an.tables(self._kw, f, self._s(f)))
+        kw = (an.at(f) if sim.Nv and getattr(sim, 'interp', 'auto')
+              != 'off' and self.kh2(f) >= LOOP_TREE_BELOW else None)
+        # (the sides' blocks' estimate, or without sides the chains': the
+        # tables' too)
+        if kw is not None and not all(kw[1][:2] if sim.sides is not None
+                                      else kw[1][2:]):
+            kw = None
+        self._kw = kw
+        if kw is not None:
+            self.tb = dict(self.tb, **an.tables(kw[0], f, self._s(f)))
         else:
             self._tables(f)
         if mode == 'direct':
