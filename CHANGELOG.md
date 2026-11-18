@@ -319,8 +319,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   stay). The old names `kicad2openems`, `kicad2openems-gui`, `from kicad2ems
   import <core name>` and `parts._kind_value`. Tools: `perf/{cli_prof,dcfix,
   dcmesh,dcsolve}.py`, `mom25d/hodlr_study.py`, power-workflow's 05, the
-  Windows workflow and `ci_deps.py`. `pcbqs.wpt` is `pcbqs.power_spice`'s, and
-  `pdn.rail.parse_value` is `kicad2ems.core.parts`'.
+  Windows workflow and `ci_deps.py`. `pcbqs.wpt` is `pcbqs.power_spice`'s.
 
 ## 2026-11-14 (0.3.0)
 

@@ -61,9 +61,8 @@ remain supported. Another static-fill backend is registered with
 
 The numerics pcbqs shares with mom25d (RWG functions, the mesher, the off-plane integrals,
 Biot-Savart) are `kicad2ems.emsdev.numerics`, one copy; `emsdev` also supplies the hardware and
-native-build services and the adaptive sweep's fit (`kicad2ems.emsdev.afs`). pcbqs imports
-kicad2ems.core for loading boards and reading part values; RF/full-wave solvers
-remain in `mom25d`.
+native-build services and the adaptive sweep's fit (`kicad2ems.emsdev.afs`). pcbqs imports no
+other part at run time; RF/full-wave solvers remain in `mom25d`.
 
 ## Licence
 
