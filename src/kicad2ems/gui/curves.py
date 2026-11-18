@@ -51,8 +51,8 @@ def run_label(folder):
     (<board>_pdn_P_20261111_013136: 'P, 11-11 01:31:36'), else its folder's
     name."""
     import re
-    from kicad2ems.core.api.frontend import analyses
-    kinds = '|'.join(map(re.escape, analyses())) or 'none'
+    from kicad2ems.core import analyses
+    kinds = '|'.join(map(re.escape, analyses.registry())) or 'none'
     name = os.path.basename(os.path.normpath(folder or ''))
     m = re.search(
         rf'_(?:{kinds})_(.+)_'
@@ -76,14 +76,15 @@ def curve_set(d, kind, folder=''):
 def load_sets(folder):
     """The curve sets of a results folder, from the analysis whose result it
     holds; []: none there, not an analysis's, or not readable."""
-    from kicad2ems.core.api.frontend import analyses, analysis_of
+    from kicad2ems.core import analyses
+    from kicad2ems.core.analyses import analysis_of
     made = analysis_of(folder or '')
     if made is None:
         return []
     try:
         return [
             curve_set(d, made[0], folder)
-            for d in analyses()[made[0]].curves(folder)
+            for d in analyses.registry()[made[0]].curves(folder)
         ]
     except Exception:  # an analysis's fault, a damaged file: no curves
         return []

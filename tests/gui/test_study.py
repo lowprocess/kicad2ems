@@ -608,7 +608,8 @@ def test_two_engines_of_one_question_run_and_are_compared(window, tmp_path):
     figures they name alike side by side, with the difference; the config keeps
     who was asked."""
     from PySide6.QtCore import Qt
-    from kicad2ems.core.api.frontend import analysis_of, read_study, run_mark
+    from kicad2ems.core.analyses import analysis_of
+    from kicad2ems.core import study
     w, app, _ = window
     w.show()
     tree = w.study
@@ -635,7 +636,7 @@ def test_two_engines_of_one_question_run_and_are_compared(window, tmp_path):
     assert (tree.rows['thermal'].text(3).startswith('done ')
             and 'Elmer: done' in tree.rows['thermal'].toolTip(3))
     # the drop alone was asked
-    mark = run_mark(pdn.out)  # and the config and settings it ran with
+    mark = study.marked(pdn.out)  # and the config and settings it ran with
     assert (dict(mark, config=None, settings=None) == dict(
         engine='pdn', questions=('dc', ), preview=False, config=None,
         settings=None) and mark['config'] == str(cfg)
@@ -644,7 +645,7 @@ def test_two_engines_of_one_question_run_and_are_compared(window, tmp_path):
     assert (analysis_of(th.out) == ('thermal', False)
             and analysis_of(el.out) == ('elmer_thermal', False))
     assert (os.path.basename(el.out).startswith('b_elmer_thermal_losses_')
-            and run_mark(el.out)['questions'] == ('thermal', ))
+            and study.marked(el.out)['questions'] == ('thermal', ))
     r = w.results  # the last one's report, the other beside it
     assert r.kind() == 'elmer_thermal' and r.modes() == ['Report', 'Tables']
     titles = [t for t, _ in r.reportview._tables]
@@ -662,7 +663,7 @@ def test_two_engines_of_one_question_run_and_are_compared(window, tmp_path):
     assert [t for t, _ in r.reportview._tables] == ['Loads at DC']
     tree.choose('thermal', 'thermal', False)  # Elmer alone, saved as such
     assert w.setup.dirty and w.setup.save()
-    st = read_study(str(cfg))
+    st = study.read_config(str(cfg))
     assert (st.asked == dict(dc=[], thermal=['elmer_thermal'])
             and '[analysis]\nrun' not in cfg.read_text())
     w.close()
@@ -1204,7 +1205,8 @@ def test_the_crosstalk_s_full_wave_solvers_are_its_engines(xt_window,
     back as [study.crosstalk] engine, a config's check of before read as that
     engine; Run gives the analysis --solvers lines,<it> and marks the folder
     with the engine."""
-    from kicad2ems.core.api.frontend import Study, read_study
+    from kicad2ems.core.study import Study
+    from kicad2ems.core import study
     from kicad2ems.core.study import marked
     w, app, json = xt_window
     tree, xt = w.study, w.pages['crosstalk']
@@ -1235,7 +1237,7 @@ def test_the_crosstalk_s_full_wave_solvers_are_its_engines(xt_window,
     w.save_analyses(str(cfg))
     text = cfg.read_text(encoding='utf-8')
     assert ('engine = "crosstalk_mom25d"' in text and 'check' not in text
-            and read_study(str(cfg)).asked == {
+            and study.read_config(str(cfg)).asked == {
                 'crosstalk': ['crosstalk_mom25d']})
     old = tmp_path / 'old.toml'
     old.write_text("[study]\nrun = ['crosstalk']\n[analysis.crosstalk]\n"

@@ -16,6 +16,10 @@ length and delay; each path as the ids of its sections.
 import glob, json, os
 import numpy as np
 
+__all__ = ['load_lines', 'reference', 'span', 'section_colour', 'z0_colour',
+           'drawn', 'nearest', 'source_note', 'describe', 'section_polygon',
+           'relief', 'plan_segments']
+
 # Z0 below / at / above the port's
 LOW, MID, HIGH = (0.16, 0.38, 0.85), (0.55, 0.55, 0.55), (0.85, 0.22, 0.13)
 

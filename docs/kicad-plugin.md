@@ -17,16 +17,16 @@ already.
 
 ## What the plugin uses
 
-It uses kicad2ems as a library, through `kicad2ems.core.api.frontend` (the board, `build_lines` and `RefCopper` for the
-map, `overlay`, `kind_value` and `extra_port_fps` for the region's parts and ports, `Run`, `EventTail`, `stop_runs`
-and the readers for the runs), and the GUI's plan and section views through `kicad2ems.gui.api`
-([APIs](api.md)). A change to those is a change to the plugin's interface.
+It uses kicad2ems as a library, through the core's public names ([APIs](api.md#for-front-ends): the board,
+`lines.builder.build` and `RefCopper` for the map, `overlay`, `kind_value` and `extra_port_fps` for the region's parts
+and ports, `Run`, `EventTail`, `stop_runs` and the readers for the runs), and the GUI's plan and section views,
+`kicad2ems.gui.planview.PlanView` and `kicad2ems.gui.sectionview.SectionView`. A change to those is a change to the plugin's interface.
 
 A coupled section's pairs (`LineModel.groups[...]['pairs']`) give their even- and odd-mode impedances with the
 copper's thickness (`ze`, `zo`) and as sheets (`ze_sheet`, `zo_sheet`), from the
 [field solver](transmission-lines.md#coupled-sections), as do grounded CPW sections. Each distinct one takes about
 20 ms, once per process (the CM5 Minima's 94 nets: 13 s, against 6.4 s with the formulas): for a first look from the
-formulas, set `lines.topology.FIELD_GROUPS = False` and `lines.reference.FIELD_CPW = False`. `build_lines(...,
+formulas, set `lines.topology.FIELD_GROUPS = False` and `lines.reference.FIELD_CPW = False`. `lines.builder.build(...,
 field=True)` takes every section from the board's cut across it, as the map's *Every section by the field solver*
 does. Each drawing element says where its Z0 came from (`source`, `z0_formula`) and carries its cross-sections
 (`section`), which `sections.solve` and kicad2ems-gui's `SectionView` draw.

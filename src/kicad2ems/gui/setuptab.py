@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
 from .runner import (FIELDS, SEMICOLON_LISTS, SECTION_SOLVERS, SECTION_TITLES,
                      TICK, settings_values, extra_values, save_config,
                      solvers_from_form, solver_ticks, basic_keys)
-from kicad2ems.core.api.frontend import G_DUMP
+from kicad2ems.core.fields.dumps import G_DUMP
 from .panels import Section, NeededList
 from .meters import duration
 from .study import BY_KEY, run_key
@@ -22,7 +22,8 @@ def _helps():
     """{field key: its tooltip}: each option's help (its {default} filled in),
     wrapped; a solver's tick box its solver's description."""
     import textwrap
-    from kicad2ems.core.api.frontend import all_options, registry
+    from kicad2ems.core.config import all_options
+    from kicad2ems.core.solvers import registry
     out = {}
     for _, o in all_options():
         if o.gui and o.help:
@@ -58,7 +59,7 @@ class SetupTab(QWidget):
 
     def __init__(self, win):
         super().__init__()
-        from kicad2ems.core.api.frontend import Settings
+        from kicad2ems.core.config import Settings
         self.win, self.edits, self.extra = win, {}, {}
         self.path, self.dirty, self._loading, self.est = (None, False, False,
                                                           None)
@@ -382,7 +383,7 @@ class SetupTab(QWidget):
     def dump_keys(self):
         """The settings of the form that ask a solver for field dumps: {key: its
         solvers}."""
-        from kicad2ems.core.api.frontend import registry
+        from kicad2ems.core.solvers import registry
         from kicad2ems.core.study import dump_options
         out = {}
         for name, sv in registry().items():
@@ -397,7 +398,7 @@ class SetupTab(QWidget):
         layer at the band's centre; mom25d: its currents there; an analysis: its
         fields switch), which the settings let you change. Unticked: the
         settings stay, the run leaves them out."""
-        from kicad2ems.core.api.frontend import default_fields
+        from kicad2ems.core.study import default_fields
         st = self.study
         if st.is_solver(question):
             if not on:
@@ -526,7 +527,7 @@ class SetupTab(QWidget):
     def _update_sections(self):
         """A solver's section (and the shared ones) greyed while none of its
         solvers is ticked: auto may run openEMS, mom25d and the line model."""
-        from kicad2ems.core.api.frontend import registry
+        from kicad2ems.core.solvers import registry
         if self.study is not None:  # the list's RF rows read the solvers' ticks
             self.study.refresh()
         ticked = {n for n, w in self.solver_boxes.items() if w.isChecked()}
@@ -904,9 +905,9 @@ class SetupTab(QWidget):
     def _start_dir(self):
         if self.path:
             return os.path.dirname(self.path)
-        from kicad2ems.core.api.frontend import examples_folder
-        return (examples_folder()
-                if os.path.isdir(examples_folder()) else os.getcwd())
+        from kicad2ems import examples
+        return (examples.user_folder()
+                if os.path.isdir(examples.user_folder()) else os.getcwd())
 
     def maybe_save(self):
         """True when the form may be replaced: saved, discarded or unchanged."""
@@ -940,7 +941,7 @@ class SetupTab(QWidget):
                                                   'TOML (*.toml)')
         if not path:
             return False
-        from kicad2ems.core.api.frontend import build_settings
+        from kicad2ems.core.config import build_settings
         try:
             vals, extra = settings_values(path), extra_values(path)
             notes = build_settings({}, path).notes

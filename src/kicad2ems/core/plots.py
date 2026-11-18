@@ -12,6 +12,8 @@ from matplotlib.lines import Line2D
 from matplotlib.colors import Normalize, TwoSlopeNorm
 from matplotlib.cm import ScalarMappable
 
+__all__ = ['preview', 'plot_convergence', 'plot_antenna', 'plot_pattern']
+
 TAB10 = matplotlib.colormaps['tab10'].colors
 
 

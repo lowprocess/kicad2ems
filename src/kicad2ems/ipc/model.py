@@ -53,7 +53,8 @@ class Plan:
     classes: {net: [class names]} as KiCad reports them (ipc.Live.net_classes);
     None: the project file next to the board (<board>.kicad_pro)."""
     def __init__(self, text, path='', classes=None):
-        from kicad2ems.core.api.frontend import KiCadBoard, Board
+        from kicad2ems.core.importers.kicad import KiCadBoard
+        from kicad2ems.core.board import Board
         from .netclass import NetClasses
         self.path = path
         self.notes = []
@@ -122,7 +123,7 @@ class Plan:
         4.9 s for KiCad's CM5 demo, against 5.8 s in groups of 24 nets. field:
         every section by the field solver on the board's cut across it, not the
         formulas (slower)."""
-        from kicad2ems.core.api.frontend import RefCopper
+        from kicad2ems.core.lines.reference import RefCopper
         from .netclass import partner
         nets = [
             n for n in (self.signal if nets is None else nets)
@@ -190,7 +191,8 @@ class Plan:
         port where it has pads on both legs of a pair. A track end that reaches
         nothing (no pad, via or track) gets a port too. Nets the board's own
         port footprints sit on keep those ports instead."""
-        from kicad2ems.core.api.frontend import kind_value, extra_port_fps
+        from kicad2ems.core.parts import kind_value
+        from kicad2ems.core.region import extra_port_fps
         from .netclass import partner
         sig, gnd = set(self.signal), set(self.m.ground_nets)
         want = []
@@ -419,7 +421,7 @@ class Plan:
         trace; elements: the map's sections, default plan.lines). Returns the
         port dict (name, spec, net, layer, x, y model mm, what) or raises
         ValueError with why not."""
-        from kicad2ems.core.api.frontend import extra_port_fps
+        from kicad2ems.core.region import extra_port_fps
         # past the board's and the session's
         n = (_last_port(self.board_ports + [p['name']
                                             for p in session.ports]) + 1)
@@ -524,9 +526,9 @@ def _renumber_pairs(ports):
 def _map_group(m, refcu, chunk, field=False):
     """The line model's sections (drawing elements) of a group, with the pair
     impedance of coupled legs (Zdiff = 2 Zodd)."""
-    from kicad2ems.core.api.frontend import build_lines
+    from kicad2ems.core.lines import builder
     from .netclass import partner
-    lm = build_lines(m, nets=chunk, refcu=refcu, field=field)
+    lm = builder.build(m, nets=chunk, refcu=refcu, field=field)
     for g in lm.groups:
         for k, pr in enumerate(g['pairs']):
             ea, eb = g['members'][k][0], g['members'][k + 1][0]
@@ -552,7 +554,7 @@ def _run_groups(m, refcu, groups, jobs, stop, field=False):
     per performance core, kicad2ems's rule; each gets the board and the
     reference copper once), as they finish; here, in order, with one worker or
     one group."""
-    from kicad2ems.core.api.frontend import core_threads
+    from kicad2ems.emsdev.cpu import core_threads
     jobs = jobs or core_threads()
     if jobs <= 1 or len(groups) <= 1:
         for g in groups:
@@ -785,7 +787,7 @@ def run_values(session, plan, text, folder, stem):
 def write_config(values, path):
     """A kicad2ems TOML config of the run's settings (kicad2ems-gui opens
     it)."""
-    from kicad2ems.core.api.frontend import toml_value
+    from kicad2ems.core.runs import toml_value
     lines = ["# written by the kicad2ems KiCad plugin"]
     lines += [
         f"{k} = {toml_value(v)}" for k, v in values.items()
@@ -850,7 +852,7 @@ def board_marks(session, elements, worst=12, off=0.10, size=0.6):
 
 def legend(lines):
     """(reference ohm, half span ohm, low, high) of the map's colours."""
-    from kicad2ems.core.api.frontend import overlay as ov
+    from kicad2ems.core import overlay as ov
     ref = ov.reference(lines)
     return ref, ov.span(lines, ref), *(lines.get('z0_range') or (ref, ref))
 
@@ -862,7 +864,8 @@ def results(out_dir, stem):
     Touchstone files), or None: dict(freq Hz, solved [dict(key, label, names, S,
     line: is it the line model)], reference (the first solver's key), compare
     {key: the run's table of it against the reference}, warnings)."""
-    from kicad2ems.core.api.frontend import read_touchstone, read_summary
+    from kicad2ems.core.touchstone import read_touchstone
+    from kicad2ems.core.runs import read_summary
     try:
         sm = read_summary(os.path.join(out_dir, f"{stem}_run.json"))
     except (OSError, ValueError):
@@ -961,8 +964,8 @@ def analysis_command(name, values, board, out):
     thermal) on the board, `values` beside its defaults: argv None and what it
     still needs where something is missing (its form in the window has the
     rest)."""
-    from kicad2ems.core.api.frontend import analyses
-    an = analyses().get(name)
+    from kicad2ems.core import analyses
+    an = analyses.registry().get(name)
     if an is None:
         return None, [f"{name}: not installed (kicad2ems has no such analysis)"]
     miss = [m.get('text', str(m)) for m in (an.missing(values, board) or [])]

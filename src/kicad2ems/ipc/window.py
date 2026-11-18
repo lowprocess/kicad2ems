@@ -22,9 +22,11 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QHeaderView)
 import pyqtgraph as pg
 
-from kicad2ems.core.api.frontend import (registry, overlay as ov, Run,
-                                         EventTail, stop_runs)
-from kicad2ems.gui.api import PlanView, SectionView
+from kicad2ems.core.solvers import registry
+from kicad2ems.core import overlay as ov
+from kicad2ems.core.runs import Run, EventTail, stop_runs
+from kicad2ems.gui.planview import PlanView
+from kicad2ems.gui.sectionview import SectionView
 from . import model as md
 from .netclass import partner
 

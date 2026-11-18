@@ -22,6 +22,8 @@ what it holds (an option's `pick`:
 """
 import os
 
+__all__ = ['board_layout', 'net_at', 'part_at']
+
 
 def board_layout(path):
     """The layout of a .kicad_pcb (the module docstring has its form).

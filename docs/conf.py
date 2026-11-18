@@ -55,12 +55,14 @@ myst_fence_as_directive = ['mermaid']
 suppress_warnings = ['myst.xref_missing', 'duplicate_declaration.cpp']
 
 autosummary_generate = True
-# the API modules re-export (kicad2ems.core.api.analysis: Analysis, Question,
-# Dump ...): followed to their source, viewcode files a whole module's source
-# page under the re-exporting name, and every link back from it misses
+# a package re-exports (kicad2ems.core.importers.kicad: KiCadBoard ...):
+# followed to their source, viewcode files a whole module's source page under
+# the re-exporting name, and every link back from it misses
 viewcode_follow_imported_members = False
 autodoc_default_options = dict(members=True, undoc_members=True,
                                show_inheritance=True, member_order='bysource')
+# every member, not only a module's __all__ (its API: docs/api.md)
+autodoc_default_options['ignore-module-all'] = True
 # what a machine may lack (GPU stacks, openEMS, KiCad's IPC client): stand-ins,
 # so their importers still import
 autodoc_mock_imports = [
@@ -152,48 +154,6 @@ def _navigation(app, docname, source):
         source[0] += ''.join(
             f"\n\n```{{toctree}}\n:hidden:\n:caption: {caption}\n\n"
             + '\n'.join(pages) + "\n```\n" for caption, pages in NAV)
-
-
-def _api_names():
-    """reference/api-names.md: each name of kicad2ems.core.api.solver and
-    .frontend (and kicad2ems.gui.api), linked to where it is defined (the API
-    modules re-export: an object is documented once, in its own module); with
-    .analysis."""
-    import importlib, inspect
-    from kicad2ems.core.api import analysis, solver, frontend
-    rows = [
-        '# API names', '',
-        'Each name of the APIs between the packages ([APIs](../api.md)), and '
-        'where it is defined.'
-    ]
-    for mod in (solver, analysis, frontend):
-        rows += [
-            '', f'## `{mod.__name__}`', '', '| Name | Defined as |', '|---|---|'
-        ]
-        for name, spec in mod.NAMES.items():
-            target, _, attr = spec.partition(':')
-            target = ('kicad2ems.core'
-                      + target if target.startswith('.') else target)
-            if not attr:
-                rows.append(f'| `{name}` | the module {{py:mod}}`{target}` |')
-                continue
-            obj = getattr(importlib.import_module(target), attr)
-            role = ('py:class' if inspect.isclass(obj) else
-                    'py:func' if callable(obj) else 'py:data')
-            rows.append(f'| `{name}` | {{{role}}}`{target}.{attr}` |')
-    rows += [
-        '', '## `kicad2ems.gui.api`', '', '| Name | Defined as |', '|---|---|',
-        '| `PlanView` | {py:class}`kicad2ems.gui.planview.PlanView` |', ''
-    ]
-    path = os.path.join(HERE, 'reference', 'api-names.md')
-    text = '\n'.join(rows)
-    # rewritten only when it changes (Sphinx's cache)
-    if not os.path.exists(path) or open(path).read() != text:
-        with open(path, 'w') as fh:
-            fh.write(text)
-
-
-_api_names()
 
 
 def _as_written(app, what, name, obj, options, lines):

@@ -23,9 +23,9 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from kicad2ems.core.api.solver import (Option, strlist, items, floatlist,
-                                       floats, G_DUMP)
-from kicad2ems.core.api.solver import Solver, Result, Deviation, registry
+from kicad2ems.core.options import Option, strlist, items, floatlist, floats
+from kicad2ems.core.fields.dumps import G_DUMP
+from kicad2ems.core.solvers import Solver, Result, Deviation, registry
 from .engines import engine_name
 
 
@@ -233,8 +233,7 @@ def _peak_delay(run):
     """The line model's largest group delay (s) over its terms that carry
     signal: how long the board rings. None without a line model or a circuit
     solver for it."""
-    from kicad2ems.core.api.solver import (solve_lines as solve,
-                                           lines_backend as resolve_backend)
+    from kicad2ems.core.solvers.lines.fastsolve import solve, resolve_backend
     if run.lm is None or not run.lm.paths:
         return None
     try:
@@ -307,7 +306,7 @@ class FDTD(Solver):
         """(sigma, rough um RMS) the model's conducting sheets get: (None, None)
         for PEC copper; --rough as the conductivity at the band centre where the
         engine has no roughness of its own."""
-        from kicad2ems.core.api.solver import band_sigma
+        from kicad2ems.core.roughness import band_sigma
         s = run.s
         if not (self.conductor_loss and s.sigma):
             return None, None
@@ -333,8 +332,8 @@ class FDTD(Solver):
         out = dict(faces=self.face_sheets)
         fin = getattr(run, 'finish', None)
         if fin is None:
-            from kicad2ems.core.api.solver import resolve_finish
-            fin = resolve_finish(s, run.m)
+            from kicad2ems.core import finish
+            fin = finish.resolve(s, run.m)
         if fin:
             out['finish'] = dict(
                 name=fin.name, layers=[(sg, t) for _, sg, t in fin.layers],
@@ -452,7 +451,7 @@ class FDTD(Solver):
         from .boundaries import resolve_bc, cavity_check
         from .model import pulse_steps
         from .antenna import exc_fmax
-        from kicad2ems.core.api.solver import parse_dump
+        from kicad2ems.core.fields.dumps import parse_dump
         s, m = run.s, run.m
         folder, who = engine_name(self.engine(s))
         reg = registry()  # the run's first FDTD solver draws the mesh
@@ -480,16 +479,15 @@ class FDTD(Solver):
                            zone=mesh_zone(s), thickness=s.thickness == 'on',
                            nz_mask=s.nz_mask, log=log)
         if m.walls:
-            from kicad2ems.core.api.solver import (describe_edges as describe,
-                                                   snap_edges as snap)
+            from kicad2ems.core.edges import describe, snap
             for g in [p.grid] + [lm for _, lm in (p.levels or [])]:
                 g['walls'] = snap(m.walls, g)
                 g['info']['edge_walls'] = describe(m.walls, m).split(': ', 1)[1]
         out = self.summary(run)
         out['mesh'] = p.grid['info']
         if first:
-            from kicad2ems.core.api.solver import save_mesh as save
-            from kicad2ems.core.api.solver import plot_preview as preview
+            from kicad2ems.core.meshes import save
+            from kicad2ems.core.plots import preview
             run.summary['mesh'] = p.grid['info']
             run.wrote(
                 f"{who} grid (3D view)",
@@ -519,7 +517,7 @@ class FDTD(Solver):
     def jobs(self, run, p):
         """Runs at once: --jobs, warned when they need more memory than the
         machine has."""
-        from kicad2ems.core.api.solver import ram_gb
+        from kicad2ems.core.pipeline import ram_gb
         jobs, ram, gb = (max(1, min(run.s.jobs, len(p.excite))), ram_gb(),
                          p.grid['info']['mem_gb'])
         if jobs > 1 and ram and jobs * gb > 0.8 * ram:
@@ -589,7 +587,7 @@ class FDTD(Solver):
         engine (run_kw names it), with the ports the result has
         (--port-kind)."""
         from .run import run_excitations
-        from kicad2ems.core.api.solver import mixed_mode, fill_reciprocal
+        from kicad2ems.core.sparams import mixed_mode, fill_reciprocal
         for f, lm in (p.levels or [])[:-1]:
             run.log(
                 f"--- mesh level x{f:g} ({lm['info']['cells'] / 1e6:.2f} M "
@@ -609,14 +607,14 @@ class FDTD(Solver):
     def solve(self, run, p):
         from .model import port_index
         from .run import run_excitations
-        from kicad2ems.core.api.solver import dump_size_mb as estimate_size_mb
-        from kicad2ems.core.api.solver import mixed_mode, fill_reciprocal
+        from kicad2ems.core.fields.dumps import estimate_size_mb
+        from kicad2ems.core.sparams import mixed_mode, fill_reciprocal
         s, m = run.s, run.m
         who = engine_name(self.engine(s))[1]
         p.excite = port_index(m, s.excite)
         p.drive = None
         if s.antenna and s.drive:  # a phased drive: a run per driven port
-            from kicad2ems.core.api.solver import phased
+            from kicad2ems.core import phased
             p.drive, _ = phased.settings_drive(s.drive,
                                                [q.name for q in m.ports],
                                                s.grid, s.steer, s.taper)
@@ -706,7 +704,7 @@ class FDTD(Solver):
         (fdtd.antenna.combine_phased); --aim's phases at the pattern frequency
         the drive gives, then combined again."""
         from . import antenna
-        from kicad2ems.core.api.solver import phased
+        from kicad2ems.core import phased
         s, m = run.s, run.m
         names = [q.name for q in m.ports]
         pos = {q.name: (float(q.c[0]), float(q.c[1])) for q in m.ports}
@@ -765,7 +763,7 @@ class FDTD(Solver):
             self.antenna(run, p)
         if p.levels:  # --converge: the levels compared
             from .converge import compare_levels, verdict
-            from kicad2ems.core.api.solver import plot_convergence
+            from kicad2ems.core.plots import plot_convergence
             tol_db, tol_deg = run.s.converge_tol
             # finest: the reference
             dev = (compare_levels([S_
@@ -793,7 +791,7 @@ class FDTD(Solver):
         """The field maps (PNG, and animations with --dump-animate) of the
         frequency-domain plane dumps, named with the tag beside another FDTD
         solver's."""
-        from kicad2ems.core.api.solver import plot_fd_dumps
+        from kicad2ems.core.fields.dumps import plot_fd_dumps
         s, m, r = run.s, run.m, p.result
         prefix = self.tag.strip('_') + ' ' if self.tag else ''
         for (pname, dname), path in r.dump_files.items():
@@ -812,8 +810,8 @@ class FDTD(Solver):
                     run.wrote(f"field map {prefix}{dname} ({pname})", q)
                 # one period at each frequency
                 if s.dump_animate and d.normal is not None:
-                    from kicad2ems.core.api.solver import (DumpSource,
-                                                           save_animation)
+                    from kicad2ems.core.fields.frames import (DumpSource,
+                                                              save_animation)
                     src = DumpSource(os.path.dirname(path), dname, 'FD')
                     for i, f in enumerate(src.freqs):
                         q = save_animation(
@@ -838,13 +836,13 @@ class FDTD(Solver):
         """<name><tag>_antenna.json (with the solver and its sphere file) and
         the antenna plots."""
         from .run import run_dir
-        from kicad2ems.core.api.solver import save_antenna as save
-        from kicad2ems.core.api.solver import plot_antenna, plot_pattern
+        from kicad2ems.core.fields.antenna import save
+        from kicad2ems.core.plots import plot_antenna, plot_pattern
         k, m, s = p.excite[0], run.m, run.s
         who = engine_name(self.engine(s))[1]
         tag = self.tag or '_' + self.name
         if p.drive is not None:  # phased: the combined sphere and the array
-            from kicad2ems.core.api.solver import phased
+            from kicad2ems.core import phased
             sph = run.path(f"{tag}_sphere.npz")
             np.savez_compressed(sph, **p.sphere)
             arr = run.path(f"{tag}_array.npz")

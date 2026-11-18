@@ -31,6 +31,8 @@ import math
 
 import numpy as np
 
+__all__ = ['layers', 'face_z', 'factor', 'weighted', 'band_sigma', 'resolve']
+
 MU0 = 4e-7 * math.pi
 SIGMA_CU = 5.8e7
 

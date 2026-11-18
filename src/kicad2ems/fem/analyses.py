@@ -22,14 +22,13 @@ lay the answers side by side.
 
 Each one's settings are its command line's options, read from the tool's own
 parser, so a new option of a tool appears in a front end without a change here.
-Only this module imports kicad2ems.core.api.analysis.
 """
 import json
 import os
 import re
 import sys
 
-from kicad2ems.core.api.analysis import Analysis
+from kicad2ems.core.analyses import Analysis
 
 ORDER = ('Coils and plates', 'Nets and loads', 'Heat', 'Air and board', 'Mesh',
          'Solver')

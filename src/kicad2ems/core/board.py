@@ -48,6 +48,8 @@ from .importers.kicad.nets import resolve_nets, DiffLegs
 from .importers.kicad.pnp import read_pos, pos_port_refs
 from .parts import Part, find_parts
 
+__all__ = ['Port', 'Board']
+
 FORMAT, VERSION = 'kicad2ems-board', 1
 # mm: edge walls on a region cut stay this far from the signal copper
 # (docs/model.md)

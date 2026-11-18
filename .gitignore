@@ -35,7 +35,6 @@ examples/filter_test/
 docs/img/readme/*.mp4
 docs/_build/
 docs/reference/_generated/
-docs/reference/api-names.md
 
 # the parts' own (merged from their repositories)
 *.pyc

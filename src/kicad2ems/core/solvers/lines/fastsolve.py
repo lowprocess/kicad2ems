@@ -23,6 +23,8 @@ import numpy as np
 from ...constants import C0, MU0
 from ...touchstone import log_spaced, write_touchstone
 
+__all__ = ['resolve_backend', 'solve']
+
 BACKENDS = ('skrf', 'qucsator')
 
 

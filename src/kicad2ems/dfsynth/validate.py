@@ -148,7 +148,7 @@ class Follow:
 
     def __init__(self, path, log=print):
         # kicad2ems's reader: the stream's format checked
-        from kicad2ems.core.api.frontend import EventTail
+        from kicad2ems.core.runs import EventTail
         self.tail, self.log, self.last = EventTail(path), log, {}
 
     def read(self):

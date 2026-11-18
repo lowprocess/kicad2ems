@@ -17,7 +17,7 @@ The settings form is made from kicad2ems's option tables and its solver
 registry, so every solver (openEMS, mom25d, gfdtd or any other the registry
 lists) gets its tick box and its settings with no change here. The analyses come
 the same way, from kicad2ems's analysis registry
-(`kicad2ems.core.api.frontend.analyses`): the window knows none of them by name,
+(`kicad2ems.core.analyses.registry`): the window knows none of them by name,
 but for the Circuit page's model editor, which imports pcbqs's model and
 schematic code. Each run is a process of its own (`kicad2ems.core.runs`, or the
 analysis's command), so the window needs nothing of a solver's and a solver's
@@ -44,7 +44,7 @@ will run, or the first thing missing.
 The left column is the study: the board (one for every question) and the
 **Questions** asked of it; the settings of the question selected there are the
 Settings dock. The list is kicad2ems's
-(`kicad2ems.core.api.frontend.study_tree`): the questions by group (RF, Power,
+(`kicad2ems.core.study.study_tree`): the questions by group (RF, Power,
 Thermal), each with the engines that answer it. A row's *Answered by* cell is a
 menu: *auto*, or a tick per engine, and several ticked all run and are compared;
 *Fields* asks for its field dumps where an engine can write them. The three RF

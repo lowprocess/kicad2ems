@@ -8,8 +8,8 @@ moved to make room for it.
 """
 import math
 import numpy as np
-from kicad2ems.core.api.solver import EPS0
-from kicad2ems.core.api.solver import split_holes
+from kicad2ems.core.constants import EPS0
+from kicad2ems.core.geometry import split_holes
 
 
 def _fl(v):
@@ -212,7 +212,7 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR', ) * 6, end_db=-40,
                                getattr(p, 'direction', 'z'),
                                excite=1.0 if i == excite else 0.0, priority=12))
     if dumps:
-        from kicad2ems.core.api.solver import add_dumps
+        from kicad2ems.core.fields.dumps import add_dumps
         add_dumps(CSX, dumps)
     if line_plan is not None:
         from . import lineport
@@ -233,10 +233,10 @@ def _finished_sheet(CSX, name, sigma, t_mm, fin, share, rkw, face):
                   finish_share=float(share), face=face)
         return CSX.AddConductingSheet(name, conductivity=float(s),
                                       thickness=float(th), **rkw, **kw)
-    from kicad2ems.core.api.solver import finish_band_sigma
+    from kicad2ems.core import finish
     lay = [(None, a, b) for a, b in fin['layers']]
     t_face = (t_mm / 2 if face else t_mm) * 1e-3
-    eff = finish_band_sigma(sigma, lay, share, *fin['band'], t=t_face)
+    eff = finish.band_sigma(sigma, lay, share, *fin['band'], t=t_face)
     return CSX.AddConductingSheet(name,
                                   conductivity=float(eff / 4 if face else eff),
                                   thickness=float(th), **rkw)

@@ -151,7 +151,7 @@ def test_map_by_the_field_solver_and_its_cache(lowpass, tmp_path):
     too; the formulas' map and this one kept apart in the cache; each section
     can be solved and drawn from what the map holds."""
     from kicad2ems.ipc.model import Plan
-    from kicad2ems.core.api.frontend import sections
+    from kicad2ems.core.lines import sections
     text, path, cache = _text(lowpass), lowpass, str(tmp_path / 'map.json.gz')
     plain, field, two = Plan(text, path), Plan(text, path), Plan(text, path)
     list(plain.map_steps(jobs=1, cache=cache))

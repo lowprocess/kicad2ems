@@ -109,7 +109,7 @@ class _Thumbs(QThread):
         self.entries, self.version, self.stop = list(entries), version, False
 
     def run(self):
-        from kicad2ems.core.api.frontend import board_layout
+        from kicad2ems.core.layout import board_layout
         from kicad2ems import examples as X
         folder = os.path.join(
             (os.environ.get('XDG_CACHE_HOME')
@@ -243,8 +243,8 @@ class StartPage(QWidget):
         self.none = QLabel('no example matches', styleSheet='color: gray')
         if entries is None:
             try:
-                from kicad2ems.core.api.frontend import example_index
-                entries = example_index()
+                from kicad2ems import examples
+                entries = examples.index()
             # (an analysis's fault: no examples)
             except Exception:  # noqa: BLE001
                 entries = []

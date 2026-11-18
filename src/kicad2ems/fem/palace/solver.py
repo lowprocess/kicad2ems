@@ -20,7 +20,8 @@ import time
 
 import numpy as np
 
-from kicad2ems.core.api.solver import Option, Solver, Result, Deviation
+from kicad2ems.core.options import Option
+from kicad2ems.core.solvers import Solver, Result, Deviation
 
 G = 'palace'
 # antenna mode's air around the board, wavelengths at the band centre
@@ -272,7 +273,7 @@ class Palace(Solver):
 
     def solve(self, run, prep):
         import json
-        from kicad2ems.core.api.solver import mixed_mode
+        from kicad2ems.core.sparams import mixed_mode
         from . import config, run as prun
         s, work, mdl = run.s, prep['work'], prep['model']
         box = getattr(s, 'palace_box', None) or 'absorbing'
@@ -405,9 +406,9 @@ class Palace(Solver):
         antenna results (the JSON, the sphere, the plots and the report
         section)."""
         import json
-        from kicad2ems.core.api.solver import (match_summary, describe_antenna,
-                                               save_antenna, plot_antenna,
-                                               plot_pattern)
+        from kicad2ems.core.fields.antenna import (match_summary, describe,
+                                                   save)
+        from kicad2ems.core.plots import plot_antenna, plot_pattern
         from . import antenna, config, run as prun
         s, m, work, mdl = run.s, run.m, prep['work'], prep['model']
         names = [p.name for p in m.ports]
@@ -449,7 +450,7 @@ class Palace(Solver):
             f"the finite board in air, absorbing faces {mdl.margin:.0f} mm "
             "away; "
             + ('lossy copper sheets' if s.palace_loss else 'lossless copper'))
-        for line in describe_antenna(match, ant['rows'], ant['f_pattern']):
+        for line in describe(match, ant['rows'], ant['f_pattern']):
             run.log(f"  palace {line}")
         # another solver's results come first
         tag = '' if 'antenna' not in run.summary else '_palace'
@@ -462,7 +463,7 @@ class Palace(Solver):
                    "_palace_pattern.png", f"pattern{tag}",
                    'antenna (Palace): patterns')
         js = run.path('_palace_antenna.json')
-        save_antenna(ant, js)
+        save(ant, js)
         run.wrote('antenna results, Palace (JSON)', js)
         run.wrote('antenna sphere, Palace', sph_file)
         run.summary['antenna'

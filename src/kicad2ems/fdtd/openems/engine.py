@@ -33,7 +33,7 @@ def check():
     errors and hints."""
     import importlib, shutil, sys
     from .venv import activate, dll_dirs
-    from kicad2ems.core.api.solver import sitecfg
+    from kicad2ems.core import sitecfg
     why = activate()
     windows = sys.platform == 'win32'
     dlls = dll_dirs()

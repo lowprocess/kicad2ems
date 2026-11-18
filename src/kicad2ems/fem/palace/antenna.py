@@ -69,8 +69,9 @@ def analyse(ffr, s11, pinc, theta, phi, E, step=2.0, f_pattern=None):
     the result dict without the match (rows, f_pattern, cuts, sphere) and the
     sphere file's arrays (theta, phi, freq, dmax, prad, e_norm (nf, nphi,
     ntheta))."""
-    from kicad2ems.core.api.solver import (gain_table, add_polarisation,
-                                           pattern_gain, phased)
+    from kicad2ems.core.fields.antenna import (gain_table, add_polarisation,
+                                               pattern_gain)
+    from kicad2ems.core import phased
     ffr = np.asarray(ffr, float)
     E = np.asarray(E)
     at = {_key(t, p): i for i, (t, p) in enumerate(zip(theta, phi))}

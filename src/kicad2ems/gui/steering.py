@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QGroupBox,
                                QHBoxLayout, QLabel, QLineEdit, QPushButton,
                                QSizePolicy, QSlider, QSpinBox, QVBoxLayout,
                                QWidget)
-from kicad2ems.core.api.frontend import phased
+from kicad2ems.core import phased
 
 STEP_MAX = 180          # deg: the phase steps' range, either way
 ANIM_MS = 60            # a frame of Animate

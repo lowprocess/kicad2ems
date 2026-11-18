@@ -40,8 +40,8 @@ def _is_number(text):
 def _circuit():
     """The circuit analysis: the registry's, else pcbqs's own (a registry of
     others)."""
-    from kicad2ems.core.api.frontend import analyses
-    a = analyses().get('circuit')
+    from kicad2ems.core import analyses
+    a = analyses.registry().get('circuit')
     if a is not None:
         return a
     from kicad2ems.pcbqs.analyses import Circuit

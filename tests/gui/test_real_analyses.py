@@ -86,7 +86,7 @@ def test_the_panels_are_pcbqs_s_options(window):
 
 
 def test_a_circuit_example_runs_to_its_temperatures(window, tmp_path):
-    from kicad2ems.core.api.frontend import read_analyses
+    from kicad2ems.core import analyses
     w, app = window
     w.show()
     w.open_example('circuit_rc_filter')
@@ -140,11 +140,11 @@ def test_a_circuit_example_runs_to_its_temperatures(window, tmp_path):
             and r.set_box.count() >= 1)
     assert 'Points' in [t for t, _ in r.reportview._tables]
     assert w.setup.save()  # the study, saved: what it asks, its model
-    from kicad2ems.core.api.frontend import read_study
-    run, tables = read_analyses(w.setup.path)
+    from kicad2ems.core import study
+    run, tables = analyses.read_config(w.setup.path)
     assert (run is None and tables['circuit']
             == dict(model=str(folder / '01_rc_filter.json')))
-    assert list(read_study(w.setup.path).asked) == ['circuit', 'thermal']
+    assert list(study.read_config(w.setup.path).asked) == ['circuit', 'thermal']
 
 
 def _regulator(folder):

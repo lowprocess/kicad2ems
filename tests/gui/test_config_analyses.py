@@ -6,7 +6,8 @@ import os
 import pytest
 
 from kicad2ems.gui import runner
-from kicad2ems.core.api.frontend import read_analyses, build_settings
+from kicad2ems.core import analyses
+from kicad2ems.core.config import build_settings
 from waiting import wait_until
 
 
@@ -30,7 +31,7 @@ def test_the_tables_are_written_and_replaced(tmp_path):
     assert text.endswith(
         '[analysis]\nrun = ["pdn", "rf"]\n\n[analysis.pdn]\nrail = '
         '"+3V3"\nvolts = 5.0\nload = ["U1=2", "U2=1"]\nno_pdn = true\n')
-    assert (read_analyses(str(cfg)) == ([
+    assert (analyses.read_config(str(cfg)) == ([
         'pdn', 'rf'
     ], dict(
         pdn=dict(rail='+3V3', volts=5.0, load=['U1=2', 'U2=1'], no_pdn=True))))
@@ -38,7 +39,8 @@ def test_the_tables_are_written_and_replaced(tmp_path):
             and build_settings({}, str(cfg)).mom_dmax == 0.4)
     # replaced, not added to
     runner.write_analyses(str(cfg), ['rf'], dict(mqs=dict(converter='U7')))
-    assert (read_analyses(str(cfg)) == (['rf'], dict(mqs=dict(converter='U7')))
+    assert (analyses.read_config(str(cfg))
+            == (['rf'], dict(mqs=dict(converter='U7')))
             and cfg.read_text().count('[analysis]') == 1)
     runner.write_analyses(str(cfg), None, {})  # none any more: the tables gone
     assert ('[analysis' not in cfg.read_text()
@@ -57,8 +59,7 @@ def test_the_tables_are_written_and_replaced(tmp_path):
         '5.0\n\n[[analysis.pdn]]\nrail = "+3V3"\nvolts = 3.3\nload = '
         '["U1=1"]\n\n[analysis.mqs]\nconverter = "U7"\n'
     )
-    from kicad2ems.core.api.frontend import read_analysis_sets
-    assert (read_analysis_sets(str(cfg)) == dict(pdn=rails,
+    assert (analyses.read_sets(str(cfg)) == dict(pdn=rails,
                                                  mqs=[dict(converter='U7')]))
     runner.write_analyses(str(cfg), None, dict(pdn=rails[:1]))
     assert (cfg.read_text().count('analysis.pdn') == 1
@@ -113,12 +114,12 @@ def test_a_config_opens_as_a_study_and_saves_back(window, tmp_path):
         __import__('PySide6.QtCore', fromlist=['Qt']).Qt.Checked)
     assert w.study.ticked() == ['pdn', 'mqs', 'thermal']
     assert w.setup.save() and not w.setup.dirty
-    from kicad2ems.core.api.frontend import read_study
-    run, tables = read_analyses(str(cfg))
+    from kicad2ems.core import study
+    run, tables = analyses.read_config(str(cfg))
     # [study] says what runs now; not installed: kept
     assert run is None and tables['cfd'] == dict(fans=2)
     # the rail tool answered both its questions
-    st = read_study(str(cfg))
+    st = study.read_config(str(cfg))
     # the analyses the config named: kept by name
     assert st.said == 'study' and st.fields == {}
     assert (st.asked == dict(dc=['pdn'], pdn=['pdn'], nearfield=[],
@@ -151,8 +152,7 @@ def test_a_config_opens_as_a_study_and_saves_back(window, tmp_path):
     )
     pdn.w['volts'].setText('5.1')
     assert w.setup.save()
-    from kicad2ems.core.api.frontend import read_analysis_sets
-    assert (read_analysis_sets(str(many))['pdn'] == [
+    assert (analyses.read_sets(str(many))['pdn'] == [
         dict(rail='+5V', volts=5.1),
         dict(rail='+3V3', volts=3.3, board='other.kicad_pcb'),
         dict(rail='+1V8')
@@ -194,7 +194,6 @@ def test_several_rails_are_a_table_and_a_run_each(tmp_path, monkeypatch):
     from PySide6.QtCore import QSettings
     from kicad2ems.gui import application
     from kicad2ems.gui.app import MainWindow
-    from kicad2ems.core.api.frontend import read_analysis_sets
     app = application()
     QSettings('kicad2ems', 'gui').clear()
     w = MainWindow()
@@ -244,7 +243,7 @@ def test_several_rails_are_a_table_and_a_run_each(tmp_path, monkeypatch):
         assert (pdn.log.toPlainText().count('$ python') == 3
                 and pdn.status.text().startswith('rail 3 of 3 (+1V8): done'))
         assert w.setup.save()
-        sets = read_analysis_sets(str(cfg))['pdn']
+        sets = analyses.read_sets(str(cfg))['pdn']
         # (3.3: the default)
         assert ([(s['rail'], s.get('volts'), s.get('load'), s.get('scale'))
                  for s in sets] == [('+5V', 5.0, ['U1=2'], 2.0),

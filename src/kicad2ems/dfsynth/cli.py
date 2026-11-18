@@ -316,7 +316,7 @@ def main(argv=None):
     summary = {'model': mm}
 
     if a.validate:
-        from kicad2ems.core.api.frontend import registry
+        from kicad2ems.core.solvers import registry
         extra = a.k2e_args.split() if a.k2e_args else []
         rounds = []
         for r in range(a.em_tune + 1):

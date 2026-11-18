@@ -20,6 +20,8 @@ other.
 import glob, os
 import numpy as np
 
+__all__ = ['LABELS', 'save', 'find', 'segments', 'counts']
+
 LABELS = {
     'mqs': 'quasi-static copper mesh', 'openems': 'openEMS grid',
     'gfdtd': 'gfdtd grid (openEMS settings)', 'mom25d': 'mom25d mesh (MoM)',

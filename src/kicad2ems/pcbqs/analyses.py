@@ -19,7 +19,7 @@ import os
 import re
 import sys
 
-from kicad2ems.core.api.analysis import Analysis
+from kicad2ems.core.analyses import Analysis
 
 
 
@@ -616,8 +616,9 @@ class Thermal(_Tool):
 
 # ---- a solver: S-parameters at low frequency, from the copper's quasi-static
 # currents (sparams.py) -------------------------------------------------------
-from kicad2ems.core.api.solver import (Deviation, Option, Result,  # noqa: E402
-                                       Solver, mixed_mode)
+from kicad2ems.core.solvers import Deviation, Result, Solver  # noqa: E402
+from kicad2ems.core.options import Option  # noqa: E402
+from kicad2ems.core.sparams import mixed_mode  # noqa: E402
 
 G_QS = 'pcbqs'
 

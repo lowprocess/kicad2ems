@@ -15,6 +15,8 @@ starts). Solvers not started yet are skipped.
 """
 import os
 
+__all__ = ['Stopped', 'requested', 'check']
+
 ENV = 'KICAD2EMS_STOP'
 NAME = 'STOP'
 

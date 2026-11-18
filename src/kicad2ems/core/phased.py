@@ -43,6 +43,10 @@ import cmath, math, re
 import numpy as np
 from .constants import C0, ETA0
 
+__all__ = ['parse_drive', 'format_drive', 'parse_grid', 'format_grid',
+           'steer2d', 'aim', 'TAPERS', 'TAPER_SLL', 'parse_taper', 'taper',
+           'settings_drive', 'waves', 'radiated', 'combine', 'save', 'load']
+
 
 def parse_drive(spec, names):
     """Incident waves (complex, one per port of names) from

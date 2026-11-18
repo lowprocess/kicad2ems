@@ -20,6 +20,8 @@ import numpy as np
 from shapely.geometry import Polygon, LineString, Point, box
 from shapely.ops import unary_union, polygonize
 
+__all__ = ['extra_port_fps']
+
 GROUND_RE = re.compile(r'(^|[^A-Z])(A|D|P|SIG|CHASSIS)?(GND|GROUND|VSS)', re.I)
 
 

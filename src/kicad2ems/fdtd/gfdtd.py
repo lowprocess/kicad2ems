@@ -14,7 +14,7 @@ gfdtd.
 import json
 import os
 
-from kicad2ems.core.api.solver import Option
+from kicad2ems.core.options import Option
 from .solver import FDTD, MESH, RUN, CONVERGE
 
 G = 'gfdtd'                                     # its section in kicad2ems's GUI

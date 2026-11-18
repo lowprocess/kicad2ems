@@ -30,11 +30,12 @@ import time
 
 import numpy as np
 
-from kicad2ems.core.api.solver import Result, Option
+from kicad2ems.core.solvers import Result
+from kicad2ems.core.options import Option
 from .mom import (MoM25D, _metal, _model_kw, _mesh_kw, run_finish, _stack,
                   apertures, aperture_text, ports_below)
 from kicad2ems.emsdev.numerics.base import C0
-from kicad2ems.core.api.solver import stop
+from kicad2ems.core import stop
 
 G = 'mixed'                                     # its section in kicad2ems's GUI
 CUT_MIN = 3.0           # mm: the shortest stretch worth cutting out
@@ -263,7 +264,7 @@ def solve_mixed(m, freq, dmax=0.3, sigma=None, rough=None, finish=None,
     from kicad2ems.mom25d.geo import LinePort
     from kicad2ems.mom25d.run import solve_band
     from kicad2ems.mom25d.api import ZONE_OUT, LINE_STEP
-    from kicad2ems.core.api.solver import mixed_mode
+    from kicad2ems.core.sparams import mixed_mode
     t0 = time.time()
     data = m.to_dict()
     freq = np.asarray(freq, float)

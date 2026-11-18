@@ -23,7 +23,7 @@ class WindowResults:
         viewer (board, meshes, line model, dumps, far field) and the results
         page (S-parameters and antenna, or an analysis's report and curves);
         front: the page with something new in front."""
-        from kicad2ems.core.api.frontend import analysis_of
+        from kicad2ems.core.analyses import analysis_of
         self.shown = os.path.abspath(out_dir)
         files = find_results(out_dir)
         if not files:  # a --vary run's folder: its first run shown,
@@ -263,7 +263,7 @@ class WindowResults:
         Plots, the last in the second Viewer when it has fields or maps (or is
         open, or viewer). False: one could not be (another kind of result, or
         none)."""
-        from kicad2ems.core.api.frontend import frames
+        from kicad2ems.core.fields import frames
         r = self.results
         want = [os.path.abspath(f) for f in folders]
         for d in r.compared():

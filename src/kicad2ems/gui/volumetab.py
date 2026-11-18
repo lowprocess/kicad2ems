@@ -507,7 +507,8 @@ class VolumeTab(QWidget):
         if self.gl is None:
             return False
         import glob
-        from kicad2ems.core.api.frontend import find_dumps, meshes
+        from kicad2ems.core.fields.frames import find_dumps
+        from kicad2ems.core import meshes
         from .antennatab import find_antenna, load_sphere
         self.srcs = [
             s for s in find_dumps(out_dir) if v3.is_volume(s) or v3.is_plane(s)
@@ -813,7 +814,7 @@ class VolumeTab(QWidget):
     def _solved_state(self):
         """The "solved mesh" tick box: usable where a run of the solver picked
         wrote the mesh it solved on."""
-        from kicad2ems.core.api.frontend import meshes
+        from kicad2ems.core import meshes
         solver = self.mesh.currentData()
         self.solved.setEnabled(mp.solved(self.mesh_files, solver) is not None)
         self.solved.setToolTip(mp.tip(self.mesh_files, solver, meshes.counts))
@@ -938,7 +939,7 @@ class VolumeTab(QWidget):
         solver = self.mesh.currentData()
         # a solver's mesh as lines over the board
         if solver and mp.shown(self.mesh_files, solver):
-            from kicad2ems.core.api.frontend import meshes
+            from kicad2ems.core import meshes
             b, planes = (v3.board_box(g),
                          sorted(set((g.get('cu_z') or {}).values())))
             drawn = [('mesh', mp.shown(self.mesh_files, solver), 1,
@@ -973,7 +974,7 @@ class VolumeTab(QWidget):
         on screen: the height scale does not stretch them."""
         if not (self.lines and self.lines_on.isChecked()):
             return
-        from kicad2ems.core.api.frontend import overlay as ov
+        from kicad2ems.core import overlay as ov
         ref, half = ov.reference(self.lines), ov.span(self.lines)
         zs_all = [
             e['z0']
@@ -1203,7 +1204,7 @@ class VolumeTab(QWidget):
         return imgs
 
     def save(self, path, fps=None, orbit=0.0):
-        from kicad2ems.core.api.frontend import write_frames
+        from kicad2ems.core.fields.frames import write_frames
         return write_frames(self.render_frames(orbit), path, fps
                             or self.fps.value())
 

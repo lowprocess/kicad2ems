@@ -4,8 +4,7 @@ circuit and thermal simulations. One package, its parts subpackages (each was a
 repository of its own until 2026-11-16):
 
     core      the board model, the settings, the pipeline, the line model, the
-              registries of the solvers and analyses and their API
-              (kicad2ems.core.api), the command line
+              registries of the solvers and analyses, the command line
     gui       the window (PySide6)
     fdtd      the FDTD solvers' shared model: openEMS and gfdtd
     gfdtd     a 3D FDTD engine on the GPU or a compiled CPU core

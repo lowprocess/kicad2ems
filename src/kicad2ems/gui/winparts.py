@@ -36,7 +36,7 @@ class _Preparing(QThread):
         self.name, self.error = name, ''
 
     def run(self):
-        from kicad2ems.core.api.frontend import prepare_example
+        from kicad2ems.examples import prepare_example
         try:
             path = prepare_example(self.name)
         # (said by the window)
@@ -140,7 +140,7 @@ class _Layout(QThread):
 
     def run(self):
         try:
-            from kicad2ems.core.api.frontend import board_layout
+            from kicad2ems.core.layout import board_layout
             layout = board_layout(self.board)
         # (a board that cannot be read: no layout)
         except Exception:  # noqa: BLE001

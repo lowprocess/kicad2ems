@@ -9,7 +9,8 @@ import sys
 
 import numpy as np
 import pytest
-from kicad2ems.core.api.frontend import Board, KiCadBoard
+from kicad2ems.core.board import Board
+from kicad2ems.core.importers.kicad import KiCadBoard
 from k2e_fixtures import GEN  # kicad2ems's examples/make_demo_board.py
 
 BOARDS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'boards')

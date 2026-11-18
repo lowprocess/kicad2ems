@@ -31,7 +31,7 @@ import datetime, json, os, re, time
 from dataclasses import dataclass
 # the folders' names are kicad2ems's (its `kicad2ems study` puts its runs there
 # too): kicad2ems.core.runs
-from kicad2ems.core.api.frontend import (  # noqa: F401
+from kicad2ems.core.runs import (  # noqa: F401
     board_name, run_dir, preview_dir, tool_dir, tool_preview_dir)
 
 STAMP = '%Y%m%d_%H%M%S'
@@ -115,14 +115,14 @@ def engine_label(name):
 def tool_titles():
     """{kind: title} of the analyses whose runs are listed: those kicad2ems's
     registry holds, in its order."""
-    from kicad2ems.core.api.frontend import analyses
-    return {name: a.label for name, a in analyses().items()}
+    from kicad2ems.core import analyses
+    return {name: a.label for name, a in analyses.registry().items()}
 
 
 def tool_kind(folder):
     """The analysis ('pdn', 'thermal' ...) whose finished result the folder
     holds, else None (a preview's too)."""
-    from kicad2ems.core.api.frontend import analysis_of
+    from kicad2ems.core.analyses import analysis_of
     made = analysis_of(folder or '')
     return made[0] if made and not made[1] else None
 
@@ -252,7 +252,7 @@ def _read(d, board, kind, what, when, live):
         engines = ()
         if os.path.isfile(summary):
             try:
-                from kicad2ems.core.api.frontend import read_summary
+                from kicad2ems.core.runs import read_summary
                 engines = tuple(read_summary(summary).get('solvers') or ())
             except (OSError, ValueError):
                 pass
@@ -263,8 +263,8 @@ def _read(d, board, kind, what, when, live):
     else:
         has = tool_kind(d) == kind
         engines = (mark.get('engine') or kind, )
-        from kicad2ems.core.api.frontend import analyses
-        a = analyses().get(kind)
+        from kicad2ems.core import analyses
+        a = analyses.registry().get(kind)
         questions = mark.get('questions') or (provided(a) if a else (kind, ))
     size, last = _walk(d)
     if when is None:  # a preview, an older result beside the board

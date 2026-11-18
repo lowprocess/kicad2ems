@@ -22,6 +22,10 @@ board's top-side normal.
 import json
 import numpy as np
 
+__all__ = ['match_summary', 'gain_table', 'add_polarisation', 'pattern_gain',
+           'describe', 'save', 'read', 'read_sphere', 'sphere_gain',
+           'sphere_cuts']
+
 
 def match_summary(freq, s11, z0):
     """Resonance (minimum |S11|), its S11 in dB, input impedance there and the

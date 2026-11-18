@@ -2,6 +2,8 @@
 map should use."""
 import os, sys
 
+__all__ = ['core_threads']
+
 
 def core_threads():
     """The default thread count: one per physical core of the fastest kind (the

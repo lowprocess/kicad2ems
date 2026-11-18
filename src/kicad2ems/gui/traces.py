@@ -16,7 +16,7 @@ display).
 import os, re
 import numpy as np
 # (traces.port_names, as before)
-from kicad2ems.core.api.frontend import port_names  # noqa: F401
+from kicad2ems.core.touchstone import port_names  # noqa: F401
 
 # the rectangular plot
 KINDS = ('|S| (dB)', '|S| (linear)', 'Phase (deg)', 'Group delay (ns)', 'VSWR')
@@ -114,14 +114,14 @@ def classify(path):
     m = re.search(r'_([A-Za-z0-9-]+)\.s\d+p$', os.path.basename(path))
     if m and m.group(1) in BY_SUFFIX:
         return BY_SUFFIX[m.group(1)]
-    from kicad2ems.core.api.frontend import registry
+    from kicad2ems.core.solvers import registry
     return m.group(1) if m and m.group(1) in registry() else 'openEMS'
 
 
 def load_traces(files, compare=None):
     """Traces of every Touchstone file in (label, path) files (a run's file
     list), plus a compare file."""
-    from kicad2ems.core.api.frontend import read_touchstone
+    from kicad2ems.core.touchstone import read_touchstone
     seen, out = set(), []
     items = [(classify(p), p)
              for _, p in files

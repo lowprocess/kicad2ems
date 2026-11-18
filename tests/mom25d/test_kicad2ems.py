@@ -371,7 +371,7 @@ def test_mixed_cuts_a_coupled_pair_as_two_modal_lines(monkeypatch):
     pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
     pytest.importorskip('kicad2ems.mom25d._core')
     from types import SimpleNamespace as NS
-    import kicad2ems.core.api.solver as ks
+    import kicad2ems.core.sparams as ks
     from kicad2ems.mom25d.solvers import mixed
     from kicad2ems.mom25d.api import solve_board
     quiet = lambda *a, **k: None

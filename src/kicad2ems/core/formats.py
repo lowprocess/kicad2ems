@@ -23,6 +23,8 @@ import json
 
 import numpy as np
 
+__all__ = ['check']
+
 FORMATS = {
     'kicad2ems-run': 1, 'kicad2ems-events': 1, 'kicad2ems-sysinfo': 1,
     'kicad2ems-antenna': 1

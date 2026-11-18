@@ -4,3 +4,6 @@ from .board import KiCadBoard
 from .pnp import read_pos, pos_port_refs
 from .nets import resolve_nets, DiffLegs
 from .outline import board_outline
+
+__all__ = ['KiCadBoard', 'read_pos', 'pos_port_refs', 'resolve_nets',
+           'DiffLegs', 'board_outline']

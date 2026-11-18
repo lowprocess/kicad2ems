@@ -1,39 +1,67 @@
-"""kicad2ems.core.api: every public name resolves, importing a surface loads
-nothing, and sysinfo asks the solvers what they run on (Solver.resources)."""
+"""The modules' public names (each its __all__) resolve and are documented,
+importing the solvers and analyses loads no GUI or plotting stack, and sysinfo
+asks the solvers what they run on (Solver.resources)."""
+import importlib
 import os
 import subprocess
 import sys
 
 import pytest
 from kicad2ems.core import solvers, sysinfo
-from kicad2ems.core.api import (solver as solver_api, frontend,
-                                analysis as analysis_api)
 
 from test_solver_registry import _Fake
 
+# the modules other parts import from (docs/api.md lists them)
+PUBLIC = [
+    'kicad2ems.core.solvers', 'kicad2ems.core.options',
+    'kicad2ems.core.sparams', 'kicad2ems.core.stop', 'kicad2ems.core.plots',
+    'kicad2ems.core.fields.antenna', 'kicad2ems.core.fields.dumps',
+    'kicad2ems.core.fields.frames', 'kicad2ems.core.meshes',
+    'kicad2ems.core.phased', 'kicad2ems.core.sitecfg',
+    'kicad2ems.core.pipeline', 'kicad2ems.core.constants',
+    'kicad2ems.core.geometry', 'kicad2ems.core.edges',
+    'kicad2ems.core.solvers.lines.fastsolve', 'kicad2ems.core.roughness',
+    'kicad2ems.core.finish', 'kicad2ems.core.analyses',
+    'kicad2ems.core.importers.kicad', 'kicad2ems.core.board',
+    'kicad2ems.core.parts', 'kicad2ems.core.region', 'kicad2ems.core.layout',
+    'kicad2ems.core.lines.builder', 'kicad2ems.core.lines.reference',
+    'kicad2ems.core.overlay', 'kicad2ems.core.lines.sections',
+    'kicad2ems.core.lines.calc', 'kicad2ems.core.runs',
+    'kicad2ems.core.formats', 'kicad2ems.core.touchstone',
+    'kicad2ems.emsdev.cpu', 'kicad2ems.examples'
+]
+# what a solver or analysis imports: none of it may load these
+LIGHT = [
+    'kicad2ems.core.solvers', 'kicad2ems.core.analyses',
+    'kicad2ems.core.study', 'kicad2ems.core.config', 'kicad2ems.core.runs',
+    'kicad2ems.core.fields.dumps', 'kicad2ems.core.fields.frames',
+    'kicad2ems.core.fields.antenna', 'kicad2ems.mom25d',
+    'kicad2ems.mom25d.solvers.mom', 'kicad2ems.pcbqs',
+    'kicad2ems.pcbqs.analyses', 'kicad2ems.fdtd.solver',
+    'kicad2ems.fem.analyses', 'kicad2ems.examples'
+]
+HEAVY = ('PySide6', 'matplotlib', 'h5py')
 
-@pytest.mark.parametrize('surface', [solver_api, frontend, analysis_api])
-def test_every_name_resolves(surface):
-    for name in surface.NAMES:
-        assert getattr(surface, name) is not None, name
-    assert set(dir(surface)) == set(surface.NAMES)
-    with pytest.raises(AttributeError):
-        getattr(surface, 'no_such_name')
+
+@pytest.mark.parametrize('name', PUBLIC)
+def test_every_public_name_resolves(name):
+    mod = importlib.import_module(name)
+    missing = [n for n in mod.__all__ if not hasattr(mod, n)]
+    assert mod.__all__ and missing == []
 
 
-def test_a_surface_loads_on_first_use():
-    """Importing kicad2ems.core.api.solver (as a solver's module does when the
-    registry loads it) imports neither matplotlib nor the field code; a name
-    imports its module when it is used."""
-    code = (
-        "import sys; import kicad2ems.core.api.solver as a; before = "
-        "{'matplotlib', 'kicad2ems.core.plots'} & set(sys.modules); "
-        "a.plot_antenna; print(sorted(before), 'kicad2ems.core.plots' in "
-        "sys.modules)"
-    )
+def test_solvers_and_analyses_import_light():
+    """Importing the core's solver and analysis modules, and filling both
+    registries, loads no PySide6, matplotlib or h5py: each is imported inside
+    the function that needs it."""
+    code = ('import importlib, sys\n'
+            f'for m in {LIGHT!r}: importlib.import_module(m)\n'
+            'from kicad2ems.core import solvers, analyses\n'
+            'solvers.registry(); analyses.registry()\n'
+            f'print(sorted(set({HEAVY!r}) & set(sys.modules)))')
     out = subprocess.run([sys.executable, '-c', code], capture_output=True,
                          text=True, check=True).stdout.split()
-    assert out == ['[]', 'True']
+    assert out == ['[]']
 
 
 def test_sysinfo_asks_the_solvers(monkeypatch):
@@ -85,12 +113,12 @@ def test_packages_found():
 
 
 def test_examples_prepared(tmp_path):
-    """api.frontend's examples: every config, each copied into a folder with its
+    """The examples: every config, each copied into a folder with its
     board, made by its generator or copied with its project and placement
     files."""
     import kicad2ems.examples as ex
     names = ex.own()  # kicad2ems's own (an analysis may ship more)
-    assert set(names) <= set(frontend.examples())
+    assert set(names) <= set(ex.examples())
     assert (len(names) > 40
             and {'rf_gcpw', 'sma_launch', 'demo_lowpass', 'antenna_patch'
                  } <= set(names))
@@ -108,12 +136,13 @@ def test_examples_prepared(tmp_path):
         if s.endswith('.kicad_pcb')
     } == set(ex.BOARDS))
     for n in ('rf_gcpw', 'sma_launch', 'demo_lowpass'):
-        cfg = frontend.prepare_example(n, str(tmp_path))
+        cfg = ex.prepare_example(n, str(tmp_path))
         assert (cfg == str(tmp_path / f'{n}.toml')
                 and (tmp_path / ex.board_of(cfg)).exists())
     assert ((tmp_path / 'sma_launch-all.pos').exists()
             and (tmp_path / 'demo_lowpass-top.pos').exists())
-    s = frontend.build_settings({}, str(tmp_path / 'rf_gcpw.toml'))
+    from kicad2ems.core.config import build_settings
+    s = build_settings({}, str(tmp_path / 'rf_gcpw.toml'))
     assert os.path.dirname(s.board) == str(tmp_path)
 
 
@@ -157,20 +186,20 @@ def test_setup_update_needs_an_install(tmp_path):
         assert r.returncode == 2 and '--update' in r.stdout
 
 
-def test_every_api_name_is_documented():
-    """docs/api.md names every name of api.solver, api.frontend and
-    api.analysis, and each class and function has a docstring: a name added to
-    the API without its documentation fails here."""
+def test_every_public_name_is_documented():
+    """docs/api.md names every module of PUBLIC and each name of its __all__,
+    and each class and function has a docstring: a name added to an __all__
+    without its documentation fails here."""
     import inspect, re
     root = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     page = open(os.path.join(root, 'docs', 'api.md'), encoding='utf-8').read()
-    for mod in (solver_api, frontend, analysis_api):
-        for name in mod.NAMES:
-            assert re.search(
-                rf'`{re.escape(name)}[`(.]',
-                page), f"{mod.__name__}.{name} is not in docs/api.md"
-            obj = getattr(mod, name)
+    for name in PUBLIC:
+        assert f'`{name}`' in page, f"{name} is not in docs/api.md"
+        mod = importlib.import_module(name)
+        for n in mod.__all__:
+            assert re.search(rf'`{re.escape(n)}[`(]',
+                             page), f"{name}.{n} is not in docs/api.md"
+            obj = getattr(mod, n)
             if inspect.isclass(obj) or inspect.isfunction(obj):
-                assert inspect.getdoc(
-                    obj), f"{mod.__name__}.{name} has no docstring"
+                assert inspect.getdoc(obj), f"{name}.{n} has no docstring"

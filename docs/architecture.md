@@ -49,9 +49,9 @@ mixed's in `kicad2ems.mom25d.solvers`; Palace's in `kicad2ems.fem`; pcbqs's in
 `kicad2ems.pcbqs.analyses`. [APIs](api.md#solvers) lists what a solver declares
 and implements.
 
-A solver imports from `kicad2ems.core.api.solver` only; a program that drives
-kicad2ems (the GUI, the KiCad plugin, dfsynth) from
-`kicad2ems.core.api.frontend`. The rest of kicad2ems.core is the core's own. A
+A solver, or a program that drives kicad2ems (the GUI, the KiCad plugin,
+dfsynth), imports from the core's modules the names in each one's `__all__`
+([APIs](api.md) lists them); the rest of kicad2ems.core is the core's own. A
 listed solver then appears in `--solvers`, `--check`, the config
 (`[solver.mysolver]`), the GUI (a section per option group), the Filter page and
 the KiCad plugin's menu. One whose program or package is missing says what to

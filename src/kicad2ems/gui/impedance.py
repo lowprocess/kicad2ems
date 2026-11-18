@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QGroupBox, QComboBox, QCheckBox, QLabel,
                                QDoubleSpinBox, QPushButton, QApplication,
                                QWidget, QSplitter)
-from kicad2ems.core.api.frontend import impedance as K
+from kicad2ems.core.lines import calc as K
 from .panels import refill
 from .sectionview import SectionView
 

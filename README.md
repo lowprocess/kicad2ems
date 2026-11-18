@@ -104,7 +104,7 @@ examples; the plugin's were recorded from KiCad 10, driven by a script.*
 - **KiCad plugin** (KiCad 9+, IPC API): the open board's trace impedances in the PCB editor, and a region with
   ports to simulate ([KiCad plugin](docs/kicad-plugin.md)).
 - **GPU acceleration** for gfdtd and mom25d: GPUs through Vulkan (run on AMD and NVIDIA cards); mom25d also through CuPy on CUDA or ROCm.
-- **One interface for every solver** (`kicad2ems.core.api.solver`): another
+- **One interface for every solver** (`kicad2ems.core.solvers.Solver`): another
   solver is a `Solver` class listed in `kicad2ems.core.solvers.SOLVERS`.
 
 ## Install

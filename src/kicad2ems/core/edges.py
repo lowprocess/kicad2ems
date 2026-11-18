@@ -23,6 +23,8 @@ are named in KiCad coordinates:
 import numpy as np
 from shapely.geometry import box, LineString
 
+__all__ = ['describe', 'snap']
+
 SIDES = ('xmin', 'xmax', 'ymin', 'ymax')
 
 

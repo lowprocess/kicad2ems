@@ -4,6 +4,13 @@ its outline, the copper of one layer (the others faint), a solver's mesh on that
 layer, the ports, and the line model's sections drawn at their width and
 coloured by Z0 against the ports' impedance. Hover a section to read it; click
 to select it (the viewer's section list and the 3D view follow).
+
+The KiCad plugin's map subclasses PlanView. A subclass may use, beside its
+public methods (load, set_board, set_lines_visible, current_layer, z_of, redraw,
+fit, select) and its `selected` signal: `plot` (the pyqtgraph PlotWidget it
+draws in), `mesh` (the mesh selector), and override redraw() and the mouse hooks
+_moved(scene_pos) and _clicked(event), calling the base's for what it does not
+handle itself.
 """
 import json, os
 import numpy as np
@@ -14,10 +21,12 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QComboBox, QCheckBox,
                                QSizePolicy)
 import pyqtgraph as pg
 from . import theme
-from kicad2ems.core.api.frontend import overlay as ov
+from kicad2ems.core import overlay as ov
 from .panels import FlowLayout, refill
 from . import meshpick as mp
 from . import volume3d as v3
+
+__all__ = ['PlanView']
 
 COPPER = QColor(214, 140, 64)
 OTHER = QColor(214, 140, 64, 45)
@@ -124,7 +133,7 @@ class PlanView(QWidget):
         """A results folder's board (<name>_board.json), meshes and line model;
         False when there is no board."""
         import glob
-        from kicad2ems.core.api.frontend import meshes
+        from kicad2ems.core import meshes
         boards = (sorted(glob.glob(os.path.join(out_dir, '*_board.json')),
                          key=os.path.getmtime) if out_dir else [])
         try:
@@ -139,7 +148,7 @@ class PlanView(QWidget):
         """A board (Board.to_dict(), model mm) and its line model's drawing,
         without a results folder (the KiCad plugin's live board); False when
         there is no board."""
-        from kicad2ems.core.api.frontend import meshes
+        from kicad2ems.core import meshes
         if self._behind is not None and not (board or {}).get('layout_of'):
             # a pick is on the board as drawn: this after it
             self._behind = (board, lines, found_meshes)
@@ -166,7 +175,7 @@ class PlanView(QWidget):
     def _solved_state(self):
         """The "solved" tick box: usable where a run of the solver picked wrote
         the mesh it solved on."""
-        from kicad2ems.core.api.frontend import meshes
+        from kicad2ems.core import meshes
         solver = self.mesh.currentData()
         self.solved.setEnabled(mp.solved(self.meshes, solver) is not None)
         self.solved.setToolTip(mp.tip(self.meshes, solver, meshes.counts))
@@ -371,7 +380,7 @@ class PlanView(QWidget):
         if (not self.board
                 or not self.plot.sceneBoundingRect().contains(scene_pos)):
             return None, None
-        from kicad2ems.core.api.frontend import net_at, part_at
+        from kicad2ems.core.layout import net_at, part_at
         p = self.plot.getPlotItem().vb.mapSceneToView(scene_pos)
         lay = self.current_layer()
         try:

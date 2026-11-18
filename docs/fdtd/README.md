@@ -11,7 +11,7 @@ openEMS-style model (the boundaries, the ports and parts, the dielectrics, the
 field dumps, the antenna's far-field box), runs one excitation per port with its
 end criteria, and reads the results back. Only the engine differs between the
 two solvers. kicad2ems lists them in `kicad2ems.core.solvers.SOLVERS`, and the
-package reaches kicad2ems only through `kicad2ems.core.api.solver`.
+package uses only the core's public names ([APIs](../api.md#for-solvers)).
 
 - `solver.py`: `FDTD`, the solvers' common class, and their shared settings
   (`MESH`, `RUN`: the GUI's FDTD section)

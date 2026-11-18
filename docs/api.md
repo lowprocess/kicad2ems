@@ -2,52 +2,60 @@
 
 [← Architecture](architecture.md) · [Index](index.md) · [Next: KiCad import →](kicad-import.md)
 
-Everything one part of kicad2ems uses of another goes through one of the
-interfaces on this page; the rest of each part is its own. The
+Everything one part of kicad2ems uses of another is a module's public names,
+its `__all__`: the tables on this page list them by module (a module named
+`kicad2ems.core.x` as `core.x`), and the descriptions below say what the
+interfaces between the parts are. The rest of each part is its own. The
 [code reference](reference/index.md) (in the documentation site) lists every
 module, class and function.
 
 | Interface | Provided by | Used by |
 |---|---|---|
-| [`kicad2ems.core.api.solver`](#kicad2emsapisolver) | core | fdtd, mom25d, fem, pcbqs |
-| [`kicad2ems.core.api.analysis`](#kicad2emsapianalysis) | core | pcbqs, fem |
-| [`kicad2ems.core.api.frontend`](#kicad2emsapifrontend) | core | gui, ipc, dfsynth |
+| [For solvers](#for-solvers) | core | fdtd, mom25d, fem, pcbqs |
+| [For analyses](#for-analyses) | core | pcbqs, fem |
+| [For front ends](#for-front-ends) | core | gui, ipc, dfsynth |
 | [The solvers](#solvers) | fdtd, mom25d, fem, pcbqs | core |
 | [The analyses](#analyses) | pcbqs, fem | core, gui |
 | [The command line and its files](#files) | core | gui, ipc, dfsynth |
 | [gfdtd's engine](#gfdtd-engine) | gfdtd | fdtd |
-| [`kicad2ems.gui.api`](#kicad2ems_guiapi) | gui | ipc |
+| [The plan view](#planview) | gui | ipc |
 | [`dfsynth --describe --json`](#dfsynth) | dfsynth | gui's Filter page |
 
 (each a subpackage of kicad2ems: core is kicad2ems.core, and so on). The files a
 run writes, and dfsynth's description, carry a format version: other programs
 read them too.
 
-Both API modules load their names on first use: importing one costs nothing until a name is used.
+Importing `core.solvers`, `core.analyses`, `core.study`, a solver's or an
+analysis's module loads no PySide6, matplotlib or h5py: those are imported in
+the functions that use them (tests/core/test_api.py checks it).
 
-<a id="kicad2emsapisolver"></a>
-## `kicad2ems.core.api.solver`
+<a id="for-solvers"></a>
+## For solvers
 
-For the solvers: the solver interface and what a solver needs to write its
-results as the others do.
+The solver interface and what a solver needs to write its results as the others
+do.
 
-| Group | Names |
+| Module | Names |
 |---|---|
-| the interface | `Solver`, `Result`, `Deviation`, `Option`, `AUTO`, `FEATURES` |
-| settings | `floatlist`, `floats`, `strlist`, `items` (Option value parsers), `G_DUMP` (the field-dump settings group), `registry` |
-| stopping | `stop` (the module): `stop.check()` between steps raises `stop.Stopped` when the GUI's Stop was pressed |
-| S-parameters | `mixed_mode`, `fill_reciprocal` |
-| figures | `plot_antenna`, `plot_pattern`, `plot_convergence`, `plot_preview` (the model and its mesh) |
-| antennas | `describe_antenna`, `match_summary`, `save_antenna`, `gain_table`, `add_polarisation`, `pattern_gain` |
-| field dumps | `Dump`, `write_info`, `DumpSource`, `save_fd_outputs`, `write_npz`, `parse_dump`, `add_dumps`, `dump_size_mb`, `write_norm`, `plot_fd_dumps`, `save_animation` |
-| meshes | `save_mesh` (the GUI's 3D mesh view) |
-| phased arrays | `phased` (the module: `parse_grid`, `settings_drive`, `combine`, `waves`, `format_drive`, `save`), `settings_drive` |
-| geometry | `split_holes` (a polygon with holes as simple polygons), `describe_edges`, `snap_edges` (the board-edge walls) |
-| the line model | `solve_lines`, `lines_backend` (its fast solve: a first look before a long run) |
-| surface finish | `resolve_finish(s, m)` (a run's `Finish`: its metal layers, the outer layers it covers and each one's share of the loss; None without `--sigma` or a finish), `finish_factor(f, finish)` (the finished face's impedance over bare copper's), `finish_weighted(f, finish, share)`, `finish_band_sigma(sigma, finish, share, fmin, fmax)` (the one conductivity of the same loss at the band centre), `finish_face_z(f, sigma, t, finish)` |
-| copper roughness | `hammerstad(f, rms_um, sigma)` (Hammerstad's loss factor), `rough_sigma(sigma, rms_um, f)` (the conductivity of the same loss at f), `band_sigma(s, fmin, fmax)` (a solver's one conductivity: `--sigma`, or with `--rough` that at the band centre) |
-| constants | `C0`, `EPS0`, `ETA0`, `MU0` |
-| the machine | `sitecfg` (the module: where external programs are), `core_threads`, `ram_gb` |
+| `kicad2ems.core.solvers` | `Solver`, `Result`, `Deviation`, `AUTO`, `FEATURES`, `LINES`, `registry()`, `get(name)` (a solver by name or alias), `resolve_lines(s)` |
+| `kicad2ems.core.options` | `Option`; its value parsers `floatlist`, `floats`, `strlist`, `items` |
+| `kicad2ems.core.stop` | `check()` between steps raises `Stopped` when the GUI's Stop was pressed; `requested()` |
+| `kicad2ems.core.sparams` | `mixed_mode`, `fill_reciprocal` |
+| `kicad2ems.core.plots` | `plot_antenna`, `plot_pattern`, `plot_convergence`, `preview` (the model and its mesh) |
+| `kicad2ems.core.fields.antenna` | `describe` (an antenna's log lines), `match_summary`, `save`, `read`, `gain_table`, `add_polarisation`, `pattern_gain`, `read_sphere`, `sphere_cuts`, `sphere_gain` (far fields) |
+| `kicad2ems.core.fields.dumps` | `Dump`, `write_info`, `G_DUMP` (the field-dump settings group), `parse_dump`, `add_dumps`, `estimate_size_mb`, `write_norm`, `plot_fd_dumps` |
+| `kicad2ems.core.fields.frames` | `DumpSource`, `save_fd_outputs`, `write_npz`, `read_npz`, `save_animation`, `find_dumps`, `write_frames`; for a viewer's frames: `plane`, `default_axis`, `outlines`, `levels`, `render` |
+| `kicad2ems.core.meshes` | `save` (the GUI's 3D mesh view), `find`, `segments`, `counts`, `LABELS` |
+| `kicad2ems.core.phased` | drives, grids, tapers: `parse_drive`, `format_drive`, `parse_grid`, `format_grid`, `steer2d`, `aim`, `TAPERS`, `TAPER_SLL`, `parse_taper`, `taper`, `settings_drive`, `waves`, `radiated`, `combine`, `save`, `load` |
+| `kicad2ems.core.geometry` | `split_holes` (a polygon with holes as simple polygons) |
+| `kicad2ems.core.edges` | `describe`, `snap` (the board-edge walls: their log line, snapped onto a grid) |
+| `kicad2ems.core.solvers.lines.fastsolve` | `solve`, `resolve_backend` (the line model's fast solve: a first look before a long run) |
+| `kicad2ems.core.finish` | `resolve(s, m)` (a run's `Finish`: its metal layers, the outer layers it covers and each one's share of the loss; None without `--sigma` or a finish), `factor(f, finish)` (the finished face's impedance over bare copper's), `weighted(f, finish, share)`, `band_sigma(sigma, finish, share, fmin, fmax)` (the one conductivity of the same loss at the band centre), `face_z(f, sigma, t, finish)`, `layers` |
+| `kicad2ems.core.roughness` | `hammerstad(f, rms_um, sigma)` (Hammerstad's loss factor), `rough_sigma(sigma, rms_um, f)` (the conductivity of the same loss at f), `band_sigma(s, fmin, fmax)` (a solver's one conductivity: `--sigma`, or with `--rough` that at the band centre) |
+| `kicad2ems.core.constants` | `C0`, `EPS0`, `ETA0`, `MU0` |
+| `kicad2ems.core.sitecfg` | `get` (where external programs are), `user_file`, `set_user` |
+| `kicad2ems.core.pipeline` | `ram_gb` |
+| `kicad2ems.emsdev.cpu` | `core_threads` (one per fast physical core) |
 
 <a id="solvers"></a>
 ### Solvers
@@ -95,19 +103,18 @@ events), `run.path(suffix)`, `run.wrote(label, path)`, `run.figure(fig, suffix, 
 [Architecture](architecture.md#solvers) has the rest: parity, and settings as
 data.
 
-<a id="kicad2emsapianalysis"></a>
-## `kicad2ems.core.api.analysis`
+<a id="for-analyses"></a>
+## For analyses
 
-For the analyses: tools that work on the board a run is made of but give
-something other than S-parameters (the crosstalk, pcbqs's power integrity, near
-field, circuit and thermal analyses, the Elmer and Palace tools).
+Tools that work on the board a run is made of but give something other than
+S-parameters (the crosstalk, pcbqs's power integrity, near field, circuit and
+thermal analyses, the Elmer and Palace tools).
 
-| Group | Names |
+| Module | Names |
 |---|---|
-| the interface | `Analysis`, `KINDS` (the kinds of an option), `RF` (the S-parameter run's key in a front end's lists: no analysis's) |
-| the registry | `registry` (`{name: Analysis}`), `analysis_of(folder)` (`(name, preview)` of the analysis whose result a folder holds, or `None`) |
-| questions | `Question` (name, label, group, about, shares, answer, order), `QUESTIONS` (kicad2ems's own: what an analysis may `provides`) |
-| maps for a viewer | `Dump`, `write_info`, `write_npz` (field dumps, as a solver's), `save_mesh` |
+| `kicad2ems.core.analyses` | `Analysis`, `KINDS` (the kinds of an option), `RF` (the S-parameter run's key in a front end's lists: no analysis's), `registry()` (`{name: Analysis}`), `analysis_of(folder)` (`(name, preview)` of the analysis whose result a folder holds, or `None`), `read_config`, `read_sets` |
+| `kicad2ems.core.study` | `Question` (name, label, group, about, shares, answer, order), `QUESTIONS` (kicad2ems's own: what an analysis may `provides`) |
+| maps for a viewer | `Dump`, `write_info` (`core.fields.dumps`), `write_npz` (`core.fields.frames`): field dumps, as a solver's; `save` (`core.meshes`) |
 
 <a id="analyses"></a>
 ### Analyses
@@ -123,7 +130,7 @@ ANALYSES = ('kicad2ems.core.si:Crosstalk',
 
 It runs as a command of its own, so the tool behind it works without kicad2ems;
 its `Analysis` class is the only part that imports
-`kicad2ems.core.api.analysis`. It declares, as class attributes:
+kicad2ems. It declares, as class attributes:
 
 | Attribute | Meaning |
 |---|---|
@@ -206,17 +213,17 @@ that answer it (`Engine`: `name`, `label`, `kind` `'solver'` or `'analysis'`,
 `{engine: the questions asked of it}`: one run for the questions an engine
 answers together. A front end passes an analysis engine's settings through
 `for_questions` before `command`, runs the solver engines as one kicad2ems run,
-and leaves a mark in each run's folder (`mark_run(folder, engine, asked,
-preview)`; `run_mark(folder)` reads it), by which `analysis_of` knows a result's
+and leaves a mark in each run's folder (`study.mark(folder, engine, asked,
+preview)`; `study.marked(folder)` reads it), by which `analysis_of` knows a result's
 engine even where two engines write a file of the same name. `kicad2ems --check`
 lists the questions with their engines.
 
-A config holds a study as its `[study]` tables ([usage](usage.md#study)). `read_study(config, strict=True)` gives
+A config holds a study as its `[study]` tables ([usage](usage.md#study)). `study.read_config(config, strict=True)` gives
 it as a `Study`: `asked` `{question: [engine names]}` in the order written (`[]`: the default engine; for
 S-parameters, the solvers the settings name), `fields` `{question: True | False}` and `said` (`'study'`,
 `'analysis'` for a config that only has `[analysis] run`, `''`); `strict=False` keeps a question or an engine it
-does not know as written, for a front end to grey. `write_study(config, study)` writes the tables anew and keeps
-the rest of the file. `study_plan(study)` is the runs it takes, in order, `[Step]`: `kind` (`'solvers'`: one
+does not know as written, for a front end to grey. `study.write_config(config, study)` writes the tables anew and keeps
+the rest of the file. `study.plan(study)` is the runs it takes, in order, `[Step]`: `kind` (`'solvers'`: one
 kicad2ems run, or `'analysis'`), `engines`, `questions`, `mode` (`'antenna'`, `'sparams'` or `''`: as the settings
 say), `fields`, `name` (`'rf'` or the analysis). `kicad2ems study` runs them (`kicad2ems.core.study.run`); a front end
 that starts each itself puts it in `run_dir(base, board)` or `tool_dir(base, board, analysis, what)` (a preview
@@ -231,7 +238,7 @@ that answer one question name the same quantity alike; the question says which
 (`Question.figures`): `drop <load>` and `loss` for a rail's own copper,
 `hottest` and `<part>` for the temperature, `C <net>,<net>` for capacitance. An
 engine may add figures of its own (`drop with return <load>`).
-`compare_engines({engine: folder})` lays them side by side: `dict(engines,
+`study.compare({engine: folder})` lays them side by side: `dict(engines,
 labels, rows=[dict(name, unit, values, spread)])`, a value `None` where an
 engine does not give the figure. `default_fields(engine, fmin, fmax, layer,
 sweep)` is what an engine is asked when its field dumps are wanted and none is
@@ -249,33 +256,42 @@ wrong way round. An analysis says its own with `missing`. A front end lists them
 where the settings are and does not start the run; kicad2ems's own commands say
 the same when they are run.
 
-<a id="kicad2emsapifrontend"></a>
-## `kicad2ems.core.api.frontend`
+<a id="for-front-ends"></a>
+## For front ends
 
 For programs that drive kicad2ems: read a board, show its line model, start runs and read their results.
 
-| Group | Names |
+| Module | Names |
 |---|---|
-| boards | `KiCadBoard` (a `.kicad_pcb`, or KiCad's board text), `Board` (the canonical model), `kind_value` (a footprint's lumped part), `extra_port_fps` (the footprints a region adds as ports) |
-| the board as drawn | `board_layout(path)`: a `.kicad_pcb` as the model board's dict (`Board.to_dict()`: every net's copper by layer, no ports asked for) with `footprints` (`[dict(ref, value, layer, through, box, pads=[dict(name, net)])]`, model mm) and `layout_of` (the file), to show before anything is run; `net_at(layout, layer, x, y)` and `part_at(layout, layer, x, y)`: the net whose copper, and the part whose pads' box, is under a point, or `None` |
-| the line model | `build_lines` (Board → LineModel; `field=True`: every section by the field solver), `RefCopper` (its reference copper), `overlay` (the module: the line model drawn on the board), `sections` (the module: one section's field: `modes`, `solve`), `impedance` (the module: a stack-up's impedance without a board, `kicad2ems.core.lines.calc`: `Line`, `calculate`, `fit`, `element`, `describe`, `report`) |
-| settings | `Settings`, `build_settings`, `read_toml`, `all_options`, `default_out`, `PATH_KEYS`, `sitecfg` (the module), `G_DUMP` |
-| solvers | `registry`, `get_solver`, `resolve_lines`, `AUTO`, `LINES` |
-| analyses | `analyses` (`{name: Analysis}`: every analysis), `analysis_of(folder)`, `read_analyses(config)` (`(run, {name: {key: value}})` of a config's `[analysis]` tables; an analysis given several: its first), `read_analysis_sets(config)` (`{name: [{key: value}, ...]}`: every table of each, [a run for each](usage.md#several)) |
-| the study | `study_tree()`, `questions()` (`{name: Question}`), `engines()` (`{name: Engine}`), `runs_for(asked)`, `mark_run(folder, engine, asked, preview)`, `run_mark(folder)`; a config's: `Study`, `read_study`, `write_study`, `study_plan`, `engine_named`, `latest_results`, `default_fields`, `compare_engines`, `rf_needs` ([Questions and engines](#study-api)) |
-| runs | `Run`, `EventTail`, `stop_runs`, `find_results`, `toml_value`, `write_toml`; where a front end's runs go: `run_dir`, `preview_dir`, `tool_dir`, `tool_preview_dir`, `board_name` |
-| files kicad2ems writes | `read_summary`, `read_antenna`, `check_format`, `read_touchstone`, `port_names` |
-| results | `meshes`, `phased`, `frames` (modules), `find_dumps`, `write_frames`, `read_sphere`, `sphere_cuts`, `sphere_gain` |
-| examples | `examples` (`{name: config path}`), `example_index` (every example as a menu's entry: `[dict(name, config, group, title, source)]`, the analyses' own after kicad2ems's), `prepare_example` (an example copied, its board made, into a folder of the user's), `examples_folder` |
-| the machine | `core_threads` |
+| `kicad2ems.core.importers.kicad` | `KiCadBoard` (a `.kicad_pcb`, or KiCad's board text), `read_pos`, `pos_port_refs`, `resolve_nets`, `DiffLegs`, `board_outline` |
+| `kicad2ems.core.board` | `Board` (the canonical model), `Port` |
+| `kicad2ems.core.parts` | `kind_value` (a footprint's lumped part) |
+| `kicad2ems.core.region` | `extra_port_fps` (the footprints a region adds as ports) |
+| `kicad2ems.core.layout` | `board_layout(path)`: a `.kicad_pcb` as the model board's dict (`Board.to_dict()`: every net's copper by layer, no ports asked for) with `footprints` (`[dict(ref, value, layer, through, box, pads=[dict(name, net)])]`, model mm) and `layout_of` (the file), to show before anything is run; `net_at(layout, layer, x, y)` and `part_at(layout, layer, x, y)`: the net whose copper, and the part whose pads' box, is under a point, or `None` |
+| `kicad2ems.core.lines.builder` | `build` (Board → LineModel; `field=True`: every section by the field solver) |
+| `kicad2ems.core.lines.reference` | `RefCopper` (the line model's reference copper, built once), `FIELD`, `FIELD_CPW`, `FIELD_REACH` |
+| `kicad2ems.core.overlay` | the line model drawn on the board: `load_lines`, `reference`, `span`, `section_colour`, `z0_colour`, `drawn`, `nearest`, `source_note`, `describe`, `section_polygon`, `relief`, `plan_segments` |
+| `kicad2ems.core.lines.sections` | one section's field: `modes`, `solve` |
+| `kicad2ems.core.lines.calc` | a stack-up's impedance without a board: `Line`, `board_layers`, `calculate`, `fit`, `element`, `describe`, `report` |
+| `kicad2ems.core.config` | `Settings`, `build_settings`, `read_toml`, `all_options`, `default_out`, `PATH_KEYS` |
+| `kicad2ems.core.solvers` | `registry`, `get`, `resolve_lines`, `AUTO`, `LINES` |
+| `kicad2ems.core.analyses` | `registry()` (`{name: Analysis}`: every analysis), `analysis_of(folder)`, `read_config(config)` (`(run, {name: {key: value}})` of a config's `[analysis]` tables; an analysis given several: its first), `read_sets(config)` (`{name: [{key: value}, ...]}`: every table of each, [a run for each](usage.md#several)) |
+| `kicad2ems.core.study` | `study_tree()`, `questions()` (`{name: Question}`), `engines()` (`{name: Engine}`), `provided`, `dump_options`, `runs_for(asked)`, `mark(folder, engine, asked, preview)`, `marked(folder)`; a config's: `Study`, `read_config`, `write_config`, `plan`, `engine_named`, `latest_results`, `default_fields`, `compare`, `rf_needs` ([Questions and engines](#study-api)) |
+| `kicad2ems.core.runs` | `Run`, `EventTail`, `stop_runs`, `find_results`, `toml_value`, `write_toml`, `load_toml`, `read_summary`; where a front end's runs go: `run_dir`, `preview_dir`, `tool_dir`, `tool_preview_dir`, `board_name` |
+| `kicad2ems.core.formats` | `check` (a JSON of kicad2ems's, e.g. `python -m kicad2ems.core.sysinfo`'s: None, or why this kicad2ems cannot read it) |
+| `kicad2ems.core.touchstone` | `read_touchstone`, `port_names` (a kicad2ems Touchstone file's port names) |
+| results | `core.fields.antenna` (`read`, `read_sphere`, `sphere_cuts`, `sphere_gain`), `core.fields.frames` (`find_dumps`, `write_frames`), `core.meshes`, `core.phased` ([For solvers](#for-solvers)) |
+| `kicad2ems.examples` | `examples()` (`{name: config path}`), `index()` (every example as a menu's entry: `[dict(name, config, group, title, source)]`, the analyses' own after kicad2ems's), `prepare_example(name, folder)` (an example copied, its board made, into a folder of the user's), `user_folder()`, `board_of(config)` |
+| `kicad2ems.emsdev.cpu` | `core_threads` |
+| `kicad2ems.gui.planview`, `kicad2ems.gui.sectionview` | `PlanView`, `SectionView` ([The plan view](#planview)) |
 
 <a id="files"></a>
 ## The command line and its files
 
-A front end runs kicad2ems as a separate process (`kicad2ems.core.api.frontend.Run` makes the command line:
+A front end runs kicad2ems as a separate process (`kicad2ems.core.runs.Run` makes the command line:
 `python -m kicad2ems <settings>.toml --events <file> [--preview]`; dfsynth runs `python -m kicad2ems.core.cli`) and
 reads what it writes. Each file another program reads names its format and version, `format` and
-`format_version` ([`kicad2ems.core.formats`](reference/index.md)); the readers in `api.frontend` take a version up to
+`format_version` ([`kicad2ems.core.formats`](reference/index.md)); the readers below take a version up to
 their own and say to update kicad2ems for a newer one. A version goes up only when a key is removed or changes
 meaning; a new key needs none. A file without them was written before they were added: version 1.
 
@@ -283,8 +299,8 @@ meaning; a new key needs none. A file without them was written before they were 
 |---|---|---|
 | `<name>_run.json`, the run summary | `kicad2ems-run` 1 | `read_summary(path)` |
 | the event stream (`--events FILE`, JSON lines; its first line names the format) | `kicad2ems-events` 1 | `EventTail(path).read()` |
-| `python -m kicad2ems.core.sysinfo`'s JSON on stdout: solvers, GPUs, memory, threads | `kicad2ems-sysinfo` 1 | `check_format(d, 'kicad2ems-sysinfo')` |
-| `<name>[_<solver>]_antenna.json`, an antenna run's results (`sphere_file`: its far field) | `kicad2ems-antenna` 1 | `read_antenna(path)` |
+| `python -m kicad2ems.core.sysinfo`'s JSON on stdout: solvers, GPUs, memory, threads | `kicad2ems-sysinfo` 1 | `formats.check(d, 'kicad2ems-sysinfo')` |
+| `<name>[_<solver>]_antenna.json`, an antenna run's results (`sphere_file`: its far field) | `kicad2ems-antenna` 1 | `fields.antenna.read(path)` |
 | `<name>_board.json`, the board every solver gets | `kicad2ems-board`, `version` 1 | `Board.load(path)` |
 | `<name>_<solver>.sNp`, Touchstone, the ports named in a `! ports: 1=P1, 2=P2d, ...` comment | Touchstone 1 / 2 | `read_touchstone(path)`, `port_names(path)` |
 
@@ -314,10 +330,10 @@ face of thick copper.
 
 openEMS itself is the other engine, imported only by `kicad2ems.fdtd.openems.engine`.
 
-<a id="kicad2ems_guiapi"></a>
-## `kicad2ems.gui.api`
+<a id="planview"></a>
+## The plan view
 
-The KiCad plugin's map is the GUI's plan view: `PlanView`, the board seen from above. A subclass may use, beside
+The KiCad plugin's map is the GUI's plan view: `kicad2ems.gui.planview.PlanView`, the board seen from above. A subclass may use, beside
 its public methods (`load`, `set_board`, `set_lines_visible`, `current_layer`, `z_of`, `redraw`, `fit`,
 `select`) and its `selected` signal: `plot` (the pyqtgraph `PlotWidget` it draws in), `mesh` (the mesh selector),
 and override `redraw()` and the mouse hooks `_moved(scene_pos)` and `_clicked(event)`, calling the base's for

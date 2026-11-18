@@ -68,7 +68,7 @@ def test_sigma_is_lossy_sheets_on_gfdtd(demo_files):
     """--sigma: conducting sheets on gfdtd (lossy there), and auto keeps gfdtd
     for such runs."""
     from types import SimpleNamespace
-    from kicad2ems.core.api.solver import AUTO
+    from kicad2ems.core.solvers import AUTO
     from kicad2ems.core.importers.kicad import KiCadBoard
     from kicad2ems.core.board import Board
     from kicad2ems.fdtd import gfdtd as conn
@@ -96,7 +96,7 @@ def test_rough_copper_by_engine(demo_files):
     """--rough: gfdtd gets it in its sheets (Hammerstad over the band); openEMS
     the conductivity at the band centre (band_sigma)."""
     from types import SimpleNamespace
-    from kicad2ems.core.api.solver import band_sigma
+    from kicad2ems.core.roughness import band_sigma
     from kicad2ems.core.solvers import registry
     from kicad2ems.core.importers.kicad import KiCadBoard
     from kicad2ems.core.board import Board
@@ -187,7 +187,7 @@ def test_gfdtd_runs_the_mesh_convergence_check():
     auto no longer hands such runs to openEMS (its code was the openEMS
     subclass's, so gfdtd said 'not supported yet - ignored')."""
     from types import SimpleNamespace
-    from kicad2ems.core.api.solver import AUTO
+    from kicad2ems.core.solvers import AUTO
     from kicad2ems.fdtd import gfdtd as conn
     from kicad2ems.fdtd.openems.solver import OpenEMS
     sv = conn.GFDTD()

@@ -72,7 +72,7 @@ def dll_dirs(dirs=None):
     if dirs is None and _dll_dirs is not None:
         return _dll_dirs
     if dirs is None:
-        from kicad2ems.core.api.solver import sitecfg
+        from kicad2ems.core import sitecfg
         dirs = [
             sitecfg.get('openems_dir'),
             os.environ.get('OPENEMS_INSTALL_PATH'),
@@ -99,7 +99,7 @@ def activate(path=None):
     if path is None:
         if _done is not None:
             return _done or None
-        from kicad2ems.core.api.solver import sitecfg
+        from kicad2ems.core import sitecfg
         path = sitecfg.get('openems_venv')
         if not path:
             _done = ''

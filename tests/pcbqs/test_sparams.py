@@ -425,7 +425,7 @@ def test_it_is_a_kicad2ems_solver(tmp_path):
     """--solvers pcbqs in a kicad2ems run: registered, never picked by auto, its
     Touchstone file and its maps written with the others'; an example's thru is
     a thru at 10 kHz."""
-    from kicad2ems.core.api.solver import FEATURES
+    from kicad2ems.core.solvers import FEATURES
     from kicad2ems.core.solvers import SOLVERS
     from kicad2ems.core.cli import main
     from kicad2ems.examples import examples

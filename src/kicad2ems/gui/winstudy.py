@@ -54,7 +54,7 @@ class WindowStudy:
         """The study of the last session: its questions, their engines and
         Fields ticks (the first time: S-parameters, as Run always did; a session
         of before the questions: the runs it had ticked)."""
-        from kicad2ems.core.api.frontend import Study
+        from kicad2ems.core.study import Study
         raw = self.qsettings.value('study/asked')
         if isinstance(raw, str) and raw:
             try:
@@ -94,7 +94,7 @@ class WindowStudy:
         out, before = {}, []  # before: the analyses of this Run that come first
         for run in runs:
             if run == 'rf':
-                from kicad2ems.core.api.frontend import rf_needs
+                from kicad2ems.core.study import rf_needs
                 vals = self.setup.values()
                 got = [
                     dict(text=f"{k.replace('_', ' ')}: not a number ({v!r})",

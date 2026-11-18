@@ -5,8 +5,7 @@ class. The line model solved as a circuit by qucs (qucsator) or scikit
 model on openEMS's engine or gfdtd's: kicad2ems.fdtd), mom25d and mixed (2.5D
 Method of Moments: kicad2ems.mom25d), palace (3D FEM: kicad2ems.fem) and pcbqs
 (quasi-static: kicad2ems.pcbqs). Each appears in --solvers, --check, the config
-tables and the GUI with no change here. A solver imports what it needs of
-kicad2ems from kicad2ems.core.api.solver.
+tables and the GUI with no change here.
 
     from kicad2ems.core.solvers import registry, get
     get('mom').name  # 'mom25d' (aliases: fdtd, mom, qucsator, skrf)
@@ -74,6 +73,9 @@ import numpy as np
 
 # (for the solvers' option tables)
 from ..options import Option  # noqa: F401
+
+__all__ = ['LINES', 'AUTO', 'FEATURES', 'Result', 'Deviation', 'Solver',
+           'registry', 'get', 'resolve_lines']
 
 # every solver, as 'module:class': imported on the first registry() call
 SOLVERS = ('kicad2ems.core.solvers.lines.solver:Qucs',

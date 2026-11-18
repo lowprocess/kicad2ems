@@ -51,6 +51,8 @@ from .touchstone import write_touchstone, read_touchstone
 from .solvers import registry, label, resolve_lines, LINES, AUTO, FEATURES
 from .parity import describe
 
+__all__ = ['ram_gb']
+
 
 def ram_gb():
     """Installed RAM in GB (None where sysconf cannot tell)."""

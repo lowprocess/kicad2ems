@@ -6,6 +6,8 @@ Touchstone files: v1 when all reference impedances are equal, v2.0 with
 import os, re
 import numpy as np
 
+__all__ = ['port_names', 'read_touchstone']
+
 
 def log_spaced(freq):
     """The frequencies are evenly spaced on a log scale (a run's sweep = log),

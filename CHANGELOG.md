@@ -305,6 +305,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   given, so a switching loss is a device's, not the drive ramp's; pcbqs's CHANGELOG has the figures.
 
 ### Removed
+- **`kicad2ems.core.api` and `kicad2ems.gui.api`, the re-export layer.** A part imports the module that
+  defines a name, by its own name (`kicad2ems.core.study.read_config`, not `read_study`); each such module's
+  `__all__` is its API, listed on [APIs](docs/api.md). A test checks that importing the core's solver and
+  analysis modules loads no PySide6, matplotlib or h5py.
 - **Superseded code, tools and examples (2026-11-18).** pcbqs: the PEEC PDN trial
   (`pdn/peec_trial.py`, its tools and the `pdn-peec-trial` and `peec-memory`
   examples; the compressed backend stays, `docs/pcbqs/peec-memory.md`), the skin

@@ -24,6 +24,8 @@ import os, site, sys
 
 from .runs import load_toml
 
+__all__ = ['user_file', 'set_user', 'get']
+
 _cache = None
 
 

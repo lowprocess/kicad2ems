@@ -5,7 +5,6 @@ impedance, a converter's near field, a circuit on the board's copper, the
 board's temperature). Each is an Analysis subclass, listed in ANALYSES by its
 module and class: the crosstalk (kicad2ems.core.si), pcbqs's four
 (kicad2ems.pcbqs.analyses), the Elmer and Palace tools (kicad2ems.fem.analyses).
-An analysis imports what it needs of kicad2ems from kicad2ems.core.api.analysis.
 A front end lists what the registry holds, builds each one's settings from its
 options, starts it as the command it gives and shows what its result folder
 holds.
@@ -131,8 +130,8 @@ and implements
                           title, files)] (kicad2ems.examples)
 
 The fields of a result (the maps a Viewer turns and cuts) need nothing here: an
-analysis writes them as field dumps (kicad2ems.core.api.solver: Dump,
-write_info, write_npz) under <out>/<name>/exc_<what>/ with its board as
+analysis writes them as field dumps (kicad2ems.core.fields.dumps: Dump,
+write_info; kicad2ems.core.fields.frames: write_npz) under <out>/<name>/exc_<what>/ with its board as
 <out>/<name>_board.json, and every front end that shows a run's dumps shows
 them.
 """
@@ -141,6 +140,9 @@ import os
 
 from .options import strlist
 from .runs import load_toml
+
+__all__ = ['RF', 'KINDS', 'Analysis', 'registry', 'analysis_of', 'read_config',
+           'read_sets']
 
 # every analysis, as 'module:class': imported on the first registry() call
 ANALYSES = ('kicad2ems.core.si:Crosstalk',

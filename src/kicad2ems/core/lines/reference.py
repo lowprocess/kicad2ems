@@ -13,6 +13,8 @@ from .formulas import (cpwg, embedded_microstrip, microstrip,
                        offset_stripline, stripline)
 from .elements import Element, direction_at
 
+__all__ = ['RefCopper', 'FIELD', 'FIELD_CPW', 'FIELD_REACH']
+
 
 # dielectrics between a stripline's planes differing by more: solved on its cut
 MIXED_ER = 1.03

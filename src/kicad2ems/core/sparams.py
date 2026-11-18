@@ -3,6 +3,8 @@ S-parameter post-processing: mixed-mode conversion for differential ports.
 """
 import numpy as np
 
+__all__ = ['mixed_mode', 'fill_reciprocal']
+
 
 def mixed_mode(S, m):
     """Single-ended S (ports in m.ports order) -> user ports: diff pairs become

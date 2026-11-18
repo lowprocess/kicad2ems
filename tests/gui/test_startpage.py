@@ -63,7 +63,7 @@ def test_tiles_by_group_and_found_by_a_word(app):
 
 
 def test_a_board_s_picture_is_its_copper_from_above(app, tmp_path):
-    from kicad2ems.core.api.frontend import board_layout
+    from kicad2ems.core.layout import board_layout
     img = SP.board_image(
         board_layout(os.path.join(ROOT, 'examples', 'rf_bus.kicad_pcb')))
     assert (img.width(), img.height()) == SP.PICTURE

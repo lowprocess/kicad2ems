@@ -16,7 +16,7 @@ import os
 import sys
 
 from kicad2ems.core import analyses
-from kicad2ems.core.api.analysis import Analysis
+from kicad2ems.core.analyses import Analysis
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TOOL = os.path.join(HERE, 'fake_tool.py')
@@ -90,11 +90,12 @@ def write(kind, folder, preview=False, **v):
 def _temperature_dump(folder, hottest):
     """A layer's temperature where a viewer reads a run's dumps: a 0 Hz plane
     dump in C, NaN off the board, its colours spanning its own values (as an
-    analysis writes its maps: kicad2ems.core.api.analysis)."""
+    analysis writes its maps: kicad2ems.core.fields)."""
     import numpy as np
     from types import SimpleNamespace
     from shapely.geometry import box
-    from kicad2ems.core.api.analysis import Dump, write_info, write_npz
+    from kicad2ems.core.fields.dumps import Dump, write_info
+    from kicad2ems.core.fields.frames import write_npz
     x, y = np.linspace(0, 20, 21), np.linspace(0, 10, 11)
     t = (40.0 + (hottest - 40.0) * np.exp(-((x[:, None] - 8)**2 +
                                             (y[None, :] - 5)**2) / 30.0))

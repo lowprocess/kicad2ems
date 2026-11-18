@@ -33,6 +33,9 @@ is used as given.
 import json, os, re
 import numpy as np
 
+__all__ = ['G_DUMP', 'Dump', 'parse_dump', 'add_dumps', 'write_info',
+           'write_norm', 'estimate_size_mb', 'plot_fd_dumps']
+
 # (time-domain, frequency-domain) types
 FIELDS = {'E': (0, 10), 'H': (1, 11), 'J': (3, 13)}
 UNITS = {'E': 'V/m', 'H': 'A/m', 'J': 'A/m²'}

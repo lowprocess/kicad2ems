@@ -12,8 +12,11 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QComboBox, QCheckBox,
                                QLabel, QPushButton)
 import pyqtgraph as pg
 from . import theme
-from kicad2ems.core.api.frontend import overlay as ov, sections
+from kicad2ems.core import overlay as ov
+from kicad2ems.core.lines import sections
 from .panels import FlowLayout
+
+__all__ = ['SectionView']
 
 SIGNAL, GROUND = QColor(214, 140, 64), QColor(120, 120, 120)
 SHOWS = [('field strength |E|', 'e'), ('potential', 'phi')]

@@ -5,7 +5,7 @@ import os
 
 import pytest
 from kicad2ems.core import analyses
-from kicad2ems.core.api import analysis as analysis_api, frontend
+from kicad2ems.core.config import build_settings
 
 
 class Heat(analyses.Analysis):
@@ -50,14 +50,6 @@ def fakes(monkeypatch):
     return install
 
 
-def test_every_name_resolves():
-    for name in analysis_api.NAMES:
-        assert getattr(analysis_api, name) is not None, name
-    assert analysis_api.Analysis is analyses.Analysis
-    assert (frontend.analyses is analyses.registry
-            and frontend.analysis_of is analyses.analysis_of)
-
-
 def test_get_and_check_lines(fakes):
     reg = fakes(Heat, Drop)
     assert analyses.get('HEAT') is reg['heat']
@@ -91,11 +83,10 @@ def test_a_config_s_analysis_tables(fakes, tmp_path):
     # not installed: kept as written
     assert tables['other'] == dict(model_file='m.json')
     # kicad2ems itself: another tool's tables
-    assert frontend.build_settings({}, str(cfg)).notes == []
+    assert build_settings({}, str(cfg)).notes == []
     cfg.write_text('board = "b.kicad_pcb"\n')
     assert (analyses.read_config(str(cfg)) == (None, {})
             and analyses.read_sets(str(cfg)) == {})
-    assert frontend.read_analyses is analyses.read_config
     # several tables of one analysis: each with its paths; read_config
     # gives the first
     cfg.write_text(
@@ -150,20 +141,19 @@ def test_an_analysis_ships_examples(fakes, tmp_path):
     assert bare['group'] == ex.OTHER and bare['title'] == 'no board'
     assert set(ex.examples()) == set(ex.own()) | {'heat_warm', 'heat_bare'}
     dest = tmp_path / 'mine'
-    cfg = frontend.prepare_example('heat_warm', str(dest))
+    cfg = ex.prepare_example('heat_warm', str(dest))
     assert (cfg == str(dest / 'heat_warm.toml')
             and (dest / '01_warm.json').exists())
     (dest / '01_warm.kicad_pcb').write_text('edited')
     (dest / '01_warm.json').write_text('edited')
-    frontend.prepare_example('heat_warm', str(dest))
+    ex.prepare_example('heat_warm', str(dest))
     assert ((dest / '01_warm.kicad_pcb').read_text() == 'edited'
             and (dest / '01_warm.json').read_text() == '{"Q1": 1}')
-    run, tables = frontend.read_analyses(cfg)
+    run, tables = analyses.read_config(cfg)
     assert (run is None
             and tables['heat']['losses'] == str(dest / '01_warm.json'))
-    assert (frontend.prepare_example('heat_bare',
-                                     str(dest)) == str(dest / 'heat_bare.toml'))
-    assert frontend.example_index is ex.index
+    assert (ex.prepare_example('heat_bare',
+                               str(dest)) == str(dest / 'heat_bare.toml'))
 
 
 def test_index_groups_are_kicad2ems_s_own():

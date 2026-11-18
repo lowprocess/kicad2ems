@@ -5,6 +5,8 @@ for CSXCAD.
 from shapely.geometry import Polygon, LineString
 from shapely.ops import split
 
+__all__ = ['split_holes']
+
 
 def polygons(g):
     if g is None or g.is_empty:

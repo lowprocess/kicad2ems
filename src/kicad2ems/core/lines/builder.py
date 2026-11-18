@@ -16,6 +16,8 @@ from .reference import (NetCopper, RefCopper, _dielectric,
                         _split_by_reference, classify)
 from .topology import _couple, _junctions, _paths
 
+__all__ = ['build']
+
 
 def _chord(poly, c, d, reach=50.0):
     """Length of the line through c along d inside poly (the piece containing

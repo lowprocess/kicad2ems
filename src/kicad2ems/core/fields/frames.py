@@ -27,6 +27,10 @@ import numpy as np
 
 from .dumps import UNITS
 
+__all__ = ['DumpSource', 'read_npz', 'write_npz', 'find_dumps', 'plane',
+           'default_axis', 'outlines', 'levels', 'render', 'save_animation',
+           'write_frames', 'save_fd_outputs']
+
 AXES = 'xyz'
 
 

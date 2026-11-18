@@ -194,7 +194,7 @@ class WindowRun:
         """The solvers the S-parameters run uses, a name each: the full-wave
         ones the estimate is of (auto's choice), else those ticked ('auto' while
         none is), then the others ticked (the line model's)."""
-        from kicad2ems.core.api.frontend import registry, AUTO
+        from kicad2ems.core.solvers import registry, AUTO
         try:
             plan = self.setup.values().get('solvers')
         except ValueError:  # (a field half typed)
@@ -215,7 +215,7 @@ class WindowRun:
         """Where a page's tool writes a run started here: a folder of its own
         under the output folder (the board's 'out', or the Output setting), so
         earlier runs stay to compare with; a preview: one per board."""
-        from kicad2ems.core.api.frontend import default_out
+        from kicad2ems.core.config import default_out
         from .runfolders import tool_dir, tool_preview_dir
         try:
             base = self.setup.values().get('out')
@@ -230,7 +230,7 @@ class WindowRun:
     def out_dir(self, vals=None):
         """The output folder: the form's, else 'out' next to the board (where a
         run writes), else in the working directory."""
-        from kicad2ems.core.api.frontend import default_out
+        from kicad2ems.core.config import default_out
         vals = self.setup.values() if vals is None else vals
         if vals.get('out'):
             return vals['out']
@@ -269,13 +269,13 @@ class WindowRun:
             return no(
                 'Setup',
                 "Choose a solver on the list's S-parameters row (or Preview)")
-        from kicad2ems.core.api.frontend import mark_run
+        from kicad2ems.core import study
         from .runfolders import run_dir, preview_dir
         vals = self.run_values(preview)
         base = self.out_dir(vals)  # each run in a folder of its own
         self.current = Run(vals, (preview_dir(base, vals['board']) if preview
                                   else run_dir(base, vals['board'])), preview)
-        mark_run(self.current.out, RF,
+        study.mark(self.current.out, RF,
                  (self.study.asked_of(RF, getattr(self, '_only', None)) or
                   ('sparams', )), preview, config=self.config_path())
         self._auto = getattr(self, '_auto', False) and preview

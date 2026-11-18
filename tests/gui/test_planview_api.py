@@ -1,18 +1,10 @@
-"""kicad2ems.gui.api, the surface the KiCad plugin imports: PlanView and the
-members a subclass may use."""
-import subprocess, sys
-
-
-def test_api_loads_qt_on_first_use():
-    code = "import sys, kicad2ems.gui.api; print('PySide6' in sys.modules)"
-    out = subprocess.run([sys.executable, '-c', code], capture_output=True,
-                         text=True, check=True).stdout.split()
-    assert out == ['False']
+"""PlanView, which the KiCad plugin subclasses: the members a subclass may
+use."""
 
 
 def test_planview_has_what_a_subclass_uses():
     from kicad2ems.gui import application
-    from kicad2ems.gui.api import PlanView
+    from kicad2ems.gui.planview import PlanView
     application()
     v = PlanView()
     for name in ('load', 'set_board', 'set_lines_visible', 'current_layer',

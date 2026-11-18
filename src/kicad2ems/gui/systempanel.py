@@ -38,7 +38,7 @@ def fit_note(need, have):
 def _user_value(key):
     """The user's own site.toml setting of key, or '' (the field shows it, not
     the installer's)."""
-    from kicad2ems.core.api.frontend import sitecfg
+    from kicad2ems.core import sitecfg
     try:
         import tomllib
     except ImportError:
@@ -70,7 +70,7 @@ class SystemPanel(QWidget):
         lay.addWidget(box)
         box = QGroupBox('Programs')  # the machine's, not a board's: site.toml
         pf = QFormLayout(box)
-        from kicad2ems.core.api.frontend import sitecfg
+        from kicad2ems.core import sitecfg
         where = sitecfg.user_file()
         # (site.toml key, label, tooltip, placeholder, the folder dialog's
         # title: None for a file's)
@@ -155,7 +155,7 @@ class SystemPanel(QWidget):
     def _save_programs(self):
         """The programs into the user's site.toml (sitecfg), then the solvers
         checked again."""
-        from kicad2ems.core.api.frontend import sitecfg
+        from kicad2ems.core import sitecfg
         changed = False
         for key, field in self._programs.items():
             path = field.text().strip()
@@ -190,9 +190,9 @@ class SystemPanel(QWidget):
         self.proc = None
         self.refresh_btn.setEnabled(True)
         try:
-            from kicad2ems.core.api.frontend import check_format
+            from kicad2ems.core import formats
             d = json.loads(out)
-            why = check_format(d, 'kicad2ems-sysinfo')
+            why = formats.check(d, 'kicad2ems-sysinfo')
             if why:
                 self.state.setText(f"system check: {why}")
                 return
@@ -266,7 +266,7 @@ class SystemPanel(QWidget):
         if not runs:
             return False
         try:
-            from kicad2ems.core.api.frontend import read_summary
+            from kicad2ems.core.runs import read_summary
             est = read_summary(runs[-1]).get('estimates')
         except (OSError, ValueError):
             return False

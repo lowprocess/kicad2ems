@@ -1,6 +1,6 @@
 """
 An analysis's settings and its run, for any analysis kicad2ems's registry holds
-(kicad2ems.core.api.frontend.analyses:
+(kicad2ems.core.analyses.registry:
 pcbqs's power integrity, near field and thermal): the form made from its
 options, in sections by their groups; its command started as a child process;
 its output followed (the Run page shows the log, the status line its progress).
@@ -684,11 +684,11 @@ class AnalysisPanel(QWidget):
             return False
         self.out, self._preview, self._vals = (os.path.abspath(out), preview,
                                                vals)
-        from kicad2ems.core.api.frontend import mark_run
+        from kicad2ems.core import study
         from kicad2ems.core.study import provided
         # whose run this folder is
         win = self.win
-        mark_run(self.out,
+        study.mark(self.out,
                  getattr(self, 'engine', None) or self.a.name,
                  asked or provided(self.a), preview,
                  config=getattr(getattr(win, 'setup', None), 'path', None),
@@ -769,7 +769,7 @@ class AnalysisPanel(QWidget):
                                ended=time.strftime('%Y-%m-%d %H:%M:%S')), fh)
         except OSError:
             pass
-        from kicad2ems.core.api.frontend import analysis_of
+        from kicad2ems.core.analyses import analysis_of
         made = analysis_of(self.out) if code == 0 else None
         if made is None or made[0] != self.a.name:
             lines = [

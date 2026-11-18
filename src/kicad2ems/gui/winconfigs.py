@@ -29,10 +29,10 @@ class WindowConfigs:
         """The examples, kicad2ems's own and those the installed analyses ship
         (pcbqs's circuits), as a menu of their groups; one opens from a folder
         of the user's, where it is copied, its board made if it is generated."""
-        from kicad2ems.core.api.frontend import example_index
+        from kicad2ems import examples
         self.examples_menu.clear()
         try:
-            entries = example_index()
+            entries = examples.index()
         except Exception:  # an analysis's fault: no examples, not no window
             entries = []
         # {group path: its menu}, {top group: whose}
@@ -109,14 +109,14 @@ class WindowConfigs:
 
     def load_analyses(self, path=None):
         """A config's study into the list
-        (kicad2ems.core.api.frontend.read_study: its [study] tables, else the
+        (kicad2ems.core.study.read_config: its [study] tables, else the
         analyses [analysis] run names; neither: S-parameters) and each
         analysis's settings from its [analysis. <name>] table, the others'
         cleared. path None: a new study, nothing set. A table of an analysis not
         installed here is kept, and saved back, as is a question or an engine of
         the study this window lacks."""
-        from kicad2ems.core.api.frontend import (
-            read_analyses, read_analysis_sets, read_study, Study)
+        from kicad2ems.core import analyses
+        from kicad2ems.core.study import Study, read_config
         tables, study, more = {}, Study({'sparams': []}), {}
         if not self.busy():
             # another study: the last one's states are not its
@@ -125,14 +125,14 @@ class WindowConfigs:
         base = os.path.dirname(os.path.abspath(path)) if path else os.getcwd()
         if path:
             try:
-                tables = read_analyses(path)[1]
-                study = read_study(path, strict=False)
+                tables = analyses.read_config(path)[1]
+                study = read_config(path, strict=False)
                 # the analyses a config gives several tables
                 # ([[analysis.<name>]]: a run each): those after the first
                 more = {
                     name: [_whole(dict(t), base)
                            for t in sets[1:]]
-                    for name, sets in read_analysis_sets(path).items()
+                    for name, sets in analyses.read_sets(path).items()
                     if len(sets) > 1
                 }
             except Exception as e:
@@ -231,10 +231,11 @@ class WindowConfigs:
 
     def save_analyses(self, path):
         """The study into a config: what it asks and who answers as its [study]
-        tables (kicad2ems.core.api.frontend. write_study), each analysis's
+        tables (kicad2ems.core.study.write_config), each analysis's
         settings that are set as its [analysis.<name>] table. A study of
         S-parameters alone with nothing else set writes neither."""
-        from kicad2ems.core.api.frontend import write_study, Study
+        from kicad2ems.core import study
+        from kicad2ems.core.study import Study
         from .runner import write_analyses
         base = os.path.dirname(os.path.abspath(path))
         tables = dict(getattr(self, 'extra_analyses', {}))
@@ -273,7 +274,7 @@ class WindowConfigs:
                        {**st.fields, **extra.fields}, 'study')
         plain = (list(st.asked) == ['sparams'] and not st.fields.get('sparams')
                  and not tables)
-        write_study(path, None if plain else st)
+        study.write_config(path, None if plain else st)
 
     # ---- a file or folder dropped on the window (R-E25) ---------------------
     DROPPED = ('.kicad_pcb', '.toml', '_board.json', '.gbrjob')

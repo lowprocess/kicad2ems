@@ -4,7 +4,8 @@ questions takes, and a run folder's mark."""
 import os
 import pytest
 from kicad2ems.core import analyses, study
-from kicad2ems.core.api.analysis import Analysis, Question
+from kicad2ems.core.analyses import Analysis
+from kicad2ems.core.study import Question
 
 
 class Drop(Analysis):
@@ -590,7 +591,6 @@ def test_an_analysis_given_several_tables_is_a_run_for_each(
     import json
     import re
     from kicad2ems.core.cli import main
-    from kicad2ems.core.api import frontend
     fakes(Rails, Circuit)
     assert (analyses.registry()['pdn'].several == 'rail'
             and analyses.registry()['circuit'].several == '')
@@ -614,7 +614,6 @@ volts = 3.3
     # the first, as before
     assert (analyses.read_config(cfg) == (None,
                                           dict(pdn=dict(rail='+5V', volts=5))))
-    assert frontend.read_analysis_sets is analyses.read_sets
     assert main(['study', cfg, '--list']) == 0
     assert (capsys.readouterr().out.splitlines() == [
         '  Rail drop: fake (fake.pdn), 2 runs: +5V, +3V3'

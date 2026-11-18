@@ -11,9 +11,9 @@ import json
 import os
 import numpy as np
 
-from kicad2ems.core.api.solver import Option, floatlist
-from kicad2ems.core.api.solver import Solver, Result, Deviation
-from kicad2ems.core.api.solver import stop
+from kicad2ems.core.options import Option, floatlist
+from kicad2ems.core.solvers import Solver, Result, Deviation
+from kicad2ems.core import stop
 
 G = 'mom25d'
 # --solvers auto (docs/architecture.md#choosing-solvers): seconds per EM solve
@@ -69,13 +69,13 @@ def mom25d_status():
 
 
 def run_finish(run):
-    """The run's surface finish (kicad2ems.core.api's resolve_finish), or
+    """The run's surface finish (kicad2ems.core.finish.resolve), or
     None."""
     fin = getattr(run, 'finish', None)
     if fin is not None or not getattr(run.s, 'sigma', None):
         return fin
-    from kicad2ems.core.api.solver import resolve_finish
-    return resolve_finish(run.s, run.m)
+    from kicad2ems.core import finish
+    return finish.resolve(run.s, run.m)
 
 
 def _metal(m, sigma, rough=None, finish=None):
@@ -150,7 +150,7 @@ def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
     'whole' (every copper layer meshed, mom25d.board ground='none'); planes,
     stitching_pads, thickness, wideband: mom25d.board's (wideband: the
     frequency, Hz, of a Djordjevic-Sarkar stack's er and tand, or None))."""
-    from kicad2ems.core.api.solver import mixed_mode
+    from kicad2ems.core.sparams import mixed_mode
     pairs, kw = _board_kw(m, dmax, port, **mesh)
     wideband = mesh.get('wideband')
     if wideband:
@@ -250,7 +250,7 @@ def save_mesh(run, sim, model, solver='mom25d'):
     layer's triangles at its copper's height, and the diagonals merged into quad
     cells (`hidden`, a run's). solver: the file's name, 'mom25d' (the preview)
     or 'mom25d-run' (the mesh a run solved on)."""
-    from kicad2ems.core.api.solver import save_mesh
+    from kicad2ems.core import meshes
     lay = {k: l for l, k in model.iface.items()}
     z = np.array(
         [run.m.cu_z.get(lay.get(int(k)), np.nan) for k in sim.tri_layer])
@@ -277,7 +277,7 @@ def save_mesh(run, sim, model, solver='mom25d'):
             if solver == 'mom25d' else 'mom25d solved mesh (3D view)')
     run.wrote(
         what,
-        save_mesh(run, solver, 'tris', nodes=nodes, tris=tris[keep],
+        meshes.save(run, solver, 'tris', nodes=nodes, tris=tris[keep],
                   hidden=hidden))
 
 
@@ -916,7 +916,7 @@ class MoM25D(Solver):
         port = s.mom_port
         # a drive that names no port: before the solve
         if run.antenna and (s.drive or s.grid or s.steer or s.taper):
-            from kicad2ems.core.api.solver import settings_drive
+            from kicad2ems.core.phased import settings_drive
             settings_drive(s.drive, [p.name for p in run.m.ports], s.grid,
                            s.steer, s.taper)
         # the gap source the antenna's power is taken from
@@ -1015,10 +1015,10 @@ class MoM25D(Solver):
         substrate loss and surface waves as loss; nothing radiates below the
         infinite ground."""
         from kicad2ems.mom25d.farfield import far_field, radiated
-        from kicad2ems.core.api.solver import phased
-        from kicad2ems.core.api.solver import (match_summary, describe_antenna,
-                                               save_antenna, pattern_gain)
-        from kicad2ems.core.api.solver import plot_antenna, plot_pattern
+        from kicad2ems.core import phased
+        from kicad2ems.core.fields.antenna import match_summary, pattern_gain
+        from kicad2ems.core.fields import antenna
+        from kicad2ems.core.plots import plot_antenna, plot_pattern
         s, m, sim = run.s, run.m, held.sim
         names = [p.name for p in sim.ports]
         n = len(names)
@@ -1160,7 +1160,7 @@ class MoM25D(Solver):
                     + ', '.join(f"{p} {v:.1f} dB"
                                 for p, v in ant['active_db'].items())
                     + f" at {ffr[ip] / 1e9:.4g} GHz")
-        for line in describe_antenna(match, rows, ant['f_pattern']):
+        for line in antenna.describe(match, rows, ant['f_pattern']):
             run.log(f"  mom25d {line}")
         # openEMS's antenna results come first
         tag = '' if 'antenna' not in run.summary else '_mom25d'
@@ -1173,7 +1173,7 @@ class MoM25D(Solver):
                    "_mom25d_pattern.png", f"pattern{tag}",
                    'antenna (mom25d): patterns')
         js = run.path('_mom25d_antenna.json')
-        save_antenna(ant, js)
+        antenna.save(ant, js)
         run.wrote('antenna results, mom25d (JSON)', js)
         run.wrote('antenna sphere, mom25d', sph_file)
         run.summary['antenna'
@@ -1188,7 +1188,7 @@ class MoM25D(Solver):
         current_dumps' currents / extra / unit (the mixed solver's)."""
         if not run.s.mom_dump or held is None:
             return
-        from kicad2ems.core.api.solver import DumpSource, save_fd_outputs
+        from kicad2ems.core.fields.frames import DumpSource, save_fd_outputs
         tag = self.name
         # dump_port: the FDTD solvers' setting, where they are. MoM alone
         # still supports its default (first-port) current/near-field dumps.
@@ -1242,8 +1242,8 @@ def current_dumps(run, res, freqs, ports=None, near=(), tag='mom25d',
     lines)."""
     from kicad2ems.emsdev.numerics.biot import current_deposit
     from kicad2ems.mom25d.farfield import current_on_grid, near_fields
-    from kicad2ems.core.api.solver import Dump, write_info
-    from kicad2ems.core.api.solver import write_npz
+    from kicad2ems.core.fields.dumps import Dump, write_info
+    from kicad2ems.core.fields.frames import write_npz
     sim, model = res.sim, res.model
     names = [p.name for p in sim.ports]
     want = [

@@ -13,10 +13,10 @@ drive's antenna result and the array file the GUI steers.
 """
 import functools
 import numpy as np
-from kicad2ems.core.api.solver import C0, ETA0
-from kicad2ems.core.api.solver import (match_summary, gain_table,
-                                       add_polarisation, pattern_gain,
-                                       describe_antenna as describe)
+from kicad2ems.core.constants import C0, ETA0
+from kicad2ems.core.fields.antenna import (match_summary, gain_table,
+                                           add_polarisation, pattern_gain,
+                                           describe)
 
 # the coarse sphere (deg)
 TH, PH = np.arange(0, 181, 5.0), np.arange(0, 361, 5.0)
@@ -168,7 +168,7 @@ def combine_phased(m, freq, res, a, excite, ff_pattern=None, step=2.0,
     active_db, and the array data for phased.save). The pattern frequency: the
     given one, else the resonance of the first driven port's active
     reflection."""
-    from kicad2ems.core.api.solver import phased
+    from kicad2ems.core import phased
     ffr, n = res.ffr, len(m.ports)
     # the ports not run: no column (not driven)
     S = np.where(np.isfinite(res.S), res.S, 0)

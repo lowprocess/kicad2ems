@@ -20,7 +20,7 @@ of it and the settings of the one selected: study.py) and its pages:
              (pcbqs.circuit), when that analysis is installed
 
 The analyses beside S-parameters are those kicad2ems's registry holds
-(kicad2ems.core.api.frontend.analyses: pcbqs's power integrity, near field,
+(kicad2ems.core.analyses.registry: pcbqs's power integrity, near field,
 circuit and thermal). The window knows none of them by name: each one's settings
 are a panel in the study made from its options (analysispanel.py), the toolbar's
 Run starts its command with the rest, its maps are field dumps the Viewer shows
@@ -102,8 +102,8 @@ class MainWindow(WindowStudy, WindowDocks, WindowConfigs, WindowRun,
         # what runs each analysis of the registry: a settings panel made from
         # its options (analysispanel.py), or, for the one this window has an
         # editor for (the circuit's schematic), that page
-        from kicad2ems.core.api.frontend import analyses
-        self.registry = analyses()
+        from kicad2ems.core import analyses
+        self.registry = analyses.registry()
         self.panels, self.editors = {}, {}
         for a in ANALYSES:
             analysis = self.registry.get(a.key)

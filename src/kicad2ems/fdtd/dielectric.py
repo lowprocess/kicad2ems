@@ -12,7 +12,7 @@ above.
 with e^(+j w t) (eps = eps' - j eps''), m1 = 3 (1 kHz) and m2 = 12 (1 THz).
 """
 import numpy as np
-from kicad2ems.core.api.solver import EPS0
+from kicad2ems.core.constants import EPS0
 
 M1, M2 = 3.0, 12.0
 

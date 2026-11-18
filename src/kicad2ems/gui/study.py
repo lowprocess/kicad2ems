@@ -63,8 +63,8 @@ def installed():
             "kicad2ems's run: the solvers chosen on the RF rows, their "
             "S-parameters, fields and antenna results")
     ]
-    from kicad2ems.core.api.frontend import analyses
-    for a in analyses().values():
+    from kicad2ems.core import analyses
+    for a in analyses.registry().values():
         out.append(
             Analysis(a.name, a.label, a.tool, page=a.label if a.page else '',
                      needs=tuple(a.needs), preview=bool(a.previewed),
@@ -75,7 +75,7 @@ def installed():
 def tree():
     """What the list shows: kicad2ems's study_tree, [dict(group,
     questions=[dict(question, engines, missing)])]."""
-    from kicad2ems.core.api.frontend import study_tree
+    from kicad2ems.core.study import study_tree
     return study_tree()
 
 
@@ -355,7 +355,7 @@ class StudyModel:
 
     def study(self):
         """The study as kicad2ems holds one (a config's [study] tables)."""
-        from kicad2ems.core.api.frontend import Study
+        from kicad2ems.core.study import Study
         return Study(self.asked(), self.asked_fields(), 'study')
 
     def set_study(self, study):
@@ -453,7 +453,7 @@ class StudyModel:
                     asked.setdefault(q, [])
                     if k != RF and k != first and k not in asked[q]:
                         asked[q].append(k)
-        from kicad2ems.core.api.frontend import Study
+        from kicad2ems.core.study import Study
         return Study(asked, {q: self.fields.get(q, False) for q in asked})
 
     def set_ticked(self, keys):

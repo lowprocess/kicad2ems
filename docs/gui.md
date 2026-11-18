@@ -188,7 +188,7 @@ are a table (a board's rails), one button picks the selected cell: a net in the 
 *Source*. The plan shows the board as drawn for this (all its nets, and the parts' outlines), which is also
 what it shows from the moment a board is chosen, before any preview or run; a run's result that was there is
 back when the pick ends. An engine says which of its settings can be picked ([an option's
-`pick`](api.md#kicad2emsapianalysis)), so the window knows none by name.
+`pick`](api.md#analyses)), so the window knows none by name.
 
 ![Two traces picked on the board for the crosstalk question](img/gui/pick.png)
 

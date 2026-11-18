@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from . import xsection as X
 from .topology import _pair_modes
 
+__all__ = ['modes', 'solve']
+
 
 # the mesh a field is drawn on: graded four times as finely as the one the
 # numbers come from, for smooth colours (bilinear cells: the field steps from

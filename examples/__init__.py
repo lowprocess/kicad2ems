@@ -2,8 +2,7 @@
 The example boards, installed with kicad2ems as the package kicad2ems.examples
 (this folder of the repository): a config for each (<name>.toml), the generators
 of the boards that are not in it (make_rf_examples.py, make_antennas.py,
-make_demo_board.py), and the three boards that are. Front ends reach them
-through kicad2ems.core.api.frontend:
+make_demo_board.py), and the three boards that are:
 
     examples()                  {name: config path} of every example: those in
                                 this installed folder and those the installed
@@ -26,6 +25,8 @@ next to its config, so a front end opens an example from the folder
 prepare_example made.
 """
 import glob, os, re, shutil, subprocess, sys
+
+__all__ = ['examples', 'index', 'user_folder', 'board_of', 'prepare_example']
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GENERATORS = (('rf_', 'make_rf_examples.py'), ('antenna_', 'make_antennas.py'),

@@ -40,7 +40,7 @@ def cells(rep):
 def test_the_four_register_with_kicad2ems():
     """Declared as kicad2ems expects (a name, a result file, options of its
     kinds), in the Study's order."""
-    from kicad2ems.core.api.analysis import Analysis, KINDS
+    from kicad2ems.core.analyses import Analysis, KINDS
     made = [
         cls() for cls in (A.PowerIntegrity, A.NearField, A.Circuit, A.Thermal)
     ]
@@ -267,20 +267,22 @@ def test_the_examples_are_configs_beside_their_models(tmp_path):
     assert (len({m.name
                  for m in EXAMPLES.glob('*.json')}) == len(
                      list(EXAMPLES.glob('*.toml'))) == 10)
-    from kicad2ems.core.api import frontend
+    from kicad2ems import examples
+    from kicad2ems.core import analyses
+    from kicad2ems.core.config import build_settings
     names = [
-        e['name'] for e in frontend.example_index() if e['source'] == 'circuit'
+        e['name'] for e in examples.index() if e['source'] == 'circuit'
     ]
     assert names == [e['name'] for e in ex]
-    cfg = frontend.prepare_example('circuit_buck', str(tmp_path))
+    cfg = examples.prepare_example('circuit_buck', str(tmp_path))
     assert (cfg == str(tmp_path / 'circuit_buck.toml')
             and (tmp_path / '04_buck.kicad_pcb').is_file())
-    run, tables = frontend.read_analyses(cfg)
+    run, tables = analyses.read_config(cfg)
     assert (run == ['circuit', 'thermal']
             and tables['circuit']['model'] == str(tmp_path / '04_buck.json'))
-    s = frontend.build_settings({}, cfg)
+    s = build_settings({}, cfg)
     assert s.board == str(tmp_path / '04_buck.kicad_pcb') and s.notes == []
-    assert frontend.analysis_of(str(tmp_path)) is None
+    assert analyses.analysis_of(str(tmp_path)) is None
 
 
 # ---- what a result holds ----------------------------------------------------

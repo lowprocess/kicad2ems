@@ -14,6 +14,8 @@ the top level, the short name under [solver.<name>]) and the GUI fields
 """
 from dataclasses import dataclass
 
+__all__ = ['Option', 'strlist', 'items', 'floatlist', 'floats']
+
 
 @dataclass
 class Option:

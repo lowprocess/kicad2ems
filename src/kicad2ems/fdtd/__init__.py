@@ -2,8 +2,7 @@
 kicad2ems.fdtd: the FDTD solvers of kicad2ems, openEMS and gfdtd, on one shared
 FDTD layer: what the board becomes on a rectilinear grid, and how runs on an
 engine with openEMS's Python interface go. kicad2ems.core.solvers lists the
-solvers (openems, gfdtd); they reach the core only through
-kicad2ems.core.api.solver.
+solvers (openems, gfdtd).
 
     boundaries  the six boundary conditions (auto: PEC under a solid bottom
                 plane), the closed-box check

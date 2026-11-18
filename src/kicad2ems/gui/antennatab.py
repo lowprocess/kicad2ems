@@ -7,7 +7,7 @@ in 3D over the board.
 """
 import glob, os
 import numpy as np
-from kicad2ems.core.api.frontend import read_sphere
+from kicad2ems.core.fields.antenna import read_sphere
 
 
 def antenna_files(out_dir):
@@ -23,9 +23,9 @@ def find_antenna(out_dir, path=None):
     js = [path] if path else antenna_files(out_dir)
     if not js:
         return None
-    from kicad2ems.core.api.frontend import read_antenna
+    from kicad2ems.core.fields import antenna
     try:
-        res = read_antenna(js[-1])
+        res = antenna.read(js[-1])
     except (OSError, ValueError):  # unreadable, or a newer format
         return None
     name = os.path.basename(js[-1])[:-len('_antenna.json')]
@@ -47,7 +47,7 @@ def find_antenna(out_dir, path=None):
 def load_array(out_dir, res):
     """Each port's far field of an antenna result (mom25d's
     <name>_mom25d_array.npz: phased.load), or None."""
-    from kicad2ems.core.api.frontend import phased
+    from kicad2ems.core import phased
     f = os.path.join(out_dir, (res or {}).get('array_file') or '')
     return (phased.load(f) if
             (res or {}).get('array_file') and os.path.isfile(f) else None)

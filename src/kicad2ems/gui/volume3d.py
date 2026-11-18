@@ -396,7 +396,7 @@ def pattern_mesh(sph, i, scale, centre, radius, range_db=30.0, cmap='jet'):
     below it. Returns (vertices (n, 3), faces (m, 3), colours (n, 4) floats,
     peak dBi)."""
     import matplotlib
-    from kicad2ems.core.api.frontend import sphere_gain
+    from kicad2ems.core.fields.antenna import sphere_gain
     g = sphere_gain(sph, i, scale)  # (nphi, ntheta)
     gdb = 10 * np.log10(np.maximum(g, 1e-12))
     peak = float(gdb.max())

@@ -326,13 +326,14 @@ class ResultsTab(QWidget):
         it is of) onto the page in place of the S-parameter plots: its report
         and its curves. False: it holds none, and the page shows
         S-parameters."""
-        from kicad2ems.core.api.frontend import analyses, analysis_of
+        from kicad2ems.core import analyses
+        from kicad2ems.core.analyses import analysis_of
         made = analysis_of(out_dir) if out_dir else None
         rep, sets = None, []
-        if made is not None and made[0] in analyses():
+        if made is not None and made[0] in analyses.registry():
             folder = os.path.abspath(out_dir)
             try:
-                rep = analyses()[made[0]].report(folder)
+                rep = analyses.registry()[made[0]].report(folder)
             except Exception:  # an analysis's fault, a damaged file: no report
                 rep = None
             if rep:
@@ -358,12 +359,12 @@ class ResultsTab(QWidget):
     def _with_engines(self, name, folder, report):
         """A result's report with the other engines' answers to the same
         question beside it: a section 'Engines compared' whose table has the
-        figures they name (kicad2ems.core.api.frontend.compare_engines: this
+        figures they name (kicad2ems.core.study.compare: this
         result and each other engine's newest on this board) against the
         engines, and the difference where two give one. Nothing to compare: the
         report as it is."""
-        from kicad2ems.core.api.frontend import (compare_engines, engines,
-                                                 questions)
+        from kicad2ems.core import study
+        from kicad2ems.core.study import engines, questions
         try:
             es, qs = engines(), questions()
             latest = (dict(self.win.latest_results()) if hasattr(
@@ -377,7 +378,7 @@ class ResultsTab(QWidget):
                 ]
                 if len(names) < 2:
                     continue
-                c = compare_engines({n: latest[n] for n in names})
+                c = study.compare({n: latest[n] for n in names})
                 if not any(r['spread'] is not None for r in c['rows']):
                     continue  # no figure two of them give
                 rows = [[
@@ -500,8 +501,8 @@ class ResultsTab(QWidget):
             self.which.clear()
             for f in files:
                 try:
-                    from kicad2ems.core.api.frontend import read_antenna
-                    solver = read_antenna(f).get('solver', 'openems')
+                    from kicad2ems.core.fields import antenna
+                    solver = antenna.read(f).get('solver', 'openems')
                 except (OSError, ValueError):
                     solver = os.path.basename(f)
                 self.which.addItem(solver, f)
@@ -607,7 +608,7 @@ class ResultsTab(QWidget):
             None, os.path.dirname(summary) if summary else None)
         if summary and os.path.exists(summary):
             try:
-                from kicad2ems.core.api.frontend import read_summary
+                from kicad2ems.core.runs import read_summary
                 sm = self._summary = read_summary(summary)
                 self.set_notes(*run_notes(sm))
                 compare = compare or (sm.get('settings') or {}).get('compare')

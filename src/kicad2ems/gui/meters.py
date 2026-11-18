@@ -138,7 +138,7 @@ def estimate(est, values, usable=None, ram_avail=None):
     seconds (summed: they run one after the other), gb (the largest), gpu_gb,
     fits, missing (named solvers without an estimate)), or None when no
     full-wave solver would run or none has an estimate."""
-    from kicad2ems.core.api.frontend import registry, AUTO
+    from kicad2ems.core.solvers import registry, AUTO
     rows = {
         n: r
         for n, r in ((est or {}).get('solvers') or {}).items()
