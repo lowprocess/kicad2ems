@@ -53,13 +53,10 @@ from .statusbar import MemoryMeters
 from .filtertab import FilterTab
 # (the window's parts, in modules of their own: R-F2)
 from .setuptab import SetupTab, editor_page
-# (run_notes: as before, app.run_notes)
-from .runtab import RunTab, run_notes  # noqa: F401
+from .runtab import RunTab
 from .resultstab import ResultsTab
 from . import theme
-# (LOWER, BESIDE: as before, app.LOWER and app.BESIDE)
-from .windocks import (  # noqa: F401
-    WindowDocks, EDITORS, PANELS, TITLES, LOWER, BESIDE, STATE_VERSION)
+from .windocks import WindowDocks, EDITORS, PANELS, TITLES, STATE_VERSION
 from .winconfigs import WindowConfigs
 from .winstudy import WindowStudy
 from .winrun import WindowRun

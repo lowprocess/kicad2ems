@@ -321,7 +321,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Removed
 - **The GUI's copies of KiCad (2026-11-18, wave 3).** The Circuit page's
   *KiCad source sheets* and *KiCad component data* views (KiCad shows both);
-  importing a schematic reads its netlist only.
+  importing a schematic reads its netlist only. The System panel's advice to
+  install CuPy, and `emsdev.gpu.cupy_device` (no solver uses CuPy now:
+  `gpu.probe()` lists the Vulkan GPUs). The old names `app.run_notes`,
+  `app.LOWER`/`BESIDE` and `traces.port_names` (`runtab`, `windocks`,
+  `core.touchstone`).
 - **gfdtd's `GFDTD_VK_BLOCK` and `GFDTD_VK_IDX`.** Tuning variables nothing
   set or documented: the Vulkan kernels' workgroup is 64 and their index
   `int` (2026-11-18). The documented settings that no test had set now have

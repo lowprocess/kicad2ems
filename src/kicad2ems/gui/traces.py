@@ -15,8 +15,7 @@ display).
 """
 import os, re
 import numpy as np
-# (traces.port_names, as before)
-from kicad2ems.core.touchstone import port_names  # noqa: F401
+from kicad2ems.core.touchstone import port_names
 
 # the rectangular plot
 KINDS = ('|S| (dB)', '|S| (linear)', 'Phase (deg)', 'Group delay (ns)', 'VSWR')

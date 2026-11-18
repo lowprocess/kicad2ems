@@ -441,7 +441,7 @@ def test_system_panel(tmp_path):
              consumes='board')
     ]
     sysinfo['ram'] = dict(total=32.0, available=20.0)
-    sysinfo['gpu'] = dict(device='GPU', backend='cupy', api='ROCm/HIP',
+    sysinfo['gpu'] = dict(device='GPU', backend='vulkan', api='Vulkan',
                           free=16.0, total=17.0)
     p.set_info(sysinfo)
     assert p.solvers.topLevelItemCount() == 2
@@ -579,7 +579,8 @@ def test_section_page(wilkinson_preview, tmp_path, monkeypatch):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'config'))
     from kicad2ems.gui import application
-    from kicad2ems.gui.app import MainWindow, LOWER
+    from kicad2ems.gui.app import MainWindow
+    from kicad2ems.gui.windocks import LOWER
     app = application()
     w = MainWindow()
     w.show()
@@ -1617,7 +1618,8 @@ def test_run_notes_on_the_results_page(tmp_path, monkeypatch):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
     from kicad2ems.gui import application
-    from kicad2ems.gui.app import MainWindow, run_notes
+    from kicad2ems.gui.app import MainWindow
+    from kicad2ems.gui.runtab import run_notes
     application()
     sm = dict(
         warnings=['WARNING: openems: 2 vias moved onto the mesh'],

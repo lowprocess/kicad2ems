@@ -1,11 +1,9 @@
 """
-The GPUs: which ones CuPy and Vulkan (emsdev.vulkan) see, what each is (name,
-CUDA, ROCm/HIP or Vulkan, memory), and how a solver's backend setting reads
+The GPUs: which ones Vulkan (emsdev.vulkan) sees, what each is (name, memory),
+and how a solver's backend setting reads
 (preference). A solver keeps its own backends (mom25d's LU, gfdtd's update
 kernels) and asks here which device they would run on.
 
-    gpu.cupy_device()    Device of CuPy's current device, or raises Unavailable
-                         (no CuPy, no driver, none)
     gpu.vulkan_device()  the best Vulkan GPU (emsdev.vulkan; slangpy runs the
                          solvers' kernels on it)
     gpu.devices()        every device of every library that has one: [Device]
@@ -15,7 +13,7 @@ kernels) and asks here which device they would run on.
 import os
 from dataclasses import dataclass, field
 
-LIBRARIES = ('cupy', 'vulkan')
+LIBRARIES = ('vulkan',)
 OFF = {'0', 'false', 'no', 'off', 'none'}
 ON = {'1', 'on', 'true', 'yes', 'auto', ''}
 
@@ -28,15 +26,11 @@ class Unavailable(RuntimeError):
 class Device:
     index: int
     name: str
-    library: str                            # 'cupy' | 'vulkan'
-    api: str                                # 'ROCm/HIP' | 'CUDA' | 'Vulkan'
+    library: str                            # 'vulkan'
+    api: str                                # 'Vulkan'
     total: float = None                     # bytes of device memory
     version: str = ''                       # the library's version
     _free: object = field(default=None, repr=False, compare=False)
-
-    @property
-    def hip(self):
-        return self.api == 'ROCm/HIP'
 
     def free(self):
         """Bytes free on the device now (the library's cached blocks released
@@ -66,36 +60,6 @@ def _name(v, default='GPU'):
     return v.decode() if isinstance(v, bytes) else str(v)
 
 
-def cupy_device(index=None):
-    """Device of CuPy's device `index` (None: its current device)."""
-    try:
-        import cupy as cp
-        if cp.cuda.runtime.getDeviceCount() < 1:
-            raise Unavailable("cupy: no GPU device")
-        dev = cp.cuda.Device() if index is None else cp.cuda.Device(index)
-    except Unavailable:
-        raise
-    except Exception as e:  # ImportError, CUDARuntimeError, ...
-        raise Unavailable(f"cupy: {e}")
-    try:
-        name = _name(cp.cuda.runtime.getDeviceProperties(dev.id).get('name'))
-    except Exception:
-        name = 'GPU'
-
-    def free():
-        cp.get_default_memory_pool().free_all_blocks()
-        return (cp.cuda.Device(dev.id).mem_info[0]
-                if index is not None else cp.cuda.Device().mem_info[0])
-    try:
-        total = float(dev.mem_info[1])
-    except Exception:
-        total = None
-    return Device(
-        int(dev.id), name, 'cupy',
-        ('ROCm/HIP' if getattr(cp.cuda.runtime, 'is_hip', False) else 'CUDA'),
-        total, str(getattr(cp, '__version__', '')), free)
-
-
 def vulkan_device(index=None, need=()):
     """Device of Vulkan adapter `index` (None: the best, or
     EMSDEV_VULKAN_DEVICE's): emsdev.vulkan.device; `need`: the features a
@@ -112,25 +76,15 @@ def probe(libraries=LIBRARIES):
     from giving any."""
     out, why = [], []
     for lib in libraries:
-        one = {'cupy': cupy_device, 'vulkan': vulkan_device}[lib]
         try:
-            first = one(0)
+            out.append(vulkan_device(0))
         except Unavailable as e:
             why.append(str(e))
             continue
-        out.append(first)
-        try:
-            if lib == 'vulkan':
-                from . import vulkan
-                n = len(vulkan.adapters())
-            else:
-                import cupy
-                n = cupy.cuda.runtime.getDeviceCount()
-        except Exception:
-            n = 1
-        for i in range(1, n):
+        from . import vulkan
+        for i in range(1, len(vulkan.adapters())):
             try:
-                out.append(one(i))
+                out.append(vulkan_device(i))
             except Unavailable:
                 pass
     return out, why

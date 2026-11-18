@@ -250,11 +250,8 @@ class SystemPanel(QWidget):
             why = info.get('gpu_why') or 'no GPU backend'
             self.hw.addRow(
                 'GPU',
-                QLabel(
-                    f"{NO} none: mom25d solves on the CPU ({why}). For a GPU, "
-                    f"install CuPy into this Python ({sys.executable}): pip "
-                    "install cupy-rocm-7-0 (AMD, ROCm 7), cupy-cuda12x or "
-                    "cupy-cuda13x (NVIDIA)", wordWrap=True))
+                QLabel(f"{NO} none: the solvers run on the CPU ({why})",
+                       wordWrap=True))
         self.show_estimates(self.est)
 
     # ---- a preview's estimates ----

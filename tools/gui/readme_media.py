@@ -75,7 +75,8 @@ def gui_media(only):
     os.environ['XDG_CONFIG_HOME'] = os.path.join(RUNS, 'xdg')
     shutil.rmtree(os.environ['XDG_CONFIG_HOME'], ignore_errors=True)
     from kicad2ems.gui import application
-    from kicad2ems.gui.app import MainWindow, LOWER, BESIDE
+    from kicad2ems.gui.app import MainWindow
+    from kicad2ems.gui.windocks import LOWER, BESIDE
     app = application()
 
     def pump(n=20):

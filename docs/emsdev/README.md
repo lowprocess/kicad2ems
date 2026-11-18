@@ -4,7 +4,7 @@
 > repository; the [README](../../README.md#install) has the installer). Its history up to then is in this
 > repository's, and in its own repository. Install lines below that name `.` mean this repository.
 
-The machine as the [kicad2ems](https://github.com/lowprocess/kicad2ems) solvers see it: the GPUs CuPy and Vulkan
+The machine as the [kicad2ems](https://github.com/lowprocess/kicad2ems) solvers see it: the GPUs Vulkan
 can use, the CPU's thread count, the memory this process may use, and the build of a solver's compiled core.
 [mom25d](../mom25d/README.md) and [gfdtd](../gfdtd/README.md) share it, so a
 device rule is written once. It has no dependencies (`kicad2ems.emsdev.afs` needs numpy).
@@ -16,8 +16,7 @@ python -m kicad2ems.emsdev            # the GPUs, CPU threads and memory
 
 ```python
 from emsdev import gpu, cpu, memory
-gpu.probe()                       # ([Device], why): every device CuPy and Vulkan see, and why one had none
-gpu.cupy_device()                 # CuPy's current device, or raises gpu.Unavailable
+gpu.probe()                       # ([Device], why): every device Vulkan sees, or why it had none
 gpu.vulkan_device(need=('float64',))   # the best Vulkan GPU (EMSDEV_VULKAN_DEVICE picks another), with those features
 gpu.preference('auto', 'MOM25D_GPU')   # 'off' | 'auto' | a backend: a setting with the environment's override
 cpu.core_threads()                # one per fast physical core (no hyper-threads, no efficiency cores)

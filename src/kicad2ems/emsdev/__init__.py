@@ -7,12 +7,10 @@ they share, so a device or a backend is found, measured and picked one way, and
 kicad2ems reports what they will use without importing either:
 
     from kicad2ems.emsdev import gpu, cpu, memory
-    gpu.devices()  # [Device(index, name, library, api, total)]: the GPUs CuPy
-                   # and Vulkan see
+    gpu.devices()  # [Device(index, name, library, api, total)]: the GPUs
+                   # Vulkan sees
     vulkan.slang_device()  # the slangpy device the solvers' Vulkan backends run
                            # on
-    gpu.cupy_device()  # the current CuPy device (raises gpu.Unavailable with
-                       # the reason)
     gpu.preference('auto', 'MOM25D_GPU')  # a backend setting, the environment's
                                           # override applied
     cpu.core_threads()  # the CPU cores' default thread count: one per fast
@@ -24,8 +22,8 @@ kicad2ems reports what they will use without importing either:
     from kicad2ems.emsdev.afs import adaptive_sweep
         # the S-parameter sweep mom25d and pcbqs share (numpy)
 
-No dependencies (emsdev.afs's numpy aside): CuPy and slangpy are imported only
-when asked about, and their absence is an answer; Vulkan's GPUs are found
+No dependencies (emsdev.afs's numpy aside): slangpy is imported only
+when asked about, and its absence is an answer; Vulkan's GPUs are found
 through the system's Vulkan loader (ctypes).
 """
 __version__ = '0.3.1'
