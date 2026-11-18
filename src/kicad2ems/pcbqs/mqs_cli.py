@@ -13,8 +13,9 @@ from shapely.ops import unary_union
 
 from ._cli import (add_options, describe as describe_options, load_board,
                    print_describe)
+from kicad2ems.core.options import table
 
-OPTIONS = [
+OPTIONS = table([
     ('converter', 'str', '',
      'Regulator reference; empty selects a unique discovered converter',
      'Converter'),
@@ -78,7 +79,7 @@ OPTIONS = [
     ('pad_contact', 'str', 'termination',
      'Where a part meets its pads: termination (end-cap band), pad or edge',
      'Parts'),
-]
+])
 
 
 def describe():
@@ -468,8 +469,8 @@ def run(a):
         save_layout(out,board,q,crop,selected)
         summary = dict(format=1, preview=True, selection=selected,
                        source_path=str(Path(a.board).resolve()),
-                       settings={k: getattr(a, k)
-                                 for k, *_ in OPTIONS}, triangles=len(q.tris),
+                       settings={o.key: getattr(a, o.key)
+                                 for o in OPTIONS}, triangles=len(q.tris),
                        layers=mesh_stats(q),
                        seconds=dict(total=time.perf_counter() - start))
         (out/'mqs-preview.json').write_text(json.dumps(summary,indent=2))
@@ -511,9 +512,9 @@ def run(a):
                        return_info=True)
     summary = dict(
         format=1, selection=selected, source_path=str(Path(a.board).resolve()),
-        settings={k: getattr(a, k)
-                  for k, *_ in OPTIONS
-                  }, crop=mapping(crop), frequencies_Hz=r.f.tolist(),
+        settings={o.key: getattr(a, o.key)
+                  for o in OPTIONS},
+        crop=mapping(crop), frequencies_Hz=r.f.tolist(),
         harmonic_peak_A=amps.tolist(), copper_R_ohm=impedance.real.tolist(),
         copper_L_H=(impedance.imag / (2 * np.pi * r.f)).tolist(),
         dipole_real_Am2=moments.real.tolist(),

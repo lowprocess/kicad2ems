@@ -74,7 +74,7 @@ def test_a_point_names_the_part_whose_pads_are_under_it(boards):
 
 def test_options_say_what_a_front_end_may_pick_on_the_board():
     from kicad2ems.core.si import Crosstalk
-    picks = {o['key']: o.get('pick') for o in Crosstalk().options()}
+    picks = {o.key: o.pick for o in Crosstalk().options()}
     assert (picks['nets'] == 'nets' and picks['aggressor'] == 'nets'
             and picks['near'] == 'parts')
     assert picks['rise'] is None

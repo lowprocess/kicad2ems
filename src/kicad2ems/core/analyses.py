@@ -64,15 +64,13 @@ An analysis declares (class attributes)
 and implements
   check()                 (usable, one line): its version and origin, or what is
                           missing and how to get it
-  options()               its settings: [dict(key, flag, kind, default, help,
-                          group, choices)], kind one of 'str', 'int', 'float',
-                          'bool' (a switch) or 'list' (repeatable); the form of
-                          its tool's `--describe --json`. A row's 'level':
-                          'basic', one of the few a run is set up with
-                          (Option.level); its 'pick': what the setting names on
-                          the board, for a front end to pick there
+  options()               its settings, [Option] (kicad2ems.core.options), as
+                          the solvers' are: its kind one of KINDS, 'bool' a
+                          switch, 'list' repeatable; its level 'basic': one of
+                          the few a run is set up with; its pick: what it names
+                          on the board, for a front end to pick there
                           (kicad2ems.core.layout): 'net', 'part', or 'nets',
-                          'parts' where it takes several (absent: typed)
+                          'parts' where it takes several (None: typed)
   tag(values)             a short name for a run of these settings (the rail,
                           the converter): its folder's
   command(values, board, out, preview=False, results=None)
@@ -209,8 +207,7 @@ class Analysis:
         return self.check()
 
     def options(self):
-        """Its settings, [dict(key, flag, kind, default, help, group,
-        choices)]."""
+        """Its settings, [Option]."""
         return []
 
     def tag(self, values):

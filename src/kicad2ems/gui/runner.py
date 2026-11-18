@@ -1,8 +1,8 @@
 """
-The GUI's settings form, without Qt (testable without a display): its fields and
-sections (made from the option tables and the solver registry), the solver tick
-boxes, and a config read into the form and written back (save_config keeps the
-file's comments and order). The run itself (Run, EventTail, stop_runs,
+The GUI's settings form, without Qt (testable without a display): its options
+and sections (made from the option tables and the solver registry), the solver
+tick boxes, and a config read into the form and written back (save_config keeps
+the file's comments and order). The run itself (Run, EventTail, stop_runs,
 find_results) is kicad2ems.core.runs, which the KiCad plugin uses too.
 """
 import os
@@ -59,61 +59,48 @@ ANTENNA_FIELDS = ('ff_freq', 'drive', 'grid', 'steer', 'taper')
 TICK = 'solver:'  # a solver's tick box: solver:<name>
 
 
-def _kind(o):
-    """The form widget of an option: file / dir / bool / float / int / list /
-    str, or a tuple of choices."""
-    if o.key == 'out':
-        return 'dir'
-    if o.path:
-        return 'file'
-    if o.choices:
-        return (('',) if o.default is None else ()) + tuple(o.choices)
-    return {bool: 'bool', float: 'float', int: 'int',
-            list: 'list'}.get(o.type, 'str')
-
-
-def make_fields():
-    """The settings the GUI edits, in form order: (key, label, kind, group).
-    Made from the options that have a GUI label (config.CORE, then each
-    solver's) and a tick box per solver (key solver:<name>) heading the Solvers
-    group; Board and Band first, Output last."""
+def make_form():
+    """The options the GUI edits, in form order: those with a GUI label
+    (config.CORE, then each solver's) and a tick box per solver (an Option of
+    key solver:<name>) heading the Solvers group; Board and Band first, Output
+    last."""
     from kicad2ems.core.config import all_options
+    from kicad2ems.core.options import Option
     from kicad2ems.core.solvers import registry, AUTO
-    rows = [(o.key, o.gui, _kind(o), GUI_GROUPS.get(o.group, o.group))
-            for name, o in all_options()
-            if o.gui]
-    rows = ([
-        (TICK + AUTO, 'auto: fastest full-wave + line model', 'bool', 'Solvers')
-    ] + [(TICK + n, sv.label, 'bool', 'Solvers')
-         for n, sv in registry().items()] + rows)
+    tick = lambda n, label, about='': Option(
+        TICK + n, False, ' '.join(str(about).split()), bool, gui=label,
+        group='solvers')
+    rows = [tick(AUTO, 'auto: fastest full-wave + line model')]
+    rows += [
+        tick(n, sv.label, getattr(sv, 'description', None) or sv.__doc__
+             or sv.label) for n, sv in registry().items()
+    ]
+    rows += [o for _, o in all_options() if o.gui]
     rank = {g: i for i, g in enumerate(SECTION_ORDER)}
-    # the folder
-    return sorted(
-        rows, key=lambda r: (rank.get(r[3].split('/')[0],
-                                      len(rank) - 1), r[0] != 'out'))
-    # first in Output; otherwise stable: the option order within a section
+    # the folder first in Output; otherwise stable: the option order within a
+    # section
+    return sorted(rows, key=lambda o: (rank.get(
+        group(o).split('/')[0], len(rank) - 1), o.key != 'out'))
 
 
-FIELDS = make_fields()
+def group(o):
+    """An option's group box in the form ('FDTD/Mesh': the Mesh sub-section of
+    the FDTD section)."""
+    return GUI_GROUPS.get(o.group, o.group)
 
 
-def basic_keys():
-    """The few settings a run is set up with, shown first (Option.level =
-    'basic': kicad2ems's own, and those a solver names in Solver.basic); the
-    rest are under "More settings"."""
-    from kicad2ems.core.config import all_options
-    return {
-        o.key
-        for _, o in all_options()
-        if getattr(o, 'level', None) == 'basic'
-    }
+FORM = make_form()
+# the few settings a run is set up with, shown first (Option.level = 'basic':
+# kicad2ems's own, and those a solver names in Solver.basic); the rest are
+# under "More settings"
+BASIC = {o.key for o in FORM if o.level == 'basic'}
 SEMICOLON_LISTS = ('ports', 'dump')  # items that may hold commas themselves
 # the tick boxes are not settings of their own: the form's values carry solvers
 # = the ticked solvers (see solvers_from_form). 'solvers', 'mom' and 'fast'
 # belong to the boxes, like the fields
-MANAGED = ({k
-            for k, *_ in FIELDS
-            if not k.startswith(TICK)} | {'solvers', 'mom', 'fast'})
+MANAGED = ({o.key
+            for o in FORM
+            if not o.key.startswith(TICK)} | {'solvers', 'mom', 'fast'})
 
 
 def solver_ticks(vals):
@@ -228,11 +215,9 @@ def settings_values(path):
     from kicad2ems.core.config import build_settings, read_toml
     s = build_settings({}, path)
     out = {}
-    for key, *_ in FIELDS:
-        v = getattr(s, key, None)
-        if isinstance(v, tuple):
-            v = list(v)
-        out[key] = v
+    for o in FORM:
+        v = getattr(s, o.key, None)
+        out[o.key] = list(v) if isinstance(v, tuple) else v
     # the default folder: left to the run, not pinned here
     if 'out' not in read_toml(path)[0]:
         out['out'] = None

@@ -18,45 +18,17 @@ import json
 import os
 import re
 import sys
+from dataclasses import replace
 
 from kicad2ems.core.analyses import Analysis
-
+from kicad2ems.core.options import argv as options_argv, table
 
 
 def argv(module, options, values, board, out):
     """[python, -m, module, (board), --out, out, ...] for values {option key:
-    text, bool or list}: an option left empty (or at its default) is not passed;
-    a list is lines, or REF=... items joined by commas (a comma inside one,
-    CA1=47e-6,0.02,1e-9, stays in it)."""
-    opts = {o['key']: o for o in options}
-    out_argv = [
-        sys.executable, '-m', module, *([board] if board else []), '--out', out
-    ]
-    for key, v in values.items():
-        o = opts.get(key)
-        if o is None:
-            continue
-        if o['kind'] == 'bool':
-            if (v is True
-                    or str(v).strip().lower() in ('1', 'true', 'yes', 'on')):
-                out_argv.append(o['flag'])
-        elif o['kind'] == 'list':
-            text = ('\n'.join(map(str, v))
-                    if isinstance(v, (list, tuple)) else str(v or ''))
-            for item in [
-                    s.strip()
-                    for s in re.split(r'\n|,(?=\s*[^\s,=]+\s*=)', text)
-                    if s.strip()
-            ]:
-                out_argv += [o['flag'], item]
-        else:
-            s = '' if v is None else str(v).strip()
-            # (a value that starts with a dash is joined
-            if s and s != str(o['default']):
-                # to its flag)
-                out_argv += ([f"{o['flag']}={s}"]
-                             if s.startswith('-') else [o['flag'], s])
-    return out_argv
+    text, bool or list} (core.options.argv)."""
+    return [sys.executable, '-m', module, *([board] if board else []),
+            '--out', out, *options_argv(options, values)]
 
 
 # the settings that name a net or a part of the board (an option's `pick`;
@@ -85,13 +57,8 @@ class _Tool(Analysis):
         return []
 
     def options(self):
-        from ._cli import describe
-        opts = describe(self.table())['options']
-        pick = {**PICK, **self.pick}
-        for o in opts:  # what a front end may pick on the board
-            if o['key'] in pick:
-                o['pick'] = pick[o['key']]
-        return opts
+        pick = {**PICK, **self.pick}  # what a front end may pick on the board
+        return [replace(o, pick=pick.get(o.key)) for o in self.table()]
 
     def report(self, folder):
         from . import reports
@@ -420,20 +387,17 @@ class Circuit(_Tool):
         """The model, then pcbqs.circuit's own options (python -m
         kicad2ems.pcbqs.circuit --describe). The board is a front end's to
         give."""
-        from ._cli import describe
         from .circuit.__main__ import OPTIONS
-        out = (describe([
+        out = table([
             ('model', 'str', '',
              'The circuit model (JSON); a path beside the config', 'Circuit')
-        ])['options'])
-        for o in describe(OPTIONS)['options']:
-            if o['key'] != 'board':
-                out.append(dict(o, default=(self.JOBS if o['key'] == 'jobs'
-                                            else o['default'])))
+        ]) + [
+            replace(o, default=self.JOBS) if o.key == 'jobs' else o
+            for o in OPTIONS if o.key != 'board'
+        ]
         order = ['Circuit', 'Board', 'Model', 'Run']
-        return sorted(out, key=lambda o: (order.index(o['group'])
-                                          if o['group'] in order
-                                          else len(order)))
+        return sorted(out, key=lambda o: (order.index(o.group) if o.group in
+                                          order else len(order)))
 
     def tag(self, values):
         return (os.path.splitext(
@@ -456,9 +420,9 @@ class Circuit(_Tool):
         values = dict(values, copper=on('copper') or on('fields'),
                       jobs=(values.get('jobs') or self.JOBS))
         opts = [
-            dict(o, default=None) if o['key'] == 'jobs' else o
+            replace(o, default=None) if o.key == 'jobs' else o
             for o in self.options()
-            if o['key'] != 'model'
+            if o.key != 'model'
         ]
         cmd = argv('kicad2ems.pcbqs.circuit', opts,
                    {k: v

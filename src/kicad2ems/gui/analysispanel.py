@@ -37,15 +37,14 @@ from PySide6.QtCore import Qt, Signal, QObject
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QFormLayout,
                                QLineEdit, QPushButton, QPlainTextEdit,
-                               QCheckBox, QComboBox, QFileDialog, QProgressBar,
+                               QFileDialog, QProgressBar,
                                QLabel, QInputDialog, QTableWidget,
                                QTableWidgetItem, QHeaderView, QAbstractItemView)
 
-# a choice left to the tool's default
-UNSET = '(default)'
 # a pick's key for the runs table's selected cell (pick_kind, take_pick)
 CELL = '(the selected cell)'
 
+from .optionrow import field, value, set_value
 from .panels import Section, FlowLayout
 from .runprocess import Command, RunProcess
 from .toolprocess import run_tool
@@ -58,18 +57,13 @@ def typed(option, value):
     """A form's value as a config holds it: a number where the option is one, a
     list for a repeatable one, None when it is not set (empty, or the option's
     default)."""
-    kind = option['kind']
+    kind = option.kind
     if kind == 'bool':
         return True if value else None
-    text = '' if value is None else str(value).strip()
     if kind == 'list':
-        items = [
-            s.strip()
-            for s in re.split(r'\n|,(?=\s*[^\s,=]+\s*=)', text)
-            if s.strip()
-        ]
-        return items or None
-    if not text or text == str(option['default']):
+        return option.convert(value) or None
+    text = '' if value is None else str(value).strip()
+    if not text or text == str(option.default):
         return None
     if kind in ('float', 'int'):
         try:
@@ -100,10 +94,10 @@ def config_values(panel, base=None, vals=None):
             out[key] = rel(edit.text().strip())
     vals = panel.values() if vals is None else vals
     for o in panel.options:
-        v = typed(o, vals.get(o['key']))
+        v = typed(o, vals.get(o.key))
         if v is not None:
-            out[o['key']] = (rel(v) if o['key'] in panel.a.paths
-                             and isinstance(v, str) else v)
+            out[o.key] = (rel(v) if o.key in panel.a.paths
+                          and isinstance(v, str) else v)
     return out
 
 
@@ -165,7 +159,7 @@ class AnalysisPanel(QWidget):
         self.pick_btns = {}  # {option key: its pick button}
         groups = {}
         for o in self.options:
-            groups.setdefault(o.get('group') or 'Settings', []).append(o)
+            groups.setdefault(o.group or 'Settings', []).append(o)
         for i, (g, opts) in enumerate(groups.items()):
             inner = QWidget()
             fl = QFormLayout(inner)
@@ -175,32 +169,15 @@ class AnalysisPanel(QWidget):
                 # named as the other options are, what it does in its
                 # tooltip: a long line beside the box made the panel wider
                 # than its column
-                if o['kind'] == 'bool':
-                    wid = QCheckBox(o['key'].replace('_', ' '),
-                                    checked=bool(o['default']))
-                elif o['kind'] == 'list':
-                    wid = QPlainTextEdit(placeholderText='one a line')
-                    wid.setFixedHeight(70)
-                # one of a few: a drop-down, the default first
-                elif o.get('choices'):
-                    wid = QComboBox()
-                    wid.addItems([
-                        UNSET if o['default'] in ('', None) else
-                        f"{o['default']} (default)",
-                        *[str(c) for c in o['choices'] if c != o['default']]
-                    ])
-                else:
-                    wid = QLineEdit(placeholderText=(
-                        str(o['default']) if o['default'] not in (
-                            '', None) else ''))
-                wid.setToolTip(f"{o['flag']}: {o['help']}")
-                (wid.toggled if o['kind'] == 'bool'
-                 else wid.currentIndexChanged if isinstance(wid, QComboBox)
-                 else wid.textChanged).connect(self._edited)
-                self.w[o['key']] = wid
-                label = (o['key'].replace('_', ' ').capitalize()
-                         if o['kind'] != 'bool' else '')
-                if (o.get('pick') and self.win is not None
+                # a drop-down's first item the default
+                wid = field(o, self._edited, o.key.replace('_', ' '), True,
+                            True, '' if o.default in ('', None) else
+                            str(o.default))
+                wid.setToolTip(f"{o.flag}: {o.help}")
+                self.w[o.key] = wid
+                label = (o.key.replace('_', ' ').capitalize()
+                         if o.kind != 'bool' else '')
+                if (o.pick and self.win is not None
                         and hasattr(self.win, 'start_pick')):
                     # the setting, picked on the board (planview)
                     fl.addRow(self._pick_label(label, o), wid)
@@ -272,9 +249,9 @@ class AnalysisPanel(QWidget):
         t.setSelectionBehavior(QAbstractItemView.SelectRows)
         t.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         for c, k in enumerate(self.run_keys):
-            o = next(o for o in self.options if o['key'] == k)
-            t.horizontalHeaderItem(c).setToolTip(f"{o['flag']}: {o['help']}" + (
-                ' (several: comma-separated)' if o['kind'] == 'list' else ''))
+            o = self.option(k)
+            t.horizontalHeaderItem(c).setToolTip(f"{o.flag}: {o.help}" + (
+                ' (several: comma-separated)' if o.kind == 'list' else ''))
         t.itemChanged.connect(lambda *_: self._edited())
         lay.addWidget(t)
         row = QHBoxLayout()
@@ -321,18 +298,18 @@ class AnalysisPanel(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(4)
         lay.addWidget(QLabel(label))
-        many, what = (o['pick'].endswith('s'),
-                      'traces' if o['pick'].startswith('net') else 'parts')
+        many, what = (o.pick.endswith('s'),
+                      'traces' if o.pick.startswith('net') else 'parts')
         b = QToolButton(
             text='Pick', checkable=True,
             toolTip=f"Pick {'them' if many else 'it'} on the board: click "
             f"{what} in the Viewer's plan "
             f"({'again takes one out; ' if many else ''}this button again "
             "ends it)")
-        b.toggled.connect(lambda on, key=o['key']: self.win.start_pick(
+        b.toggled.connect(lambda on, key=o.key: self.win.start_pick(
             self, key) if on else self.win.end_pick(self, key))
         lay.addWidget(b)
-        self.pick_btns[o['key']] = b
+        self.pick_btns[o.key] = b
         return box
 
     def _cell(self):
@@ -346,8 +323,12 @@ class AnalysisPanel(QWidget):
         if key == CELL:  # the table's selected cell: its column's
             cell = self._cell()
             return self.pick_kind(cell[1]) if cell else None
-        return next((o.get('pick') for o in self.options if o['key'] == key),
-                    None)
+        o = self.option(key)
+        return o.pick if o else None
+
+    def option(self, key):
+        """Its Option of a key, or None."""
+        return next((o for o in self.options if o.key == key), None)
 
     def picked_names(self, key):
         """The names a picked setting holds now."""
@@ -423,13 +404,9 @@ class AnalysisPanel(QWidget):
         for c, k in enumerate(self.run_keys):
             it = self.table.item(r, c)
             out[k] = it.text().strip() if it is not None else ''
-            o = next(o for o in self.options if o['key'] == k)
-            # a list: its items, comma- or line-separated
-            if o['kind'] == 'list':
-                out[k] = '\n'.join(
-                    x.strip()
-                    for x in re.split(r'\n|,(?=\s*[^\s,=]+\s*=)', out[k])
-                    if x.strip())
+            o = self.option(k)
+            if o.kind == 'list':  # its items, comma- or line-separated
+                out[k] = '\n'.join(o.convert(out[k]) or [])
         return out
 
     def runs(self):
@@ -543,17 +520,7 @@ class AnalysisPanel(QWidget):
         return out
 
     def _form_values(self):
-        out = {}
-        for k, wid in self.w.items():
-            if isinstance(wid, QCheckBox):
-                out[k] = wid.isChecked()
-            elif isinstance(wid, QPlainTextEdit):
-                out[k] = wid.toPlainText()
-            elif isinstance(wid, QComboBox):
-                out[k] = '' if wid.currentIndex() <= 0 else wid.currentText()
-            else:
-                out[k] = wid.text()
-        return out
+        return {k: value(wid) for k, wid in self.w.items()}
 
     def set_values(self, vals):
         """Some of the form's fields (the others stay): a list as lines, None as
@@ -567,23 +534,9 @@ class AnalysisPanel(QWidget):
                         self.table.setItem(0, c,
                                            QTableWidgetItem(_cell(vals[k])))
             for k, v in vals.items():
-                wid = self.w.get(k)
-                if wid is None:
-                    continue
-                if isinstance(wid, QCheckBox):
-                    wid.setChecked(
-                        v is True
-                        or str(v).strip().lower() in ('1', 'true', 'yes', 'on'))
-                elif isinstance(wid, QPlainTextEdit):
-                    wid.setPlainText('\n'.join(map(str, v)) if isinstance(
-                        v, (list, tuple)) else ('' if v is None else str(v)))
-                elif isinstance(wid, QComboBox):
-                    wid.setCurrentIndex(
-                        max(wid.findText(str(v)), 0) if v not in (None,
-                                                                  '') else 0)
-                else:
-                    wid.setText('' if v is None else (
-                        f"{v:g}" if isinstance(v, float) else str(v)))
+                if k in self.w:
+                    set_value(self.w[k], f"{v:g}" if isinstance(v, float)
+                              else v)
         self.required -= {
             k
             for k, v in vals.items()
@@ -600,7 +553,7 @@ class AnalysisPanel(QWidget):
         """The form as it is made: every field empty (its default), no board or
         folder of its own."""
         self.set_values({
-            o['key']: (bool(o['default']) if o['kind'] == 'bool' else '')
+            o.key: (bool(o.default) if o.kind == 'bool' else '')
             for o in self.options
         })
         with self._quiet():

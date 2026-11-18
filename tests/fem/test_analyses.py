@@ -54,30 +54,30 @@ def test_they_register_as_engines_of_questions_others_answer_too(registered):
 
 
 def test_the_settings_are_the_tools_own_options():
-    dc = {o['key']: o for o in A.ElmerDC().options()}
+    dc = {o.key: o for o in A.ElmerDC().options()}
     assert (list(dc)
             == ['net', 'source', 'load', 'h', 'plating']
             and 'out' not in dc)
-    assert (dc['net']['kind'] == 'list' and dc['net']['required']
-            and dc['h']['default'] == 0.25 and dc['h']['kind'] == 'float')
-    assert (dc['source']['group'] == 'Nets and loads'
-            and dc['plating']['group'] == 'Mesh')
-    th = {o['key']: o for o in A.ElmerThermal().options()}
+    assert (dc['net'].kind == 'list' and dc['net'].required
+            and dc['h'].default == 0.25 and dc['h'].kind == 'float')
+    assert (dc['source'].group == 'Nets and loads'
+            and dc['plating'].group == 'Mesh')
+    th = {o.key: o for o in A.ElmerThermal().options()}
     assert ({'heat', 'heat_from', 'htc', 'ambient', 'k_board', 'region'}
-            <= set(th) and th['htc']['default'] == 10.0)
-    assert ([o['group'] for o in A.ElmerThermal().options()] == sorted(
-        (o['group'] for o in A.ElmerThermal().options()), key=A.ORDER.index))
-    cap = {o['key']: o for o in A.PalaceCap().options()}
-    assert (cap['thick']['kind'] == 'bool'
-            and cap['far']['choices'] == ['open', 'ground']
-            and cap['np']['kind'] == 'int')
+            <= set(th) and th['htc'].default == 10.0)
+    assert ([o.group for o in A.ElmerThermal().options()] == sorted(
+        (o.group for o in A.ElmerThermal().options()), key=A.ORDER.index))
+    cap = {o.key: o for o in A.PalaceCap().options()}
+    assert (cap['thick'].kind == 'bool'
+            and cap['far'].choices == ('open', 'ground')
+            and cap['np'].kind == 'int')
     # what names a net or a part says so, for a front end to pick it on the
     # board
-    assert (dc['net']['pick'] == 'nets' and dc['source']['pick'] == 'part'
-            and 'pick' not in dc['load'])
-    assert th['copper']['pick'] == 'nets' and cap['net']['pick'] == 'nets'
+    assert (dc['net'].pick == 'nets' and dc['source'].pick == 'part'
+            and not dc['load'].pick)
+    assert th['copper'].pick == 'nets' and cap['net'].pick == 'nets'
     # no board: nothing to pick on
-    assert not any('pick' in o for o in A.ElmerMag().options())
+    assert not any(o.pick for o in A.ElmerMag().options())
 
 
 def test_the_commands(tmp_path):
@@ -249,9 +249,9 @@ def test_coils_with_ferrite_are_a_question_of_their_own_with_no_board(
     }
     assert ([e.name for e in rows['coils']['engines']] == ['elmer_mag']
             and rows['coils']['question'].group == 'Power')
-    opts = {o['key']: o for o in a.options()}
-    assert (opts['coil']['kind'] == 'list' and opts['coil']['level'] == 'basic'
-            and opts['coil']['group'] == 'Coils and plates')
+    opts = {o.key: o for o in a.options()}
+    assert (opts['coil'].kind == 'list' and opts['coil'].level == 'basic'
+            and opts['coil'].group == 'Coils and plates')
     with pytest.raises(ValueError, match='describe a coil'):
         a.command({}, None, str(tmp_path))
     cmd = a.command(
@@ -343,8 +343,8 @@ def test_the_palace_loop_takes_pcbqs_near_field_run(tmp_path):
     pcbqs's are so a study lays the two side by side."""
     a = A.PalaceLoop()
     assert 'nearfield' in a.provides and a.engine == 'Palace'
-    opts = {o['key']: o for o in a.options()}
-    assert not opts['mqs']['required'] and 'hmin' in opts
+    opts = {o.key: o for o in a.options()}
+    assert not opts['mqs'].required and 'hmin' in opts
     assert (a.missing({}, 'b.kicad_pcb', {})[0]['key'] == 'mqs'
             and a.missing({}, 'b.kicad_pcb', {'mqs': 'run'}) == [])
     with pytest.raises(ValueError, match='near field'):

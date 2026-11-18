@@ -55,11 +55,12 @@ import numpy as np
 
 from kicad2ems.core.constants import C0, EPS0
 from kicad2ems.core.touchstone import write_touchstone
+from kicad2ems.core.options import table
 
 G_BAND, G_PORTS, G_MESH, G_OUT = 'Frequencies', 'Ports', 'Mesh', 'Output'
 # (key, kind, default, help, group): _cli's table, which --describe gives a
 # front end
-OPTIONS = [
+OPTIONS = table([
     ('fmin', 'float', 1e3, 'the lowest frequency, Hz', G_BAND),
     ('fmax', 'float', 1e8, 'the highest frequency, Hz', G_BAND),
     ('points', 'int', 61, 'frequencies, spaced evenly on a log scale', G_BAND),
@@ -95,7 +96,7 @@ OPTIONS = [
      'across the band; none: no maps)', G_OUT),
     ('map_port', 'str', '',
      'the port driven in the current maps (default: the first)', G_OUT),
-]
+])
 # with the charge solved, or the copper's two faces: cells across the copper's
 # edges, graded, over half the narrowest port's width. The edge charge: a
 # matched line's |S11| 8.8 % above the field solver's line with none, 0.1 % with
@@ -743,9 +744,8 @@ def main(argv=None):
                zref=r['zref'], f_Hz=r['f'].tolist(), S_re=r['S'].real.tolist(),
                S_im=r['S'].imag.tolist(), paths=paths(r['f'], r['S'],
                                                       r['names'], r['zref']),
-               settings={k: getattr(a, k)
-                         for k, *_ in OPTIONS
-                         }, viewer=viewer, notes=notes, **info)
+               settings={o.key: getattr(a, o.key)
+                         for o in OPTIONS}, viewer=viewer, notes=notes, **info)
     with open(os.path.join(a.out, 'sparams.json'), 'w', encoding='utf-8') as fh:
         json.dump(out, fh)
     for p in out['paths']:

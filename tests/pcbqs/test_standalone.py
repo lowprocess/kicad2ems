@@ -13,6 +13,7 @@ from test_mqs_cli import board
 # what pcbqs may import from kicad2ems.core: leaf helpers that import nothing
 # from kicad2ems (test_shared_modules_are_leaves), and their packages
 SHARED = ('kicad2ems.core.units', 'kicad2ems.core.constants',
+          'kicad2ems.core.options',
           'kicad2ems.core.touchstone', 'kicad2ems.core.fields.dumps')
 PACKAGES = ('kicad2ems', 'kicad2ems.core', 'kicad2ems.core.fields')
 SRC = Path(__file__).resolve().parents[2] / 'src'

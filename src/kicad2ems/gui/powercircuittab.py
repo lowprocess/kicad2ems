@@ -55,7 +55,7 @@ class _Run:
     def __init__(self, analysis, page):
         self._p, self._page = analysis, page
     def __getattr__(self,name):return getattr(self._p,name)
-    def options(self):return [o for o in self._p.options() if o['key']!='model']
+    def options(self):return [o for o in self._p.options() if o.key!='model']
     def tag(self,values):return self._page.run_tag()
 
     def _ready(self,values,board):
@@ -98,7 +98,7 @@ class _Run:
         os.makedirs(out,exist_ok=True)
         model = os.path.join(out, 'model-input.json')
         Path(model).write_text(json.dumps(c, indent=2))
-        mine={o['key'] for o in self.options()}
+        mine={o.key for o in self.options()}
         return self._p.command(
             dict({k: v
                   for k, v in values.items()
@@ -320,7 +320,7 @@ class PowerCircuitTab(QWidget):
     def shown(self):
         """The settings the page shows: the options' keys, and the model's
         parameters and sweep."""
-        return [o['key'] for o in self.panel.options]+['parameters','sweep']
+        return [o.key for o in self.panel.options]+['parameters','sweep']
 
     def _model_edited(self):
         if not self._syncing:
@@ -542,7 +542,7 @@ class PowerCircuitTab(QWidget):
             except (ValueError, KeyError, OSError) as e:
                 self.status.setText(f'The model was not saved: {e}')
             if self.model_path:tab['model']=rel(self.model_path)
-        mine={o['key'] for o in self.panel.options}
+        mine={o.key for o in self.panel.options}
         tab.update({
             k: v
             for k, v in config_values(self.panel, str(base)).items()

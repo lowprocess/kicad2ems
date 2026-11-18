@@ -713,8 +713,9 @@ def main(argv=None):
         return 0
     if '--describe' in argv:
         opts = Crosstalk().options()
-        print(json.dumps(opts, indent=1) if '--json' in argv else
-              '\n'.join(f"{o['flag']:14s} {o['help']}" for o in opts))
+        print(json.dumps([o.describe() for o in opts], indent=1)
+              if '--json' in argv else
+              '\n'.join(f"{o.flag:14s} {o.help}" for o in opts))
         return 0
     a = parser().parse_args(argv)
     try:
@@ -775,9 +776,10 @@ class Crosstalk(Analysis):
             return False, str(e)
 
     def options(self):
-        o = lambda key, kind, default, help, group='Traces', **kw: dict(
-            key=key, flag='--' + key.replace('_', '-'), kind=kind, default=
-            default, help=help, group=group, **kw)
+        from .options import Option, split
+        o = lambda key, kind, default, help, group='Traces', **kw: Option(
+            key, default, help, dict(list=list, float=float).get(kind, str),
+            group=group, conv=split if kind == 'list' else None, **kw)
         return [
             o(
                 'nets', 'list', [],
@@ -796,8 +798,8 @@ class Crosstalk(Analysis):
                 'mode', 'str', 'both',
                 "what the headline and the limit are about: both (the larger), "
                 "next (near end) or fext (far "
-                "end)", 'Edge', choices=['both', 'next',
-                                                      'fext'], level='basic'),
+                "end)", 'Edge', choices=('both', 'next',
+                                                      'fext'), level='basic'),
             o('rise', 'float', 100.0, "the aggressor's edge, ps (10 to 90 %)",
               'Edge', level='basic'),
             o(

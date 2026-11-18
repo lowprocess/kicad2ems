@@ -196,9 +196,9 @@ def test_the_question_as_the_study_has_it(result):
         ('crosstalk_openems', 'line model + openEMS', 'openems'),
         ('crosstalk_mom25d', 'line model + mom25d', 'mom25d')
     ])
-    opts = {o['key']: o for o in a.options()}
-    assert (opts['nets']['kind'] == 'list' and 'check' not in opts
-            and opts['mode']['choices'] == ['both', 'next', 'fext'])
+    opts = {o.key: o for o in a.options()}
+    assert (opts['nets'].kind == 'list' and 'check' not in opts
+            and opts['mode'].choices == ('both', 'next', 'fext'))
     with pytest.raises(ValueError, match='two nets'):
         a.command(dict(nets=['D0']), BUS, out)
     with pytest.raises(ValueError, match='board'):

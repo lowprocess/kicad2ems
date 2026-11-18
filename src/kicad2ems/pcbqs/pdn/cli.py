@@ -33,9 +33,10 @@ import numpy as np
 
 from .._cli import (add_options, describe as describe_options, load_board,
                     print_describe)
+from kicad2ems.core.options import table
 
 G_RAIL, G_DC, G_PDN, G_MESH = 'Rail', 'DC', 'PDN impedance', 'Mesh'
-OPTIONS = [
+OPTIONS = table([
     # key, kind, default, help, group (pcbqs._cli: the flag is --key)
     ('rail', 'str', '',
      "the rail's net (the tree grows from it through series parts)", G_RAIL),
@@ -133,7 +134,7 @@ OPTIONS = [
      "also that port matrix as a SPICE subcircuit (pdn_ports.sub; vector "
      "fitted and made passive: needs scikit-rf)", G_PDN),
     ('no_pdn', 'bool', False, "the DC drop only", G_PDN),
-]
+])
 
 
 def describe():
@@ -314,8 +315,8 @@ def run(a):
     out = dict(
         format=1, board=os.path.abspath(a.board), rail=a.rail,
         nets=sorted(rail.nets), ground=list(ground), volts=a.volts,
-        assumed_loads=assumed, settings={k: getattr(a, k)
-                                         for k, *_ in OPTIONS},
+        assumed_loads=assumed, settings={o.key: getattr(a, o.key)
+                                         for o in OPTIONS},
         tree=[
             dict(ref=s.part.ref, kind=s.kind, R=s.R, L=s.L, a=s.a, b=s.b,
                  defaulted=s.defaulted) for s in rail.series

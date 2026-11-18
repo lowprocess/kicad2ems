@@ -9,9 +9,11 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QGridLayout, QLineEdit, QCheckBox, QComboBox,
                                QPushButton, QLabel, QFileDialog, QScrollArea,
                                QMessageBox, QToolButton)
-from .runner import (FIELDS, SEMICOLON_LISTS, SECTION_SOLVERS, SECTION_TITLES,
-                     TICK, settings_values, extra_values, save_config,
-                     solvers_from_form, solver_ticks, basic_keys)
+from .runner import (FORM, BASIC, SEMICOLON_LISTS, SECTION_SOLVERS,
+                     SECTION_TITLES, TICK, group as group_of, settings_values,
+                     extra_values, save_config, solvers_from_form,
+                     solver_ticks)
+from .optionrow import field, kind as kind_of, value, set_value
 from kicad2ems.core.fields.dumps import G_DUMP
 from .panels import Section, NeededList
 from .meters import duration
@@ -20,23 +22,12 @@ from .study import run_key
 
 
 def _helps():
-    """{field key: its tooltip}: each option's help (its {default} filled in),
-    wrapped; a solver's tick box its solver's description."""
+    """{field key: its tooltip}: each option's help (its {default} filled in;
+    a solver's tick box: its solver's description), wrapped."""
     import textwrap
-    from kicad2ems.core.config import all_options
-    from kicad2ems.core.solvers import registry
-    out = {}
-    for _, o in all_options():
-        if o.gui and o.help:
-            text = (o.help.replace('{default}', str(o.default))
-                    if '{default}' in o.help else o.help)
-            out[o.key] = '\n'.join(textwrap.wrap(text, 80))
-    for n, sv in registry().items():
-        about = (getattr(sv, 'description', None)
-                 or getattr(sv, '__doc__', None) or sv.label)
-        out[TICK + n] = '\n'.join(
-            textwrap.wrap(' '.join(str(about).split()), 80))
-    return out
+    return {o.key: '\n'.join(textwrap.wrap(
+        o.help.replace('{default}', str(o.default)), 80))
+            for o in FORM if o.help}
 
 
 def editor_page(key, win):
@@ -77,10 +68,10 @@ class SetupTab(QWidget):
         rf = QVBoxLayout()  # the S-parameter run's own sections
         rf.setContentsMargins(0, 0, 0, 0)
         rf.setSpacing(2)
-        # the few settings a run is set up with first (runner.basic_keys), the
+        # the few settings a run is set up with first (runner.BASIC), the
         # others under "More settings", in their sections and found by name; the
         # board's others in a section inside the board's
-        basic = basic_keys()
+        basic = BASIC
 
         def form(box):
             f = QFormLayout(box)
@@ -103,7 +94,7 @@ class SetupTab(QWidget):
         self.more = Section('More settings', more_box)
         rf.addWidget(self.more)
         # key: (its form, its row's widget); its label
-        self.rows, self.row_text, self._found = {}, {}, set()
+        self.rows, self.row_text, self._found, self.off = {}, {}, set(), set()
         # the board: above the analyses, for all
         top_of = lambda group: left if group == 'Board' else more
         (groups, self.sections, self.group_of, self.solver_boxes,
@@ -114,7 +105,8 @@ class SetupTab(QWidget):
         self.field_labels = {}
         # each field's tooltip: its option's help (R-E23)
         self.helps = _helps()
-        for key, label, kind, group in FIELDS:
+        for o in FORM:
+            key, label, kind, group = o.key, o.gui, kind_of(o), group_of(o)
             # a solver's section of sub-sections
             if '/' in group and group.split('/')[0] not in self.parents:
                 top = group.split('/')[0]
@@ -147,24 +139,13 @@ class SetupTab(QWidget):
             if (into is self.basic_form
                     and group.split('/')[0] in SECTION_SOLVERS):
                 label = f"{group.split('/')[0]}: {label[0].lower()}{label[1:]}"
-            if kind == 'bool':
-                w = QCheckBox(toggled=self._changed)
-                if key.startswith(TICK):
-                    self.solver_boxes[key[len(TICK):]] = w
-            elif isinstance(kind, tuple):
-                w = QComboBox()
-                # (a choice may be a number: Palace's ABC order 1, 2)
-                w.addItems(['(none)' if c in (None, '') else str(c)
-                            for c in kind])
-                w.currentIndexChanged.connect(self._changed)
-            else:
-                w = QLineEdit()
-                d = getattr(defaults, key, None)
-                if d not in (None, '', []) and kind != 'dir':
-                    shown = (', '.join(map(str, d))
-                             if isinstance(d, (list, tuple)) else d)
-                    w.setPlaceholderText(f"default: {shown}")
-                w.textChanged.connect(self._changed)
+            d = getattr(defaults, key, None)
+            shown = (', '.join(map(str, d)) if isinstance(d, (list, tuple))
+                     else d)
+            w = field(o, self._changed, hint=f"default: {shown}" if d not in (
+                None, '', []) and kind != 'dir' else '')
+            if key.startswith(TICK):
+                self.solver_boxes[key[len(TICK):]] = w
             if kind in ('file', 'dir'):
                 row = QHBoxLayout()
                 row.addWidget(w)
@@ -259,7 +240,7 @@ class SetupTab(QWidget):
                                                                scrolled(right))
         self._fit_width()
         outer.addWidget(self.scroll)
-        self._update_sections()  # before any config: nothing ticked, all greyed
+        self._update_sections()  # before any config: nothing ticked, all hidden
 
     def _fit_width(self):
         """The dock at least as wide as its widest settings (the hidden
@@ -410,7 +391,7 @@ class SetupTab(QWidget):
             fmin = vals.get('fmin') or self.defaults.fmin
             fmax = vals.get('fmax') or self.defaults.fmax
             for name in names:
-                for key, value in default_fields(name, float(fmin), float(fmax),
+                for key, dflt in default_fields(name, float(fmin), float(fmax),
                                                  self.port_layer(),
                                                  vals.get('sweep')
                                                  or 'linear').items():
@@ -418,7 +399,7 @@ class SetupTab(QWidget):
                     if w is not None and not w.text().strip():
                         w.setText(
                             ('; ' if key in SEMICOLON_LISTS else ',').join(
-                                map(str, value)))
+                                map(str, dflt)))
             return
         for name in st.engines_for(question):
             e = next(x for x in st.engines[question] if x.name == name)
@@ -522,10 +503,12 @@ class SetupTab(QWidget):
         for top, (sec, _) in self.parents.items():
             sec.set_count(
                 sum(n for g, n in counts.items() if g.split('/')[0] == top))
-        self.more.set_count(sum(n for g, n in counts.items() if g != 'Board'))
+        self.more.set_count(sum(
+            n for g, n in counts.items()
+            if g != 'Board' and g.split('/')[0] not in self.off))
 
     def _update_sections(self):
-        """A solver's section (and the shared ones) greyed while none of its
+        """A solver's section (and the shared ones) hidden while none of its
         solvers is ticked: auto may run openEMS, mom25d and the line model."""
         from kicad2ems.core.solvers import registry
         if self.study is not None:  # the list's RF rows read the solvers' ticks
@@ -539,31 +522,16 @@ class SetupTab(QWidget):
                 for n, sv in registry().items()
                 if sv.in_auto or sv.consumes == 'network'
             }
-        tops = {
-            g.split('/')[0]: sec
-            for g, sec in self.sections.items()
-            if '/' not in g
-        }
-        tops.update({t: sec for t, (sec, _) in self.parents.items()})
-        for top, sec in tops.items():
-            need = SECTION_SOLVERS.get(top)
-            if need is None:
-                continue
-            on = bool(need & ticked)
-            sec.setEnabled(on)
-            names = ', '.join(
-                self.solver_labels.get(n, n)
-                for n in sorted(need)
-                if n in self.solver_labels)
-            sec.setToolTip((
-                '' if on else
-                f"for {names}: choose it on the S-parameters row of the list "
-                "to use these settings"))
-            # its settings among the first few: shown with it
-            for key, (frm, roww) in self.rows.items():
-                if (frm is self.basic_form
-                        and self.group_of[key].split('/')[0] == top):
-                    frm.setRowVisible(roww, on)
+        # the sections of the solvers ticked alone (and their settings among
+        # the first few)
+        self.off = {t for t, need in SECTION_SOLVERS.items()
+                    if not need & ticked}
+        for key, (frm, roww) in self.rows.items():
+            if frm is self.basic_form:
+                frm.setRowVisible(
+                    roww, self.group_of[key].split('/')[0] not in self.off)
+        self._find(self.find.text())
+        self._count()
         from .runner import ANTENNA_FIELDS
         mode = self.edits.get('mode', (None,))[0]
         radiating = [
@@ -627,13 +595,14 @@ class SetupTab(QWidget):
         for g, sec in self.sections.items():
             if g == 'Board':
                 continue
-            sec.setVisible(found.get(g, not t))
+            sec.setVisible(found.get(g, not t)
+                           and g.split('/')[0] not in self.off)
             if t and found.get(g) and not sec.expanded:
                 sec.set_expanded(True)
                 self._found.add(sec)
         for top, (sec, _) in self.parents.items():
             on = any(v for g, v in found.items() if g.split('/')[0] == top)
-            sec.setVisible(on or not t)
+            sec.setVisible((on or not t) and top not in self.off)
             if t and on and not sec.expanded:
                 sec.set_expanded(True)
                 self._found.add(sec)
@@ -711,14 +680,9 @@ class SetupTab(QWidget):
         # still needed
         self.bad = {}
         for key, (w, kind) in self.edits.items():
-            if kind == 'bool':
-                out[key] = w.isChecked()
-                continue
-            if isinstance(kind, tuple):
-                t = w.currentText()
-                # the choice itself (a number stays one in the config)
-                out[key] = '' if t == '(none)' else next(
-                    (c for c in kind if str(c) == t), t)
+            # a tick, a choice itself (a number stays one in the config)
+            if kind == 'bool' or isinstance(kind, tuple):
+                out[key] = value(w)
                 continue
             t = w.text().strip()
             if (hasattr(w, 'setStyleSheet')
@@ -762,23 +726,14 @@ class SetupTab(QWidget):
         try:
             for key, (w, kind) in self.edits.items():
                 v = vals.get(key)
-                if kind == 'bool':
-                    w.setChecked(bool(v))
-                elif isinstance(kind, tuple):
-                    w.setCurrentIndex(max(w.findText(
-                        '(none)' if v in (None, '') else str(v)), 0))
-                elif v is None:
-                    w.setText('')
-                elif isinstance(v, (list, tuple)):
-                    w.setText(('; ' if key in SEMICOLON_LISTS else ',').join(
+                if isinstance(v, (list, tuple)) and kind != 'bool':
+                    v = ('; ' if key in SEMICOLON_LISTS else ',').join(
                         str(x) if not isinstance(x, (
                             list, tuple)) else ' '.join(map(str, x))
-                        for x in v))
-                else:
-                    w.setText(str(v))
+                        for x in v)
+                set_value(w, bool(v) if kind == 'bool' else v)
         finally:
             self._loading = loading
-        self._count()
         self._update_sections()
         self._rest.stop()
         self._undo, self._redo, self._base = [], [], self._state()
@@ -802,7 +757,6 @@ class SetupTab(QWidget):
                 if self._rest.isActive():
                     self._commit(self._typed)
                 self._commit()
-        self._count()
         self._update_sections()
         self.touch()
         if hasattr(self.win, 'needs_soon'):
@@ -815,11 +769,7 @@ class SetupTab(QWidget):
     def _state(self):
         """The form as it stands: each field's text, tick or choice, as typed
         (what undo puts back)."""
-        return {
-            key: w.isChecked() if kind == 'bool' else
-            w.currentText() if isinstance(kind, tuple) else w.text()
-            for key, (w, kind) in self.edits.items()
-        }
+        return {key: value(w) for key, (w, _) in self.edits.items()}
 
     def _commit(self, st=None):
         """The form's changes since the last step (or up to the state st), as a
@@ -840,15 +790,8 @@ class SetupTab(QWidget):
         restoring, self._restoring = self._restoring, True
         try:
             for key, v in st.items():
-                if key not in self.edits:
-                    continue
-                w, kind = self.edits[key]
-                if kind == 'bool':
-                    w.setChecked(bool(v))
-                elif isinstance(kind, tuple):
-                    w.setCurrentIndex(max(w.findText(v), 0))
-                elif w.text() != v:
-                    w.setText(v)
+                if key in self.edits:
+                    set_value(self.edits[key][0], v)
         finally:
             self._restoring = restoring
         self._changed()

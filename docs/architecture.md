@@ -72,9 +72,12 @@ solver's readback and lists any difference the solver didn't declare. The parity
 report's *What each solver saw* table.
 
 **Settings as data.** Every setting is declared once, as an `options.Option`:
-the run's own in `config.CORE`, each solver's in its class. The settings class,
-the command-line options, the config reader and the GUI form are all built from
-these declarations.
+the run's own in `config.CORE`, each solver's in its class, each analysis's
+from its `options()` (a pcbqs tool's table, `options.table`; a fem tool's
+parser, `options.from_parser`). The settings class, the command-line options,
+the config reader, an analysis's command line (`options.argv`) and the GUI's
+forms (`gui/optionrow.py`, one field builder for both) are all built from these
+declarations.
 
 <a id="choosing-solvers"></a>
 ## Choosing solvers (`auto`)
@@ -91,7 +94,7 @@ count), drops any that needs more than 80 % of the RAM, runs the fastest with th
 src/kicad2ems/
   cli.py          the command line
   config.py       the run's options, Settings, config files
-  options.py      Option and value converters
+  options.py      Option, value converters, tools' options and argv
   pipeline.py     Job: the stages above
   events.py       --events
   starter.py      --init: a commented starter config with the ports found

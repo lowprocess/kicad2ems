@@ -57,7 +57,7 @@ itself until a board is chosen or a result opened; *View > Start* brings it back
   range and points, and the main cell size of each solver chosen. The rest are under **More settings**: the
   sections *Frequency*, *Solvers* (the driven ports), one per solver (*FDTD (openEMS, gfdtd)*: the mesh, run and
   field-dump settings both share; *gfdtd*; *mom25d*; ...) and *Output*, each counting its settings that are set,
-  a solver's greyed while it isn't chosen. *Find a setting* at its top shows only those whose name, key or
+  a solver's shown only while it is chosen (and counted only then). *Find a setting* at its top shows only those whose name, key or
   section holds what you type. Empty fields use the default, shown as a hint.
 - <a id="needed"></a>**Still needed**, under the settings: what a run of the selected question lacks, a line each
   (*the board has no port*, *name the rail*, *Q1 has no pad on ground, and the board has no one part of its

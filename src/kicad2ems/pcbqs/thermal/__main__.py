@@ -21,11 +21,12 @@ from pathlib import Path
 import numpy as np
 
 from . import Problem, solve, losses_of, FILM, AMBIENT
+from kicad2ems.core.options import table
 
 
 # (key, kind, default, help, group): _cli's table, which --describe gives the
 # window
-OPTIONS = [
+OPTIONS = table([
     ('loss', 'list', [],
      "A footprint's loss, REF=W (repeatable); with a circuit run, these "
      "replace its figures", 'Heat'),
@@ -72,7 +73,7 @@ OPTIONS = [
      "heat capacity, not the parts' bodies'): thermal-transient.json and .png",
      'Solver'),
     ('size', 'float', None, 'mm: the grid pitch (0.5)', 'Solver'),
-]
+])
 
 
 def describe():

@@ -34,7 +34,7 @@ print(json.dumps(dict(
                   check=list(sv.check()))
              for sv in solvers.registry().values()],
     analyses=[dict(name=a.name, order=a.order,
-                   options=[[o.get('key'), o.get('kind')]
+                   options=[[o.key, o.kind]
                             for o in a.options()],
                    provides=list(a.provides),
                    questions=[q.name for q in a.questions],

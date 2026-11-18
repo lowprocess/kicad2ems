@@ -38,7 +38,7 @@ do.
 | Module | Names |
 |---|---|
 | `kicad2ems.core.solvers` | `Solver`, `Result`, `Deviation`, `AUTO`, `FEATURES`, `LINES`, `registry()`, `get(name)` (a solver by name or alias), `resolve_lines(s)` |
-| `kicad2ems.core.options` | `Option`; its value parsers `floatlist`, `floats`, `strlist`, `items` |
+| `kicad2ems.core.options` | `Option` (`kind`, `flag`, `pick`, `level`, `required`, `describe()`: its `--describe --json` row); its value parsers `floatlist`, `floats`, `strlist`, `items`, `lines`, `split`; a tool's options from a table (`table`) or an argparse parser (`from_parser`), into a parser (`add_arguments`), and the command line of values (`argv(options, values)`) |
 | `kicad2ems.core.stop` | `check()` between steps raises `Stopped` when the GUI's Stop was pressed; `requested()` |
 | `kicad2ems.core.sparams` | `mixed_mode`, `fill_reciprocal` |
 | `kicad2ems.core.plots` | `plot_antenna`, `plot_pattern`, `plot_convergence`, `preview` (the model and its mesh) |
@@ -156,7 +156,7 @@ and implements:
 | Method | Returns |
 |---|---|
 | `check()` | `(usable, one line)`: its version and origin, or what is missing and how to get it |
-| `options()` | its settings, `[dict(key, flag, kind, default, help, group, choices)]`; `kind` one of `KINDS`: `'str'`, `'int'`, `'float'`, `'bool'` (a switch), `'list'` (repeatable). A row may say `level` (`'basic'`: one of the few a run is set up with) and `pick` (what the setting names on the board, for a front end to pick there: `'net'`, `'part'`, or `'nets'`, `'parts'` where it takes several) |
+| `options()` | its settings, `[Option]` (`kicad2ems.core.options`), as the solvers' are; `o.kind` one of `KINDS`: `'str'`, `'int'`, `'float'`, `'bool'` (a switch), `'list'` (repeatable, its `conv` splitting a text into items). `o.level` `'basic'`: one of the few a run is set up with; `o.pick`: what the setting names on the board, for a front end to pick there (`'net'`, `'part'`, or `'nets'`, `'parts'` where it takes several); `o.required`: a run needs it set |
 | `tag(values)` | a short name for a run of these settings (the rail, the converter): its folder's |
 | `command(values, board, out, preview=False, results=None)` | the command line that runs it into folder `out`; `results`: `{analysis: the folder of its latest result on this board}`, for one that can start from another's. `ValueError` says what is missing |
 | `status(line)` | the progress a line of its output states, or `None` |

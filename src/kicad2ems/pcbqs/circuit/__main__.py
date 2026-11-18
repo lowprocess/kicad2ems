@@ -8,10 +8,11 @@ import sys
 from . import model as M
 from .engine import run
 from .copper import BoardError
+from kicad2ems.core.options import table
 
 # (key, kind, default, help, group): _cli's table, which --describe gives a
 # front end
-OPTIONS = [
+OPTIONS = table([
     ('copper', 'bool', False,
      "with the copper of the model's board between its parts' pads", 'Board'),
     ('fields', 'bool', False,
@@ -31,7 +32,7 @@ OPTIONS = [
      "kicad2ems.pcbqs.thermal takes them (e.g. --thermal-args='--ambient 40 "
      "--film 12')", 'Board'),
     ('jobs', 'int', 1, 'sweep points run at once', 'Run'),
-]
+])
 
 
 def describe():

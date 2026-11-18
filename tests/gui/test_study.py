@@ -242,8 +242,8 @@ def test_the_solvers_are_ticked_on_the_rf_rows(window):
     # a setting of the form, as any
     assert st.values()['solvers'] == ['mom25d', 'qucs'] and st.dirty
     # a solver's section: its tick
-    assert (st.sections['mom25d'].isEnabled()
-            and not st.parents['FDTD'][0].isEnabled())
+    assert (not st.sections['mom25d'].isHidden()
+            and st.parents['FDTD'][0].isHidden())
     # a config's solvers: the rows show them
     w.setup.set_values(dict(solvers=['openems']))
     assert (tree.rows['sparams'].text(1) == 'openEMS  ▾'
@@ -794,7 +794,7 @@ def test_the_few_settings_first_and_the_rest_found(window):
     chosen; the others are under "More settings", in their sections, and found
     by a word of their label, their key or their section. The board's: its file
     and extra ports first."""
-    from kicad2ems.gui.runner import basic_keys
+    from kicad2ems.gui.runner import BASIC
     w, app, _ = window
     w.show()
     app.processEvents()
@@ -802,7 +802,7 @@ def test_the_few_settings_first_and_the_rest_found(window):
     first = [k for k, (frm, _) in st.rows.items() if frm is st.basic_form]
     assert (first[:3] == ['fmin', 'fmax', 'points']
             and set(first) | {'board', 'ports'}
-            == basic_keys() & set(st.rows) | {'board', 'ports'})
+            == BASIC & set(st.rows) | {'board', 'ports'})
     # the board's own
     assert (st.rows['board'][0] is not st.basic_form
             and st.rows['pos'][0] is st.board_more_form)

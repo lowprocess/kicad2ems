@@ -148,7 +148,8 @@ It needs PySide6, pyqtgraph and PyOpenGL (installed with it).
 | `reportview.py` | an analysis's report: the Report page to read, the Tables page's tables to sort, copy and export |
 | `startpage.py` | the Start page: open a board, a config or a results folder; the examples as tiles, their boards drawn in a thread and kept in the cache folder |
 | `steps.py` | the steps bar: `steps_of(win)`, where the study stands as plain data, and the toolbar that shows it |
-| `runner.py` | the settings form without Qt: fields, sections, solver tick boxes, configs read and written back |
+| `runner.py` | the settings form without Qt: its options (`FORM`, the solver tick boxes as Options too), sections, configs read and written back |
+| `optionrow.py` | one option's field, from its `Option`: the settings form's and an analysis's (`field`, `value`, `set_value`) |
 | `runfolders.py` | the Runs page's words for kicad2ems's index of runs (`kicad2ems.core.runs.index`, `RunInfo`, read from each folder's mark): scopes, settings compared, sizes and times |
 | `planview.py`, `meshpick.py` | the board seen from above, with the line model and the meshes (the KiCad plugin's map too) |
 | `viewer.py`, `volumetab.py`, `volume3d.py` | the Viewer's Plan, 2D and 3D views; `volume3d` holds their arrays, without Qt |

@@ -27,8 +27,10 @@ import json
 import os
 import re
 import sys
+from dataclasses import replace
 
 from kicad2ems.core.analyses import Analysis
+from kicad2ems.core.options import argv as options_argv, from_parser
 
 ORDER = ('Coils and plates', 'Nets and loads', 'Heat', 'Air and board', 'Mesh',
          'Solver')
@@ -46,56 +48,6 @@ GROUPS = dict(coil='Coils and plates', plate='Coils and plates',
 PICK = dict(net='nets', copper='nets', source='part')
 
 
-def describe(parser):
-    """A tool's options as kicad2ems's analyses take them, [dict(key, flag,
-    kind, default, help, group, choices, required)], from its argparse parser:
-    every option but the board and the output folder, which a front end
-    gives."""
-    out = []
-    for a in parser._actions:
-        if not a.option_strings or a.dest in ('help', 'out'):
-            continue
-        kind = ('bool' if a.nargs == 0 else
-                'list' if type(a).__name__ == '_AppendAction' else
-                'float' if a.type is float else
-                'int' if a.type is int else 'str')
-        out.append(
-            dict(
-                key=a.dest, flag=a.option_strings[0], kind=kind,
-                default=([] if kind == 'list' else False if kind == 'bool' else
-                         '' if a.default is None else a.default), help=a.help
-                or '', group=GROUPS.get(a.dest, 'Solver'),
-                choices=list(a.choices or ()), required=bool(a.required)))
-        if a.dest in PICK:
-            out[-1]['pick'] = PICK[a.dest]
-    return sorted(out, key=lambda o: ORDER.index(o['group']))
-
-
-def argv(module, options, values, board, out):
-    """[python, -m, module, board, --out, out, ...] for values {option key:
-    text, bool or list}: an option left empty or at its default is not passed; a
-    list is lines or comma-separated items."""
-    line = [sys.executable, '-m', module, board, '--out', out]
-    for o in options:
-        v = values.get(o['key'])
-        if o['kind'] == 'bool':
-            if (v is True
-                    or str(v).strip().lower() in ('1', 'true', 'yes', 'on')):
-                line.append(o['flag'])
-        elif o['kind'] == 'list':
-            text = ('\n'.join(map(str, v))
-                    if isinstance(v, (list, tuple)) else str(v or ''))
-            for item in [
-                    s.strip() for s in re.split(r'[\n,]', text) if s.strip()
-            ]:
-                line += [o['flag'], item]
-        else:
-            s = '' if v is None else str(v).strip()
-            if s and s != str(o['default']):
-                line += [o['flag'], s]
-    return line
-
-
 class _Fem(Analysis):
     """One of the package's tools: its module, its parser, the program it needs,
     its result file."""
@@ -110,8 +62,11 @@ class _Fem(Analysis):
         return found()
 
     def options(self):
+        """Its tool's options, from its parser, by their groups' ORDER."""
         import importlib
-        return describe(importlib.import_module(self.module).parser())
+        return sorted(
+            from_parser(importlib.import_module(self.module).parser(), GROUPS,
+                        PICK), key=lambda o: ORDER.index(o.group))
 
     def owns(self, folder, preview=False):
         """A result of this tool's: its file says whose it is (pcbqs writes a
@@ -138,13 +93,14 @@ class _Fem(Analysis):
                              if not board else f'{board}: no such board')
         opts = self.options()
         need = [
-            o['flag']
+            o.flag
             for o in opts
-            if o['required'] and not str(values.get(o['key']) or '').strip()
+            if o.required and not str(values.get(o.key) or '').strip()
         ]
         if need:
             raise ValueError(f"set {', '.join(need)}")
-        return argv(self.module, opts, values, board, out)
+        return [sys.executable, '-m', self.module, board, '--out', out,
+                *options_argv(opts, values)]
 
     def status(self, line):
         return (line.split(':', 1)[1].strip()[:160]
@@ -397,7 +353,7 @@ class _FromRun(_Fem):
 
     def options(self):
         return [
-            dict(o, required=False) if o['key'] == self.key else o
+            replace(o, required=False) if o.key == self.key else o
             for o in super().options()
         ]
 
@@ -412,19 +368,12 @@ class _FromRun(_Fem):
                or (results or {}).get(self.key))
         if not run:
             raise ValueError(self.need)
-        cmd = [
+        return [
             sys.executable, '-m', self.module, '--' + self.key,
             str(run), '--out',
-            str(out)
+            str(out), *options_argv(
+                [o for o in self.options() if o.key != self.key], values)
         ]
-        for o in self.options():
-            v = str(
-                values.get(o['key']) if values.get(o['key']) is not None else ''
-            ).strip()
-            if (o['key'] not in (self.key, 'out') and v
-                    and v != str(o['default'])):
-                cmd += [o['flag'], v]
-        return cmd
 
     def status(self, line):
         return (line.split(':', 1)[1].strip()[:160]
@@ -575,11 +524,10 @@ class ElmerMag(_Fem):
     order, result, provides = 45, 'mag.json', ('coils',)
 
     def options(self):
-        opts = super().options()
-        for o in opts:
-            if o['key'] in ('coil', 'plate'):
-                o['level'] = 'basic'
-        return opts
+        return [
+            replace(o, level='basic') if o.key in ('coil', 'plate') else o
+            for o in super().options()
+        ]
 
     def tag(self, values):
         coils = self._items(values.get('coil'))
@@ -610,13 +558,9 @@ class ElmerMag(_Fem):
             cmd += ['--coil', c]
         for p in self._items(values.get('plate')):
             cmd += ['--plate', p]
-        for o in self.options():
-            v = str(
-                values.get(o['key']) if values.get(o['key']) is not None else ''
-            ).strip()
-            if (o['key'] in ('h', 'margin', 'freq') and v
-                    and v not in (str(o['default']), 'None')):
-                cmd += [o['flag'], v]
+        cmd += options_argv([
+            o for o in self.options() if o.key in ('h', 'margin', 'freq')
+        ], values)
         return cmd
 
     def figures(self, folder):

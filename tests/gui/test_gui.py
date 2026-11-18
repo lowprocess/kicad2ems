@@ -2,7 +2,7 @@
 (offscreen)."""
 import json, math, os, sys, time, pytest
 import numpy as np
-from kicad2ems.gui.runner import write_toml, settings_values, FIELDS
+from kicad2ems.gui.runner import write_toml, settings_values, FORM
 from kicad2ems.core.config import build_settings
 from waiting import wait_until
 
@@ -21,7 +21,7 @@ def test_settings_round_trip(tmp_path):
             and s.ports == ['P3=J1.1', 'P4@1,2,F.Cu'] and s.cut_ports)
     assert s.region == (0, 0, 10, 5) and s.fast == 'qucsator' and s.fine is None
     back = settings_values(str(p))
-    assert set(back) == {k for k, *_ in FIELDS} and back['fmax'] == 6.0
+    assert set(back) == {o.key for o in FORM} and back['fmax'] == 6.0
 
 
 def test_window_builds(tmp_path):
@@ -346,11 +346,11 @@ def test_rf_examples_load(name, nports):
 def test_gui_solver_boxes(tmp_path, monkeypatch):
     from kicad2ems.gui.runner import (settings_values, solvers_from_form,
                                       save_config, extra_values, write_toml,
-                                      FIELDS)
+                                      FORM)
     from kicad2ems.core.solvers.lines import fastsolve
     # no qucsator: lines is scikit
     monkeypatch.setattr(fastsolve.shutil, 'which', lambda name: None)
-    assert ([k for k, *_ in FIELDS if k.startswith('solver:')] == [
+    assert ([o.key for o in FORM if o.key.startswith('solver:')] == [
         'solver:auto', 'solver:openems', 'solver:mom25d', 'solver:gfdtd',
         'solver:qucs', 'solver:scikit'
     ])
@@ -386,9 +386,9 @@ def test_gui_solver_boxes(tmp_path, monkeypatch):
     assert (build_settings({}, str(
         tmp_path / 'r.toml')).solver_plan()[0] == ['scikit'])
     none = solvers_from_form(
-        {k: False
-         for k, *_ in FIELDS
-         if k.startswith('solver:')})
+        {o.key: False
+         for o in FORM
+         if o.key.startswith('solver:')})
     assert none['solvers'] == []  # none: the GUI says so
     # auto has a box of its own (and is the default)
     p.write_text('board = "b.kicad_pcb"\nsolvers = ["auto"]\n',
@@ -959,7 +959,7 @@ def test_solver_sections(tmp_path):
     """Each solver's settings in a section of its own (openEMS's in Mesh, Run
     and Field dumps sub-sections), the shared ones apart (Antenna; the dump
     settings both use under Output), qucsator not a board's setting (the Solvers
-    and hardware window); a section greyed while none of its solvers is
+    and hardware window); a section hidden while none of its solvers is
     ticked."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
@@ -972,8 +972,8 @@ def test_solver_sections(tmp_path):
     if (not any(b.isChecked() for b in st.solver_boxes.values())
             and not st.edits['solver:auto'][0].isChecked()):
         # first launch
-        assert (not st.parents['FDTD'][0].isEnabled()
-                and not st.sections['mom25d'].isEnabled())
+        assert (st.parents['FDTD'][0].isHidden()
+                and st.sections['mom25d'].isHidden())
         assert not st.edits['ff_freq'][0].isEnabled()
     assert (st.group_of['res'] == 'FDTD/Mesh'
             and st.group_of['mom_dmax'] == 'mom25d')
@@ -989,8 +989,8 @@ def test_solver_sections(tmp_path):
     assert w.system.qucsator.text() == ''
     st.set_values(dict(board='b.kicad_pcb', solvers=['mom25d']))
     oems, mom = st.parents['FDTD'][0], st.sections['mom25d']
-    assert (not oems.isEnabled() and mom.isEnabled()
-            and 'openEMS' in oems.toolTip() and 'gfdtd' in oems.toolTip())
+    assert (oems.isHidden() and not mom.isHidden()
+            and 'FDTD' in st.off and 'mom25d' not in st.off)
     # built from the solvers
     from kicad2ems.gui.runner import SECTION_TITLES, SECTION_ORDER
     assert (SECTION_TITLES['FDTD'] == 'FDTD (openEMS, gfdtd)'
@@ -1002,7 +1002,7 @@ def test_solver_sections(tmp_path):
     assert (st.edits['ff_freq'][0].isEnabled()
             and st.field_labels['ff_freq'].isEnabled())
     st.solver_boxes['openems'].setChecked(True)
-    assert oems.isEnabled()
+    assert not oems.isHidden()
     # auto: openEMS, mom25d and the line model may run
     st.set_values(dict(board='b.kicad_pcb'))
     assert oems.isEnabled() and mom.isEnabled()

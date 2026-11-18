@@ -23,9 +23,9 @@ TOOL = os.path.join(HERE, 'fake_tool.py')
 
 
 def opt(key, kind='str', default='', group='Settings', help=''):
-    return dict(key=key, flag='--' + key.replace('_', '-'), kind=kind,
-                default=default, help=help or key.replace('_', ' '),
-                group=group, choices=None)
+    from kicad2ems.core.options import table
+    return table([(key, kind, default, help or key.replace('_', ' '),
+                   group)])[0]
 
 
 def write(kind, folder, preview=False, **v):
@@ -126,7 +126,7 @@ class _Fake(Analysis):
         return True, 'a stand-in (the tests)'
 
     def options(self):
-        return [dict(o) for o in self.OPTIONS]
+        return list(self.OPTIONS)
 
     def command(self, values, board, out, preview=False, results=None):
         if not board:

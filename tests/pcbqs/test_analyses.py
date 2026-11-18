@@ -52,14 +52,14 @@ def test_the_four_register_with_kicad2ems():
                 and a.result.endswith('.json') and a.about)
         assert a.check() == (True, a.check()[1]) and 'pcbqs' in a.check()[1]
         opts = a.options()
-        assert (opts and all(o['kind'] in KINDS and o['flag'].startswith('--')
+        assert (opts and all(o.kind in KINDS and o.flag.startswith('--')
                              for o in opts))
-        assert set(a.paths) <= {o['key'] for o in opts}
+        assert set(a.paths) <= {o.key for o in opts}
     assert (made[1].previewed and made[1].preview_result == 'mqs-preview.json'
             and made[2].page)
     # what names a net or a part says so, for a front end to pick it on the
     # board
-    pick = lambda a: {o['key']: o['pick'] for o in a.options() if 'pick' in o}
+    pick = lambda a: {o.key: o.pick for o in a.options() if o.pick}
     assert (pick(made[0]) == dict(rail='net', ground='nets', source='part',
                                   ground_source='part', through='parts',
                                   stop='parts'))
@@ -225,10 +225,10 @@ def test_the_circuit_command(tmp_path):
     with pytest.raises(ValueError, match='wpthb_bridge'):
         c.command(dict(model=str(model)), None, 'out')
     assert c.tag(dict(model=str(model))) == 'm' and c.env
-    opts = {o['key']: o for o in c.options()}  # pcbqs.circuit's own table
+    opts = {o.key: o for o in c.options()}  # pcbqs.circuit's own table
     assert (list(opts) == [
         'model', 'copper', 'fields', 'warm', 'thermal_args', 'set', 'jobs'
-    ] and opts['jobs']['default'] == 4)
+    ] and opts['jobs'].default == 4)
     assert 'board' not in opts
     # --warm: the board for its thermal model; a value with a dash: joined
     model.write_text(json.dumps(dict(format=2)))
@@ -488,7 +488,7 @@ def test_the_tools_are_engines_of_the_questions_they_answer(tmp_path):
                for q in a.provides)
     assert {a.engine for a in (pdn, mqs, circuit, thermal)} == {'pcbqs'}
     assert (circuit.fields == 'fields'
-            and any(o['key'] == 'fields' and o['kind'] == 'bool'
+            and any(o.key == 'fields' and o.kind == 'bool'
                     for o in circuit.options()))
     assert (pdn.for_questions(dict(rail='P'),
                               ('dc', )) == dict(rail='P', no_pdn=True))
@@ -613,7 +613,7 @@ def test_a_study_s_rails_are_a_run_each(tmp_path):
     assert ((A.PowerIntegrity.several, A.NearField.several, A.Circuit.several,
              A.Thermal.several) == ('rail', 'converter', '', ''))
     assert (set(A.PowerIntegrity.several_keys)
-            <= {o['key']
+            <= {o.key
                 for o in A.PowerIntegrity().options()})
     (tmp_path / 'b_board.json').write_text(json.dumps(board()))
     cfg = tmp_path / 'c.toml'
