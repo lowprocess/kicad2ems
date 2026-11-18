@@ -4,7 +4,6 @@
     OPENBLAS_NUM_THREADS=1 python tools/pcbqs/benchmark_static_fill.py \\
         --dmax .5 --repeat 3
 
-GPU explicitly: --backends numpy,cupy --workers 1 --device 0
 Unavailable explicitly selected backends fail rather than changing the workload.
 """
 import argparse
@@ -27,7 +26,6 @@ def main():
     ap.add_argument('--repeat', type=int, default=3)
     ap.add_argument('--chunk', type=int, default=16384)
     ap.add_argument('--scalar', action='store_true')
-    ap.add_argument('--device', type=int)
     ap.add_argument('--out')
     args = ap.parse_args()
     if args.repeat < 1:
@@ -39,7 +37,7 @@ def main():
                                chunk=args.chunk, scalar_only=args.scalar)
     report = dict(triangles=len(tris), scalar_only=args.scalar, cases=[])
     for backend in args.backends.split(','):
-        counts = ([1] if backend in ('numpy', 'cupy') else
+        counts = ([1] if backend == 'numpy' else
                   [int(n) for n in args.workers.split(',')])
         for workers in counts:
             times, error = [], 0.
@@ -47,7 +45,6 @@ def main():
                 start = time.perf_counter()
                 result, info = static_moments(
                     nodes, tris, z, backend=backend, workers=workers,
-                    device=(args.device if backend == 'cupy' else None),
                     chunk=args.chunk, scalar_only=args.scalar, return_info=True)
                 times.append(time.perf_counter()-start)
                 for a, b in zip(reference[1:], result[1:]):

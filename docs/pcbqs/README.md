@@ -37,8 +37,7 @@ The compiled core is needed: it meshes (the constrained Delaunay triangulation o
 `src/kicad2ems/emsdev/native/mesh2d.hpp`) and holds the
 CPU kernels. Build it with `pip install '.[core]'` followed by `python -m kicad2ems.pcbqs.core.build`
 (a C++17 compiler; the kicad2ems installer does this). The kernels keep their NumPy/threaded
-fallbacks (`PCBQS_NO_CORE`); the mesher has none. CuPy GPU
-fill is optional: select a matching CUDA/ROCm extra and `--fill-backend cupy`.
+fallbacks (`PCBQS_NO_CORE`); the mesher has none.
 Execution controls use `PCBQS_FILL_BACKEND`, `PCBQS_FILL_THREADS`,
 `PCBQS_OMP_THREADS`, `PCBQS_NO_CORE` and `PCBQS_ARCH`; general OpenMP settings
 remain supported. Another static-fill backend is registered with

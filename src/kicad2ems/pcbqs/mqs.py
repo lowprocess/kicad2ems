@@ -221,7 +221,7 @@ class MQS:
                  er=1.0, factor_cache_bytes=64 * 1024**2, conductor_loss='dc',
                  conductor_faces=2, dielectric='homogeneous',
                  dielectric_tol=1e-8, fill_backend='auto', fill_workers=None,
-                 fill_chunk=16384, fill_device=None, coarsen=None, grow=0.5,
+                 fill_chunk=16384, coarsen=None, grow=0.5,
                  edge_rings=1, edge_width=None, edge_zone=None,
                  matrix_backend='dense', compression_tol=1e-6,
                  compression_leaf=64, compression_eta=1., solver_tol=1e-8,
@@ -235,9 +235,9 @@ class MQS:
         `conductor_loss='slab'` adds finite-thickness sheet impedance with
         `conductor_faces` one or two; barrels retain their DC resistance.
         PEEC's reusable frequency factors have a `factor_cache_bytes` budget.
-        `fill_backend` chooses auto/openmp/threaded/numpy/cupy; `fill_workers`
-        caps CPU parallelism and `fill_chunk` bounds pairs per tile. Device
-        backends use `fill_device`; `fill_info` records actual execution.
+        `fill_backend` chooses auto/openmp/threaded/numpy; `fill_workers`
+        caps CPU parallelism and `fill_chunk` bounds pairs per tile;
+        `fill_info` records actual execution.
         `coarsen` permits bulk cells up to coarsen*dmax, growing at `grow`
         away from features. `edge_rings` is the transverse subdivision count
         (1 disables inward rings); `edge_width` and `edge_zone` are in mm.
@@ -291,7 +291,7 @@ class MQS:
                                                                    capacitance,
                                                                    er)
         self._fill_options = dict(backend=fill_backend, workers=fill_workers,
-                                  chunk=fill_chunk, device=fill_device)
+                                  chunk=fill_chunk)
         self.fill_info = {}
         if factor_cache_bytes < 0:
             raise ValueError('factor_cache_bytes must be nonnegative')

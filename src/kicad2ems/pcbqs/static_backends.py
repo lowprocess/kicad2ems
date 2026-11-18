@@ -1,12 +1,12 @@
 """Execution backends for quasi-static triangle-pair integration.
 
-Factories receive (FillGeometry, workers, chunk, device), returning an object
+Factories receive (FillGeometry, workers, chunk), returning an object
 with `evaluate(p, q, d, kind, scalar_only)` and `parallel_tiles` (whether calls
 may run concurrently). kind=-1 selects the smooth three-point product rule;
 0/1/2 select analytic source integration at that observation refinement.
 Results must be host float64 arrays: (npairs, 1) for scalar-only, otherwise
-(npairs, 6), ordered M0, Mro_x, Mro_y, Mrs_x, Mrs_y, Mrr. Device backends own
-upload/synchronization; the scheduler owns tiling, reciprocity and output.
+(npairs, 6), ordered M0, Mro_x, Mro_y, Mrs_x, Mrs_y, Mrr. The scheduler owns
+tiling, reciprocity and output.
 """
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -148,26 +148,24 @@ class FillGeometry:
         return self.levels[0][4]
 
 
-def _far(xp, points, area, p, q, d, scalar_only):
+def _far(points, area, p, q, d, scalar_only):
     pa, pb = points[p], points[q]
     a, b = pa[:, :, None], pb[:, None, :]
     g = ((area[p] * area[q] / 9)[:, None, None]
-         / xp.sqrt(((a - b)**2).sum(-1) + d[:, None, None]**2))
+         / np.sqrt(((a - b)**2).sum(-1) + d[:, None, None]**2))
     m0 = g.sum((1, 2))
     if scalar_only:
         return m0[:, None]
-    ro = xp.einsum('mq,mqc->mc', g.sum(2), pa)
-    rs = xp.einsum('mq,mqc->mc', g.sum(1), pb)
-    rr = xp.einsum('mab,mac,mbc->m', g, pa, pb)
-    return xp.column_stack((m0, ro, rs, rr))
+    ro = np.einsum('mq,mqc->mc', g.sum(2), pa)
+    rs = np.einsum('mq,mqc->mc', g.sum(1), pb)
+    rr = np.einsum('mab,mac,mbc->m', g, pa, pb)
+    return np.column_stack((m0, ro, rs, rr))
 
 
 class NumpyBackend:
     parallel_tiles = True
 
-    def __init__(self, geometry, workers, chunk, device):
-        if device is not None:
-            raise ValueError('device is only applicable to a device backend')
+    def __init__(self, geometry, workers, chunk):
         self.g, self.chunk = geometry, chunk
 
     def evaluate(self, p, q, d, kind, scalar_only):
@@ -175,7 +173,7 @@ class NumpyBackend:
         for level in np.unique(kind):
             mask = kind == level
             if level == -1:
-                out[mask] = _far(np, self.g.points, self.g.area, p[mask],
+                out[mask] = _far(self.g.points, self.g.area, p[mask],
                                  q[mask], d[mask], scalar_only)
             else:
                 m = offplane_pairs(
@@ -208,9 +206,7 @@ def host_data(geometry):
 
 
 class OpenMPBackend:
-    def __init__(self, geometry, workers, chunk, device):
-        if device is not None:
-            raise ValueError('device is only applicable to a device backend')
+    def __init__(self, geometry, workers, chunk):
         self.core = _compiled()
         if self.core is None:
             raise RuntimeError(
@@ -232,7 +228,7 @@ def native_layered(engine, workers=None, kernel='layered_pairs'):
     another `kernel`, rwg_inductance: the whole entry blocks), or None (another
     fill backend, or a core that predates the kernel).
 
-    Only OpenMP engines use it; NumPy/threaded/device backends keep the host
+    Only OpenMP engines use it; NumPy/threaded backends keep the host
     image loops, so an explicit backend choice is respected.
     """
     if engine.info['backend'] != 'openmp':
@@ -257,15 +253,8 @@ def layered_spline_args(images, smooth):
             np.ascontiguousarray(smooth.c, complex))
 
 
-def _cupy_factory(geometry, workers, chunk, device):
-    from .static_cupy import CupyBackend
-    return CupyBackend(geometry, workers, chunk, device)
-
-
 _FACTORIES = {
-    'numpy': NumpyBackend, 'threaded': NumpyBackend, 'openmp': OpenMPBackend,
-    'cupy': _cupy_factory
-}
+    'numpy': NumpyBackend, 'threaded': NumpyBackend, 'openmp': OpenMPBackend}
 
 
 def register_fill_backend(name, factory):
@@ -282,7 +271,7 @@ def register_fill_backend(name, factory):
 
 class FillEngine:
     def __init__(self, nodes, tris, z, near=3., outer_levels=1, backend='auto',
-                 workers=None, chunk=16384, device=None, prefer_outer=False):
+                 workers=None, chunk=16384, prefer_outer=False):
         if np.ndim(near) != 0 or near < 0 or np.isnan(near):
             raise ValueError('near must be nonnegative (or infinity)')
         if (not isinstance(outer_levels, (int, np.integer))
@@ -299,33 +288,28 @@ class FillEngine:
                 if requested == 'auto' else requested)
         if name not in _FACTORIES:
             raise ValueError(f'unknown fill backend {name!r}')
-        if name in ('numpy', 'cupy'):
+        if name == 'numpy':
             workers = 1
         self.geometry = FillGeometry.prepare(nodes, tris, z, outer_levels)
-        kernel_workers = (1 if name in ('numpy', 'threaded', 'cupy') or
+        kernel_workers = (1 if name in ('numpy', 'threaded') or
                           (prefer_outer and name == 'openmp') else workers)
         self.backend = _FACTORIES[name](self.geometry, kernel_workers,
-                                        self.chunk, device)
+                                        self.chunk)
         self.tile_workers = workers if self.backend.parallel_tiles else 1
         self.info = dict(
             backend=name, workers=workers,
             kernel_workers=(1 if self.backend.parallel_tiles else
                             kernel_workers), tile_workers=self.tile_workers,
-            chunk=self.chunk, device=getattr(self.backend, 'device_id',
-                                             device), precision='float64',
+            chunk=self.chunk, precision='float64',
             triangles=len(self.geometry.tris), outer_levels=int(outer_levels),
             near=('all' if np.isinf(near) else float(near)))
         if hasattr(self.backend, 'observed_workers'):
             self.info['observed_kernel_workers'] = self.backend.observed_workers
-        if hasattr(self.backend, 'routing'):
-            # Shared and updated in place: copies of info see the final counts.
-            self.info['routing'] = self.backend.routing
 
     @property
     def pair_batch(self):
-        """Pairs per evaluate() call: the tile bound, or a device's larger
-        minimum."""
-        return max(self.chunk, getattr(self.backend, 'min_batch_pairs', 1))
+        """Pairs per evaluate() call: the tile bound."""
+        return self.chunk
 
     def kinds(self, p, q, d):
         g = self.geometry

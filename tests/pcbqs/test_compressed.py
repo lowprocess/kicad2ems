@@ -153,7 +153,7 @@ def test_batched_layer_images_match_dense_with_tiny_chunks(near):
     q.tris=q.tris[ids];q.z_of=q.z_of[ids]
     q.layer_tris={'B':np.arange(3),'F':np.arange(3,6)}
     q.near = near
-    q._fill_options = dict(backend='auto', workers=1, chunk=7, device=None)
+    q._fill_options = dict(backend='auto', workers=1, chunk=7)
     expected=potential_moments(q)
     engine=FillEngine(q.nodes,q.tris,q.z_of,near,1,**q._fill_options)
     pairs=_LayeredPairs(q,engine)

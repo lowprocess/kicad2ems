@@ -1,4 +1,4 @@
-"""Backend equivalence, real host concurrency, bounded scheduling and device
+"""Backend equivalence, real host concurrency, bounded scheduling and backend
 contracts."""
 import threading
 
@@ -109,9 +109,9 @@ def test_backend_failure_is_not_silently_retried(mesh, monkeypatch):
     monkeypatch.setattr(backends, '_FACTORIES', dict(backends._FACTORIES))
     class Broken(NumpyBackend):
         def evaluate(self, *args):
-            raise RuntimeError('device failed')
+            raise RuntimeError('backend failed')
     register_fill_backend('broken', Broken)
-    with pytest.raises(RuntimeError, match='device failed'):
+    with pytest.raises(RuntimeError, match='backend failed'):
         static_moments(*mesh, backend='broken', workers=2, chunk=4)
 
 
@@ -151,13 +151,6 @@ def test_existing_openmp_thread_preferences_are_respected(mesh, monkeypatch):
     assert FillEngine(*mesh, backend='threaded', workers=1).info['workers'] == 1
 
 
-def test_missing_gpu_does_not_fall_back_to_cpu(mesh, monkeypatch):
-    import sys
-    monkeypatch.setitem(sys.modules, 'cupy', None)
-    with pytest.raises(RuntimeError, match='CuPy fill unavailable'):
-        static_moments(*mesh, backend='cupy')
-
-
 @pytest.mark.parametrize('kwargs', [
     dict(workers=0),
     dict(workers=True),
@@ -169,83 +162,6 @@ def test_missing_gpu_does_not_fall_back_to_cpu(mesh, monkeypatch):
 def test_invalid_configuration(mesh, kwargs):
     with pytest.raises(ValueError):
         static_moments(*mesh, **kwargs)
-
-
-@pytest.mark.parametrize('level', [0, 1, 2])
-@pytest.mark.parametrize('scalar_only', [False, True])
-def test_portable_gpu_formula_on_host_namespace(mesh, level, scalar_only):
-    # Exercise device formula independently of the CPU reference even without
-    # GPU hardware.
-    from kicad2ems.pcbqs.static_cupy import _analytic
-    e = FillEngine(*mesh, backend='numpy', outer_levels=level)
-    p, q = np.array([0, 1, 2, 3, 4]), np.array([0, 0, 5, 7, 2])
-    d = np.array([0., .0001, -.0002, 0., .0003])
-    kind = np.full(len(p), level, np.int32)
-    actual = _analytic(np, e.geometry.levels[level], p, q, d, scalar_only)
-    assert (actual == pytest.approx(e.evaluate(p, q, d, kind, scalar_only),
-                                    rel=1e-12, abs=1e-27))
-
-
-@pytest.mark.parametrize('level', [0, 1, 2])
-def test_actual_cupy_backend_when_device_available(mesh, level, monkeypatch):
-    # keep pair batches on the device
-    monkeypatch.setenv('PCBQS_CUPY_HOST_PAIRS', '0')
-    pytest.importorskip('cupy')
-    import cupy as cp
-    try:
-        cp.zeros(1).sum().item()
-    except Exception as exc:
-        pytest.skip(f'CuPy device unavailable: {exc}')
-    for scalar in (False, True):
-        expected = static_moments(*mesh, backend='numpy', scalar_only=scalar,
-                                  outer_levels=level)
-        actual = static_moments(*mesh, backend='cupy', device=0,
-                                scalar_only=scalar, outer_levels=level)
-        for a, b in zip(expected, actual):
-            assert b == pytest.approx(a, rel=2e-10, abs=1e-26)
-        again = static_moments(*mesh, backend='cupy', device=0,
-                               scalar_only=scalar, outer_levels=level, chunk=3)
-        assert all(np.array_equal(a, b) for a, b in zip(actual, again))
-
-
-@pytest.mark.parametrize('level', [0, 2])
-def test_cupy_row_strips_and_pair_protocol(mesh, level, monkeypatch):
-    pytest.importorskip('cupy')
-    import cupy as cp
-    try:
-        cp.zeros(1).sum().item()
-    except Exception as exc:
-        pytest.skip(f'CuPy device unavailable: {exc}')
-    from kicad2ems.pcbqs.static_cupy import CupyBackend
-    # keep pair batches on the device
-    monkeypatch.setenv('PCBQS_CUPY_HOST_PAIRS', '0')
-    # Eight triangles in strips of 3, 3 and 2 rows: a partial final strip.
-    monkeypatch.setattr(CupyBackend, 'min_strip_pairs', 24)
-    for scalar in (False, True):
-        expected, info0 = static_moments(*mesh, backend='numpy',
-                                         scalar_only=scalar, outer_levels=level,
-                                         return_info=True)
-        actual, info = static_moments(*mesh, backend='cupy', scalar_only=scalar,
-                                      outer_levels=level, chunk=3,
-                                      return_info=True)
-        for a, b in zip(expected, actual):
-            assert b == pytest.approx(a, rel=2e-10, abs=1e-26)
-        assert np.array_equal(actual[1], actual[1].T)
-        if not scalar:
-            assert np.array_equal(actual[4], actual[4].T)
-        assert ((info['pairs'],
-                 info['analytic_pairs']) == (info0['pairs'],
-                                             info0['analytic_pairs']))
-    # The explicit pair protocol (layered capacitance, compressed PEEC) sorts by
-    # kind.
-    reference = FillEngine(*mesh, backend='numpy', outer_levels=level)
-    device = FillEngine(*mesh, backend='cupy', outer_levels=level)
-    p, q = np.array([0, 7, 1, 2, 3, 4, 0]), np.array([0, 2, 0, 5, 7, 2, 6])
-    d = device.geometry.z[p]-device.geometry.z[q]
-    for scalar in (False, True):
-        assert (device.evaluate(p, q, d, scalar_only=scalar) == pytest.approx(
-            reference.evaluate(p, q, d, scalar_only=scalar), rel=2e-10,
-            abs=1e-26))
 
 
 @pytest.mark.parametrize('level', [0, 1, 2])
@@ -319,36 +235,3 @@ def test_kinds_rule_and_kind_validation(mesh, near, level):
         e.evaluate(np.array([n]), np.array([0]), 0.)
     with pytest.raises(ValueError, match='finite'):
         e.evaluate(np.array([0]), np.array([0]), np.nan)
-
-
-def test_small_cupy_batches_run_on_host_core(mesh, monkeypatch):
-    pytest.importorskip('cupy')
-    import cupy as cp
-    try:
-        cp.zeros(1).sum().item()
-    except Exception as exc:
-        pytest.skip(f'CuPy device unavailable: {exc}')
-    if backends._compiled() is None:
-        pytest.skip('OpenMP core not built')
-    import os
-    if os.environ.get('PCBQS_NO_CORE'):
-        # The core is disabled: every batch stays on the device.
-        assert (FillEngine(
-            *mesh, backend='cupy').info['routing']['host_threshold_pairs'] == 0)
-        return
-    p, q = np.array([0, 7, 1, 2, 3, 4, 0]), np.array([0, 2, 0, 5, 7, 2, 6])
-    host = FillEngine(*mesh, backend='cupy')
-    d = host.geometry.z[p]-host.geometry.z[q]
-    openmp = FillEngine(*mesh, backend='openmp', workers=1)
-    assert np.array_equal(host.evaluate(p, q, d), openmp.evaluate(p, q, d))
-    assert (host.info['routing']['host_batches'] == 1
-            and host.info['routing']['device_batches'] == 0)
-    monkeypatch.setenv('PCBQS_CUPY_HOST_PAIRS', '0')
-    device = FillEngine(*mesh, backend='cupy')
-    assert (device.evaluate(p, q, d) == pytest.approx(openmp.evaluate(p, q, d),
-                                                      rel=2e-10, abs=1e-26))
-    assert (device.info['routing']['device_batches'] == 1
-            and device.info['routing']['host_threshold_pairs'] == 0)
-    monkeypatch.setenv('PCBQS_CUPY_HOST_PAIRS', '-1')
-    with pytest.raises(ValueError, match='nonnegative'):
-        FillEngine(*mesh, backend='cupy')

@@ -40,7 +40,6 @@ def main():
     ap.add_argument('--fill-backend', default='auto')
     ap.add_argument('--fill-workers', type=int)
     ap.add_argument('--fill-chunk', type=int, default=16384)
-    ap.add_argument('--fill-device', type=int)
     args = ap.parse_args()
     path = Path(args.board)
     start = time.perf_counter()
@@ -69,7 +68,7 @@ def main():
     q = MQS(board, {args.vin, args.ground}, terminals=terminals, region=region,
             dmax=args.dmax, fine=fine, dmax_fine=args.fine,
             fill_backend=args.fill_backend, fill_workers=args.fill_workers,
-            fill_chunk=args.fill_chunk, fill_device=args.fill_device)
+            fill_chunk=args.fill_chunk)
     q.source(args.converter, f'{args.converter}.vin', f'{args.converter}.gnd',
              part_h=.4)
     for ref in names[1:]:

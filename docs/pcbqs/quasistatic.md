@@ -47,10 +47,9 @@ inductance and triangle-moment storage are still quadratic in mesh size.
 
 Filling defaults to the compiled **OpenMP** backend when available, with a
 multithreaded NumPy fallback. `fill_backend='numpy'` selects the serial
-reference; `fill_workers` controls CPU threads. The optional CuPy backend and
-third-party backends share the same double-precision pair interface. See
+reference; `fill_workers` controls CPU threads. Third-party backends share the same double-precision pair interface. See
 [backend configuration and extension protocol](static-backends.md) for thread
-defaults, bounded scratch memory, GPU limitations and scaling benchmarks.
+defaults, bounded scratch memory and scaling benchmarks.
 
 The reproducible CPU benchmark is:
 

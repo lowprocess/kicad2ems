@@ -102,7 +102,7 @@ classifies and integrates each canonical triangle pair once, and combines the
 RWG (or homogeneous potential) entries. Products are rounded before addition
 as in NumPy, and one out-of-line pair integrator serves every kernel, so the
 native blocks are bitwise identical to the NumPy assembly and independent of
-thread count. Other fill backends (`numpy`, `threaded`, `cupy`) keep the
+thread count. Other fill backends (`numpy`, `threaded`) keep the
 NumPy assembly. `fill_info['magnetic']['native_entries']` records which ran.
 
 On the same case (medians of three), inductance construction fell from 30.7 s

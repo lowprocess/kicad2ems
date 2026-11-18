@@ -20,7 +20,6 @@ print(q.fill_info)  # backend, worker counts, precision, timing, pair counts
 | `openmp` | GIL-free C++ whole-matrix fill: classification, integration and reciprocal writes in one OpenMP team |
 | `threaded` | NumPy integration in a bounded `ThreadPoolExecutor`; ufuncs release the GIL |
 | `numpy` | Serial NumPy reference; always one worker |
-| `cupy` | Optional CuPy GPU integration; one geometry upload per fill, host matrices |
 
 Build the OpenMP backend with:
 
@@ -68,13 +67,13 @@ are changed. BLAS solves and field FFTs retain their separate controls.
 
 `fill_chunk` bounds pairs per host tile (host-scheduled backends), not triangle count. The scheduler keeps
 at most one task/result per host worker in flight. Integration scratch is
-bounded per worker; refined NumPy/CuPy batches are subdivided further to bound
+bounded per worker; refined NumPy batches are subdivided further to bound
 quadrature temporaries. Dense host matrices still require O(Nt²) storage.
 
 Each pair has exactly one owner. Independent pair reductions retain their
 summation order; one host writer fills both reciprocal entries. Tests check
 bitwise repeatability across tile sizes and thread counts within a backend,
-and numerical agreement between implementations. OpenMP/libm and GPU math
+and numerical agreement between implementations. OpenMP/libm math
 can differ from NumPy at floating-point roundoff, so cross-backend bitwise
 identity is not required.
 
@@ -84,68 +83,8 @@ runtime probe; OpenMP dynamic limits can constrain teams. Capacitance metadata
 notes when magnetic moments were reused. Timings cover fill preparation and
 moment assembly, excluding RWG projection and the linear solve.
 
-## Optional GPU fill
-
-Install the CuPy extra matching your driver, then select it explicitly:
-
-```python
-q = MQS(board, nets=nets, terminals=terminals,
-        fill_backend='cupy', fill_device=0, fill_chunk=16384)
-```
-
-The backend uploads geometry once. Free-space moment fills (`static_moments`,
-used by MQS/PEEC) run entirely on the device in row strips of at least 4M
-pairs: each thread generates its pair, classifies it with the host
-near/far rule (no FMA contraction, so quadrature choices match the CPU
-backends), and integrates far pairs immediately. Near pairs are compacted
-into per-level lists and integrated by a second launch, because mixing the
-product rule with the analytic asinh/atan2 loop in one wavefront was measured
-at about 8x slower. Every entry is computed from its canonical (min, max)
-pair, so reciprocal entries are bitwise identical without host transposes.
-Two strip buffers alternate on separate streams, overlapping integration of
-one strip with the copy of the previous one into contiguous host rows. Device
-memory is bounded by the two strips (about 330 MB); there is no dense GPU matrix.
-
-Explicit pair-list callers (layered capacitance images, compressed PEEC) use
-the pair protocol below; the device sorts each batch by kind before one
-fused launch. These callers batch at least 1M pairs per call on the device
-(`FillEngine.pair_batch`). Per-call latency (about 0.2-0.5 ms launch, synchronize
-and copy on ROCm) dominates small requests, so when the compiled core is built
-pair batches below `PCBQS_CUPY_HOST_PAIRS` (default 32,768 per host thread,
-the measured crossover here) run on the host core instead;
-`fill_info[...]['routing']` counts host and device batches, and 0 keeps every
-batch on the device. Free-space strip fills always run on the device. For
-compressed (hierarchical) PEEC, prefer the OpenMP backend: its native entry
-providers and ACA built the 5,816-triangle layered case in 0.9 s, against
-39.6 s with CuPy selected (66.8 s without host routing).
-CPU worker counts do not create multiple GPU submitters. Initialization,
-allocation and kernel errors propagate.
-
-This is an **experimental optional backend**: its formulas are independently
-checked on a host array namespace, and hardware tests run when CuPy and a
-working device are present. Local validation on an RX 7800 XT with CuPy 14.2.0/ROCm now covers the
-real device path, all close-quadrature levels, magnetic/scalar fills and MQS,
-PEEC and electrostatic solver tests. Other device/driver combinations and
-consumer-device FP64 throughput still need target-hardware measurements.
-Selecting a GPU fill does not move RWG projection or the linear solve to GPU.
-
-Measured on an RX 7800 XT (CuPy 14.2.0/ROCm) against OpenMP with 16 threads on
-an i7-13700K. "Host tiles" is the pair-protocol path with host classification
-and block assembly (already kind-sorted; the unsorted original was ~7% slower),
-medians of three runs, rectangular single-layer meshes:
-
-| Triangles | Moments | OpenMP-16 | CuPy host tiles | CuPy device strips |
-|---:|---|---:|---:|---:|
-| 2,838 | full | 0.25 s | 0.42 s | 0.08 s |
-| 7,500 | full | 1.58 s | 2.63 s | 0.25 s |
-| 16,472 | full | 7.39 s | 11.3 s | 0.93 s |
-| 16,472 | scalar | 6.07 s | 9.56 s | 0.57 s |
-
-A 6,844-triangle two-dielectric layered capacitance fill fell from 152 s to
-19.5 s on CuPy and from 65.5 s to 24.0 s (profiled; 17.4 s unprofiled) on OpenMP
-by batching observation rows (bitwise-identical results). The native OpenMP
-image kernel then takes 1.49 s (medians of three, 16 threads), so the CPU path
-is now much faster than the device path for layered stacks.
+A CuPy GPU fill was tried and removed (2026-11): with its host routing it
+took 39.6 s on the layered compressed case, against 0.9 s for OpenMP.
 
 Dense MQS with the native whole-matrix fill and RWG gather (16 threads):
 
@@ -160,14 +99,14 @@ Register a factory (`register_fill_backend`). Names cannot replace built-ins or
 already registered providers.
 
 ```python
-from pcbqs.static_backends import register_fill_backend
-register_fill_backend('my-device', make_backend)
+from kicad2ems.pcbqs.static_backends import register_fill_backend
+register_fill_backend('my-backend', make_backend)
 ```
 
-The factory signature is `make_backend(geometry, workers, chunk, device)`.
+The factory signature is `make_backend(geometry, workers, chunk)`.
 `geometry` is a `FillGeometry` containing read-only local nodes, topology,
 heights, centroids, radii, triangle areas and prepared quadrature/edge frames.
-Keep it alive while using its arrays; device providers may upload them once.
+Keep it alive while using its arrays.
 
 The returned object implements:
 
@@ -201,7 +140,6 @@ OPENBLAS_NUM_THREADS=2 python tools/pcbqs/benchmark_converter.py CM5_MINIMA_3.ki
 
 The static benchmark reports median/sample times and moment errors against
 the serial NumPy reference. `--scalar` benchmarks capacitance-only filling.
-Device measurements can use `--backends numpy,cupy --workers 1 --device 0`.
 The converter benchmark records fill metadata alongside solve and scan times.
 
 On this two-CPU-quota environment, the 2,838-triangle benchmark gave these

@@ -1,4 +1,4 @@
-"""Reciprocal free-space 1/R moments, tiled across CPU/device fill backends."""
+"""Reciprocal free-space 1/R moments, tiled across the fill backends."""
 from math import isqrt
 import os
 import time
@@ -10,7 +10,7 @@ from .static_backends import (FillEngine, OpenMPBackend, _compiled, bounded_map,
 
 
 def static_moments(nodes, tris, z, near=3.0, outer_levels=1, chunk=16384,
-                   scalar_only=False, backend='auto', workers=None, device=None,
+                   scalar_only=False, backend='auto', workers=None,
                    return_info=False):
     """Return (local nodes, M0, Mrx, Mry, Mrr), in SI units.
 
@@ -25,13 +25,12 @@ def static_moments(nodes, tris, z, near=3.0, outer_levels=1, chunk=16384,
     pair results are assembled by one writer, with identical reciprocity for
     every backend. Storage remains O(Nt**2), scratch is O(chunk*workers).
     The OpenMP backend classifies, integrates and writes whole matrices
-    natively (scheduler='native'), device backends may fill row strips
-    (scheduler='device'); other backends use host tiles of `chunk`.
+    natively (scheduler='native'); other backends use host tiles of `chunk`.
     return_info=True returns (moments, execution metadata).
     """
     started = time.perf_counter()
     engine = FillEngine(nodes, tris, z, near, outer_levels, backend, workers,
-                        chunk, device)
+                        chunk)
     g = engine.geometry
     n, side = len(tris), isqrt(engine.chunk)
     matrices = [np.empty((n, n)) for _ in range(1 if scalar_only else 4)]
@@ -42,14 +41,6 @@ def static_moments(nodes, tris, z, near=3.0, outer_levels=1, chunk=16384,
                     seconds=time.perf_counter() - started)
         return (((g.nodes, *matrices), info) if return_info else
                 (g.nodes, *matrices))
-    if hasattr(engine.backend, 'fill_symmetric'):
-        # Device backends may own tiling, classification and reciprocal
-        # writes; host pair lists and block transposes then disappear.
-        return done(
-            'device',
-            n * (n + 1) // 2,
-            engine.backend.fill_symmetric(matrices, engine.near,
-                                          engine.outer_levels, scalar_only))
     if (isinstance(engine.backend, OpenMPBackend)
             and hasattr(engine.backend.core, 'static_fill')):
         count, analytic = engine.backend.core.static_fill(
@@ -83,7 +74,7 @@ def static_moments(nodes, tris, z, near=3.0, outer_levels=1, chunk=16384,
         p0, p1, q0, q1 = tile
         if p0 != q0:
             # Contiguous block copies avoid repeated scattered index writes,
-            # especially when compiled/device kernels make integration cheap.
+            # especially when compiled kernels make integration cheap.
             block = m.reshape(p1-p0, q1-q0, m.shape[1])
             matrices[0][p0:p1, q0:q1] = block[..., 0]
             matrices[0][q0:q1, p0:p1] = block[..., 0].T

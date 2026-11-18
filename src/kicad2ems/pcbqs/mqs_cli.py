@@ -56,13 +56,12 @@ OPTIONS = [
     ('dmax', 'float', 1.5, 'Nominal coarse mesh spacing, mm', 'Mesh'),
     ('fine', 'float', .6, 'Nominal spacing near selected component pads, mm',
      'Mesh'),
-    ('fill_backend', 'str', 'auto', 'auto, openmp, threaded, numpy or cupy',
+    ('fill_backend', 'str', 'auto', 'auto, openmp, threaded or numpy',
      'Mesh'),
     ('fill_workers', 'int', 0, 'CPU fill workers (0 chooses automatically)',
      'Mesh'),
     ('fill_chunk', 'int', 16384, 'Maximum triangle pairs per fill tile',
      'Mesh'),
-    ('fill_device', 'int', 0, 'CuPy device index', 'Mesh'),
     ('backend', 'str', 'dense',
      "The solve: dense (a factor a frequency, or one for a long sweep) or "
      "hierarchical (compressed, GMRES in the loop basis: a whole plane's 50k "
@@ -325,7 +324,7 @@ def validate(a, preview=False):
     duty=a.vout/a.vin_volts if a.vin_volts else a.duty
     if not np.isfinite(duty) or not 0<duty<1:
         raise ValueError('duty must be between 0 and 1')
-    if a.scan_points<2 or a.fill_workers<0 or a.fill_chunk<1 or a.fill_device<0:
+    if a.scan_points<2 or a.fill_workers<0 or a.fill_chunk<1:
         raise ValueError('invalid scan points or fill controls')
     n=numbers(a.harmonics,'harmonics')
     if not (n==np.floor(n)).all():
@@ -462,7 +461,6 @@ def run(a):
         fine=extent.buffer(1).envelope, dmax_fine=a.fine,
         fill_backend=a.fill_backend, fill_workers=a.fill_workers or None,
         fill_chunk=a.fill_chunk,
-        fill_device=(a.fill_device if a.fill_backend == 'cupy' else None),
         matrix_backend=a.backend)
     if preview:
         from .mqs_layout import save_layout, mesh_stats
