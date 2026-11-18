@@ -555,3 +555,61 @@ def test_thickness_sides_blocks_regression():
     S = solve_board(board('thru'), np.array([1e9, 3e9]), port='via',
                     thickness='sides', log=quiet).S
     assert np.abs(S - ref).max() < 1e-9
+
+
+def test_thickness_sides_loops_condition_the_matrix(monkeypatch):
+    """The plates' verticals made loops (Sides.loops, T = I + W) in mixed
+    precision: no charge left on any triangle, sheet or plate; Z's columns
+    and rows taken over exactly (fast._loop_transform); the complex64 LU a
+    better preconditioner of the equilibrated matrix (the lowpass at 0.3
+    GHz, 2026-11-18: GMRES 120 -> 78 iterations a port)."""
+    import scipy.linalg as sla
+    from scipy import sparse
+    from scipy.sparse.linalg import LinearOperator, gmres
+    from kicad2ems.mom25d import fast
+    from kicad2ems.mom25d.api import build_board
+    _, sim = build_board(board('lowpass'), 0.3e9, 1e9, port='via',
+                         thickness='sides', log=quiet)
+    sd, r = sim.sides, sim.rwg
+    W = sd.loops(sim)
+    N, Nt, c0 = sim.Ne + sim.Nv, len(r.tris), sim.Ne + sim.Nv - len(sd)
+    V = np.flatnonzero(np.diff(W.indptr))
+    assert len(V) == len(sd.vert) > 100
+    # each function's charge on each triangle (2 alpha x its area)
+    ho = sd.h_obs
+    apt = np.repeat(0.5 * sd.L * sd.t, 2)
+    ar = np.where(ho < Nt, r.area[np.minimum(ho, Nt - 1)],
+                  apt[np.maximum(ho - Nt, 0)])
+    Q = sparse.csr_matrix((np.r_[r.l, -r.l, 2 * sd.h_alpha * ar], (
+        np.r_[r.tp, r.tm, ho], np.r_[np.arange(r.Ne), np.arange(r.Ne),
+                                     c0 + sd.h_fn])), (Nt + len(apt), N))
+    T = sparse.identity(N, format='csc') + W
+    assert abs(Q @ T[:, V]).max() < 1e-12 * sd.t.max()
+    assert abs(Q[:, V]).max() == pytest.approx(sd.t.max())
+    got = {}
+    real = fast._loop_transform
+
+    def spy(Z, W):
+        got['Z'] = Z.copy()
+        real(Z, W)
+        got['ZT'] = Z.copy()
+    monkeypatch.setattr(fast, '_loop_transform', spy)
+    E = sim.excitation()
+    sim.precision = 'mixed'  # (2.1k unknowns: double, and no loops, else)
+    sim.currents(0.3e9, E)
+    Z, ZT = got['Z'], got['ZT']
+    Td = T.toarray()
+    assert np.abs(ZT - Td.T @ Z @ Td).max() < 1e-12 * np.abs(ZT).max()
+
+    def iterations(A, b):
+        d = 1 / np.sqrt(np.abs(np.diag(A)))
+        A = A * d[:, None] * d[None]
+        lu = sla.lu_factor(A.astype(np.complex64))
+        M = LinearOperator(A.shape, dtype=complex, matvec=lambda v: (
+            sla.lu_solve(lu, v.astype(np.complex64)).astype(complex)))
+        n = [0]
+        gmres(A, d * b, M=M, rtol=1e-8, restart=200, maxiter=1,
+              callback=lambda r: n.__setitem__(0, n[0] + 1),
+              callback_type='pr_norm')
+        return n[0]
+    assert iterations(ZT, T.T @ E[:, 0]) < 0.8 * iterations(Z, E[:, 0])

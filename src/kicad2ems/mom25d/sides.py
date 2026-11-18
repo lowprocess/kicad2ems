@@ -16,7 +16,9 @@ high, into the layer the copper grows into (fdtd.thick: up; the board's lowest
 copper down). A plate is two triangles, (a0, b0, b1) and (a0, b1, a1) (0 on the
 sheet, 1 at its top), and carries RWG functions in 3D: the fold (the sheet's
 boundary triangle to the plate), the diagonal, and the vertical edge shared with
-the next plate along the boundary (the current along the side).
+the next plate along the boundary (the current along the side). In mixed
+precision the solver takes the verticals as loops (Sides.loops), which keeps
+the complex64 LU a good preconditioner.
 
 Their blocks: the MPIE's two parts with the layered tables at the horizontal
 distance on 3 x 3 points (the far rule; a vertical current's own smooth part
@@ -173,11 +175,12 @@ class Sides:
         apt = 0.5 * self.L * self.t  # each PT's area
         nxt = {int(i): j for j, i in enumerate(self.ia)}
         # halves: (function, kind 0 sheet / 1 PT, triangle, alpha, v (3D))
-        H = []
+        H, vert, fold = [], [], []
         nf = 0
         for i in range(P):
             T, A_, B_ = int(self.T[i]), 2 * i, 2 * i + 1
             AT = abs(r.area[T])
+            fold.append(nf)
             H += [(nf, 0, T, self.L[i] / (2 * AT), np.r_[po[i], 0.0]),
                   (nf, 1, A_, -self.L[i] / (2 * apt[i]), b1[i])]
             ld = np.hypot(self.L[i], self.t[i])
@@ -190,8 +193,13 @@ class Sides:
             if j is not None and j != i:
                 H += [(nf, 1, A_, self.t[i] / (2 * apt[i]), a0[i]),
                       (nf, 1, 2 * j + 1, -self.t[j] / (2 * apt[j]), b1[j])]
+                vert.append((nf, i, j))
                 nf += 1
         self.N = nf
+        # plate i's fold (function fold[i]; its diagonal fold[i] + 1), the
+        # verticals (function, plate, next plate)
+        self.fold = np.array(fold, int)
+        self.vert = np.array(vert, int).reshape(-1, 3)
         self.h_fn = np.array([x[0] for x in H], int)
         kind = np.array([x[1] for x in H], int)
         tri = np.array([x[2] for x in H], int)
@@ -364,6 +372,65 @@ class Sides:
         pat = (ptr, (key % self.N).astype(np.int32))
         self._near = (pat, dA, dq, Po, Wo)
         return self._near
+
+    def loops(self, sim):
+        """W (N x N, sparse; nonzero in the verticals' columns only, on the
+        other unknowns' rows): T = I + W makes each vertical a loop (its
+        charge on its plate taken off by the plate's fold, on the next plate's
+        triangle by that one's diagonal and fold, the folds' charge on the
+        sheet carried by the sheet's edges around their node). A plate's own
+        functions are charge-dominated (its triangles t high), their loops
+        lost below that in the equilibrated matrix: rf_meander at 0.5 GHz had
+        cond 1.4e9 (sheets 3.5e7) and took 84 complex64-LU-preconditioned
+        GMRES iterations (sheets 30); in the loops 2.8e8 and 21. (A fold's
+        charge on its sheet triangle meets the sides' rule, the edges' the
+        strips': the loops keep ~1e-4 of it; cancelled exactly, it took a few
+        iterations more off at most.)"""
+        r = sim.rwg
+        c0 = sim.Ne + sim.Nv - self.N
+        edge = {}
+        for e, (p, m) in enumerate(zip(r.tp.tolist(), r.tm.tolist())):
+            edge[(p, m)], edge[(m, p)] = (e, 1.0), (e, -1.0)
+        need = set(self.ib[self.vert[:, 1]].tolist()) if len(self.vert) else ()
+        fan = {}
+        for t, tr in enumerate(r.tris.tolist()):
+            for v in tr:
+                if v in need:
+                    fan.setdefault(v, []).append(t)
+        ri, ci, vv = [], [], []
+        ld = np.hypot(self.L, self.t)
+        for n, i, j in self.vert.tolist():
+            t = self.t[i]
+            col = c0 + n
+            # the charge integrals (2 alpha x area): a vertical t on A_i, -t
+            # on B_j; a diagonal ld on A, -ld on B; a fold L on its sheet
+            # triangle, -L on A
+            add = [(c0 + self.fold[j] + 1, -t / ld[j]),
+                   (c0 + self.fold[j], -t / self.L[j]),
+                   (c0 + self.fold[i], t / self.L[i])]
+            Ti, Tj = int(self.T[i]), int(self.T[j])
+            if Ti != Tj:  # t from Ti to Tj through the triangles at the node
+                ts = set(fan[int(self.ib[i])])
+                prev, todo = {Ti: None}, [Ti]
+                while todo and Tj not in prev:
+                    X = todo.pop(0)
+                    for Y in ts:
+                        if Y not in prev and (X, Y) in edge:
+                            prev[Y] = X
+                            todo.append(Y)
+                Y = Tj
+                while Y in prev and prev[Y] is not None:
+                    e, sg = edge[(prev[Y], Y)]
+                    add.append((e, -t / (sg * r.l[e])))
+                    Y = prev[Y]
+                if Y != Ti:
+                    continue  # (no way round: the vertical stays)
+            for row, x in add:
+                ri.append(row)
+                ci.append(col)
+                vv.append(x)
+        N = sim.Ne + sim.Nv
+        return sparse.csc_matrix((vv, (ri, ci)), (N, N))
 
     def via_d(self, sim, vk, geo):
         """(N, chains): the via chains' smooth potential (via.ViaKernels.D,

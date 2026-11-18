@@ -59,7 +59,15 @@ solid copper the median RMS of the 17 boards went from 0.065 to 0.037 (`grow` 0.
 facing copper across a narrow gap did little (median 0.049 within 0.4 or 0.8 mm, 0.065 within 0.2 mm): the
 sides matter on every edge. `grow+sides` does both (median 0.040, mean 0.050 against `sides`' 0.051). The
 cost: three unknowns a plate (+30-45 % on these boards, +26 % on sma_launch) and their blocks (in the compiled
-core): 1.7-2 times the solve time (sma_launch 314 s against 165 s, hairpin 11.9 s against 6.8). A
+core): 1.7-2 times the solve time (sma_launch 314 s against 165 s, hairpin 11.9 s against 6.8). A plate's
+functions are charge-dominated (its triangles 35 µm high), so their loops were lost to the complex64 LU of mixed
+precision (rf_meander at 0.5 GHz: cond 1.4e9 against the sheets' 3.5e7); in mixed precision the verticals are
+taken as loops (each with its folds, the next plate's diagonal and the sheet's edges round its node: no charge
+left; T^T Z T exactly, S to the GMRES tolerance), and the GPU's complex64 factor no longer fails: sma_launch's
+41 solves 245-257 s against 319-341 s (222 GMRES iterations over the sweep against 698, GPU fallbacks to the CPU's
+triangular solves 0 against 6), rf_diffvia 36 s against 43 (12 fallbacks to 0), demo_transition 22 against 25,
+rf_interdig 17 against 21; with a double LU (below 3000 unknowns with a GPU, 3500 without: hairpin, rf_meander,
+rf_coupler) nothing changes. A
 side breaks where a lumped port's gap or a lumped element crosses the copper (their current is the sheet's
 edges'). Not modelled: the copper's top face,
 the vias' vertical current with the plates' (only through their charge and the smooth potential), the plates

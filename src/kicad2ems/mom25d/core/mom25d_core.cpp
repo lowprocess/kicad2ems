@@ -31,6 +31,8 @@
 //                   layer's strip triangles (slots.py)
 //   scale_c64     : Z <- D Z D (equilibration) and its complex64 copy, one pass
 //                   (the GPU LU's input)
+//   loop_transform: T^T Z T for T = I + W, W in a few columns (the sides'
+//                   loops, sides.Sides.loops)
 //   fan_q         : G_q moments between every triangle and the via fan
 //                   triangles (centroid rule)
 //   near_q        : the near pairs' G_q moment corrections alone (the loop/tree
@@ -2297,6 +2299,49 @@ py::array_t<cd> bessel_jn_complex(
 }
 
 // -----------------------------------------------------------------------------
+// loop_transform: Z <- T^T Z T in place, T = I + W, W nonzero in the columns V
+// only, column V[j] holding cw[j, k] on the rows idx[j, k] (none of them in V;
+// a zero weight pads): Z's columns V (row-parallel), then its rows V
+// (column-parallel), which read the rows idx as the first pass left them
+// -----------------------------------------------------------------------------
+void loop_transform(py::array_t<cd, py::array::c_style> Z, arr<i64> V,
+                    arr<i64> idx, arr<double> cw) {
+    auto b = Z.request();
+    const i64 n = b.shape[0], m = b.shape[1], nv = V.shape(0),
+              K = idx.ndim() == 2 ? idx.shape(1) : 0;
+    if (n != m || idx.ndim() != 2 || idx.shape(0) != nv || cw.ndim() != 2 ||
+        cw.shape(0) != nv || cw.shape(1) != K)
+        throw std::invalid_argument("loop_transform: shapes");
+    cd *z = (cd *)b.ptr;
+    const i64 *v = V.data(), *ix = idx.data();
+    const double *w = cw.data();
+    py::gil_scoped_release nogil;
+#pragma omp parallel for schedule(static)
+    for (i64 i = 0; i < n; ++i) {
+        cd *r = z + i * m;
+        for (i64 j = 0; j < nv; ++j) {
+            cd s(0.0);
+            for (i64 k = 0; k < K; ++k) s += w[j * K + k] * r[ix[j * K + k]];
+            r[v[j]] += s;
+        }
+    }
+    const i64 cb = 256;
+#pragma omp parallel for schedule(static)
+    for (i64 c0 = 0; c0 < m; c0 += cb) {
+        const i64 c1 = std::min(m, c0 + cb);
+        for (i64 j = 0; j < nv; ++j) {
+            cd *r = z + v[j] * m;
+            for (i64 k = 0; k < K; ++k) {
+                const double a = w[j * K + k];
+                if (a == 0.0) continue;
+                const cd *q = z + ix[j * K + k] * m;
+                for (i64 c = c0; c < c1; ++c) r[c] += a * q[c];
+            }
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Z <- diag(d) Z diag(d) in place, and its complex64 copy (one pass over the
 // matrix, row-parallel)
 // -----------------------------------------------------------------------------
@@ -2472,6 +2517,8 @@ PYBIND11_MODULE(_core, m) {
     m.def("slot_coupling", &slot_coupling,
           "an opening's TM / TE pair moments against a layer's strips "
           "(slots.py)");
+    m.def("loop_transform", &loop_transform,
+          "Z <- T^T Z T in place, T = I + W in a few columns");
     m.def("scale_c64", &scale_c64,
           "Z <- D Z D in place, and its complex64 copy");
     m.def("fan_q", &fan_q,

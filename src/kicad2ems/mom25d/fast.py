@@ -365,6 +365,29 @@ def _equilibrate(Z, dsc=None):
     return dsc
 
 
+def _loop_transform(Z, W):
+    """Z <- T^T Z T in place, T = I + W (W: nonzero in some columns V, on rows
+    outside V): Z's columns V, then its rows V; the compiled core's
+    (loop_transform: 0.1 s at 16.3k unknowns, 1.1k loops), else SciPy's."""
+    V = np.flatnonzero(np.diff(W.indptr))
+    if _core is not None and hasattr(_core, 'loop_transform'):
+        nz = np.diff(W.indptr)[V]
+        idx = np.zeros((len(V), nz.max()), np.int64)
+        cw = np.zeros(idx.shape)
+        k = np.arange(idx.shape[1]) < nz[:, None]
+        idx[k], cw[k] = W.indices, W.data         # (the columns V's, in order)
+        return _core.loop_transform(Z, V.astype(np.int64), idx, cw)
+    R = np.unique(W.indices)
+    Wt = W[R][:, V].T.tocsr()                   # (|V|, |R|)
+
+    def cols(a, b):
+        Z[a:b, V] += (Wt @ Z[a:b, R].T).T
+    _row_blocks(Z, cols)
+    step = max(1, (1 << 25) // max(1, len(R) * Z.itemsize))
+    for a in range(0, Z.shape[1], step):
+        Z[V, a:a + step] += Wt @ Z[R, a:a + step]
+
+
 def _c64(Z):
     """Z's complex64 copy (the single-precision LU's input), row blocks in
     parallel: 0.34 s -> 0.14 s at 16k."""
@@ -904,7 +927,8 @@ class FastOperator:
         Sx, self.iters = self.extra_blocks(f), []
         if self._loop_tree_at(f):
             return self._solve_loop_tree(f, E, Sx, precision)
-        self._basis('rwg')
+        if self._basis_name == 'loop/tree':
+            self._basis('rwg')
         T = sim.qT
         # quad cells / line functions: Z projected before the LU
         quads = T is not None
@@ -961,6 +985,11 @@ class FastOperator:
         else:  # kept on the GPU (hybrid), else on the host
             self._keep_max = self._keep_room(Nq, gpu if hybrid else None, host)
         dense_kept = self._keep_max >= 1 and not hybrid
+        # the sides' verticals as loops (sides.Sides.loops) where the complex64
+        # LU preconditions a double Z (a double LU does not need them)
+        W = (self._side_loops() if sim.precision == 'mixed' and not quads and (
+            precision != 'mixed' or hybrid or dense_kept) else None)
+        self._basis('rwg' if W is None else 'rwg, side loops')
         if (precision == 'mixed' and not hybrid and not dense_kept
                 and self._reusable(f)):
             X = self._solve_reused(f, E, Sx)
@@ -1016,6 +1045,10 @@ class FastOperator:
                     self._qC = T[sim.quad_info['elim']].tocsr()
                 Z = project(Z, sim.quad_info['keep'], sim.quad_info['elim'],
                             self._qC, core=self.core)
+        if W is not None:
+            with sim.log.timer('side loops', f"{len(sim.sides.vert)} loops"):
+                _loop_transform(Z, W)
+            up, down = (lambda X: X + W @ X), (lambda X: X + W.T @ X)
         dsc = 1.0 / np.sqrt(np.abs(np.diagonal(Z)).astype(float) + 1e-300)
         if hybrid:
             return up(self._solve_kept(f, Z, dsc, down(E), gpu))
@@ -1076,6 +1109,15 @@ class FastOperator:
         )
         self._mixed_failed = max(self._mixed_failed, f)
         return self.solve_direct(f, E, block, precision='double')
+
+    def _side_loops(self):
+        """sides.Sides.loops' W of the simulation's sides, once; None
+        without verticals."""
+        if not hasattr(self, '_sloops'):
+            s = getattr(self.sim, 'sides', None)
+            self._sloops = (s.loops(self.sim) if s is not None
+                            and len(s.vert) else None)
+        return self._sloops
 
     # ---- the loop/tree basis (looptree.py): low frequency -------------------
     def _basis(self, name):
