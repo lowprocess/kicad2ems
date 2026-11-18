@@ -75,7 +75,7 @@ It declares, as class attributes:
 |---|---|
 | `name`, `aliases`, `label` | `'mom25d'`, `('mom',)`, `'mom25d (MoM)'`; `name` is also its config table `[solver.mom25d]` |
 | `consumes` | `'board'` (the geometry) or `'network'` (the line model) |
-| `in_auto`, `in_all` | whether `--solvers auto` may pick it, and whether `all` includes it (default True; False for a variant of another solver or one for part of a band: mixed, pcbqs) |
+| `in_auto`, `in_all` | whether `--solvers auto` may pick it, and whether `all` includes it (default True; pcbqs, a solver for part of a band, neither; gfdtd not `all`) |
 | `basic` | the keys of its options a run is set up with (its main cell size: `('mom_dmax',)`). A window shows those first and the rest under "More settings" (they get `Option.level = 'basic'`) |
 | `previewed` | `--preview` prepares it without solving |
 | `rank`, `order` | rough cost (cheap solvers run first); its place in lists |

@@ -1,8 +1,7 @@
 """Conformance: boards with a known answer, each capable solver within stated
 tolerances of it, with fast settings. The lossless microstrip thru
 (make_demo_board.py thru): |S21| ~ 1, |S11| small, and the delay of a line of
-Hammerstad-Jensen's effective permittivity (mixed: with the middle of the line
-cut out and put back as a line). openEMS runs when
+Hammerstad-Jensen's effective permittivity. openEMS runs when
 KICAD2EMS_CONFORMANCE_OPENEMS=1 (slow: for a nightly run, not every test run).
 
 The one test of kicad2ems's that runs the real solver packages (the others run
@@ -24,8 +23,6 @@ FAST = {
     'scikit': [],
     'qucs': [],
     'mom25d': ['--mom-dmax', '0.8', '--mom-solves', '16'],
-    # 12, with a dump
-    'mixed': ['--mom-dmax', '0.8', '--mom-solves', '16', '--mom-dump', '3.5'],
     'openems': ['--res', '15', '--end-db', '-30'],
     'gfdtd': ['--res', '15', '--end-db', '-30']
 }
@@ -35,8 +32,6 @@ TOL = {
     'scikit': (0.99, 0.08, 0.02),
     'qucs': (0.99, 0.08, 0.02),
     'mom25d': (0.99, 0.08, 0.02),
-    # half the line cut out and put back: 0.35 %, |S11| 0.035
-    'mixed': (0.99, 0.08, 0.02),
     # 0.06 % delay, |S11| 0.03; openEMS +2.0 %, |S11| 0.07
     'openems': (0.98, 0.15, 0.03),
     # openEMS's model on gfdtd: +2.1 %, |S11| 0.08 (CPU: ~15 s)
@@ -110,12 +105,3 @@ def test_microstrip_thru(solver, thru, tmp_path):
     assert (
         abs(delay / ref - 1) < delay_tol
     ), f"{solver}: delay {delay * 1e12:.1f} ps, expected {ref * 1e12:.1f} ps"
-    if solver == 'mixed':  # the middle of the line as a line, and the
-        import json        # joined solution's currents
-        info = (json.loads(
-            (out
-             / 'thru_run.json').read_text(encoding='utf-8'))['solved']['mixed'])
-        # 13 frequencies solved on Linux, 16 on Windows (the adaptive sweep's
-        # points follow the rounding): a bound
-        assert info['cuts'] == 1 and info['cut_mm'] > 10 and info['solves'] < 20
-        assert (out / 'thru_mixed_P1_dump_J_F_Cu_fd_3.5GHz.png').exists()

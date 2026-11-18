@@ -117,7 +117,7 @@ def _lines_field(v):
 
 def _solvers(v):
     """Solver names (aliases allowed; 'lines' for the line model, 'all' for
-    every solver but the variants of another, as mixed) in registry order, or
+    every solver but those left out of it, as gfdtd) in registry order, or
     None for an empty list."""
     from .solvers import registry, aliases, ordered, LINES, AUTO
     names = dict(aliases(), line=LINES, lines=LINES, fast=LINES, auto=AUTO)
@@ -149,8 +149,7 @@ CORE = [
         "solver estimated cheapest for this board, plus the line model), "
         "openems (3D FDTD), gfdtd (3D FDTD on the GPU "
         "or the CPU, openEMS's model; not in all), mom25d (alias mom; 2.5D "
-        "MoM: planar boards over a ground plane, no openEMS needed), mixed "
-        "(mom25d with long straight runs as transmission lines; not in all), "
+        "MoM: planar boards over a ground plane, no openEMS needed), "
         "qucs or scikit (the transmission-line model as a circuit, solved by "
         "qucsator or scikit-rf: milliseconds), lines (qucs when qucsator is "
         "installed, else scikit) or all. A named solver that cannot run stops "

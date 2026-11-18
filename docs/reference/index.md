@@ -8,7 +8,7 @@ compiled cores (C++) are on [their own page](cores.md).
 |---|---|
 | `kicad2ems.core` | the board, the line model, settings, the run pipeline, results |
 | `kicad2ems.fdtd` | the FDTD layer, and the `openems` and `gfdtd` solvers on it |
-| `kicad2ems.mom25d` | the 2.5D method of moments, and its `mom25d` and `mixed` solvers (`kicad2ems.mom25d.solvers`) |
+| `kicad2ems.mom25d` | the 2.5D method of moments, and its `mom25d` solver (`kicad2ems.mom25d.solvers`) |
 | `kicad2ems.pcbqs` | DC/PDN, quasistatic fields, ngspice circuits and temperature, and its analyses |
 | `kicad2ems.gfdtd` | the FDTD engine (GPU, compiled CPU core, numpy) behind openEMS's interface |
 | `kicad2ems.fem` | Palace and Elmer behind kicad2ems, and their analyses |

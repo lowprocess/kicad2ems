@@ -339,6 +339,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   import <core name>` and `parts._kind_value`. Tools: `perf/{cli_prof,dcfix,
   dcmesh,dcsolve}.py`, `mom25d/hodlr_study.py`, power-workflow's 05, the
   Windows workflow and `ci_deps.py`. `pcbqs.wpt` is `pcbqs.power_spice`'s.
+- **mom25d's retired paths (2026-11-18, wave 2).** The mixed solver
+  (`--solvers mixed`, `--mixed-cut`: with long runs cheap in mom25d its cuts
+  saved little).
 
 ## 2026-11-14 (0.3.0)
 

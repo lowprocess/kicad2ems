@@ -305,7 +305,7 @@ def _model_kw(s):
 
 def _mesh_kw(s, m=None):
     """solve()'s mesh options from kicad2ems's settings (the run's, the
-    preview's and mixed's): --mom-quads, --mom-quad-tol, --mom-coarsen,
+    preview's): --mom-quads, --mom-quad-tol, --mom-coarsen,
     --mom-cells, --mom-zone, the vias, --mom-lines; for the board m also
     --mom-stack (resolved: _stack) and the BoardModel's."""
     kw = dict(quads={'off': False, 'on': True}.get(s.mom_quads, s.mom_quads),
@@ -1181,11 +1181,10 @@ class MoM25D(Solver):
                               for k_, v in ant.items()
                               if k_ != 'sphere'}
 
-    def _dumps(self, run, held, **kw):
+    def _dumps(self, run, held):
         """The current dumps (--mom-dump): <out>/<solver>/exc_<port>/, laid out
         like openEMS's frequency-domain dumps (the GUI's Fields tab reads both),
-        and their maps and animations next to the other outputs. kw:
-        current_dumps' currents / extra / unit (the mixed solver's)."""
+        and their maps and animations next to the other outputs."""
         if not run.s.mom_dump or held is None:
             return
         from kicad2ems.core.fields.frames import DumpSource, save_fd_outputs
@@ -1195,7 +1194,7 @@ class MoM25D(Solver):
         for port, d in current_dumps(
                 run, held, [f * 1e9 for f in run.s.mom_dump],
                 getattr(run.s, 'dump_port', None), run.s.mom_near, tag=tag,
-                volume=getattr(run.s, 'mom_near_volume', None), **kw):
+                volume=getattr(run.s, 'mom_near_volume', None)):
             for name in d['names']:
                 src = DumpSource(d['dir'], name, 'FD')
                 ptag = port.replace('+', 'p').replace('-', 'n')
@@ -1226,7 +1225,6 @@ def _grid(nodes, tris, step, nmax=600):
 
 
 def current_dumps(run, res, freqs, ports=None, near=(), tag='mom25d',
-                  currents=None, extra=None, unit='1 V gap source',
                   volume=None):
     """mom25d's surface current density J (A/m) on each meshed layer at `freqs`
     (Hz), its RWG basis functions sampled onto a grid (0 off the copper), and
@@ -1235,11 +1233,7 @@ def current_dumps(run, res, freqs, ports=None, near=(), tag='mom25d',
     top (mom25d.farfield. near_fields), for the ports driven (names, default the
     first) by mom25d's 1 V gap sources. Writes dump_*_fd.npz and dump_info.json
     per port under <out>/mom25d/exc_<port>/; returns [(port, dict(dir, names))].
-    tag: the solver (the directory under <out>). currents(f) -> (N x
-    len(sim.ports)) the RWG currents of each port driven (default: sim.currents
-    of the excitations); extra(k, f_index, column, gx, gy, Jx, Jy) -> (Jx, Jy):
-    layer k's grid with what the solver adds (mixed: the stretches put back as
-    lines)."""
+    tag: the solver (the directory under <out>)."""
     from kicad2ems.emsdev.numerics.biot import current_deposit
     from kicad2ems.mom25d.farfield import current_on_grid, near_fields
     from kicad2ems.core.fields.dumps import Dump, write_info
@@ -1265,9 +1259,8 @@ def current_dumps(run, res, freqs, ports=None, near=(), tag='mom25d',
     nodes = sim.rwg.nodes[:, :2] * 1e3
     # solved by the sweep at these: no solve
     kept = getattr(sim, 'kept', None) or {}
-    currents = currents or (
-        lambda f: kept[f] if f in kept else sim.currents(f, sim.excitation()))
-    I_f = [(stop.check(), currents(f))[1] for f in freqs]
+    I_f = [(stop.check(), kept[f] if f in kept else
+            sim.currents(f, sim.excitation()))[1] for f in freqs]
     step = max(run.s.mom_dmax / 3, 0.02)
     ztop = float(model._zk[-1])
     out = []
@@ -1282,15 +1275,13 @@ def current_dumps(run, res, freqs, ports=None, near=(), tag='mom25d',
             write_npz(os.path.join(d, dump.name + '.npz'),
                       dict(x=gx, y=gy, z=np.asarray(zs, float)), freqs, data)
             dumps.append(dump)
-            units[dump.name] = f'{u}, {unit}'
+            units[dump.name] = f'{u}, 1 V gap source'
         for k in layers:
             gx, gy = _grid(nodes, sim.rwg.tris[sim.tri_idx[k]], step)
             data = np.zeros((len(freqs), len(gx), len(gy), 1, 3), complex)
             for i, I in enumerate(I_f):
                 Jx, Jy, _ = current_on_grid(sim, I[:, j], gx * 1e-3, gy * 1e-3,
                                             k)
-                if extra is not None:
-                    Jx, Jy = extra(k, i, j, gx * 1e-3, gy * 1e-3, Jx, Jy)
                 data[i, :, :, 0, 0], data[i, :, :, 0, 1] = Jx, Jy
             add('J', lay[k], gx, gy, [float(model._zk[k])], data, 2, 'A/m')
         allt = np.concatenate([sim.tri_idx[k] for k in layers])

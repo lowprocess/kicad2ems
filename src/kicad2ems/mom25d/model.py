@@ -336,11 +336,7 @@ class PlanarModel:
                 gap = abs((a.c - b.c) @ a.t) - 0.5 * (a.w + b.w)
                 planes = narrow(self._planes_at(a.layer, pt, a.d, a.w),
                                 a.w + b.w + gap)
-                # (char_length: a longer line where the two modes' speeds have
-                # to be told apart closely: a stretch cut out and put back as
-                # the pair's modal lines, solvers/mixed.py)
-                length = max(length_for(a.w + b.w + gap),
-                             getattr(p, 'char_length', 0.0))
+                length = length_for(a.w + b.w + gap)
                 key = ('pair', a.layer, round(0.5 * (a.w + b.w) * 1e7),
                        round(gap * 1e7), round(length * 1e5),
                        tuple(

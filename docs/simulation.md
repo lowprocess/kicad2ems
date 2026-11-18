@@ -35,7 +35,7 @@ numpy values.
 
 mom25d takes the same option. With `fixed`, εr and tan δ stay constant, not the conductivity the FDTD solvers
 use. With `wideband`, it evaluates the Djordjevic-Sarkar model exactly at each frequency it solves, at no extra
-cost. The line model and `mixed` keep the stackup's values.
+cost. The line model keeps the stackup's values.
 
 <a id="roughness"></a>
 ## Copper roughness

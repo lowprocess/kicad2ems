@@ -44,8 +44,8 @@ matplotlib `Figure` objects without pyplot, so the GUI can embed them.
 A solver is a subclass of `solvers.Solver`, and `solvers.SOLVERS` lists every
 one by its module and class (imported on the first `registry()` call): the line
 solvers in `core/solvers/lines/`; openEMS's and gfdtd's in
-[kicad2ems.fdtd](fdtd/README.md), on the FDTD layer they share; mom25d's and
-mixed's in `kicad2ems.mom25d.solvers`; Palace's in `kicad2ems.fem`; pcbqs's in
+[kicad2ems.fdtd](fdtd/README.md), on the FDTD layer they share; mom25d's in
+`kicad2ems.mom25d.solvers`; Palace's in `kicad2ems.fem`; pcbqs's in
 `kicad2ems.pcbqs.analyses`. [APIs](api.md#solvers) lists what a solver declares
 and implements.
 

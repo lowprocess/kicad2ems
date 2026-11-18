@@ -26,7 +26,7 @@ Modules
     solvers/      the solvers: Solver, Result, the registry (SOLVERS: every
                   solver), capabilities. The full-wave solvers are parts of
                   their own: openEMS and gfdtd (kicad2ems.fdtd, on its shared
-                  FDTD model), mom25d and mixed (kicad2ems.mom25d.solvers),
+                  FDTD model), mom25d (kicad2ems.mom25d.solvers),
                   Palace (kicad2ems.fem), pcbqs
       lines/        the line model: tlines (sections, Z0, coupled sections,
                     discontinuities: formulas, reference, builder, topology),

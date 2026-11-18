@@ -8,7 +8,7 @@ repository of its own until 2026-11-16):
     gui       the window (PySide6)
     fdtd      the FDTD solvers' shared model: openEMS and gfdtd
     gfdtd     a 3D FDTD engine on the GPU or a compiled CPU core
-    mom25d    a 2.5D Method-of-Moments solver, and the mixed solver
+    mom25d    a 2.5D Method-of-Moments solver
     pcbqs     power integrity, quasistatic fields, operational circuits,
               temperature
     fem       Palace and Elmer behind the same questions

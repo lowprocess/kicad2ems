@@ -2,8 +2,8 @@
 The solvers: each one a Solver subclass, listed in SOLVERS by its module and
 class. The line model solved as a circuit by qucs (qucsator) or scikit
 (scikit-rf); the full-wave solvers openems and gfdtd (3D FDTD, the one FDTD
-model on openEMS's engine or gfdtd's: kicad2ems.fdtd), mom25d and mixed (2.5D
-Method of Moments: kicad2ems.mom25d), palace (3D FEM: kicad2ems.fem) and pcbqs
+model on openEMS's engine or gfdtd's: kicad2ems.fdtd), mom25d (2.5D Method
+of Moments: kicad2ems.mom25d), palace (3D FEM: kicad2ems.fem) and pcbqs
 (quasi-static: kicad2ems.pcbqs). Each appears in --solvers, --check, the config
 tables and the GUI with no change here.
 
@@ -83,7 +83,6 @@ SOLVERS = ('kicad2ems.core.solvers.lines.solver:Qucs',
            'kicad2ems.fdtd.openems.solver:OpenEMS',
            'kicad2ems.fdtd.gfdtd:GFDTD',
            'kicad2ems.mom25d.solvers.mom:MoM25D',
-           'kicad2ems.mom25d.solvers.mixed:Mixed',
            'kicad2ems.fem.palace.solver:Palace',
            'kicad2ems.pcbqs.analyses:QuasiStatic')
 # the solver --mom adds as a reference

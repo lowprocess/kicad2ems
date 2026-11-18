@@ -29,7 +29,6 @@ is invalid or a named solver cannot run. Settings and solvers are checked before
 | `openems` (or `fdtd`) | openEMS, 3D FDTD | openEMS |
 | `gfdtd` | gfdtd, 3D FDTD on the GPU or the CPU: openEMS's model, its own engine ([details](gfdtd.md)) | slangpy (Vulkan) for the GPU, or its compiled core |
 | `mom25d` (or `mom`) | mom25d, 2.5D method of moments ([details](mom.md)) | nothing extra |
-| `mixed` | mom25d with long straight runs as transmission lines ([details](mom.md#mixed)) | nothing extra |
 | `qucs` | the [line model](transmission-lines.md), solved by qucsator | qucsator on PATH |
 | `scikit` | the line model, solved by scikit-rf | scikit-rf |
 | `lines` | `qucs` if qucsator is installed, otherwise `scikit` | |
@@ -98,8 +97,6 @@ for what the other two lack and for checking gfdtd's engine.
   ports, and its loss tangent doesn't vary with frequency. It lands 0.04–0.3 from openEMS on most boards.
 - **openEMS** does the most (conductor loss, phased drive, `--converge`) on the CPU only, and was the slowest
   full-wave solver on all but the smallest boards.
-- **mixed** is mom25d with the middle of each long, lone, straight run put back as a transmission line: fewer
-  unknowns on boards of long traces, mom25d's limits. It isn't part of `all`.
 - **The line model** is a circuit of line sections, solved in milliseconds: close on plain distributed circuits
   (0.06–0.09), 0.4–0.8 off on filters and transitions (no coupling, radiation or parasitics), no antennas.
 

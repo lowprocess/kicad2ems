@@ -4,7 +4,7 @@
 
 mom25d is a 2.5D method-of-moments solver for circuit boards, its own package in
 [its own repository](mom25d/README.md) (the `mom` extra, or the installer). It doesn't need
-openEMS; without it, `--check` lists mom25d and the mixed solver built on it as not installed.
+openEMS; without its compiled core, `--check` lists mom25d as not installed.
 
 ```bash
 kicad2ems examples/rf_interdig.toml --solvers mom        # mom25d alone
@@ -221,7 +221,7 @@ is missing within three substrate heights of the signal copper, leaving out via 
 port is below the ground, which the ground stack can't model. Otherwise it keeps the ground stack. Of the examples,
 it chooses the whole stack for rf_dgs, rf_slotline, rf_msvia (its P2 is on B.Cu, under the In2.Cu ground) and five
 antennas (the slot, aperture, inverted-F, monopole and Vivaldi). With `--mom-stack ground` on such a board, the log warns and lists the
-apertures as deviations. `mixed` cuts its lines over the infinite ground, so it declines these boards under `auto`.
+apertures as deviations.
 
 | Board, against gfdtd (rms \|ΔS\|) | Ground stack | Whole stack |
 |---|---|---|
@@ -232,7 +232,7 @@ apertures as deviations. `mixed` cuts its lines over the infinite ground, so it 
 `mom_stack = "whole"` (`--mom-stack whole`) models every copper layer instead of an infinite ground: the lowest
 copper layer is the bottom of the stack, with air below as well as above, and the planes are meshed like any other
 copper. Copper below the old ground is in the model, ports can sit on any layer, and each is a lumped port to the
-nearest plane under or over it (or its `ref_layer`). `mixed` stays on the ground stack.
+nearest plane under or over it (or its `ref_layer`).
 
 On `rf_msvia` (F.Cu microstrip through a via to B.Cu, two inner planes), which the ground stack can't solve, the
 whole stack has 5,219 unknowns at `--mom-dmax 0.6` and takes 25 s:
@@ -383,34 +383,6 @@ mesh (`tools/zone_study.py`, `tools/quad_configs_study.py` in mom25d).
   it replace the triangles' unknowns, 10 to 20 to one: the current along the line, peaked at both edges, plus an odd
   shape for coupled lines (`even`: the symmetric one only; `full`: a flat one too). rf_coupler: 5,864 unknowns to
   4,027, 0.018 from the reference at 8 GHz instead of 0.015.
-
-<a id="mixed"></a>
-## The mixed solver: long lines as transmission lines
-
-`--solvers mixed` (`mom25d/solvers/mixed.py`) is mom25d with the middle of each
-long straight run of signal trace cut out of the board and put back as a
-transmission line. mom25d solves the rest with a de-embedded wave port on each
-face of each cut; each cut becomes a line of its own cross-section's γ and Zc,
-joined into mom25d's network. A stretch is cut only where no other signal copper
-comes within 3 widths or 4 heights of it, not through vias, parts or ports,
-keeping the straight feed each wave port needs down to `fmin`; a cut is at least
-`--mixed-cut` mm long (3). It uses mom25d's mesh and board options
-(`--mom-planes`, `--mom-stitching-pads`, `--mom-coarsen`, `--mom-quad-tol`,
-`--diel`; since 2026-11-14: before, the board as mom25d's defaults have it).
-
-On rf_stripline (with `--mom-zone on`) one 12.5 mm stretch is cut, 5,069 unknowns to 4,335, and S21 matches
-mom25d's within 0.5° to 10 GHz. **Current dumps** work: on the cut stretch the trace current comes from the line's
-waves (within 5 % of mom25d's on rf_stripline at 5 GHz), and the planes carry the line's image as return current.
-
-**Two traces side by side** (of one width, within that distance of each other, nothing else near) are cut
-together as a coupled line: each face of the cut is a mixed-mode wave port (the pair's differential and common
-modes, each with its own γ and impedance from the pair's cross-section), and the stretch is two lines, one a
-mode. They need not be a differential pair of the board's: two signals routed together are cut the same way, and
-their near- and far-end crosstalk comes out of the two modes' different speeds. That difference is a few percent
-of either speed, so a pair's faces keep more feed than a lone line's (their cuts span 0.4 rad at `fmin`, not
-0.1) and its modes are characterised on a longer line. Two 0.38 mm traces 0.3 mm apart over 40 mm, 2 to 10 GHz:
-3,926 unknowns to 1,892, every term within 0.006 of mom25d's, the far-end coupling within 4 % at 2 GHz and 1 %
-above 4 GHz. Three or more traces side by side, and two of different widths, are not cut.
 
 <a id="quads"></a>
 ### Quad cells (experimental)

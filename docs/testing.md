@@ -35,7 +35,7 @@ antenna`).
 
 The table is `tests/core`'s. The solvers' tests are in their parts' folders: the FDTD layer (mesh, model, runs,
 dielectrics, antenna runs, progress, parity, the pipeline with canned runs, the preview, openEMS's import check,
-`openems_venv`, `--converge`, gfdtd's connection) in `tests/fdtd`; the mom25d and mixed solvers, their parity and
+`openems_venv`, `--converge`, gfdtd's connection) in `tests/fdtd`; the mom25d solver, its parity and
 mesh file in `tests/mom25d` (`test_kicad2ems*.py`); gfdtd's engine in `tests/gfdtd`; the window (the form, the
 pages offscreen, the 3D view's arrays) in `tests/gui`, on the same stand-in solvers.
 

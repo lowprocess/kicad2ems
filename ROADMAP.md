@@ -190,21 +190,13 @@ solver's own items (large boards, the low end) are in the next section.
    high and on Z11 13 % low, the pattern a missing even order leaves (a slot-plane solve restricted to orders <= 1
    tells it without new kernels); a
    plane on the top interface; the hole's field in the dumps, the near field and the far field.
-2. **Coupled runs in the mixed solver, the rest.** Two traces of one width side by side are cut as a coupled
-   line since 2026-11-13 (their differential and common modes, a mixed-mode wave port on each face:
-   docs/mom.md): 3,926 unknowns to 1,892 on a 40 mm pair, within 0.006 of mom25d. Left: a pair's faces need
-   0.4 rad of feed at the lowest frequency, so a short pair or a low band leaves nothing to cut (rf_crosstalk,
-   40 mm from 0.5 GHz); lumped ports on the faces in place of wave ports would lift that, as they
-   would the lone lines' (the solver needs wave ports there today); three or more traces together (a bus: one
-   line a mode, from the field solver's modes) and pairs of unequal widths; a pair that bends (the cut stops at
-   each bend, and a serpentine has many).
-3. **What `--fill-voids` leaves.** `far` keeps a void near the signal copper on every layer, also behind a solid
+2. **What `--fill-voids` leaves.** `far` keeps a void near the signal copper on every layer, also behind a solid
    plane (14 × 32 mm of the CM5 Minima: 33,088 unknowns, 25,662 with `all`, 42,689 as imported). Whether those
    can go is not settled: on a crop, `all` moved a resonance of the planes the region cut (gfdtd's |S21| at
    10 GHz from −1.6 to −4.0 dB). It needs a board whose planes are not cut. The KiCad plugin's selected-net runs
    could default to `far`. Optionally, a ground pour on a signal layer cut a few heights from the signal copper.
 
-4. **Slot planes, what is left** (`--mom-planes slots`, since 2026-11-15; docs/mom.md#slot-planes). The coupling to
+3. **Slot planes, what is left** (`--mom-planes slots`, since 2026-11-15; docs/mom.md#slot-planes). The coupling to
    the traces is the compiled core's since 2026-11-15 (rf_slotline 21 s a solve to 3 s); the openings' own matrix
    (slots.self_block, ~1 s a solve on rf_slotline) could follow. Then: the loop/tree basis with openings; frill holes and openings in one stack; a via through an
    opening; the openings' field in the dumps and the near field; and when `--mom-stack auto` should choose them (on
@@ -268,10 +260,6 @@ that does not need N² memory. In this order:
    `emsdev/native`. Left to port: mom25d's singular rule over the smaller triangle into pcbqs (`mom25d.sing` wraps
    the shared `offplane_pairs` with it), with pcbqs's compiled static, compressed and layered kernels (they
    integrate over p too; ported in Python alone, fourteen of pcbqs's tests held them apart).
-6. **mixed's band fit at its cap, unconverged, says nothing.** On `rf_bends` (14 ports after four cuts) the
-   adaptive sweep stops at its 60 solves with its models still apart and the curve between the solved frequencies
-   wrong (0.507 from openEMS on the Solver Matrix of 2026-11-15, as on 2026-11-06); mom25d's own runs warn nowhere
-   either. Warn when the last model's prediction error is above the sweep's tolerance.
 
 ## Power tools (pcbqs)
 

@@ -60,7 +60,7 @@ def listed():
 def test_every_solver_and_analysis_listed_loads(listed):
     assert [len(listed['solvers']), len(listed['analyses'])] == listed['listed']
     assert [s['name'] for s in listed['solvers']] == [
-        'openems', 'mom25d', 'mixed', 'gfdtd', 'palace', 'pcbqs', 'qucs',
+        'openems', 'mom25d', 'gfdtd', 'palace', 'pcbqs', 'qucs',
         'scikit'
     ]
     assert [a['name'] for a in listed['analyses']] == [
