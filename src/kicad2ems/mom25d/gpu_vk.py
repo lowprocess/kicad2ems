@@ -440,13 +440,10 @@ class VulkanBackend:
 
     def fits(self, N, extra=0.0):
         """Whether an N-unknown LU fits in the free memory (+ extra: what kept
-        factors would give back). vram_needed counts every device buffer
-        factor() makes and 0.4 GB besides, so the margin is that and at least
-        0.5 GB (3% of the free): 90% of the free turned down antenna_cp_patch's
-        40.8k unknowns (14.15 GB of 15.7 GB), which factored there in 19 s with
-        1.95 GB left, against minutes on the CPU."""
-        free = self.mem_free() + extra
-        return self.vram_needed(N) <= free - max(0.5e9, 0.03 * free)
+        factors would give back; policy.gpu_fits). vram_needed counts every
+        device buffer factor() makes and 0.4 GB besides."""
+        from .policy import gpu_fits
+        return gpu_fits(self.vram_needed(N), self.mem_free() + extra)
 
     def release(self):
         """Free the factor and the work arrays (the device memory; the mapped

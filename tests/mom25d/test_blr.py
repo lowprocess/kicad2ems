@@ -1,6 +1,6 @@
 """
 The compiled block low-rank LU (core BLRFactor, fast._CompiledBLR): the
-preconditioner of solve_blr, against the direct solver.
+preconditioner of fast._solve_blr, against the direct solver.
 """
 import numpy as np
 import pytest
@@ -93,7 +93,7 @@ def test_the_factor_inverts_the_matrix_to_its_tolerance():
     for tol, err in ((1e-3, 0.8), (1e-6, 0.05)):
         blr = _CompiledBLR(fo, tiles, boxes, dZx, dsc, tol, 0.7)
         x = np.random.default_rng(3).standard_normal((N, 2)) + 0j
-        y = blr.solve(Zs @ x)
+        y = blr(Zs @ x)
         got = np.linalg.norm(y - x) / np.linalg.norm(x)
         assert got < err, tol
 
@@ -134,8 +134,8 @@ def test_low_frequency_goes_to_the_loop_tree_basis_or_a_double_factor(
     assert sim.fast._basis_name == 'loop/tree' and np.abs(S - ref).max() < 1e-6
     assert any('in the loop/tree basis, dense' in n for n in sim.log.notes)
     # no room for it
-    monkeypatch.setattr(fast.FastOperator, '_loop_tree_at',
-                        lambda self, f: False)
+    monkeypatch.setattr(fast.FastOperator, '_lt_block',
+                        lambda self: 'no room')
     sim = _sim()
     sim.loop_tree, sim.blr_tile = 'auto', 128
     S = sim.sparams(f)

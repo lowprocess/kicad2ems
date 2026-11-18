@@ -24,8 +24,9 @@ def test_gpu_solves_that_stall_are_done_on_the_cpu(clean, S_cpu):
     clean.setattr(type(gpu), 'solve',
                   lambda self, R: np.asarray(R, complex) * 1e-3)
     S = sim.sparams(4e9)
-    assert (np.abs(S - S_cpu).max() < 1e-6 and not sim.fast._hybrid_failed
-            and sim.fast._gpu_solve_bad == 4e9)
+    h = sim.fast.history
+    assert (np.abs(S - S_cpu).max() < 1e-6 and ('rwg', 'cpu-c64') not in h
+            and h[('rwg', 'vulkan-c64')] == 4e9)
     assert not any(r[0] == 'LU factor' for r in sim.log.records)  # no CPU LU
     n = sum(r[0] == 'LU factor (GPU)' for r in sim.log.records)
     sim.reuse = 'off'
@@ -116,7 +117,8 @@ def test_gpu_refinement_that_stalls_falls_back_to_double_nearby(clean, S_cpu):
                   lambda self, R: np.asarray(R, complex) * 1e-3)
     S = sim.sparams(4e9)
     # S_cpu: refined to 1e-6, this: double
-    assert np.abs(S - S_cpu).max() < 1e-6 and sim.fast._hybrid_failed
+    assert (np.abs(S - S_cpu).max() < 1e-6
+            and sim.fast.history[('rwg', 'cpu-c64')] == 4e9)
     n_gpu = sum(r[0] == 'LU factor (GPU)' for r in sim.log.records)
     sim.sparams(4.5e9)
     # near the failure: double
@@ -138,7 +140,7 @@ def test_gpu_refinement_that_breaks_down_falls_back_to_double(clean, S_cpu):
     with np.errstate(invalid='ignore'):
         S = sim.sparams(4e9)
     assert (np.isfinite(S).all() and np.abs(S - S_cpu).max() < 1e-6
-            and sim.fast._hybrid_failed)
+            and ('rwg', 'cpu-c64') in sim.fast.history)
 
 
 def test_a_nan_gpu_factor_falls_back(clean, S_cpu):
@@ -168,6 +170,124 @@ def test_a_nan_solve_is_redone_on_the_cpu_or_refused(clean, S_cpu):
     clean.setattr(sim, '_currents', lambda f, E: real(sim, f, E) * np.nan)
     with pytest.raises(FloatingPointError, match='not finite'):
         sim.sparams(4e9)
+
+
+# ---- the retry ladder (fast._factor, _ladder) with failures injected -------
+C64, VK = ('rwg', 'cpu-c64'), ('rwg', 'vulkan-c64')
+
+
+def lus(sim, detail=''):
+    """The LU factorisations logged (detail: those whose detail has it)."""
+    return [r for r in sim.log.records
+            if r[0].startswith('LU factor') and detail in r[2]]
+
+
+def weak_host_lu(clean):
+    """The host's complex64 LUs too weak to precondition (the double LU as
+    it is)."""
+    from kicad2ems.mom25d import fast
+    real = fast.HostLU.__call__
+    clean.setattr(fast.HostLU, '__call__', lambda self, R: (
+        np.asarray(R, complex) * 1e-3 if self.lu[0].dtype == np.complex64
+        else real(self, R)))
+
+
+def test_a_gpu_factor_that_raises_is_the_hosts(clean, S_cpu):
+    def boom(self, Z):
+        raise RuntimeError('device lost')
+    clean.setattr(mom25d_gpu.EmulatedBackend, 'factor', boom)
+    sim = make_sim('emulate')
+    S = sim.sparams(4e9)
+    assert np.abs(S - S_cpu).max() < 1e-6 and not sim.fast.history
+    assert any('GPU LU failed (RuntimeError: device lost)' in n
+               for n in sim.log.notes)
+    assert len(lus(sim, 'complex64')) == 1
+
+
+@pytest.mark.parametrize('keep', [4, 0])
+def test_a_host_lu_that_does_not_precondition_is_redone_in_double(
+        clean, S_cpu, keep):
+    """keep 4: the dense double Z factored again in double; 0: matrix-free
+    (Z complex64, gone): the frequency solved again, in double. Up to RETRY
+    x f in double straight away, above it mixed again."""
+    from kicad2ems.mom25d import policy
+    clean.setattr(policy, 'REUSE_KEEP', keep)
+    weak_host_lu(clean)
+    sim = make_sim('off')
+    S = sim.sparams(4e9)
+    assert np.abs(S - S_cpu).max() < 1e-6 and sim.fast.history == {C64: 4e9}
+    assert sum('did not converge' in n for n in sim.log.notes) == 1
+    fills = [r[2] for r in sim.log.records if r[0] == 'direct fill']
+    assert ('complex64' in fills[0]) == (keep == 0)
+    assert len(fills) == (2 if keep == 0 else 1)
+    n = len(lus(sim, 'complex64'))
+    sim.sparams(4.5e9)
+    assert len(lus(sim, 'complex64')) == n
+    assert sum('did not converge' in n for n in sim.log.notes) == 1
+    sim.sparams(5.5e9)
+    assert len(lus(sim, 'complex64')) == n + 1
+
+
+def test_the_matrix_free_gpu_lu_falls_back_on_the_hosts_solves(clean, S_cpu):
+    """The GPU's LU past the hybrid (HYBRID_MAX_N: Z complex64, the
+    refinement matrix-free) whose solves stall: the factor downloaded and
+    solved on the host, nothing factored again."""
+    from kicad2ems.mom25d import policy
+    clean.setattr(policy, 'HYBRID_MAX_N', 0)
+    gpu = mom25d_gpu.get_backend('emulate')
+    clean.setattr(type(gpu), 'solve',
+                  lambda self, R: np.asarray(R, complex) * 1e-3)
+    sim = make_sim('emulate')
+    assert sim.fast.plan(4e9).path == 'gpu-lu'
+    S = sim.sparams(4e9)
+    assert np.abs(S - S_cpu).max() < 1e-6 and sim.fast.history == {VK: 4e9}
+    assert [r[0] for r in lus(sim)] == ['LU factor (GPU)']
+    p = sim.fast.plan(4.5e9)
+    assert p.rung == 'cpu-c64' and p.gpu_factor and not p.dense
+
+
+def test_the_loop_tree_bases_failures_are_its_own(clean):
+    """A complex64 LU failing in the loop/tree basis: that basis's history,
+    the RWG basis's untouched; the answer the double LU's."""
+    weak_host_lu(clean)
+    sim = make_sim('off')
+    sim.loop_tree = 'on'
+    S = sim.sparams(4e9)
+    assert sim.fast.history == {('loop/tree', 'cpu-c64'): 4e9}
+    assert sim.fast.plan(4.5e9).rung == 'cpu-c128'
+    sim.loop_tree = 'off'
+    assert sim.fast.plan(4.5e9).rung == 'cpu-c64'
+    ref = make_sim('off')
+    ref.loop_tree, ref.precision = 'on', 'double'
+    assert np.abs(S - ref.sparams(4e9)).max() < 1e-9
+
+
+@pytest.mark.parametrize('keep,kept', [(4, 2), (1, 1), (0, 1)])
+def test_a_kept_lu_that_does_not_precondition_is_replaced(clean, keep, kept):
+    """A kept LU tried past its reach: GMRES capped, a new one factored and
+    kept beside it (1: in its place; 0: matrix-free, tried before the fill),
+    the reach shrunk below that distance; the answer a fresh solve's."""
+    from kicad2ems.mom25d import fast, policy
+    clean.setattr(policy, 'REUSE_KEEP', keep)
+    sim = make_sim('off')
+    sim.sparams(4e9)
+    st = sim.fast.st
+    st.reach = 10.0
+    clean.setattr(fast, 'REUSE_ITER', (1, 1))
+    S = sim.sparams(8e9)
+    assert any('did not precondition' in n for n in sim.log.notes)
+    assert st.reach < np.log(2.0) and [k.f for k in st.kept][-1] == 8e9
+    assert len(st.kept) == kept
+    assert np.abs(S - make_sim('off').sparams(8e9)).max() < 1e-6
+
+
+def test_a_gpu_asked_for_and_missing_is_said(clean, S_cpu):
+    clean.setitem(sys.modules, 'slangpy', None)
+    sim = make_sim('vulkan')
+    S = sim.sparams(4e9)
+    assert np.abs(S - S_cpu).max() < 1e-6
+    assert sum('GPU requested but not available' in n
+               for n in sim.log.notes) == 1
 
 
 # ---- the Vulkan backend on the real GPU -------------------------------------
@@ -223,31 +343,6 @@ def test_vulkan_backend_matches_cpu(clean, S_cpu):
     assert any(r[0] == 'LU factor (GPU)'
                for r in sim.log.records), "GPU path not taken"
     assert np.abs(S - S_cpu).max() < 1e-6
-
-
-def test_memory_plan_takes_the_backends_own_estimate():
-    """A Vulkan LU factors in place (8 N^2): with gpu_info's 4-tuple the direct
-    solver puts 40k unknowns on a 16 GB GPU, where the 2-tuple's 16 N^2
-    assumption sent it to the CPU; 'auto' takes the block low-rank LU there."""
-    from kicad2ems.mom25d.sim import memory_plan
-    n = 40000
-    need = 8.0 * n * n + 0.8e9
-    own = ('vulkan', 15.7e9, need, True)
-    p = memory_plan(n, avail=30e9, gpu=own, solver='direct')
-    assert p['path'] == 'gpu-lu'
-    p = memory_plan(n, avail=30e9, gpu=('vulkan', 15.7e9), solver='direct')
-    assert p['path'] == 'cpu-mixed'
-    # the compiled block low-rank LU from sim.BLR_MIN_N unknowns; the hybrid
-    # where it holds Z
-    p = memory_plan(n, avail=30e9, gpu=own, solver='auto')
-    assert p['solver'] == 'blr' and p['host'] < 8.0 * n * n
-    p = memory_plan(n, avail=8e9, gpu=('vulkan', 15.7e9), solver='auto')
-    assert p['solver'] == 'blr'
-    p = memory_plan(20000, avail=30e9, gpu=('vulkan', 15.7e9), solver='auto')
-    assert p['path'] == 'hybrid' and p['solver'] == 'direct'
-    p = memory_plan(15000, avail=30e9, gpu=None, solver='auto')
-    # (below BLR_MIN_N)
-    assert p['path'] == 'cpu-mixed' and p['solver'] == 'direct'
 
 
 def test_far_field_of_several_excitations_at_once_is_each_ones():

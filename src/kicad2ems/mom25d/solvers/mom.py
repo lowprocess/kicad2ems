@@ -32,7 +32,7 @@ T0, LU_N3, VIA2, SOLVES, REF_CORES = 1.0, 3.7e-12, 3.5e-5, 16, 24
 # LU and the refinement 6.3 s a solve (hybrid)
 LU_GPU_N3 = 1.5e-12
 # the compiled block low-rank LU (from 20k unknowns where the hybrid does not
-# fit: sim.BLR_MIN_N), seconds per solve over N^2 on 16 cores, the reused
+# fit: policy.BLR_MIN_N), seconds per solve over N^2 on 16 cores, the reused
 # factors with the fresh: rf_siw 9.7 s (28.7k), antenna_vivaldi 8.1 s (21.9k)
 BLR_N2, BLR_CORES = 1.4e-8, 16
 # antenna mode: frequencies of the far field over the band (+ the pattern one)
@@ -814,10 +814,9 @@ class MoM25D(Solver):
         n, solves, layers = (int(sim.Ne + sim.Nv), min(s.mom_solves,
                                                        SOLVES), len(bm.shapes))
         # this machine's memory now, mom25d's GPU
-        from kicad2ems.mom25d.sim import memory_plan, gpu_info
+        from kicad2ems.mom25d.policy import memory_plan, device
         from kicad2ems.mom25d.gpu import get_backend
-        g = get_backend('auto')
-        plan = memory_plan(n, None, (gpu_info(g, n) if g is not None else None))
+        plan = memory_plan(n, None, device(get_backend('auto')))
         # the CPU LU scales with the cores, a GPU's not
         lu = LU_N3 * REF_CORES / (os.cpu_count() or 1)
         lu = dict(hybrid=LU_GPU_N3).get(plan['path'], lu)

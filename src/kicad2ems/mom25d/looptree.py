@@ -45,7 +45,7 @@ A_T]]: inductance and elastance, each well conditioned, and nothing cancels. Z_A
 is filled with the tables' charge side zeroed (the compiled core's tables), Gc
 from fan_q over every triangle and the near pairs' corrections (near_q); neither
 has the other's part, so M is right to rounding at any frequency
-(fast.FastOperator._solve_loop_tree).
+(fast.FastOperator._lt_system).
 
     lt = LoopTree(sim)  # the graph, once a mesh
     lt.to_ideal(Z); lt.cols(Z, core); lt.rows(Z, core)

@@ -43,7 +43,8 @@ class EmulatedBackend:
         return 8.0 * N * N + 0.4e9
 
     def fits(self, N, extra=0.0):
-        return self.vram_needed(N) <= 0.9 * (self.mem_free() + extra)
+        from .policy import gpu_fits
+        return gpu_fits(self.vram_needed(N), self.mem_free() + extra)
 
     def release(self):
         self.lu = self.piv = None

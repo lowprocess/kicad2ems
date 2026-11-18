@@ -67,95 +67,8 @@ def rlc(R=0.0, L=0.0, C=None, parallel=False):
     return Z
 
 
-# above this, 'auto' precision is mixed
-MIXED_MIN_N = 3500
-# above this many unknowns in the LU (after quads), mixed precision on the GPU
-# when there is one: 1.5-1.9x a solve from 1.4k to 3.4k unknowns against double
-# on 8 P-cores (RX 7800 XT), but its start-up costs ~1.5 s a run - the
-# break-even of a 15-20 solve sweep (rf_gcpw, 3.4k: 7.0 s against 8.7 s;
-# rf_stubnotch coarsened, 1.5k: 4.5 against 3.4)
-GPU_MIN_N = int(os.environ.get('MOM25D_GPU_MIN_N', 3000))
 # an opening's cells (slots.py) in dmax away from the copper, as a plane's
 SLOT_FACTOR = 3.0
-# the hybrid (the double Z on the host for the refinement's products, several
-# complex64 LUs kept on the GPU) up to this many unknowns; past it the GPU path
-# with the complex64 Z (the refinement matrix-free, one LU kept): the double Z's
-# memory traffic (24 N^2 bytes, 20 GB at 28.7k) outgrew what its products save.
-# RX 7800 XT, i7-13700K: rf_siw (28.7k) 456 s hybrid against 296 s, antenna_slot
-# (28.6k) 165 s against 139 s; antenna_vivaldi (21.9k) 148 s hybrid against 171
-# s
-HYBRID_MAX_N = int(os.environ.get('MOM25D_HYBRID_MAX_N', 25000))
-# from this many unknowns the compiled block low-rank LU (fast.solve_blr) where
-# the GPU's hybrid does not hold the matrix (the tiled, GPU-LU, streamed and CPU
-# complex64 paths): a sweep of rf_siw (28.7k) 272 s against 520 s tiled,
-# antenna_cp_patch's (40.8k) solve 22.5 s against 30.3 s on the GPU LU,
-# antenna_vivaldi (21.9k) without a GPU 202 s against 243 s; in a fifth of the
-# memory or less (1.2 GB, 1.2 GB, 2.4 GB)
-BLR_MIN_N = int(os.environ.get('MOM25D_BLR_MIN_N', 20000))
-
-
-def gpu_info(b, n):
-    """memory_plan's gpu argument for backend b and an n-unknown LU: (name, free
-    bytes, the LU's bytes, fits)."""
-    return (b.name, b.mem_free(), b.vram_needed(n), b.fits(n))
-
-
-def memory_plan(n, avail=None, gpu=None, precision='auto', solver='auto',
-                n_lu=None):
-    """How the solver of n unknowns runs and the memory it needs: dict(solver,
-    precision, path, host, gpu) (bytes). gpu: None, or (backend name, free
-    bytes), or gpu_info's (name, free, the LU's bytes, fits): the backend's own
-    estimate (the Vulkan LU factors in place: 8 N^2, not the 16 N^2 the 2-tuple
-    assumes). path: 'double' (LU on the CPU), 'hybrid' (complex64 LU on the
-    GPU, the double Z on the host for the refinement), 'gpu-lu' (complex64 Z on
-    the host and the GPU), 'cpu-mixed' (complex64 LU on the CPU), 'blr'
-    (compressed, no dense Z). n_lu: the unknowns the LU factors (fewer with
-    quads; default n), which the thresholds GPU_MIN_N and MIXED_MIN_N compare.
-    'auto' takes the block low-rank LU from BLR_MIN_N unknowns where the hybrid
-    does not fit, and wherever the direct solver does not."""
-    avail = available_memory() if avail is None else avail
-    name, free = gpu[:2] if gpu else (None, 0.0)
-    if gpu and len(gpu) >= 4:  # the backend's own: gpu_info(backend, n)
-        gpu_lu, gpu_fits = float(gpu[2]), bool(gpu[3])
-    else:
-        # gpu._Backend.vram_needed
-        gpu_lu = (1 if name == 'emulate' else 2) * 8.0 * n * n + 0.4e9
-        gpu_fits = name is not None and gpu_lu <= 0.9 * free
-    if precision == 'auto':
-        # mixed where double does not fit, and above MIXED_MIN_N (GPU_MIN_N with
-        # a GPU): complex64 LU + GMRES refinement, half the LU flops and 10 N^2
-        # bytes instead of 18 (demo transition cropped, 8.4k unknowns, 2 cores:
-        # 14.0 s a solve against 18.0 s, |dS| <= 7e-6 over 1-8 GHz); where the
-        # refinement stalls, fast.solve_direct redoes it in double and stays in
-        # double up to MIXED_RETRY x that frequency
-        m = n_lu or n
-        precision = ('mixed' if m > (GPU_MIN_N if gpu_fits else MIXED_MIN_N)
-                     or 18.0 * n * n + 0.9e9 > 0.5 * avail else 'double')
-    hybrid = (precision == 'mixed' and gpu_fits
-              and 24.0 * n * n + 0.9e9 <= 0.8 * avail
-              and (n_lu or n) <= HYBRID_MAX_N)
-    if precision == 'double':
-        path, host, dev = 'double', 18.0 * n * n + 0.9e9, 0.0
-    elif hybrid:
-        path, host, dev = 'hybrid', 24.0 * n * n + 0.9e9, gpu_lu
-    elif gpu_fits:
-        path, host, dev = 'gpu-lu', 10.0 * n * n + 0.9e9, gpu_lu
-    else:
-        path, host, dev = 'cpu-mixed', 10.0 * n * n + 0.9e9, 0.0
-    fits = host <= 0.8 * avail
-    if solver == 'auto':
-        solver = 'direct' if fits else 'blr'
-        # (quad cells: the direct solver's alone)
-        if (solver == 'direct' and path in ('gpu-lu', 'cpu-mixed')
-                and n >= BLR_MIN_N and (n_lu is None or n_lu >= n)):
-            solver = 'blr'
-    if solver == 'blr':
-        # the compiled factor: measured 18-30 % of a complex64 matrix at 22-41k
-        # unknowns, with the sparse near field: antenna_cp_patch's run peaked at
-        # 5 GB
-        path, host, dev = solver, 3.0 * n * n + 2e4 * n + 0.9e9, 0.0
-    return dict(solver=solver, precision=precision, path=path, host=host,
-                gpu=dev, fits=fits)
 
 
 class Via:
@@ -416,7 +329,7 @@ class Simulation:
         self.precision = precision
         # solver='blr' preconditioner settings: 1e-3 left antenna_cp_patch
         # (40.8k unknowns) unsolved (GMRES 500 iterations), 1e-5 solves it in 7;
-        # eta 0.3 against 0.7: less memory, as fast (fast.solve_blr)
+        # eta 0.3 against 0.7: less memory, as fast (fast._solve_blr)
         self.blr_tol, self.blr_tile, self.blr_eta = 1e-5, 512, 0.3
         # 'auto' | 'off': the CPU's complex64 LU kept for the next frequencies
         self.reuse = 'auto'
@@ -424,7 +337,7 @@ class Simulation:
         self.loop_tree = os.environ.get('MOM25D_LOOP_TREE', 'auto')
         # solver in the loop/tree basis
         # (looptree.py) at low frequency
-        # (auto: below fast.LOOP_TREE_BELOW
+        # (auto: below policy.LOOP_TREE_BELOW
         # of (k h)^2)
         self.dmax, self.ncross, self.grade, self.near_fac = (dmax, ncross,
                                                              grade, near_fac)
@@ -809,22 +722,20 @@ class Simulation:
                     "non-reciprocal when ports differ")
         n = r.Ne + self.Nv
         from .fast import cap_blas_threads, FastOperator
+        from .policy import memory_plan, device, GPU_MIN_N, BLR_MIN_N
         cap_blas_threads()
-        # mixed above MIXED_MIN_N (memory_plan): the complex64 LU on the GPU
-        # (5.7 s a solve against 14.9 s on the via transition, 13.5k unknowns,
-        # RX 7800 XT) or on the CPU (about 1.3x faster than double). The
-        # complex64 preconditioner can stall (fine meshes, low frequency, many
-        # via chains; docs/mom.md): that solve is redone in double, and the
-        # frequencies up to MIXED_RETRY x it stay in double
+        # mixed above MIXED_MIN_N (policy.memory_plan): the complex64 LU on the
+        # GPU (5.7 s a solve against 14.9 s on the via transition, 13.5k
+        # unknowns, RX 7800 XT) or on the CPU (about 1.3x faster than double)
         from .gpu import get_backend
         n_lu = self.qT.shape[1] if self.qT is not None else n
         want_gpu = (gpu != 'off'
                     and (precision == 'mixed' or
                          (precision == 'auto' and n_lu > GPU_MIN_N)))
-        b = get_backend(gpu) if want_gpu else None
-        g = gpu_info(b, n_lu) if b is not None else None
         avail = available_memory()
-        plan = memory_plan(n, avail, g, precision, solver, n_lu=n_lu)
+        plan = memory_plan(n, avail, device(get_backend(gpu) if want_gpu
+                                            else None), precision, solver,
+                           n_lu=n_lu)
         self.plan, self.precision, precision = (plan, plan['precision'],
                                                 plan['precision'])
         if solver in ('auto', 'direct'):
@@ -1285,10 +1196,7 @@ class Simulation:
             "return path")
 
     def _currents(self, f, E):
-        if self.solver == 'blr':
-            return self.fast.solve_blr(f, E, tol=self.blr_tol,
-                                       tile=self.blr_tile, eta=self.blr_eta)
-        return self.fast.solve_direct(f, E, precision=self.precision)
+        return self.fast.solve(f, E)
 
     def sparams(self, f, keep=False):
         for p in self.ports:  # frequency-dependent reference impedance

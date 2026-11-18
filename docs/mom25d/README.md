@@ -85,7 +85,7 @@ f, S, info = solve_band(sim, 1e9, 6e9, points=101, zref=m.port_z0)
 | `api.py` | `solve_board`: a board file in, S-parameters out |
 | `board.py` | the board file as a planar model |
 | `model.py` | stack, metal, vias, ports, port characterisation |
-| `sim.py` | `Simulation`: mesh, ports, parts, solver choice (`memory_plan`) |
+| `sim.py` | `Simulation`: mesh, ports, parts |
 | `multilayer.py` | layered-media Green's functions |
 | `base.py` | the 1/R moment integrals, the port wave fits (RWG functions: `kicad2ems.emsdev.numerics.base`) |
 | `via.py` | via kernels |
@@ -94,7 +94,8 @@ f, S, info = solve_band(sim, 1e9, 6e9, points=101, zref=m.port_z0)
 | `sing.py` | the off-plane 1/R integrals with the rule over the smaller triangle (emsdev.numerics.sing's) |
 | `quads.py` | quad cells |
 | `thickness.py` | the copper's thickness: the mode a run gets (`resolve`); `sides.py`, `edge.py` model it |
-| `fast.py` | the matrix fill and the solvers (the block low-rank solver's tiling; its factor is compiled in `core/`) |
+| `policy.py` | how each frequency is solved: `choose` (a `SolvePlan`: basis, factorisation, what is kept) and `memory_plan` (a run's solver, precision and memory) |
+| `fast.py` | the matrix fill and the solve a `SolvePlan` asks for: the factorisations, the kept LUs, the retries (the block low-rank solver's tiling; its factor is compiled in `core/`) |
 | `looptree.py` | the loop/tree basis the direct solver takes at low frequency (pcbqs's) |
 | `gpu.py` | the GPU backends (Vulkan, and an emulated one for the tests) |
 | `gpu_vk.py` | the Vulkan backend: a hybrid LU (panels on the CPU, updates on the GPU) and its GPU solves |

@@ -1,5 +1,5 @@
 """
-The loop/tree basis (looptree.py, fast.FastOperator._solve_loop_tree): its loops
+The loop/tree basis (looptree.py, fast.FastOperator._lt_system): its loops
 carry no charge, its transforms are the basis's matrices, and the direct solver
 in it is the RWG basis's answer where that holds and stays right below, where
 that does not.
@@ -127,11 +127,11 @@ def test_auto_takes_loop_tree_below_its_threshold_and_keeps_each_basis_lus():
     # (k h)^2 grows as f^2
     lo = 0.5 * np.sqrt(fast.LOOP_TREE_BELOW / fo.kh2(1.0))
     hi = 4 * lo
-    assert fo._loop_tree_at(lo) and not fo._loop_tree_at(hi)
+    assert fo.plan(lo).basis == 'loop/tree' and fo.plan(hi).basis == 'rwg'
     sim.sparams(lo)
-    kept_lt = list(fo._kept)
+    kept_lt = list(fo.st.kept)
     sim.sparams(hi)
-    assert fo._basis_name == 'rwg' and all(k not in fo._kept for k in kept_lt)
+    assert fo._basis_name == 'rwg' and all(k not in fo.st.kept for k in kept_lt)
     S_again = sim.sparams(1.05 * lo)
     assert fo._basis_name == 'loop/tree'
     # the loop/tree LU kept, used again

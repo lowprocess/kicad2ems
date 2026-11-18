@@ -106,7 +106,7 @@ def parse(log, name):
         info['path'] = m.group(1)
         if m.group(2):
             info['gpu_gb'] = float(m.group(2))
-    # (mom25d from sim.BLR_MIN_N unknowns)
+    # (mom25d from policy.BLR_MIN_N unknowns)
     elif 'memory: the block low-rank solver needs' in log:
         info['path'] = 'blr'
     return info
@@ -436,10 +436,10 @@ def write_md(results):
     L += [
         '',
         '*on the CPU*: a GPU run of mom25d that factored on the CPU (the board '
-        'below its GPU threshold, sim.GPU_MIN_N, or too large for the GPU); *n '
-        'of m on the CPU*: solves that fell back to double precision on the '
-        'CPU after the complex64 LU failed to precondition (the worst of the '
-        'runs).'
+        'below its GPU threshold, policy.GPU_MIN_N, or too large for the '
+        'GPU); *n of m on the CPU*: solves that fell back to double '
+        'precision on the CPU after the complex64 LU failed to precondition '
+        '(the worst of the runs).'
     ]
     open(os.path.join(OUT, 'results.md'), 'w',
          encoding='utf-8').write('\n'.join(L) + '\n')

@@ -492,8 +492,19 @@ mom25d solves with the GPU's factor on the CPU instead; only where the factor it
 solved in double precision on the CPU. Below a few hundred MHz the [loop/tree basis](#loop-tree) keeps that from
 happening.
 
+<a id="solve-policy"></a>
+**How a frequency is solved** is one function, `mom25d.policy.choose`. From the unknowns, the free memory, the
+GPU's, the LUs kept and what failed before, it returns a `SolvePlan`: the basis (RWG or loop/tree), the
+factorisation, whether the double-precision matrix is kept for the refinement (dense) or the refinement is
+matrix-free, and how many LUs to keep. The factorisations are a ladder: a single-precision LU on the GPU
+(`vulkan-c64`), one on the CPU (`cpu-c64`, or the GPU's downloaded), a double-precision LU (`cpu-c128`), and the
+block low-rank factor (`blr`). Where a rung fails at a frequency, the next one down solves it, and every frequency
+up to 1.25× it skips the failed rung (`policy.RETRY`): a single-precision LU that does not precondition, a GPU
+whose solves stall. `policy.memory_plan` applies the same rules to a whole run, for the log's `memory:` line and
+the GUI's estimate.
+
 <a id="blr"></a>
-**The block low-rank solver** (`fast.solve_blr`, the compiled core's `BLRFactor`) never holds the matrix. The
+**The block low-rank solver** (`fast.FastOperator._solve_blr`, the compiled core's `BLRFactor`) never holds the matrix. The
 unknowns are cut into tiles of about 500 by a geometric cluster tree. A pair of tiles whose clusters are further
 apart than a third of the larger one's size is compressed to a low-rank product (adaptive cross approximation,
 then QR and SVD); the rest are dense. The tiles are factored in single precision, the low-rank updates

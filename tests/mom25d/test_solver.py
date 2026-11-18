@@ -691,14 +691,13 @@ def test_core_matches_numpy_and_solvers_agree(monkeypatch):
     assert np.abs(ref - ref.T).max() < 1e-6
     for k, v in S.items():
         assert np.abs(v - ref).max() < 1e-6, k
-    # a factorisation kept from 4 GHz preconditions 4.4 GHz (fast._solve_kept:
-    # dense, several kept; _solve_reused: matrix-free, one): the same S as a
-    # fresh one
-    from kicad2ems.mom25d import fast
+    # a factorisation kept from 4 GHz preconditions 4.4 GHz (dense, several
+    # kept; matrix-free, one: fast._reuse): the same S as a fresh one
+    from kicad2ems.mom25d import policy
     for k, keep in ((('direct', 'mixed'), 4), (('direct', 'mixed'), 0),
                     (('blr', 'double'), 4)):
         S1 = {}
-        monkeypatch.setattr(fast, 'REUSE_KEEP', keep)
+        monkeypatch.setattr(policy, 'REUSE_KEEP', keep)
         for reuse in ('off', 'auto'):
             sim = mk(*k)
             sim.gpu, sim.reuse = 'off', reuse
@@ -884,20 +883,6 @@ def test_new_core_kernels_match_numpy():
             * Wq[..., None]).sum(1)
     got = core.radial_table_sum(px, py, Wq, vx, vy, table, dr)
     assert np.abs(got - want).max() < 1e-12 * np.abs(want).max()
-
-
-def test_memory_plan_cpu_mixed():
-    """Above MIXED_MIN_N, 'auto' is mixed precision on the CPU too (complex64 LU
-    + refinement); double below it."""
-    from kicad2ems.mom25d.sim import memory_plan, MIXED_MIN_N
-    big = memory_plan(MIXED_MIN_N + 1000, avail=64e9, gpu=None,
-                      solver='direct')
-    assert (big['precision'], big['path']) == ('mixed', 'cpu-mixed')
-    assert (memory_plan(MIXED_MIN_N - 500, avail=64e9, gpu=None,
-                        solver='direct')['precision'] == 'double')
-    assert (memory_plan(MIXED_MIN_N + 1000, avail=64e9, gpu=None,
-                        precision='double',
-                        solver='direct')['precision'] == 'double')
 
 
 def test_quad_cells_match_triangles_with_fewer_unknowns():
