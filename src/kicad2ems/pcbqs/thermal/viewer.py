@@ -36,7 +36,7 @@ def _maps(r):
 def write_viewer(out, board, problem, result):
     """Write the files above for a Result; returns dict(board=,
     dumps=[{method, layer, file}])."""
-    from .._artifacts import Dump, write_info, write_npz
+    from kicad2ems.core.fields.dumps import Dump, write_info, write_npz
     from ..mqs_layout import crop_layout, geometry
     p = problem
     nets = {r['net'] for records in board['copper'].values() for r in records}

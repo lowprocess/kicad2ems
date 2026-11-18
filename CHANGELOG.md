@@ -232,6 +232,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **pcbqs shares core's leaf helpers instead of copying them.** pcbqs may import `kicad2ems.core.units` (new:
+  part values with SI prefixes), `constants`, `touchstone` and `fields.dumps`, which import nothing from kicad2ems;
+  nothing else of core (`tests/pcbqs/test_standalone.py`). Removed its copies: `pcbqs/_artifacts.py` (the dump
+  files), pdn.rail's `parse_value` (now `units.value`: the whole text, so `'33n 10%'` is still not a value; core's
+  `parse_value` takes a Value field's first word), pdn.models' Touchstone reader and `_to_s`, sparams'
+  `write_touchstone`, its constants. `core.touchstone` gains `read_matrix` and `to_s` (pcbqs reads a v1 Z / Y file
+  in ohms, as vendors write them), a `program` for the header and one zref for all ports, and refuses a file that
+  ends inside a frequency point; `write_npz` / `read_npz` moved to `core.fields.dumps`. `kicad2ems.core` imports
+  its board model on first use, so importing a leaf brings nothing else.
 - **No plugins: kicad2ems lists its own solvers and analyses.** The registries
   name every one by module and class (`kicad2ems.core.solvers.SOLVERS`,
   `kicad2ems.core.analyses.ANALYSES`) instead of reading entry points; the

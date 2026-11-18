@@ -753,7 +753,7 @@ def _plane_map(folder, name='dump_V_drop_F_Cu_fd', label='drop F.Cu',
     """A result's plane map as pcbqs's viewer writes it: a grid, the value 0 off
     the copper."""
     import json
-    from kicad2ems.core.fields.frames import write_npz
+    from kicad2ems.core.fields.dumps import write_npz
     x, y = np.linspace(0, 10, 41), np.linspace(-6, 0, 25)
     X, Y = np.meshgrid(x, y, indexing='ij')
     # a drop growing along x, on the copper

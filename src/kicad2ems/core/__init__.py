@@ -51,7 +51,15 @@ Documentation: docs/index.md in the repository.
 """
 from .. import __version__
 
-from .importers.kicad import KiCadBoard, read_pos
-from .board import Board, Port
-from .sparams import mixed_mode
-from .touchstone import write_touchstone, read_touchstone
+# imported when first asked for: the leaf modules pcbqs shares (units,
+# constants, touchstone, fields.dumps) do not bring the board model
+_NAMES = dict(KiCadBoard='importers.kicad', read_pos='importers.kicad',
+              Board='board', Port='board', mixed_mode='sparams',
+              write_touchstone='touchstone', read_touchstone='touchstone')
+
+
+def __getattr__(name):
+    if name not in _NAMES:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    from importlib import import_module
+    return getattr(import_module('.' + _NAMES[name], __name__), name)

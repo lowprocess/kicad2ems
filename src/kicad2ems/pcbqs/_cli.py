@@ -91,8 +91,8 @@ def load_board(path, nets=None, cache=None):
         from kicad2ems.core.board import Board
     except ImportError as exc:
         raise RuntimeError(
-            'KiCad input requires pcbqs[kicad2ems]; JSON input works '
-            'independently'
+            "KiCad input needs kicad2ems's importers "
+            '(kicad2ems.core.importers); JSON input works without them'
         ) from exc
     use = (cache if cache is not None else not os.environ.get('PCBQS_NO_CACHE'))
     hit = cache_dir() / f'{_cache_key(path, nets)}.pickle' if use else None

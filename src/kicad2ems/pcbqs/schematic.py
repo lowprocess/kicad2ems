@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
 
-from .pdn.rail import parse_value
+from kicad2ems.core import units
 
 PASSIVES=('resistor','capacitor','inductor')
 
@@ -28,7 +28,7 @@ def engineering_value(value):
         text=re.sub(r'(?<=\d)\s+(?=[fpnumkKMGRr])','',text)
         text=re.sub(r'\s*(ohms?|Ω|[FHAaVv])\s*$', '',text,flags=re.I).strip()
         try:number=float(text)
-        except ValueError:number=parse_value(text)
+        except ValueError:number=units.value(text)
     if (number is None or not math.isfinite(number)):
         raise ValueError(
             'Expected a finite number or SI value, such as 33n or 5m')

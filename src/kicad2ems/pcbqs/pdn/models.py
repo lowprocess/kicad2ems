@@ -16,60 +16,11 @@ import os
 
 import numpy as np
 
-UNITS = {'hz': 1.0, 'khz': 1e3, 'mhz': 1e6, 'ghz': 1e9}
+from kicad2ems.core.touchstone import read_matrix, to_s
+
 # a subcircuit's fit missing by more (RMS in S) is not written (9 points over 5
 # decades: 6e7)
 FIT_MAX = 0.05
-
-
-def read_touchstone(path):
-    """(f Hz, M (nf, n, n), kind 'S' | 'Z' | 'Y', z0) of a Touchstone v1 file of
-    n ports (n from its extension)."""
-    ext = os.path.splitext(path)[1].lower()
-    try:
-        n = int(ext[2:-1])
-    except ValueError:
-        raise ValueError(
-            f"{path}: not a Touchstone file (.s1p, .s2p, .z1p ...)") from None
-    unit, kind, fmt, z0 = 1e9, 'S', 'MA', 50.0
-    nums = []
-    with open(path, encoding='utf-8', errors='replace') as fh:
-        for line in fh:
-            line = line.split('!')[0].strip()
-            if not line:
-                continue
-            if line.startswith('#'):
-                t = line[1:].lower().split()
-                for i, w in enumerate(t):
-                    if w in UNITS:
-                        unit = UNITS[w]
-                    elif w in ('s', 'z', 'y'):
-                        kind = w.upper()
-                    elif w in ('ri', 'ma', 'db'):
-                        fmt = w.upper()
-                    elif w == 'r' and i + 1 < len(t):
-                        z0 = float(t[i + 1])
-                continue
-            nums += [float(x) for x in line.split()]
-    per = 1 + 2 * n * n
-    if len(nums) % per:
-        raise ValueError(
-            f"{path}: {len(nums)} numbers are not whole frequency points of "
-            f"{n} ports"
-        )
-    a = np.asarray(nums).reshape(-1, per)
-    f = a[:, 0] * unit
-    p, q = a[:, 1::2], a[:, 2::2]
-    if fmt == 'RI':
-        v = p + 1j * q
-    elif fmt == 'MA':
-        v = p * np.exp(1j * np.radians(q))
-    else:
-        v = 10 ** (p / 20) * np.exp(1j * np.radians(q))
-    M = v.reshape(-1, n, n)
-    if n == 2:  # v1 two-ports: 11 21 12 22
-        M = M.transpose(0, 2, 1)
-    return f, M, kind, z0
 
 
 def two_port_z(S, z0, mode='auto'):
@@ -94,15 +45,20 @@ def read_impedance(path, mode='auto'):
     deg when its header says deg or phase). Also the 2-port's mode ('' else)."""
     ext = os.path.splitext(path)[1].lower()
     if ext.endswith('p') and ext[1] in 'szy' and ext[2:-1].isdigit():
-        f, M, kind, z0 = read_touchstone(path)
-        n = M.shape[1]
+        # a v1 file's Z or Y in ohms or siemens, as vendors write them (not
+        # normalised to R, as read_touchstone takes them)
+        f, M, kind, zref, _ = read_matrix(path)
+        n, z0 = M.shape[1], float(zref[0])
+        if kind not in 'SZY':
+            raise ValueError(f"{path}: {kind}-parameters; a part's model is "
+                             "S, Z or Y")
         if n == 1:
             m = M[:, 0, 0]
             Z = (z0 * (1 + m) / (1 - m) if kind == 'S' else
                  (m if kind == 'Z' else 1 / m))
             return f, Z, ''
         if n == 2:
-            S = M if kind == 'S' else _to_s(M, kind, z0)
+            S = M if kind == 'S' else to_s(M, kind, zref)
             Z, taken = two_port_z(S, z0, mode)
             return f, Z, taken
         raise ValueError(
@@ -129,17 +85,6 @@ def read_impedance(path, mode='auto'):
     Z = (a[:, 1] * np.exp(1j * np.radians(a[:, 2])) if polar else a[:, 1]
          + 1j * a[:, 2])
     return a[:, 0], Z, ''
-
-
-def _to_s(M, kind, z0):
-    I = np.eye(M.shape[1])
-    if kind == 'Z':
-        return np.linalg.solve((M + z0 * I).transpose(0, 2, 1),
-                               (M - z0 * I).transpose(0, 2,
-                                                      1)).transpose(0, 2, 1)
-    Y = M
-    return np.linalg.solve((I + z0 * Y).transpose(0, 2, 1),
-                           (I - z0 * Y).transpose(0, 2, 1)).transpose(0, 2, 1)
 
 
 def table_z(ft, Zt, f):

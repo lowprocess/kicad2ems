@@ -13,9 +13,9 @@ There are no compatibility shims in `mom25d`.
 | QS `MOM25D_NO_CORE`, `MOM25D_ARCH` | `PCBQS_NO_CORE`, `PCBQS_ARCH` |
 | `kicad2ems.mom25d.static_backends` backends | `kicad2ems.pcbqs.static_backends.register_fill_backend` |
 
-pcbqs is part of kicad2ems (`kicad2ems.pcbqs`), installed with it.
-`pcbqs[kicad2ems]` enables KiCad input; JSON input needs neither kicad2ems nor
-mom25d. ngspice remains a separate executable. Build native QS kernels with
+pcbqs is part of kicad2ems (`kicad2ems.pcbqs`), installed with it. KiCad
+input goes through kicad2ems's importers; JSON input needs neither them nor
+mom25d (only core's shared leaf modules: [README](README.md)). ngspice remains a separate executable. Build native QS kernels with
 `python -m kicad2ems.pcbqs.core.build`; MoM's binary is not used.
 
 CLI options, configuration keys, port signs/units and saved output formats are

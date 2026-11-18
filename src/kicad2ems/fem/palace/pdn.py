@@ -345,8 +345,8 @@ def solve(pdn, out='pdn_palace', board=None, fmin=1e6, fmax=None, points=None,
     pfile = Path(pdn) / pt['touchstone'] if pt.get('touchstone') else None
     # pcbqs's own bare matrix, term by term
     if pfile is not None and pfile.is_file():
-        from kicad2ems.pcbqs.pdn.models import read_touchstone
-        fq, Mq, _, _ = read_touchstone(str(pfile))
+        from kicad2ems.core.touchstone import read_matrix
+        fq, Mq, *_ = read_matrix(str(pfile))  # Z, as written
         common = [x for x in names if x in pt.get('names', [])]
         ia, ib = ([names.index(x)
                    for x in common], [pt['names'].index(x) for x in common])

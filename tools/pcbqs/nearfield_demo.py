@@ -243,7 +243,7 @@ def run_case(case, out, args):
 
 def write_dumps(d, b, f, gx, gy, planes, vx, vy, vz, vol):
     """All computed harmonics on the three planes and their coarse volume."""
-    from kicad2ems.pcbqs._artifacts import Dump, write_info, write_npz
+    from kicad2ems.core.fields.dumps import Dump, write_info, write_npz
     from shapely.geometry import shape
     exc = os.path.join(d, 'mqs', 'exc_U1')
     os.makedirs(exc, exist_ok=True)

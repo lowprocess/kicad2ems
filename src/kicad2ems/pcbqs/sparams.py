@@ -53,7 +53,9 @@ import time
 
 import numpy as np
 
-C0, EPS0 = 299792458.0, 8.8541878128e-12
+from kicad2ems.core.constants import C0, EPS0
+from kicad2ems.core.touchstone import write_touchstone
+
 G_BAND, G_PORTS, G_MESH, G_OUT = 'Frequencies', 'Ports', 'Mesh', 'Output'
 # (key, kind, default, help, group): _cli's table, which --describe gives a
 # front end
@@ -566,41 +568,6 @@ def apart_note(p):
     ))
 
 
-def write_touchstone(path, f, S, zref, names, comment=''):
-    """A Touchstone file (Hz, S, real and imaginary), its ports named as
-    kicad2ems names them: v1 when every port has the one reference, v2.0 with
-    [Reference] when they differ (v1 holds one: a board whose ports had
-    different references got a file right only for its first)."""
-    n = S.shape[1]
-    zref = np.broadcast_to(np.asarray(zref, float), (n,))
-    v2 = not np.allclose(zref, zref[0])
-    with open(path, 'w', encoding='utf-8') as fh:
-        fh.write(f"! pcbqs {comment}\n! ports: "
-                 + ', '.join(f"{i + 1}={nm}" for i, nm in enumerate(names))
-                 + '\n')
-        if v2:
-            fh.write("[Version] 2.0\n")
-        fh.write(f"# Hz S RI R {zref[0]:.6g}\n")
-        if v2:
-            fh.write(f"[Number of Ports] {n}\n"
-                     + ("[Two-Port Data Order] 21_12\n" if n == 2 else '')
-                     + f"[Number of Frequencies] {len(f)}\n[Reference] "
-                     + ' '.join(f"{z:.6g}" for z in zref)
-                     + "\n[Network Data]\n")
-        for fi, s in zip(f, S):
-            rows = ([[s[0, 0], s[1, 0], s[0, 1], s[1, 1]]]
-                    if n == 2 else [list(r) for r in s])
-            first = True
-            for row in rows:
-                for k in range(0, len(row), 4):
-                    fh.write((f"{fi:.9e}" if first else ' ' * 15) + ' '
-                             + ' '.join(f"{v.real:.9e} {v.imag:.9e}"
-                                        for v in row[k:k + 4]) + '\n')
-                    first = False
-        if v2:
-            fh.write("[End]\n")
-
-
 def write_maps(out, board, r, port, freqs, name='sparams', log=print):
     """The sheet current of each layer with `port` driven, at the frequencies of
     the solve nearest to freqs, per ampere into the port, where kicad2ems's
@@ -611,7 +578,7 @@ def write_maps(out, board, r, port, freqs, name='sparams', log=print):
     from types import SimpleNamespace
     from matplotlib.tri import Triangulation
     from shapely.geometry import shape, box
-    from ._artifacts import Dump, write_info, write_npz
+    from kicad2ems.core.fields.dumps import Dump, write_info, write_npz
     from .mqs_layout import crop_layout, geometry
     from .pdn.viewer import _copper, grid_of
     q, f = r['q'], r['f']
@@ -735,7 +702,7 @@ def main(argv=None):
     ts = f"{name}_pcbqs.s{n}p"
     info = r['info']
     write_touchstone(os.path.join(a.out, ts), r['f'], r['S'], r['zref'],
-                     r['names'], 'quasi-static: ' + info['model'])
+                     'quasi-static: ' + info['model'], r['names'], 'pcbqs')
     notes = [(
         "The copper's currents and charge, without radiation: to about "
         f"{info['valid_to_Hz']:.3g} Hz, where the ports' copper is a tenth of "

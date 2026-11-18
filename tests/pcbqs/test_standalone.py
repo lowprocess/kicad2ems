@@ -1,14 +1,32 @@
-"""Reference parity and independence from both application and RF packages."""
+"""Reference parity, and pcbqs apart from the RF solvers and the application:
+it imports only the shared leaf modules of core (SHARED)."""
 import ast,json,subprocess,sys
 from pathlib import Path
 import numpy as np
 from shapely.geometry import box
 from kicad2ems.pcbqs.mqs import MQS
 from kicad2ems.pcbqs.mqs_ports import CopperPorts
-from kicad2ems.pcbqs._artifacts import Dump,write_npz,write_info
 from kicad2ems.pcbqs.mqs_cli import parser,run
 from test_mqs import trace_board
 from test_mqs_cli import board
+
+# what pcbqs may import from kicad2ems.core: leaf helpers that import nothing
+# from kicad2ems (test_shared_modules_are_leaves), and their packages
+SHARED = ('kicad2ems.core.units', 'kicad2ems.core.constants',
+          'kicad2ems.core.touchstone', 'kicad2ems.core.fields.dumps')
+PACKAGES = ('kicad2ems', 'kicad2ems.core', 'kicad2ems.core.fields')
+SRC = Path(__file__).resolve().parents[2] / 'src'
+# a meta path finder that fails on the rest of kicad2ems (RAISE: the error)
+BLOCK = f'''import sys,importlib.abc
+class Block(importlib.abc.MetaPathFinder):
+    def find_spec(self,fullname,*args):
+        if (fullname.startswith(('kicad2ems.mom25d','kicad2ems.core',
+                                 'kicad2ems.gui','kicad2ems.fdtd',
+                                 'kicad2ems.fem'))
+                and fullname not in {SHARED + PACKAGES!r}):
+            raise RAISE('forbidden runtime dependency: '+fullname)
+sys.meta_path.insert(0,Block())
+'''
 
 
 # the pre-split pipeline's impedances on this board (Triangle's mesh,
@@ -49,14 +67,7 @@ def test_copper_snapshot_parity():
 
 def test_json_fields_without_optional_packages(tmp_path):
     b=tmp_path/'board.json';b.write_text(json.dumps(board()));out=tmp_path/'out'
-    code = '''import sys,importlib.abc
-class Block(importlib.abc.MetaPathFinder):
-    def find_spec(self,fullname,*args):
-        if fullname.startswith(('kicad2ems.mom25d','kicad2ems.core',
-                                'kicad2ems.gui','kicad2ems.fdtd',
-                                'kicad2ems.fem')):
-            raise AssertionError('forbidden runtime dependency: '+fullname)
-sys.meta_path.insert(0,Block())
+    code = BLOCK.replace('RAISE', 'AssertionError') + '''
 from kicad2ems.pcbqs.mqs_cli import main
 main()
 '''
@@ -74,45 +85,51 @@ main()
             assert data['data'].shape[0]==2 and np.isfinite(data['data']).all()
 
 
+def _imports(file):
+    """(module, names) of each import in a file, relative ones made
+    absolute."""
+    package = '.'.join(file.relative_to(SRC).with_suffix('').parts[:-1])
+    for node in ast.walk(ast.parse(file.read_text())):
+        if isinstance(node, ast.ImportFrom):
+            base = package.rsplit('.', node.level - 1)[0] if node.level else ''
+            module = '.'.join(x for x in (base, node.module) if x)
+            yield module, [n.name for n in node.names]
+        elif isinstance(node, ast.Import):
+            for n in node.names:
+                yield n.name, []
+
+
 def test_no_rf_or_application_dependency_in_core():
-    # the rest of kicad2ems (its core, mom25d, the window) is imported in two
-    # places only: _cli.py (reading a KiCad board) and analyses.py (the analyses
-    # that kicad2ems itself loads). Nothing in pcbqs imports analyses.py, so the
-    # tools run without them; pcbqs's own modules and emsdev (the machine) are
-    # kicad2ems.pcbqs, kicad2ems.emsdev
-    root=Path(__file__).resolve().parents[2]/'src/kicad2ems/pcbqs'
-    other = lambda m: m.startswith('kicad2ems') and not m.startswith(
-        ('kicad2ems.pcbqs', 'kicad2ems.emsdev'))
-    for file in root.rglob('*.py'):
-        for node in ast.walk(ast.parse(file.read_text())):
-            if isinstance(node,ast.ImportFrom):
-                module=node.module or ''
-                assert not module.startswith('kicad2ems.mom25d'),file
-                if (other(module) and node.level == 0):
-                    assert (file.name in ('_cli.py', 'analyses.py')), file
-                names=[module.split('.')[-1]]+[n.name for n in node.names]
-                # the analyses: kicad2ems's to load
-                assert 'analyses' not in names or other(module),file
-            elif isinstance(node,ast.Import):
-                assert (not any(
-                    n.name.startswith('kicad2ems.mom25d')
-                    for n in node.names)), file
-                assert (not any(
-                    n.name.split('.')[-1] == 'analyses'
-                    for n in node.names)), file
+    # pcbqs imports its own modules, emsdev (the machine) and SHARED; the rest
+    # of kicad2ems in two places only: _cli.py (reading a KiCad board) and
+    # analyses.py (the analyses kicad2ems loads). Nothing in pcbqs imports
+    # analyses.py, so the tools run without them
+    own = ('kicad2ems.pcbqs', 'kicad2ems.emsdev')
+    for file in (SRC / 'kicad2ems/pcbqs').rglob('*.py'):
+        for module, names in _imports(file):
+            assert not module.startswith('kicad2ems.mom25d'), file
+            if not module.startswith('kicad2ems') or module.startswith(own):
+                assert 'analyses' not in [module.split('.')[-1]] + names, file
+                continue
+            used = ([f'{module}.{n}' for n in names] if module in PACKAGES
+                    else [module])
+            assert (all(m in SHARED for m in used)
+                    or file.name in ('_cli.py', 'analyses.py')), (file, module)
+
+
+def test_shared_modules_are_leaves():
+    # SHARED import nothing from kicad2ems: pcbqs gets no more of core
+    for name in SHARED:
+        file = SRC / (name.replace('.', '/') + '.py')
+        assert not [m for m, _ in _imports(file)
+                    if m.startswith('kicad2ems')], name
 
 
 def test_automatic_fallback_without_native_core(tmp_path):
     file=tmp_path/'board.json';file.write_text(json.dumps(trace_board()))
-    code = '''import sys,importlib.abc,json,numpy as np
+    code = BLOCK.replace('RAISE', 'ImportError') + '''
+import json,numpy as np
 from shapely.geometry import box
-class Block(importlib.abc.MetaPathFinder):
-    def find_spec(self,fullname,*args):
-        if fullname.startswith(('kicad2ems.mom25d','kicad2ems.core',
-                                'kicad2ems.gui','kicad2ems.fdtd',
-                                'kicad2ems.fem')):
-            raise ImportError('unavailable: '+fullname)
-sys.meta_path.insert(0,Block())
 from kicad2ems.pcbqs.mqs import MQS
 from kicad2ems.pcbqs.mqs_ports import CopperPorts
 q=MQS(json.load(open(sys.argv[1])),'N',

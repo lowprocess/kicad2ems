@@ -123,7 +123,7 @@ def write_viewer(out, board, dc, volts, nets, ground, refs=()):
     refs: the parts to show as the solve's own (source, loads, series parts,
     decaps)."""
     from shapely.geometry import shape
-    from .._artifacts import Dump, write_info, write_npz
+    from kicad2ems.core.fields.dumps import Dump, write_info, write_npz
     from ..mqs_layout import crop_layout, geometry
     outline = shape(board['outline'])
     nets, ground = set(nets), set(ground)

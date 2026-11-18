@@ -25,13 +25,11 @@ import base64, glob, json, os, re, shutil, subprocess, zlib
 import xml.etree.ElementTree as ET
 import numpy as np
 
-from .dumps import UNITS
+from .dumps import AXES, UNITS, read_npz
 
-__all__ = ['DumpSource', 'read_npz', 'write_npz', 'find_dumps', 'plane',
+__all__ = ['DumpSource', 'find_dumps', 'plane',
            'default_axis', 'outlines', 'levels', 'render', 'save_animation',
            'write_frames', 'save_fd_outputs']
-
-AXES = 'xyz'
 
 
 # ---- time-domain VTR frames -------------------------------------------------
@@ -249,22 +247,6 @@ class DumpSource:
         """Mesh line counts (nx, ny, nz) of the dump, from its first frame."""
         mesh, _ = self.load(0)
         return tuple(len(mesh[a]) for a in AXES)
-
-
-def read_npz(path):
-    """A frequency-domain dump as a grid (mom25d's currents): (mesh x/y/z mm,
-    [(freq Hz, (nx, ny, nz, 3))])."""
-    with np.load(path) as z:
-        mesh = {a: np.asarray(z[a], float) for a in AXES}
-        return mesh, [(float(f), d) for f, d in zip(z['freqs'], z['data'])]
-
-
-def write_npz(path, mesh, freqs, data):
-    """The counterpart of read_npz: data (nf, nx, ny, nz, 3) complex."""
-    np.savez_compressed(path, freqs=np.asarray(freqs, float),
-                        data=np.asarray(data, np.complex64),
-                        **{a: np.asarray(mesh[a], float)
-                           for a in AXES})
 
 
 def find_dumps(out_dir):

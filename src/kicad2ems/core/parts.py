@@ -19,16 +19,9 @@ between the pads, in their copper plane (units mm, y up, like the Board).
 import re
 import numpy as np
 
+from .units import parse_value
+
 __all__ = ['kind_value']
-
-_PREFIX = {
-    'f': 1e-15, 'p': 1e-12, 'n': 1e-9, 'u': 1e-6, 'µ': 1e-6, 'μ': 1e-6,
-    'm': 1e-3, 'k': 1e3, 'K': 1e3, 'M': 1e6, 'G': 1e9, 'R': 1.0, 'r': 1.0,
-    'E': 1.0, '': 1.0
-}
-_VALUE = re.compile(
-    r'^(\d*)(?:[.,](\d+))?([fpnuµμmkKMGRrE]?)(\d*)(F|H|Ω|ohms?|OHMS?)?$')
-
 
 # chip sizes (imperial code): body length, width, height in mm (typical EIA
 # values)
@@ -62,24 +55,6 @@ def package(lib):
         r'(?![\d])',
         name)
     return m.group(1) if m else None
-
-
-def parse_value(text):
-    """'4p7' -> 4.7e-12, '10k' -> 1e4, '1.2nH' -> 1.2e-9, '0R5' -> 0.5, '100n'
-    -> 1e-7, '1M' -> 1e6. Only the first word counts ('100n 50V X7R'); returns
-    None if it is not a value."""
-    # '2.2 nH'
-    t = re.sub(r'^([\d.,]+)\s+(?=[fpnuµμmkKMGRrFHΩo])', r'\1',
-               str(text).strip())
-    word = re.split(r'[\s/_]', t)[0].replace('Ω', '')
-    mt = _VALUE.match(word) if word else None
-    if not mt:
-        return None
-    ip, fp, pre, tail, _ = mt.groups()
-    if not (ip or fp or tail) or (tail and fp):
-        return None
-    digits = f"{ip or '0'}.{fp or tail or '0'}"
-    return float(digits) * _PREFIX[pre]
 
 
 def _field(props, key):

@@ -129,7 +129,7 @@ def sweep(spec, parts):
     at most SWEEP_MAX; ValueError for a part that is not a part port or a value
     that is not one. A value replaces the part's own element of its kind (a
     capacitor's C), its parasitics kept."""
-    from .parts import parse_value
+    from .units import parse_value
     axes = []
     for ref, vals in spec.items():
         if ref not in parts:

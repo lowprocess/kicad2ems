@@ -6,7 +6,8 @@ import pytest
 from shapely.geometry import box, mapping, Point
 
 from kicad2ems.emsdev.numerics.base import MU0, EPS0
-from kicad2ems.pcbqs.pdn.rail import Rail, parse_value
+from kicad2ems.core.units import value
+from kicad2ems.pcbqs.pdn.rail import Rail
 from kicad2ems.pcbqs.pdn.dc import solve_rail
 from kicad2ems.pcbqs.pdn.stack import RailPDN
 
@@ -116,10 +117,10 @@ def board(trace_decap=True, via_in_pad=False):
 
 
 def test_values():
-    assert (parse_value('0R001') == pytest.approx(1e-3)
-            and parse_value('4k7') == 4700)
-    assert (parse_value('1u8') == pytest.approx(1.8e-6)
-            and parse_value('100n') == pytest.approx(1e-7))
+    assert (value('0R001') == pytest.approx(1e-3)
+            and value('4k7') == 4700)
+    assert (value('1u8') == pytest.approx(1.8e-6)
+            and value('100n') == pytest.approx(1e-7))
 
 
 def test_rail_tree_follows_sense_resistors_and_beads_not_dividers():

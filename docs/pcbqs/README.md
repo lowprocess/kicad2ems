@@ -19,7 +19,12 @@ python -m kicad2ems.pcbqs.circuit src/pcbqs/data/wpthb_bridge.json --out wpthb  
 ```
 
 JSON-based solving, layout/mesh export and field reconstruction work without
-`mom25d` or `kicad2ems`. Install `.[kicad2ems]` to import `.kicad_pcb` files.
+`mom25d` and without kicad2ems's board model, pipeline and window: pcbqs's
+numerics import from `kicad2ems.core` only its shared leaf modules (`units`,
+`constants`, `touchstone`, `fields.dumps`), which import nothing from kicad2ems
+(`tests/pcbqs/test_standalone.py` holds it to that). A `.kicad_pcb` is read
+through kicad2ems's importers (`pcbqs/_cli.py`), and `pcbqs/analyses.py` is the
+tools as kicad2ems's analyses: the two modules that may import the rest.
 
 In kicad2ems the four tools are its analyses (`pcbqs/analyses.py`, listed in
 `kicad2ems.core.analyses.ANALYSES`) and `kicad2ems.pcbqs.sparams` one of its

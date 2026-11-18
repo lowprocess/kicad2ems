@@ -95,7 +95,7 @@ def _temperature_dump(folder, hottest):
     from types import SimpleNamespace
     from shapely.geometry import box
     from kicad2ems.core.fields.dumps import Dump, write_info
-    from kicad2ems.core.fields.frames import write_npz
+    from kicad2ems.core.fields.dumps import write_npz
     x, y = np.linspace(0, 20, 21), np.linspace(0, 10, 11)
     t = (40.0 + (hottest - 40.0) * np.exp(-((x[:, None] - 8)**2 +
                                             (y[None, :] - 5)**2) / 30.0))

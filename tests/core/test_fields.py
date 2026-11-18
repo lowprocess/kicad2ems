@@ -5,7 +5,7 @@ import os
 import numpy as np
 import pytest
 from kicad2ems.core.fields import frames as F
-from kicad2ems.core.fields.dumps import write_info, parse_dump
+from kicad2ems.core.fields.dumps import write_info, write_npz, parse_dump
 from k2e_fixtures import write_vtr  # and the run_folder fixture
 
 
@@ -141,7 +141,7 @@ def test_grid_dumps_next_to_openems(run_folder, tmp_path):
     wave = np.exp(-1j * x / 2)[:, None] * np.ones((1, 8))
     data = np.zeros((2, 20, 8, 1, 3), complex)
     data[0, :, :, 0, 0], data[1, :, :, 0, 0] = wave, 2 * wave
-    F.write_npz(str(run / f"{d.name}.npz"), dict(x=x, y=y, z=np.array([0.6])),
+    write_npz(str(run / f"{d.name}.npz"), dict(x=x, y=y, z=np.array([0.6])),
                 [2e9, 4e9], data)
     srcs = F.find_dumps(str(o))
     # openEMS's first

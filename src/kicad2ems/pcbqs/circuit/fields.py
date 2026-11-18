@@ -371,7 +371,7 @@ def write_dumps(exc, q, board, x, y, z, heights, Ht, Et, period):
     [the dumps' names]"""
     import shutil
     from shapely.geometry import box
-    from .._artifacts import Dump, write_info
+    from kicad2ems.core.fields.dumps import Dump, write_info
     from ..pdn.viewer import dump_layout
     if exc.exists():
         shutil.rmtree(exc)  # a rerun's frames: none of the last one's

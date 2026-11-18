@@ -34,8 +34,10 @@ import json, os, re
 import numpy as np
 
 __all__ = ['G_DUMP', 'Dump', 'parse_dump', 'add_dumps', 'write_info',
-           'write_norm', 'estimate_size_mb', 'plot_fd_dumps']
+           'write_norm', 'read_npz', 'write_npz', 'estimate_size_mb',
+           'plot_fd_dumps']
 
+AXES = 'xyz'
 # (time-domain, frequency-domain) types
 FIELDS = {'E': (0, 10), 'H': (1, 11), 'J': (3, 13)}
 UNITS = {'E': 'V/m', 'H': 'A/m', 'J': 'A/m²'}
@@ -217,6 +219,22 @@ def write_norm(path, norm):
               encoding='utf-8') as fh:
         json.dump([[float(f), float(np.real(v)),
                     float(np.imag(v))] for f, v in norm.items()], fh)
+
+
+def read_npz(path):
+    """A frequency-domain dump as a grid (mom25d's currents): (mesh x/y/z mm,
+    [(freq Hz, (nx, ny, nz, 3))])."""
+    with np.load(path) as z:
+        mesh = {a: np.asarray(z[a], float) for a in AXES}
+        return mesh, [(float(f), d) for f, d in zip(z['freqs'], z['data'])]
+
+
+def write_npz(path, mesh, freqs, data):
+    """The counterpart of read_npz: data (nf, nx, ny, nz, 3) complex."""
+    np.savez_compressed(path, freqs=np.asarray(freqs, float),
+                        data=np.asarray(data, np.complex64),
+                        **{a: np.asarray(mesh[a], float)
+                           for a in AXES})
 
 
 def estimate_size_mb(dumps, mesh, n_td_frames=60):

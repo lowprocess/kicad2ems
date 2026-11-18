@@ -468,16 +468,15 @@ def test_ports_of_several_references_are_written_as_touchstone_v2(tmp_path):
     """v1 holds one reference: a board whose ports have different ones gets v2.0
     with [Reference] (the header had the first port's alone, so the file was
     wrong for the others)."""
-    from kicad2ems.pcbqs.sparams import write_touchstone
+    from kicad2ems.core.touchstone import read_touchstone, write_touchstone
     S = np.array([[[0.1 + 0.2j, 0.5], [0.4, -0.3j]]] * 2)
     write_touchstone(str(tmp_path / 'a.s2p'), [1e6, 2e6], S, [50, 75],
-                     ['A', 'B'])
+                     names=['A', 'B'])
     text = (tmp_path / 'a.s2p').read_text()
     assert ('[Version] 2.0' in text and '[Reference] 50 75' in text
             and text.rstrip().endswith('[End]'))
     write_touchstone(str(tmp_path / 'b.s2p'), [1e6, 2e6], S, [50, 50],
-                     ['A', 'B'])
+                     names=['A', 'B'])
     assert '[Version]' not in (tmp_path / 'b.s2p').read_text()
-    kt = pytest.importorskip('kicad2ems.core.touchstone')
-    f, back, zr = kt.read_touchstone(str(tmp_path / 'a.s2p'), with_zref=True)
+    f, back, zr = read_touchstone(str(tmp_path / 'a.s2p'), with_zref=True)
     assert np.allclose(back, S) and list(zr) == [50, 75]

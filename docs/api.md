@@ -43,8 +43,8 @@ do.
 | `kicad2ems.core.sparams` | `mixed_mode`, `fill_reciprocal` |
 | `kicad2ems.core.plots` | `plot_antenna`, `plot_pattern`, `plot_convergence`, `preview` (the model and its mesh) |
 | `kicad2ems.core.fields.antenna` | `describe` (an antenna's log lines), `match_summary`, `save`, `read`, `gain_table`, `add_polarisation`, `pattern_gain`, `read_sphere`, `sphere_cuts`, `sphere_gain` (far fields) |
-| `kicad2ems.core.fields.dumps` | `Dump`, `write_info`, `G_DUMP` (the field-dump settings group), `parse_dump`, `add_dumps`, `estimate_size_mb`, `write_norm`, `plot_fd_dumps` |
-| `kicad2ems.core.fields.frames` | `DumpSource`, `save_fd_outputs`, `write_npz`, `read_npz`, `save_animation`, `find_dumps`, `write_frames`; for a viewer's frames: `plane`, `default_axis`, `outlines`, `levels`, `render` |
+| `kicad2ems.core.fields.dumps` | `Dump`, `write_info`, `write_npz`, `read_npz`, `G_DUMP` (the field-dump settings group), `parse_dump`, `add_dumps`, `estimate_size_mb`, `write_norm`, `plot_fd_dumps` |
+| `kicad2ems.core.fields.frames` | `DumpSource`, `save_fd_outputs`, `save_animation`, `find_dumps`, `write_frames`; for a viewer's frames: `plane`, `default_axis`, `outlines`, `levels`, `render` |
 | `kicad2ems.core.meshes` | `save` (the GUI's 3D mesh view), `find`, `segments`, `counts`, `LABELS` |
 | `kicad2ems.core.phased` | drives, grids, tapers: `parse_drive`, `format_drive`, `parse_grid`, `format_grid`, `steer2d`, `aim`, `TAPERS`, `TAPER_SLL`, `parse_taper`, `taper`, `settings_drive`, `waves`, `radiated`, `combine`, `save`, `load` |
 | `kicad2ems.core.geometry` | `split_holes` (a polygon with holes as simple polygons) |
@@ -53,6 +53,7 @@ do.
 | `kicad2ems.core.finish` | `resolve(s, m)` (a run's `Finish`: its metal layers, the outer layers it covers and each one's share of the loss; None without `--sigma` or a finish), `factor(f, finish)` (the finished face's impedance over bare copper's), `weighted(f, finish, share)`, `band_sigma(sigma, finish, share, fmin, fmax)` (the one conductivity of the same loss at the band centre), `face_z(f, sigma, t, finish)`, `layers` |
 | `kicad2ems.core.roughness` | `hammerstad(f, rms_um, sigma)` (Hammerstad's loss factor), `rough_sigma(sigma, rms_um, f)` (the conductivity of the same loss at f), `band_sigma(s, fmin, fmax)` (a solver's one conductivity: `--sigma`, or with `--rough` that at the band centre) |
 | `kicad2ems.core.constants` | `C0`, `EPS0`, `ETA0`, `MU0` |
+| `kicad2ems.core.units` | `value` (a whole text as a value with an SI prefix: `'4k7'`, `'0R001'`), `parse_value` (a Value field's first word), `SI` |
 | `kicad2ems.core.sitecfg` | `get` (where external programs are), `user_file`, `set_user` |
 | `kicad2ems.core.pipeline` | `ram_gb` |
 | `kicad2ems.emsdev.cpu` | `core_threads` (one per fast physical core) |
@@ -114,7 +115,7 @@ thermal analyses, the Elmer and Palace tools).
 |---|---|
 | `kicad2ems.core.analyses` | `Analysis`, `KINDS` (the kinds of an option), `RF` (the S-parameter run's key in a front end's lists: no analysis's), `registry()` (`{name: Analysis}`), `analysis_of(folder)` (`(name, preview)` of the analysis whose result a folder holds, or `None`), `read_config`, `read_sets` |
 | `kicad2ems.core.study` | `Question` (name, label, group, about, shares, answer, order), `QUESTIONS` (kicad2ems's own: what an analysis may `provides`) |
-| maps for a viewer | `Dump`, `write_info` (`core.fields.dumps`), `write_npz` (`core.fields.frames`): field dumps, as a solver's; `save` (`core.meshes`) |
+| maps for a viewer | `Dump`, `write_info`, `write_npz` (`core.fields.dumps`): field dumps, as a solver's; `save` (`core.meshes`) |
 
 <a id="analyses"></a>
 ### Analyses
@@ -278,7 +279,7 @@ For programs that drive kicad2ems: read a board, show its line model, start runs
 | `kicad2ems.core.study` | `study_tree()`, `questions()` (`{name: Question}`), `engines()` (`{name: Engine}`), `provided`, `dump_options`, `runs_for(asked)`, `mark(folder, engine, asked, preview)`, `marked(folder)`; a config's: `Study`, `read_config`, `write_config`, `plan`, `engine_named`, `latest_results`, `default_fields`, `compare`, `rf_needs`, `load_config(config)` (its tables, [older forms](usage.md#older-forms) migrated), `RF`; `check_lines()` (`--check`'s lines), `main(argv)` (`kicad2ems study`) ([Questions and engines](#study-api)) |
 | `kicad2ems.core.runs` | `Run`, `EventTail`, `stop_runs`, `find_results`, `toml_value`, `write_toml`, `update_toml` (a config edited in place, its comments kept), `load_toml`, `read_summary`; where a front end's runs go: `run_dir`, `preview_dir`, `tool_dir`, `tool_preview_dir`, `board_name` |
 | `kicad2ems.core.formats` | `check` (a JSON of kicad2ems's, e.g. `python -m kicad2ems.core.sysinfo`'s: None, or why this kicad2ems cannot read it) |
-| `kicad2ems.core.touchstone` | `read_touchstone`, `port_names` (a kicad2ems Touchstone file's port names) |
+| `kicad2ems.core.touchstone` | `read_touchstone`, `port_names` (a kicad2ems Touchstone file's port names), `read_matrix` (the file's matrices as written: S, Y, Z, H or G), `to_s` |
 | results | `core.fields.antenna` (`read`, `read_sphere`, `sphere_cuts`, `sphere_gain`), `core.fields.frames` (`find_dumps`, `write_frames`), `core.meshes`, `core.phased` ([For solvers](#for-solvers)) |
 | `kicad2ems.examples` | `examples()` (`{name: config path}`), `index()` (every example as a menu's entry: `[dict(name, config, group, title, source)]`, the analyses' own after kicad2ems's), `prepare_example(name, folder)` (an example copied, its board made, into a folder of the user's), `user_folder()`, `board_of(config)` |
 | `kicad2ems.emsdev.cpu` | `core_threads` |

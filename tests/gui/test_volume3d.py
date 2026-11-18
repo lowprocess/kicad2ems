@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 from kicad2ems.gui import volume3d as v3
 from kicad2ems.core.fields import frames as F
+from kicad2ems.core.fields.dumps import write_npz
 from kicad2ems.core.fields.dumps import write_info, parse_dump
 
 
@@ -38,7 +39,7 @@ def volume_run(board, tmp_path_factory):
     data = np.zeros((1, len(x), len(y), len(z), 3), complex)
     data[0, ...,
          2] = (np.exp(-1j * X / 3) * np.exp(-np.maximum(Z - m.thickness, 0)))
-    F.write_npz(str(run / f"{d.name}.npz"), dict(x=x, y=y, z=z), [3e9], data)
+    write_npz(str(run / f"{d.name}.npz"), dict(x=x, y=y, z=z), [3e9], data)
     return str(out), m, d
 
 
@@ -326,7 +327,7 @@ def test_voxels_and_pixels_centred_on_their_samples(volume_run, tmp_path):
     write_info(str(run), [d], m)
     x, y = (np.linspace(d.start[0], d.stop[0],
                         30), np.linspace(d.start[1], d.stop[1], 12))
-    F.write_npz(str(run / f"{d.name}.npz"),
+    write_npz(str(run / f"{d.name}.npz"),
                 dict(x=x, y=y, z=np.array([d.start[2]])), [3e9],
                 np.ones((1, 30, 12, 1, 3), complex))
     w2 = VolumeTab()

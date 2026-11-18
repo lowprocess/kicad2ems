@@ -131,7 +131,7 @@ and implements
 
 The fields of a result (the maps a Viewer turns and cuts) need nothing here: an
 analysis writes them as field dumps (kicad2ems.core.fields.dumps: Dump,
-write_info; kicad2ems.core.fields.frames: write_npz) under <out>/<name>/exc_<what>/ with its board as
+write_info, write_npz) under <out>/<name>/exc_<what>/ with its board as
 <out>/<name>_board.json, and every front end that shows a run's dumps shows
 them.
 """

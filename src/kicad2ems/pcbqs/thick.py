@@ -22,6 +22,7 @@ kink).
 import numpy as np
 from scipy.spatial import cKDTree
 
+from kicad2ems.core.constants import MU0
 from kicad2ems.emsdev.numerics.sing import offplane_pairs
 
 _GX, _GW = np.polynomial.legendre.leggauss(4)
@@ -72,7 +73,6 @@ def delta_inductance(rwg, z, t, outer_levels=1, reach=3.0, log=None):
     triangle supports. Added to the point-kernel L of either backend (dense or
     compressed), it gives thick_kernel's L."""
     from scipy.sparse import coo_matrix
-    MU0 = 4e-7 * np.pi
     nodes, tris = rwg.nodes, rwg.tris
     p, q = close_pairs(nodes, tris, z, t, reach)
     key = np.round(np.c_[z[p] - z[q], t[p], t[q]] * 1e9).astype(np.int64)

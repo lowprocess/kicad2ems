@@ -1243,7 +1243,7 @@ def current_dumps(run, res, freqs, ports=None, near=(), tag='mom25d',
     from kicad2ems.emsdev.numerics.biot import current_deposit
     from kicad2ems.mom25d.farfield import current_on_grid, near_fields
     from kicad2ems.core.fields.dumps import Dump, write_info
-    from kicad2ems.core.fields.frames import write_npz
+    from kicad2ems.core.fields.dumps import write_npz
     sim, model = res.sim, res.model
     names = [p.name for p in sim.ports]
     want = [

@@ -6,7 +6,7 @@ Touchstone files: v1 when all reference impedances are equal, v2.0 with
 import os, re
 import numpy as np
 
-__all__ = ['port_names', 'read_touchstone']
+__all__ = ['port_names', 'read_touchstone', 'read_matrix', 'to_s']
 
 
 def log_spaced(freq):
@@ -47,14 +47,15 @@ def port_names(path):
     return None
 
 
-def write_touchstone(path, f, S, zref, comment='', names=None):
+def write_touchstone(path, f, S, zref, comment='', names=None,
+                     program='kicad2ems'):
     """Touchstone v1 when all reference impedances are equal, v2.0 (per-port
-    [Reference]) otherwise."""
+    [Reference]) otherwise. zref: one per port, or one for all."""
     n = S.shape[1]
-    zref = np.asarray(zref, float)
+    zref = np.broadcast_to(np.asarray(zref, float), (n,))
     v2 = not np.allclose(zref, zref[0])
     with open(path, 'w', encoding='utf-8') as fh:
-        fh.write(f"! kicad2ems {comment}\n")
+        fh.write(f"! {program} {comment}\n")
         if names:
             fh.write("! ports: "
                      + ", ".join(f"{i + 1}={nm}" for i, nm in enumerate(names))
@@ -94,13 +95,22 @@ def read_touchstone(path, with_zref=False):
     [Matrix Format] Lower / Upper are honoured. (It had taken any file as S,
     ignored R, read the port count from the extension only, and failed on a
     noise block.)"""
+    f, X, param, zref, v2 = read_matrix(path)
+    S = to_s(X, param, zref, normalised=not v2)
+    return (f, S, zref) if with_zref else (f, S)
+
+
+def read_matrix(path):
+    """The file's matrices as written: (f Hz, X (nf, n, n), its parameter 'S',
+    'Y', 'Z', 'H' or 'G', the reference impedances (n,), v2: True for a v2
+    file). ValueError when the numbers end inside a frequency."""
     n = int(''.join(ch for ch in os.path.splitext(path)[1] if ch.isdigit())
             or 2)
     fmt, funit, param, r_ref, data = 'MA', 1e9, 'S', 50.0, []
     mult = {'HZ': 1, 'KHZ': 1e3, 'MHZ': 1e6, 'GHZ': 1e9}
     order21, matrix, refs, v2, reading_ref, last_f = (None, 'FULL', None, False,
                                                       False, -np.inf)
-    with open(path, encoding='utf-8') as fh:
+    with open(path, encoding='utf-8', errors='replace') as fh:
         lines = fh.read().splitlines()
     pending = []  # the numbers of the frequency being read
     for raw in lines:
@@ -146,6 +156,9 @@ def read_touchstone(path, with_zref=False):
         while len(pending) >= per:
             data.append(pending[:per])
             last_f, pending = pending[0], pending[per:]
+    if pending:
+        raise ValueError(f"{path}: {len(pending)} numbers past the last whole "
+                         f"frequency point of {n} ports")
     a = np.array(data, float).reshape(
         -1, 1 + 2 * (n *
                      (n + 1) // 2 if matrix in ('LOWER', 'UPPER') else n * n))
@@ -167,11 +180,10 @@ def read_touchstone(path, with_zref=False):
         if (order21 if order21 is not None else n == 2 and not v2) and n == 2:
             X = X.transpose(0, 2, 1)
     zref = np.array(refs[:n] if refs else [r_ref] * n, float)
-    S = _to_s(X, param, zref, normalised=not v2)
-    return (f, S, zref) if with_zref else (f, S)
+    return f, X, param, zref, v2
 
 
-def _to_s(X, param, zref, normalised=False):
+def to_s(X, param, zref, normalised=False):
     """S at the reference impedances zref from S, Y, Z (any number of ports) or
     a two-port's H or G: normalised to the reference (a v1 file's, to R) or in
     ohms and siemens (v2)."""

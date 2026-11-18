@@ -104,6 +104,8 @@ src/kicad2ems/
   board.py        Board: the converted board, board.json
   region.py       cropping, nets = auto, extra and cut ports
   parts.py        lumped R/L/C parts
+  units.py        part values with SI prefixes ('4k7'); with constants, touchstone and fields/dumps, what pcbqs may
+                  import from the core (leaves: they import nothing from kicad2ems)
   edges.py        edge walls
   geometry.py     coordinate and polygon helpers
   parity.py       a solver's readback against the board, less what it declared

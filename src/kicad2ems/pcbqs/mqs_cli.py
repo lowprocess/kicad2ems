@@ -356,7 +356,7 @@ def draw_layout(ax, layout):
 
 
 def write_outputs(out, board, q, r, H, x, y, heights, summary):
-    from ._artifacts import Dump, write_info, write_npz
+    from kicad2ems.core.fields.dumps import Dump, write_info, write_npz
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt

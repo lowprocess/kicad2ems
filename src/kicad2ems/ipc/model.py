@@ -1000,7 +1000,7 @@ def map_bands(path, bands=MAP_BANDS):
     """(levels, [(band, outer ring, [holes])] in KiCad mm) of a plane map: its
     value on the copper (0 or NaN off it) in `bands` equal steps between its
     least and most, each step's region as polygons (matplotlib's contours)."""
-    from kicad2ems.core.fields.frames import read_npz
+    from kicad2ems.core.fields.dumps import read_npz
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
