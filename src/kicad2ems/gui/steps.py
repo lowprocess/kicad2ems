@@ -59,6 +59,15 @@ def steps_of(win):
         win, 'est_btn') else '')
     info = (win.results.info.text() if getattr(win.results, 'out', None)
             or win.results.analysis else '')
+    # the run the pages show (the Runs page's), else a folder opened
+    shown = win.shown_info() if hasattr(win, 'shown_info') else None
+    mine = win.config_runs() if hasattr(win, 'config_runs') else []
+    if shown is not None:
+        info = '' if shown.preview else shown.label()
+    result = (info or ('the preview: run to get results' if shown else
+                       'none yet' if not mine else
+                       f"{len(mine)} run{'s' if len(mine) > 1 else ''}: pick "
+                       "one in Runs"))
     out = [
         dict(key='board', title='Board', text=text, done=bool(board)),
         dict(
@@ -81,8 +90,7 @@ def steps_of(win):
                   else states[-1] if ran
                   else est if est and not est.lower().startswith('no estimate')
                   else 'not run yet')),
-        dict(key='results', title='Results', done=bool(info),
-             text=info or 'none yet'),
+        dict(key='results', title='Results', done=bool(info), text=result),
     ]
     now = next((s['key'] for s in out if not s['done']), None)
     for s in out:

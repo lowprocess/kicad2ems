@@ -10,6 +10,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **The window's Runs page, in place of the toolbar's Results of.** A table of the board's runs: when, what each
+  answered, the engines, how it ended, how long it took, its size, and *≠ settings* (which differ from the form's,
+  in its tooltip); the preview last, *current* or *stale*. *This config* by default (a run's mark names the config
+  it came from: another config's runs of the board no longer show), *This board*, *All*. A click shows a run; Ctrl
+  and a click lays more over it in Plots and the second Viewer; several deleted at once. The toolbar's *Showing*,
+  the steps bar and the Questions list (*last 14:02*) say what is shown and when each question was answered.
 - **The KiCad plugin runs the DC drop and the temperature, and draws their maps on the board (R-E26).**
   kicad2ems-ipc f43f5ca: a power box (rail, voltage, loads or losses) runs pcbqs's pdn and thermal through
   kicad2ems's analysis registry; *Map on the board* draws a result's map as six bands of filled polygons, a band a

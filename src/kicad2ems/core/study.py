@@ -316,22 +316,29 @@ def compare(results):
     return dict(engines=names, labels=[es[n].label for n in names], rows=rows)
 
 
-def mark(folder, engine, asked=(), preview=False):
+def mark(folder, engine, asked=(), preview=False, config=None,
+         settings=None):
     """Leave the mark of a run in its folder (made if it is not there): the
-    engine that makes it, the questions asked of it, whether it is a preview.
-    Returns the mark's path."""
+    engine that makes it, the questions asked of it, whether it is a preview;
+    config: the config file it was started from, settings: the settings it ran
+    with (a front end's form: JSON, anything else as its text), each kept when
+    given. Returns the mark's path."""
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, MARK)
+    d = dict(format='kicad2ems-study-run', version=1, engine=engine,
+             questions=list(asked), preview=bool(preview))
+    if config:
+        d['config'] = os.path.abspath(str(config))
+    if settings is not None:
+        d['settings'] = json.loads(json.dumps(dict(settings), default=str))
     with open(path, 'w', encoding='utf-8') as fh:
-        json.dump(
-            dict(format='kicad2ems-study-run', version=1, engine=engine,
-                 questions=list(asked), preview=bool(preview)), fh, indent=1)
+        json.dump(d, fh, indent=1)
     return path
 
 
 def marked(folder):
-    """The mark of a run's folder: dict(engine, questions, preview), or None (no
-    mark, or not readable)."""
+    """The mark of a run's folder: dict(engine, questions, preview), with config
+    and settings when it has them; None (no mark, or not readable)."""
     try:
         with open(os.path.join(folder or '', MARK), encoding='utf-8') as fh:
             d = json.load(fh)
@@ -340,9 +347,14 @@ def marked(folder):
     if (not isinstance(d, dict) or d.get('format') != 'kicad2ems-study-run'
             or not d.get('engine')):
         return None
-    return dict(engine=str(d['engine']),
-                questions=tuple(d.get('questions')
-                                or ()), preview=bool(d.get('preview')))
+    out = dict(engine=str(d['engine']),
+               questions=tuple(d.get('questions') or ()),
+               preview=bool(d.get('preview')))
+    if d.get('config'):
+        out['config'] = str(d['config'])
+    if isinstance(d.get('settings'), dict):
+        out['settings'] = d['settings']
+    return out
 
 
 def check_lines():
@@ -729,7 +741,7 @@ def run(config, only=None, preview=False, out=None, echo=print, extra=None):
                 })
             try:
                 s = build_settings(cli, config)
-                mark(folder, RF, st.questions, preview)
+                mark(folder, RF, st.questions, preview, config=config)
                 from .pipeline import Job
                 code = Job(s, command=f"kicad2ems study {config}").run()
             except (ConfigError, ValueError, OSError) as e:
@@ -769,7 +781,7 @@ def run(config, only=None, preview=False, out=None, echo=print, extra=None):
                     state.append((st, f"not started: {e}", '', 0.0, tag))
                     failed.add(a.name)
                     continue
-                mark(folder, a.name, st.questions, preview)
+                mark(folder, a.name, st.questions, preview, config=config)
                 shown = (['python', *argv[1:]] if argv[0] == sys.executable
                          else argv)
                 echo(f"study: {who}: {' '.join(shown)}")

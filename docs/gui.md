@@ -29,8 +29,9 @@ itself until a board is chosen or a result opened; *View > Start* brings it back
 ![The Start page: open a board, a config or a results folder, or begin from an example](img/gui/start.png)
 
 - **Toolbar**: New, Open, Save, Save as, Preview, Run, Stop, the run's estimate, the results folder, the report,
-  *Filter* (the wand: [Filter Synthesis](#filter), a window of its own), and *Results of*: this board's preview
-  or one of its runs ([below](#run-folders)). The estimate (after a preview) is the time and memory of the
+  *Filter* (the wand: [Filter Synthesis](#filter), a window of its own), and *Showing*: the run the pages show
+  (`Showing: 14:02 · S-parameters · line model (qucsator)`, `Showing: preview`, or *Nothing run yet*); a click
+  brings the [Runs](#run-folders) page forward to pick another. The estimate (after a preview) is the time and memory of the
   full-wave solvers ticked, or of the one *auto* would pick, and how many solvers a Run uses, named under it
   (`~13 s · 0.5 GB · 2 solvers` over `gfdtd (auto) + Circuit`; before a preview `No estimate · 2 solvers`);
   grey once the settings change, red when it won't fit in the memory available. It opens the Solvers window.
@@ -38,7 +39,7 @@ itself until a board is chosen or a result opened; *View > Start* brings it back
   what that is (*Choose the board*), and clicking it then goes to where it is set ([Still needed](#needed)).
 - <a id="steps"></a>**Steps**, a bar under the toolbar: *Board*, *Questions*, *Set up*, *Run*, *Results*, each
   with where it stands in a line (the board's layers and nets; what is asked; what is still needed; the
-  estimate, or the run's state; what the result is). Those done have a tick, the first that is not is marked;
+  estimate, or the run's state; the run shown, or *none yet* while this config has none). Those done have a tick, the first that is not is marked;
   a click goes to where a step is done. It says where the study is, and the toolbar stays what acts. Drag it by
   its handle to the bottom of the window (or back), and *View > Steps* hides it.
 - **Status bar**: the memory in use, the GPU's (through `nvidia-smi` or `rocm-smi`), and a running run's own;
@@ -48,8 +49,8 @@ itself until a board is chosen or a result opened; *View > Start* brings it back
 - **The workspace: the board**, in the [Viewer](#the-viewer). While *Circuit* is asked its schematic is a tab beside
   it, as Filter Synthesis is when opened; while it is not, the page is not there at all (*View* has it greyed). A result has a page for each thing it is: its [Plots](#plots), beside
   the board where the window has the width (1,400 px of workspace; else the first tab under it), and under the
-  board, tabbed, its [Report, its Tables](#report-page), the [Log](#the-log-page) and, with a line model, the
-  [Section](#section) picked. A page comes to the front when it has something new: the Log when a run starts,
+  board, tabbed, its [Report, its Tables](#report-page), the [Log](#the-log-page), the [Runs](#run-folders) and,
+  with a line model, the [Section](#section) picked. A page comes to the front when it has something new: the Log when a run starts,
   the Report (or, for S-parameters, the Plots) when one ends.
 - **Left, under the questions: the settings of the question selected** (highlighted in the list, always: a
   page brought to the front leaves them as they are; a double-click on a question shows its page). For S-parameters, the few a run is set up with: the frequency
@@ -65,7 +66,7 @@ itself until a board is chosen or a result opened; *View > Start* brings it back
   others still need.
 - <a id="several"></a>**Several rails**: *Rail drop*'s settings start with a table of the board's rails, a row
   each (rail, volts, source, ground source, loads, load spectra), *Add a rail* and *Remove the rail* under it,
-  and the settings they share below. Run makes each row's run in turn, a folder each (*Results of* lists them),
+  and the settings they share below. Run makes each row's run in turn, a folder each (*Runs* lists them),
   and the study's state is the last one's; a config's `[[analysis.pdn]]` tables
   ([usage](usage.md#several)) are the rows.
 - <a id="proposals"></a>**What a result proposes**, as buttons under a finished question's settings: a
@@ -83,10 +84,30 @@ steps bar are, its splitters and the Plots page's plots between sessions; the fi
 whole screen.
 
 <a id="run-folders"></a>
-**Where results go.** Each run gets a folder of its own under the output folder, named after the board and when it
-started (`<out>/<board>_20261013_104514/`); a preview goes to `<out>/<board>_preview/`, which each preview
-refreshes. Opening a config shows its newest run on the result's pages and starts a preview, so the Viewer shows the
-board as it is now; *Results of* picks an earlier run.
+**Where results go: the Runs page.** Each run gets a folder of its own under the output folder, named after the
+board and when it started (`<out>/<board>_20261013_104514/`, an analysis's `<out>/<board>_pdn_3V3_…/`); a preview
+goes to `<out>/<board>_preview/`, which each preview refreshes. The **Runs** page lists them, a row each: when it
+started, what it answered (the questions, and the rail or converter), the engines, how it ended (*done*,
+*running*, *stopped*, *failed, code 1*, *no result*), how long it took and its size on disk. **≠ settings** marks
+a run made with other settings than the form has now; its tooltip lists them (`fmax: 4.5 -> 3.9`; where it went
+and the order of the solvers do not count). The preview is the last row, *current* while its settings are the
+form's, else *stale*.
+
+- **Scope**: *This config* (the default) lists the runs started from the config open: each run's folder names
+  the config file it came from (its mark, `kicad2ems-study.json`, which `kicad2ems study` writes too). With
+  a form never saved, the runs that name none, which older runs (from before the mark kept it) are too: *This
+  board* lists those, and every other config's run of the board; *All*, everything under the output folder,
+  with each run's board. The line above the table says how many more the board has.
+- **A click shows a run** in the Viewer, Plots, Report and Tables (one that left no results: its log). **Ctrl
+  or Shift and a click** on more lays them over it: their S-parameters, or the same kind of curves, in Plots,
+  and the last one in a **second Viewer** (a window of its own) when it has fields or maps; *Compare* does
+  both whatever they hold. *View > A second Viewer* opens it with the run before the one shown.
+- **Open folder**, and **Delete…** the rows selected: asked once, with their sizes; a run going is kept.
+
+Opening a config shows its newest run that finished (else nothing, and the preview once it is done) and starts
+a preview, so the Viewer shows the board as it is now; a run that finishes is the one shown. In the Questions
+list a question nothing has run of yet says when this config's runs last answered it (*last 14:02*); a click on
+that cell shows the run.
 
 <a id="solvers"></a>
 ## Solvers
@@ -322,7 +343,8 @@ single-ended port among them (Sds31).
 - **Notes and warnings**: a fold at the top lists the run's warnings (open when there is one) and its notes.
 - **Cursor, markers, zoom**: hover to read every trace; click to add a marker (drag to move, Delete to remove),
   listed in a table; wheel and drag to zoom, *Fit* for everything.
-- **Compare with > Another folder…** overlays another run; **Export CSV…** and **Save image…**.
+- **Other runs over these**: Ctrl and a click on the [Runs](#run-folders) page; **Compare with** has the run's
+  own variations and *Another folder…*; **Export CSV…** and **Save image…**.
 
 ![The Plots page in antenna mode: match, gain and efficiency over frequency, and the polar cuts](img/readme/gui_antenna.png)
 

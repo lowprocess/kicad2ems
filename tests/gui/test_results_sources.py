@@ -43,13 +43,16 @@ def test_tool_run_folders(tmp_path):
         'thermal',
         runfolders.tool_dir(base, board, 'thermal', 'circuit',
                             now=t0.replace(second=50)))
-    found = runfolders.tool_runs(base, board)
-    assert ([(os.path.basename(d), k) for d, k, _ in found
-             ] == [('mqs_U3', 'mqs'),
-                   ('b_thermal_circuit_20261111_013150', 'thermal'),
-                   ('b_pdn_3V3_20261111_013136', 'pdn')])
-    assert (found[2][2] == 'Power integrity: 3V3, 2026-11-11 01:31:36'
-            and found[1][2].startswith('Thermal: circuit, '))
+    found = [r for r in runfolders.index(base, board) if r.kind != 'rf']
+    assert ([(os.path.basename(r.folder), r.kind, r.outcome) for r in found
+             ] == [('mqs_U3', 'mqs', 'done'),
+                   ('b_thermal_circuit_20261111_013150', 'thermal', 'done'),
+                   ('b_pdn_X_20261111_013140', 'pdn', 'no result'),
+                   ('b_pdn_3V3_20261111_013136', 'pdn', 'done')])
+    assert (found[3].what == '3V3' and found[3].questions == ('dc', 'pdn')
+            and found[3].engines == ('pdn', )
+            and found[3].label().endswith(
+                'Rail drop, Rail impedance · 3V3 · fake'))
     assert (runfolders.tool_kind(a) == 'pdn'
             and runfolders.tool_kind(str(tmp_path)) is None
             and runfolders.tool_kind(th) == 'thermal')
@@ -123,42 +126,37 @@ def test_results_of_lists_every_analysis_and_compares_runs(window, tmp_path):
                             now=t.replace(minute=5)), scale=2)
     nf = _mqs(runfolders.tool_dir(base, str(board), 'mqs', 'U3', now=t))
     w.refresh_runs()
-    labels = [
-        w.runs_box.itemText(i)
-        for i in range(w.runs_box.count())
-        if w.runs_box.itemText(i)
-    ]
-    assert (labels == [
-        'Power integrity: P, 2026-11-11 01:05:00',
-        'Power integrity: P, 2026-11-11 01:00:00',
-        'Near field: U3, 2026-11-11 01:00:00'
-    ])
-    w._pick_run(new)
+    rows = [(r.when.strftime('%H:%M'), r.about(), r.folder)
+            for r in w.runs_panel.runs()]
+    assert (rows == [('01:05', 'Rail drop, Rail impedance · P', new),
+                     ('01:00', 'Rail drop, Rail impedance · P', old),
+                     ('01:00', 'Converter near field · U3', nf)])
+    w.show_run(new)
     r = w.results
     assert (r.kind() == 'pdn' and r.views.currentWidget() is r.curveplot
             and 'rail P' in r.info.text())
     assert (r.modes() == ['Plots', 'Report', 'Tables'] and r.mode == 'Plots'
             and r.set_box.isHidden())
-    assert w.runs_box.currentData() == new
-    assert r.add_folder(old) and r.compared() == [os.path.abspath(old)]
+    assert w.shown == new and w.runs_panel.selected() == [new]
+    # another run selected beside it (Ctrl and a click): laid over
+    w.runs_panel.tree.topLevelItem(1).setSelected(True)
+    assert w.shown == new and r.compared() == [os.path.abspath(old)]
     assert not r.add_folder(nf)  # another kind: not over these
     cp = r.curveplot
-    assert ([cs.label
-             for cs in cp.sets] == ['P, 11-11 01:05:00', 'P, 11-11 01:00:00'])
+    assert [cs.label for cs in cp.sets] == ['P, 11-11 01:05:00',
+                                            'P, 11-11 01:00:00']
     cp.add_marker(1e6)
     row = cp.values()[0]
     # this run's U1, the other's (no bare planes)
     assert row[0] == '1: 1 MHz' and len(row) == 3
     assert (float(row[1].split()[0]) == pytest.approx(
         2 * float(row[2].split()[0]), rel=0.02))
-    r._fill_compare()
+    r._fill_compare()  # the Plots page's menu: the one laid over, unticked
     acts = [a for a in r.cmp_menu.actions() if a.isCheckable()]
-    assert ([a.text()
-             for a in acts] == ['Power integrity: P, 2026-11-11 01:00:00']
-            and acts[0].isChecked())
+    assert [a.text() for a in acts] == [os.path.basename(old)]
     acts[0].setChecked(False)
     assert r.compared() == []
-    w._pick_run(nf)  # the near field: its spectrum, its report
+    w.show_run(nf)  # the near field: its spectrum, its report
     assert r.kind() == 'mqs' and cp.main.curves[0].name == 'peak |H|'
     assert ('U3' in r.reportview.page.toPlainText()
             and r.info.text() == 'Near field, U3 on VIN: 3 harmonics')
@@ -189,7 +187,7 @@ def test_a_result_as_its_plots_its_report_or_its_tables(window, tmp_path):
                   note=True)
     r = w.results
     w.refresh_runs()
-    w._pick_run(th)  # no curves: its report in front
+    w.show_run(th)  # no curves: its report in front
     assert (r.kind() == 'thermal' and r.modes() == ['Report', 'Tables']
             and r.mode == 'Report')
     # the report and its tables are pages of their own (docks), which the plots'
@@ -209,7 +207,7 @@ def test_a_result_as_its_plots_its_report_or_its_tables(window, tmp_path):
             and not w.docks['Tables'].isHidden())
     assert (r.tablesview.grid.rowCount() == 2
             and r.tablesview.grid.item(0, 2).text() == '73.0')
-    w._pick_run(pd)  # the page kept in mind, when the next result has it
+    w.show_run(pd)  # the page kept in mind, when the next result has it
     assert (r.kind() == 'pdn' and r.mode == 'Tables'
             and r.tablesview.table()[0] == 'Loads at DC')
     # its notes: in its report
@@ -217,7 +215,7 @@ def test_a_result_as_its_plots_its_report_or_its_tables(window, tmp_path):
             and 'a note' in r.reportview.page.toPlainText())
     r.set_mode('Plots')
     assert r.views.currentWidget() is r.curveplot and r.cmp_btn.isEnabled()
-    w._pick_run(ci)  # several curve sets: one at a time
+    w.show_run(ci)  # several curve sets: one at a time
     assert (r.kind() == 'circuit' and r.mode == 'Plots'
             and not r.set_box.isHidden() and r.set_box.count() == 4)
     assert (r.curveplot.main.title == 'light: voltages'
@@ -228,7 +226,7 @@ def test_a_result_as_its_plots_its_report_or_its_tables(window, tmp_path):
     r.set_mode('Report')
     assert ('Stand-in circuit' in r.reportview.page.toPlainText()
             and r.tablesview.has_tables())
-    w._pick_run(th)  # no plots there: its report
+    w.show_run(th)  # no plots there: its report
     assert r.mode == 'Report' and r.set_box.isHidden()
 
 
@@ -266,8 +264,12 @@ def test_second_viewer(window, tmp_path):
     b = _pdn(
         runfolders.tool_dir(base, str(board), 'pdn', 'P',
                             now=t.replace(minute=5)))
-    w.refresh_runs(select=b)
+    w.refresh_runs()
+    w.show_run(b)
     v2 = w.second_viewer()
     # the run before the one shown
-    assert v2.runs.count() == 2 and v2.runs.currentData() == a
+    assert v2.folder == a and 'Second run' in v2.which.text()
     assert w.second_viewer() is v2
+    w.show_run(a)  # the second picked on the Runs page: there
+    w.runs_panel.tree.topLevelItem(0).setSelected(True)
+    assert v2.folder == b and w.shown == a

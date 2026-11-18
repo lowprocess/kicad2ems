@@ -435,9 +435,10 @@ fail = true
     assert (kinds == ['', 'circuit_buck', 'elmer_thermal_run',
                       'thermal_run']), list(made)
     by = {study.marked(str(d))['engine']: d for d in made.values()}
-    assert (study.marked(str(by['rf'])) == dict(engine='rf',
-                                                questions=('sparams', ),
-                                                preview=False))
+    # and the config it came from
+    assert (study.marked(str(by['rf'])) == dict(
+        engine='rf', questions=('sparams', ), preview=False,
+        config=os.path.abspath(cfg)))
     assert ((by['rf'] / f"{name}_mom25d.s2p").exists()
             and (by['rf'] / f"{name}_run.json").exists())
     # its table, the fields asked
@@ -561,7 +562,7 @@ volts = 3.3
     })
     assert all(
         study.marked(str(out / n)) == dict(engine='pdn', questions=(
-            'dc', ), preview=False) for n in made)
+            'dc', ), preview=False, config=os.path.abspath(cfg)) for n in made)
     tail = text[text.rindex('study:'):].splitlines()
     assert ([re.sub(r', \d+ s: .*$', '', t) for t in tail[1:]] == [
         '  Rail drop (fake: +5V)                    done',

@@ -119,11 +119,9 @@ def test_a_circuit_example_runs_to_its_temperatures(window, tmp_path):
     # the study's folder
     assert (os.path.dirname(str(page.out)) == os.path.dirname(th.out) == str(
         folder / 'out'))
-    labels = sorted(
-        w.runs_box.itemText(i).split(',')[0]
-        for i in range(w.runs_box.count())
-        if w.runs_box.itemText(i))
-    assert labels == ['Circuit: 01_rc_filter', 'Thermal: circuit']
+    runs = [r for r in w.runs_panel.runs() if not r.preview]
+    assert (sorted((r.kind, r.what) for r in runs)
+            == [('circuit', '01_rc_filter'), ('thermal', 'circuit')])
     r = w.results  # the temperature: its report, its tables
     assert (r.kind() == 'thermal' and r.modes() == ['Report', 'Tables']
             and r.info.text().startswith('Thermal: hottest copper'))
@@ -135,10 +133,8 @@ def test_a_circuit_example_runs_to_its_temperatures(window, tmp_path):
     ])
     assert (cuts.src.unit == '°C' and cuts.lim[0] > 24.0 and cuts.lim[1] < 40.0
             and not cuts.log.isChecked())
-    i = next(k for k in range(w.runs_box.count())
-             if w.runs_box.itemText(k).startswith('Circuit'))
     # the circuit: its waveforms, its points
-    w._pick_run(w.runs_box.itemData(i))
+    w.show_run(next(r.folder for r in runs if r.kind == 'circuit'))
     assert (r.kind() == 'circuit'
             and r.modes() == ['Plots', 'Report', 'Tables']
             and r.set_box.count() >= 1)

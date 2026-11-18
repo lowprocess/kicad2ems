@@ -8,7 +8,7 @@ import os
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import (QDesktopServices, QAction, QActionGroup,
                            QKeySequence, QIcon)
-from PySide6.QtWidgets import QComboBox, QLabel, QToolBar, QStyle
+from PySide6.QtWidgets import QToolBar, QToolButton, QStyle
 from .viewer import VIEWS
 from .statusbar import EstimateButton
 from .study import ANALYSES
@@ -22,13 +22,14 @@ EDITORS = {a.page: a.key for a in ANALYSES if a.page and a.key in ('circuit',)}
 # The pages (each a dock of the workspace, by its name here). A result is on
 # pages of its own kind, not one page with a switch: 'Results' is its plots (the
 # tab reads Plots), Report what an analysis found, to read, Tables the report's
-# tables, and 'Run' the runs' progress and logs (the tab reads Log)
-PANELS = ('Viewer', 'Start', 'Results', 'Report', 'Tables', 'Run', 'Section',
-          'Filter', *EDITORS)
+# tables, 'Run' the runs' progress and logs (the tab reads Log), and 'Runs'
+# this board's runs, to pick the one shown and those compared
+PANELS = ('Viewer', 'Start', 'Results', 'Report', 'Tables', 'Run', 'Runs',
+          'Section', 'Filter', *EDITORS)
 # a page's tab title, when not its name
 TITLES = {'Filter': 'Filter Synthesis', 'Results': 'Plots', 'Run': 'Log'}
 # the pages under the board in a new window's layout
-LOWER = ('Report', 'Tables', 'Run', 'Section')
+LOWER = ('Report', 'Tables', 'Run', 'Runs', 'Section')
 BESIDE = ('Results',)                           # and beside it
 # pages closed when the window opens: the toolbar's Filter opens it ('Start'
 # comes and goes with the board: _start_follows)
@@ -395,22 +396,13 @@ class WindowDocks:
             tb.addAction(a)
         self.acts['Stop'].setEnabled(False)
         self.acts['Report'].setEnabled(False)
-        # whose results the pages show
-        self.runs_box = QComboBox(
-            minimumWidth=260, toolTip=
-            ("the results the Viewer and Results pages show: this board's "
-             "preview, or one of its runs (each in its own folder: "
-             "<board>_<date>_<time>)"),
-            activated=lambda i: self._pick_run(self.runs_box.itemData(i)))
+        # whose results the pages show: the Runs page picks
+        self.showing_btn = QToolButton(
+            text='Nothing run yet', autoRaise=True,
+            toolButtonStyle=Qt.ToolButtonTextOnly,
+            clicked=lambda: self.show_panel('Runs'))
         tb.addSeparator()
-        tb.addWidget(QLabel(' Results of '))
-        tb.addWidget(self.runs_box)
-        self.acts['Delete run'] = QAction(
-            'Delete run…', self, triggered=lambda: self.delete_run(), toolTip=
-            ("delete the run shown in Results of, its folder and everything in "
-             "it (asked first)"
-             ))
-        tb.addAction(self.acts['Delete run'])
+        tb.addWidget(self.showing_btn)
         # beside Run / Stop: what a run would take
         self.est_btn = EstimateButton()
         self.est_btn.clicked.connect(self.show_solvers)
@@ -479,12 +471,12 @@ class WindowDocks:
                max(scr.y(), min(c.y() - h // 2,
                                 scr.bottom() - h)))
 
-    def second_viewer(self):
+    def second_viewer(self, folder=None):
         """A Viewer window of its own, showing another run of the board
-        (ViewerWindow); one at a time."""
+        (ViewerWindow; folder: that one); one at a time."""
         if getattr(self, '_viewer2', None) is None:
             self._viewer2 = ViewerWindow(self)
-        self._viewer2.refresh()
+        self._viewer2.refresh(folder)
         self._viewer2.show()
         self._viewer2.raise_()
         return self._viewer2

@@ -84,17 +84,19 @@ has their named figures side by side (*Engines compared*).
 - its **report** on the Report page: what it found, to read; and its tables on the Tables page, to sort by a
   column, copy into a spreadsheet or export as CSV.
 
-Plots, Report, Tables and the Log are docks of their own (Plots beside the board on a wide window, the others
+Plots, Report, Tables, the Log and Runs are docks of their own (Plots beside the board on a wide window, the others
 tabbed under it), as is Section, the field across the line-model section picked on the plan. A window with no
 board begins on the **Start** page (open a board, a config or a results folder; the examples as tiles with
 their boards drawn), which has the workspace until a board is chosen. The **steps** bar under the toolbar
 (Board, Questions, Set up, Run, Results) says where the study stands; it drags to the bottom of the window and
 hides (View > Steps).
 
-**Results of** (the toolbar) lists every result of the board, each run in a folder of its own under the output
-folder: the preview, the S-parameter runs, and each analysis's runs. Choosing one fills the pages. **Compare
-with** (on the Plots page) lays other runs of the same kind, or another folder, over the plots, and View > **A
-second Viewer** opens another run's maps in a window of its own.
+The **Runs** page lists the board's runs, each in a folder of its own under the output folder: by default those
+of the config open (*This board*, *All*: the rest), with what each answered, the engines, how it ended, how long
+it took, its size, and *≠ settings* where it ran with other settings than the form's; the preview last,
+*current* or *stale*. A click fills the pages; Ctrl and a click lays more over it (Plots, and a **second
+Viewer** for their maps); Delete and Open folder act on the rows selected. The toolbar's *Showing* says which
+run the pages show and brings the page forward.
 
 A config holds the study: beside kicad2ems's settings, the analyses it runs and their settings under
 `[analysis]` (`run = ["circuit", "thermal"]`, `[analysis.circuit] model = "buck.json"`), read when it is opened
@@ -134,8 +136,9 @@ It needs PySide6, pyqtgraph and PyOpenGL (installed with it).
 | `winconfigs.py` | configs and examples: open, recent, a config's study and analyses read and written, a file dropped on the window |
 | `winstudy.py` | the study in the list, what a run still needs, a result's proposal for another analysis, a setting picked on the board |
 | `winrun.py` | the runs as they go: the study's queue, kicad2ems's own run and its events, Stop, the estimate |
-| `winresults.py` | this board's runs (Results of) and the one shown in the pages, a run deleted |
-| `winparts.py` | the Solvers window, the second Viewer, a page's dock, the example and layout threads |
+| `winresults.py` | this board's runs and the one shown in the pages, those laid over it, the toolbar's Showing, runs deleted |
+| `runspanel.py` | the Runs page: a row per run (scope, ≠ settings, the preview current or stale), picking, comparing, deleting |
+| `winparts.py` | the Solvers window, the second Viewer (the run picked second on Runs), a page's dock, the example and layout threads |
 | `setuptab.py`, `runtab.py`, `resultstab.py` | the study and the settings of what is selected in it; the Log page (the runs and their logs); the Plots page (S-parameter, antenna and curve plots) |
 | `study.py` | the study with no window (no Qt): the runs a board can have (the solvers', then each analysis), what follows what, and `StudyModel`: what is asked, who answers each question, the Fields ticks, what cannot run here, each run's state |
 | `studytree.py` | the list in the Study dock, the model's view: a row per question, who answers it, its Fields tick and its state |
@@ -145,7 +148,7 @@ It needs PySide6, pyqtgraph and PyOpenGL (installed with it).
 | `startpage.py` | the Start page: open a board, a config or a results folder; the examples as tiles, their boards drawn in a thread and kept in the cache folder |
 | `steps.py` | the steps bar: `steps_of(win)`, where the study stands as plain data, and the toolbar that shows it |
 | `runner.py` | the settings form without Qt: fields, sections, solver tick boxes, configs read and written back |
-| `runfolders.py` | a folder per run and one per board's preview |
+| `runfolders.py` | a folder per run and one per board's preview; `index`, the one list of runs (`RunInfo`: kind, when, questions, engines, outcome, took, size, settings, config), kept per folder while unchanged; scopes and settings compared |
 | `planview.py`, `meshpick.py` | the board seen from above, with the line model and the meshes (the KiCad plugin's map too) |
 | `viewer.py`, `volumetab.py`, `volume3d.py` | the Viewer's Plan, 2D and 3D views; `volume3d` holds their arrays, without Qt |
 | `sectionview.py` | the field across a line-model section: the Section page (the KiCad plugin's too) |

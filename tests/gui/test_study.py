@@ -131,8 +131,8 @@ def test_study_dock(window):
     assert pdn.board.placeholderText() == "the study's board"
     # no page per analysis: the circuit's editor alone
     assert (list(w.places) == [
-        'Viewer', 'Start', 'Results', 'Report', 'Tables', 'Run', 'Section',
-        'Filter', 'Circuit'
+        'Viewer', 'Start', 'Results', 'Report', 'Tables', 'Run', 'Runs',
+        'Section', 'Filter', 'Circuit'
     ])
     tree.rows['dc'].setCheckState(0, Qt.Checked)
     assert (tree.asked() == dict(sparams=[], dc=[])
@@ -579,15 +579,10 @@ def test_an_analysis_runs_from_the_window(window, tmp_path):
     run_to_the_end(w, app)
     assert (w.study.state('pdn').startswith('done ')
             and w.study.state('thermal').startswith('done '))
-    labels = [
-        w.runs_box.itemText(i)
-        for i in range(w.runs_box.count())
-        if w.runs_box.itemText(i)
-    ]
-    assert (sorted(l.split(',')[0] for l in labels) == [
-        'Power integrity: 3V3', 'Thermal: losses'
-    ])
-    assert (w.runs_box.currentData() == th.out
+    assert (sorted((r.kind, r.what, r.outcome) for r in w.runs_panel.runs())
+            == [('pdn', '3V3', 'done'), ('pdn', 'FAIL', 'failed, code 3'),
+                ('thermal', 'losses', 'done')])
+    assert (w.shown == th.out == w.runs_panel.selected()[0]
             and os.path.basename(th.out).startswith('b_thermal_losses_'))
     r = w.results
     # what it found: in front
@@ -640,8 +635,11 @@ def test_two_engines_of_one_question_run_and_are_compared(window, tmp_path):
     assert (tree.rows['thermal'].text(3).startswith('done ')
             and 'Elmer: done' in tree.rows['thermal'].toolTip(3))
     # the drop alone was asked
-    assert (run_mark(pdn.out) == dict(engine='pdn', questions=('dc', ),
-                                      preview=False))
+    mark = run_mark(pdn.out)  # and the config and settings it ran with
+    assert (dict(mark, config=None, settings=None) == dict(
+        engine='pdn', questions=('dc', ), preview=False, config=None,
+        settings=None) and mark['config'] == str(cfg)
+            and mark['settings']['rail'] == '+3V3')
 
     assert (analysis_of(th.out) == ('thermal', False)
             and analysis_of(el.out) == ('elmer_thermal', False))
@@ -660,7 +658,7 @@ def test_two_engines_of_one_question_run_and_are_compared(window, tmp_path):
     text = r.reportview.page.toPlainText()
     assert ('Engines compared: Temperature' in text
             and os.path.basename(th.out) in text)
-    w._pick_run(pdn.out)  # a question one engine answered: nothing beside it
+    w.show_run(pdn.out)  # a question one engine answered: nothing beside it
     assert [t for t, _ in r.reportview._tables] == ['Loads at DC']
     tree.choose('thermal', 'thermal', False)  # Elmer alone, saved as such
     assert w.setup.dirty and w.setup.save()
@@ -673,9 +671,8 @@ def test_two_engines_of_one_question_run_and_are_compared(window, tmp_path):
 def test_the_runs_are_read_once_for_a_settings_change(window, tmp_path,
                                                       monkeypatch):
     """What each analysis still needs asks the latest results, once per analysis
-    and row: the run folders are read once while they are unchanged (each ask
-    had read them all), again once a run is added or the list refreshed."""
-    import time
+    and row: a run folder is read once while it is unchanged (each ask had read
+    them all), again once a run is added."""
     from kicad2ems.gui import runfolders
     import fake_analyses as FA
     w, app, _ = window
@@ -686,22 +683,21 @@ def test_the_runs_are_read_once_for_a_settings_change(window, tmp_path,
     first = FA.write(
         'circuit', runfolders.tool_dir(str(out), str(board), 'circuit', 'buck'))
     w.update_needed()  # (the board chosen: its runs listed)
-    reads, tool_runs = [], runfolders.tool_runs
-    monkeypatch.setattr(runfolders, 'tool_runs',
-                        lambda *a: reads.append(1) or tool_runs(*a))
+    reads, read = [], runfolders._read
+    monkeypatch.setattr(runfolders, '_read',
+                        lambda d, *a: reads.append(d) or read(d, *a))
     w.refresh_runs()
     assert w.latest_results() == dict(circuit=first) == w.latest_results()
     w.update_needed()
-    assert len(reads) == 1
-    time.sleep(0.05)  # (a folder's time: the clock's coarse tick)
+    assert reads == [], reads
     t = (__import__('datetime').datetime.now()
          + __import__('datetime').timedelta(minutes=1))
     second = FA.write(
         'circuit',
         runfolders.tool_dir(str(out), str(board), 'circuit', 'buck', now=t))
-    assert w.latest_results() == dict(circuit=second) and len(reads) == 2
+    assert w.latest_results() == dict(circuit=second) and reads == [second]
     w.refresh_runs()
-    assert len(reads) == 3
+    assert reads == [second]
 
 
 def test_one_analysis_starts_from_another_s_result(window, tmp_path):
@@ -735,7 +731,7 @@ def test_one_analysis_starts_from_another_s_result(window, tmp_path):
     assert (f"losses of {os.path.basename(new)}"
             in w.results.reportview.page.toPlainText())
     w.refresh_runs()
-    w._pick_run(old)  # the one shown: that one
+    w.show_run(old)  # the one shown: that one
     assert w.latest_results()['circuit'] == old
     # a near field's rail for the power integrity: its voltage unknown, so asked
     # for
@@ -1020,13 +1016,12 @@ def test_another_board_lists_its_own_runs(window, tmp_path):
     run = FA.write(
         'pdn', runfolders.tool_dir(str(tmp_path / 'out'), str(a), 'pdn', '3V3'))
     w.refresh_runs()
-    assert run in [w.runs_box.itemData(i) for i in range(w.runs_box.count())]
+    listed = lambda: [r.folder for r in w.runs_panel.runs()]
+    assert run in listed()
     w.viewer.out = run
     w.setup.set_values(dict(board=str(b), out=str(tmp_path / 'out')))
     w.want_layout()
-    assert (run
-            not in [w.runs_box.itemData(i) for i in range(w.runs_box.count())]
-            and w.viewer.out is None)
+    assert run not in listed() and w.viewer.out is None
 
 
 def test_a_failed_run_stays_listed_with_its_log_and_can_be_deleted(
@@ -1058,20 +1053,21 @@ def test_a_failed_run_stays_listed_with_its_log_and_can_be_deleted(
     assert ('a line of its own output'
             in (tmp_path / 'out' / os.path.basename(folder)
                 / 'stdout.log').read_text())
-    labels = [w.runs_box.itemText(i) for i in range(w.runs_box.count())]
-    assert any('(failed, code 1)' in t for t in labels)
+    (r, ) = [r for r in w.runs_panel.runs() if not r.preview]
+    assert r.folder == folder and r.outcome == 'failed, code 1'
+    assert w.runs_panel.tree.topLevelItem(0).text(3) == 'failed, code 1'
+    assert r.took is not None and r.size > 0
     w.runtab.log.clear()
-    w._pick_run(folder)
+    w.show_run(folder)
     assert ('it went wrong here' in w.runtab.log.toPlainText()
             and 'failed, code 1' in w.runtab.stage.text())
     monkeypatch.setattr(QMessageBox, 'question', lambda *a, **k: QMessageBox.No)
     # asked, and told no
-    assert not w.delete_run(folder) and os.path.isdir(folder)
+    assert not w.delete_runs([folder]) and os.path.isdir(folder)
     monkeypatch.setattr(QMessageBox, 'question',
                         lambda *a, **k: QMessageBox.Yes)
-    assert w.delete_run(folder) and not os.path.exists(folder)
-    assert (folder
-            not in [w.runs_box.itemData(i) for i in range(w.runs_box.count())])
+    assert w.delete_runs([folder]) == 1 and not os.path.exists(folder)
+    assert folder not in [r.folder for r in w.runs_panel.runs()]
 
 
 def test_a_run_that_cannot_start_is_said_and_leaves_the_window_idle(

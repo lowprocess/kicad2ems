@@ -5,7 +5,7 @@ off the event loop.
 """
 import os
 from PySide6.QtCore import Qt, Signal, QThread
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QComboBox,
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLabel, QDockWidget, QDialog)
 from .viewer import Viewer
 
@@ -48,42 +48,39 @@ class _Preparing(QThread):
 class ViewerWindow(QWidget):
     """A second Viewer, its own window: another run of the board beside the one
     the main Viewer shows (a drop map against the last one's, an S-parameter
-    run's fields against another's). Its runs are the main window's Results of
-    choice, refreshed when it opens."""
+    run's fields against another's). Its run is the second one picked on the
+    Runs page (Ctrl and a click); opened alone, the run before the one
+    shown."""
     def __init__(self, win):
         super().__init__(None, Qt.Window)
-        self.win = win
+        self.win, self.folder = win, None
         self.setWindowTitle('Viewer - kicad2ems')
         lay = QVBoxLayout(self)
-        row = QHBoxLayout()
-        row.addWidget(QLabel('Results of'))
-        self.runs = QComboBox(
-            minimumWidth=320,
-            activated=lambda i: self.show_run(self.runs.itemData(i)))
-        row.addWidget(self.runs, 1)
-        lay.addLayout(row)
+        self.which = QLabel(
+            wordWrap=True, toolTip='pick another on the Runs page: Ctrl and a '
+            'click on its row')
+        lay.addWidget(self.which)
         self.viewer = Viewer(win)
         lay.addWidget(self.viewer, 1)
         self.resize(1100, 760)
 
-    def refresh(self, select=None):
-        keep = select or self.runs.currentData()
-        self.runs.clear()
-        for src in self.win.sources():
-            self.runs.addItem(src['label'], src['folder'])
-        i = self.runs.findData(keep) if keep else -1
-        if i < 0:  # the run before the one the main Viewer shows
-            here = self.win.runs_box.currentData()
-            i = next((k + 1
-                      for k in range(self.runs.count() - 1)
-                      if self.runs.itemData(k) == here), 0)
-            i = min(i, self.runs.count() - 1)
-        if i >= 0:
-            self.runs.setCurrentIndex(i)
-            self.show_run(self.runs.itemData(i))
+    def refresh(self, folder=None):
+        """folder shown (None: the one shown here, else the run listed after
+        the one the main Viewer shows)."""
+        folder = folder or self.folder
+        if not folder or not os.path.isdir(folder):
+            runs = [r.folder for r in self.win.runs_panel.runs()
+                    if not r.preview]
+            here = self.win.shown
+            folder = next((runs[k + 1] for k in range(len(runs) - 1)
+                           if runs[k] == here), None) or next(
+                               (d for d in runs if d != here), None)
+        if folder:
+            self.show_run(folder)
 
     def show_run(self, folder):
         if folder and os.path.isdir(folder):
+            self.folder = os.path.abspath(folder)
             self.viewer.load(folder)
             if (self.win.viewer.view() in self.viewer.buttons and
                     self.viewer.buttons[self.win.viewer.view()].isEnabled()):
@@ -92,8 +89,13 @@ class ViewerWindow(QWidget):
             here = self.win.viewer.cuts.src
             if here is not None:  # and the same dump, when it has it
                 self.viewer.show_dump(here.label)
-            self.setWindowTitle(
-                f"{self.runs.currentText()} - Viewer - kicad2ems")
+            info = self.win.runs_panel.info(folder)
+            text = (info.label() if info is not None else
+                    os.path.basename(os.path.normpath(folder)))
+            self.which.setText(f"Second run: <b>{text}</b> &nbsp; "
+                               "<span style='color:gray'>(another: Ctrl and a "
+                               "click on the Runs page)</span>")
+            self.setWindowTitle(f"{text} - Viewer - kicad2ems")
 
 
 class PageDock(QDockWidget):

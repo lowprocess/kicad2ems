@@ -184,7 +184,8 @@ The solvers named for S-parameters, an antenna and the line model run first, tog
 that the temperature follows the circuit whose losses it takes. An engine that answers two questions answers
 them in one run (a rail's drop and its impedance). Each run goes into a folder of its own under the output
 folder, `<board>_<date>_<time>` for the solvers and `<board>_<engine>_<what>_<date>_<time>` for an analysis,
-with a `kicad2ems-study.json` that says who made it and what was asked; the window lists them under Results of.
+with a `kicad2ems-study.json` that says who made it, what was asked and the config it came from; the window
+lists them on its Runs page (*This config*: those of the config open).
 A run that fails or cannot start says why and the rest go on. The exit code is 0 when every run finished, 1 when
 one did not, 2 when the study cannot be read.
 

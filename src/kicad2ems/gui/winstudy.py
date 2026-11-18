@@ -40,6 +40,7 @@ class WindowStudy:
         self.setup.follow_fields()
         self.study.opened.connect(self.show_analysis)
         self.study.run_one.connect(lambda q: self.run_study(only=q))
+        self.study.show_run.connect(self.show_run)
 
     def _saved_study(self):
         """The study of the last session: its questions, their engines and
@@ -157,12 +158,14 @@ class WindowStudy:
             run.setToolTip(('Run ' + ', then '.join(titles) if titles else
                             'Tick a question in the list first') + ' (Ctrl+R)')
         self.update_estimate()
+        self.runs_panel.marks()  # ≠ settings: against the form as it is now
         self.steps.refresh()
 
     def go_to_step(self, key):
         """A step of the bar was clicked: where it is done. Board: the study's
         Board section; Questions: the list; Set up: what is still needed first,
-        else the settings; Run: the runs' log; Results: the result's pages."""
+        else the settings; Run: the runs' log; Results: the result's pages
+        (none shown: Runs)."""
         if key in ('board', 'questions'):
             if self.study_dock.isHidden():
                 self.study_dock.show()
@@ -177,8 +180,10 @@ class WindowStudy:
                 self.go_to_need(self._need)
         elif key == 'run':
             self.show_panel('Run')
-        else:
+        elif self.shown:
             self.show_result()
+        else:  # nothing shown: the runs to pick one from
+            self.show_panel('Runs')
 
     def go_to_need(self, item):
         """Where a thing a run still needs is set: its question selected, its
@@ -273,17 +278,20 @@ class WindowStudy:
         """The chosen board's layout (kicad2ems.core.layout) into the Viewer's
         plan wherever no run's board is shown there: read in a thread (a second
         or a few), once a board file. True: there, or being read. Another board
-        (New, or one chosen in the settings): Results of lists its runs, and a
+        (New, or one chosen in the settings): Runs lists its runs, and a
         run of the last board leaves the pages (they had kept it under the new
         study)."""
         board = self.setup.values().get('board')
         now = os.path.abspath(board) if board else None
-        if now != getattr(self, '_runs_board', now):
+        if now != getattr(self, '_runs_board', None):
             shown = getattr(self.viewer, 'out', None)
             self.refresh_runs()
-            if shown and shown not in [s['folder'] for s in self.sources()]:
+            if shown and os.path.abspath(shown) not in [
+                    r.folder for r in self.runs_panel.board_runs()]:
                 self.viewer.clear()
                 self.results.show_files([])
+                self.shown = None
+                self.update_showing()
         self._runs_board = now
         if (not board or not str(board).lower().endswith('.kicad_pcb')
                 or not os.path.isfile(board)):

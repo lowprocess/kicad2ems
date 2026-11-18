@@ -28,8 +28,9 @@ class ResultsTab(QWidget):
     (curveplot.CurvePlot; a result with several sets: one at a time), and has
     two more pages, which this one fills: Report, what it found, to read
     (`reportview`), and Tables, the report's tables to sort, copy and export
-    (`tablesview`; reportview.ReportView both). Compare with lays other runs of
-    the same kind over the plots."""
+    (`tablesview`; reportview.ReportView both). Compare with lays a run's own
+    variations, or another folder, over the plots (this board's other runs:
+    the Runs page)."""
     MODES = ('Plots', 'Report', 'Tables')
 
     def __init__(self, win):
@@ -61,9 +62,8 @@ class ResultsTab(QWidget):
         top.addWidget(self.which)
         self.cmp_btn = QToolButton(
             text='Compare with', popupMode=QToolButton.InstantPopup, toolTip=
-            ("Lay other runs of this board over the one shown, each labelled "
-             "by its folder: their S-parameters, or the same kind of curves (a "
-             "rail's impedance, a spectrum)"))
+            ("Lay this run's variations or another folder over the one shown "
+             "(this board's other runs: Ctrl and a click on the Runs page)"))
         self.cmp_menu = QMenu(self.cmp_btn, aboutToShow=self._fill_compare)
         self.cmp_btn.setMenu(self.cmp_menu)
         top.addWidget(self.cmp_btn)
@@ -200,10 +200,10 @@ class ResultsTab(QWidget):
             ]
         return [d for _label, _files, d in self.added]
 
-    def add_folder(self, d):
-        """Another run over the one shown: its S-parameters, or its curves when
-        the page shows an analysis's (the same kind only). False: nothing of
-        that kind in the folder."""
+    def add_folder(self, d, label=None):
+        """Another run over the one shown: its S-parameters (under label, else
+        its folder's name), or its curves when the page shows an analysis's
+        (the same kind only). False: nothing of that kind in the folder."""
         d = os.path.abspath(d)
         if d in self.compared():
             return True
@@ -217,7 +217,7 @@ class ResultsTab(QWidget):
         files = find_results(d)
         if not files:
             return False
-        self.added.append((os.path.basename(os.path.normpath(d))
+        self.added.append((label or os.path.basename(os.path.normpath(d))
                            or d, files, d))
         self.show_files(self._files)
         return True
@@ -281,36 +281,28 @@ class ResultsTab(QWidget):
             self.show_files(self._files)
 
     def _fill_compare(self):
-        """The Compare with menu: this board's other runs of the kind shown
-        (ticked: laid over), another folder, none."""
+        """The Compare with menu: the runs laid over (this board's are picked
+        on the Runs page: Ctrl and a click), this run's own variations,
+        another folder, none."""
         m = self.cmp_menu
         m.clear()
-        kind, on = self.kind(), self.compared()
-        here = os.path.abspath(self.out) if self.out else None
-        listed = set()
+        on = self.compared()
+        sw = self.sweeps() if self.analysis is None else []
+        varied = {os.path.abspath(p) for _l, _k, p in sw}
 
         def ticked(label, checked, toggled):
             a = m.addAction(label)
             a.setCheckable(True)
             a.setChecked(checked)
             a.toggled.connect(toggled)
-        for src in (self.win.sources() if hasattr(self.win, 'sources') else []):
-            d = os.path.abspath(src['folder'])
-            if src['kind'] != kind or d == here:
-                continue
-            ticked(
-                src['label'], d in on, lambda tick, d=d:
-                (self.add_folder(d) if tick else self.remove_folder(d)))
-            listed.add(d)
-        for d in on:  # added from elsewhere
-            if d not in listed:
-                ticked(os.path.basename(d), True,
-                       lambda tick, d=d: (None if tick
-                                          else self.remove_folder(d)))
-        if not m.actions():
-            a = m.addAction('no other run of this kind for this board yet')
-            a.setEnabled(False)
-        sw = self.sweeps() if self.analysis is None else []
+        for d in (d for d in on if d not in varied):
+            ticked(os.path.basename(d), True,
+                   lambda tick, d=d: (None if tick
+                                      else self.remove_folder(d)))
+        a = m.addAction("This board's other runs: Ctrl and a click on the "
+                        "Runs page")
+        a.triggered.connect(lambda: hasattr(self.win, 'show_panel')
+                            and self.win.show_panel('Runs'))
         if sw:  # this run's own variations (R-E5)
             m.addSection('This run varied')
             for label, kind, path in sw:

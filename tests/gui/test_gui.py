@@ -107,8 +107,8 @@ def test_window_tabs(tmp_path):
     assert w.setup.values()['air'] == 3.0
     # no page per analysis: an editor's
     assert (list(w.places) == [
-        'Viewer', 'Start', 'Results', 'Report', 'Tables', 'Run', 'Section',
-        'Filter', 'Circuit'
+        'Viewer', 'Start', 'Results', 'Report', 'Tables', 'Run', 'Runs',
+        'Section', 'Filter', 'Circuit'
     ])
     assert w.viewer.view() in ('3D', 'Plan')  # 3D when OpenGL can be had
     w.viewer.set_view('Plan')
@@ -917,7 +917,7 @@ def test_run_folders(tmp_path):
     <board>_preview; a board's runs are only its own, the newest first; one that
     wrote no summary is listed by how it ended (R-E24)."""
     import datetime
-    from kicad2ems.gui.runfolders import run_dir, preview_dir, runs, board_name
+    from kicad2ems.gui.runfolders import run_dir, preview_dir, index, board_name
     base = str(tmp_path)
     assert (board_name('/x/rf_coupler.kicad_pcb') == 'rf_coupler'
             and board_name('a/b_board.json') == 'b')
@@ -941,13 +941,17 @@ def test_run_folders(tmp_path):
     d3 = run_dir(base, 'x/rf_coupler.kicad_pcb',
                  t + datetime.timedelta(hours=1))
     os.makedirs(d3)
-    rs = runs(base, 'x/rf_coupler.kicad_pcb')
-    assert [d for d, _ in rs] == [d3, d2, d1]
-    assert (rs[1][1] == '2026-10-13 14:20:02 (mom25d, qucs)'
-            and rs[0][1] == '2026-10-13 15:15:02 (no result)')
+    rs = index(base, 'x/rf_coupler.kicad_pcb')
+    assert [r.folder for r in rs] == [d3, d2, d1]
+    assert (rs[1].engines == ('mom25d', 'qucs') and rs[1].outcome == 'done'
+            and rs[1].label(now=t) == '14:20 · S-parameters · mom25d (MoM), '
+            'line model (qucsator)' and rs[0].outcome == 'no result')
     json.dump(dict(code=0, stopped=True),
               open(os.path.join(d3, 'run_exit.json'), 'w', encoding='utf-8'))
-    assert runs(base, 'x/rf_coupler.kicad_pcb')[0][1].endswith('(stopped)')
+    assert index(base, 'x/rf_coupler.kicad_pcb')[0].outcome == 'stopped'
+    # every board's
+    assert ({r.board for r in index(base)} == {'rf_coupler', 'rf_coupler2'}
+            and len(index(base)) == 4)
 
 
 def test_solver_sections(tmp_path):
@@ -1294,8 +1298,8 @@ def test_the_window_is_docks(monkeypatch, tmp_path):
     assert (w.setup.isAncestorOf(w.study)
             and w.setup.inspector.isAncestorOf(w.setup.rf_box))
     assert (list(w.docks) == [
-        'Viewer', 'Start', 'Results', 'Report', 'Tables', 'Run', 'Section',
-        'Filter', 'Circuit'
+        'Viewer', 'Start', 'Results', 'Report', 'Tables', 'Run', 'Runs',
+        'Section', 'Filter', 'Circuit'
     ] and w.places is w.docks)
     # a result's pages: its plots, its report, its tables, and the runs' log
     # (the tabs read Plots and Log). On a screen this narrow the plots are the
@@ -1306,7 +1310,7 @@ def test_the_window_is_docks(monkeypatch, tmp_path):
     # no board yet: the Start page in front of the Viewer, with the workspace to
     # itself (the result pages step aside for it, and come back with a board, or
     # a result)
-    pages = ('Results', 'Report', 'Tables', 'Run')
+    pages = ('Results', 'Report', 'Tables', 'Run', 'Runs')
     assert w.places['Start'].in_front() and not w.places['Viewer'].in_front()
     assert (all(w.docks[n].isHidden() for n in pages)
             and w._aside['pages'] == list(pages))

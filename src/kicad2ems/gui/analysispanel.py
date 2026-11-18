@@ -649,7 +649,7 @@ class AnalysisPanel(QWidget):
 
     def _start_one(self, vals, preview):
         # the questions this run is asked (the study's)
-        asked = tuple(getattr(self, 'asked', None) or ())
+        asked, row = tuple(getattr(self, 'asked', None) or ()), dict(vals)
         if asked:
             vals = self.a.for_questions(vals, asked)
         unset = sorted(k for k in self.required
@@ -684,7 +684,10 @@ class AnalysisPanel(QWidget):
         from kicad2ems.core.api.frontend import mark_run
         from kicad2ems.core.study import provided
         # whose run this folder is
-        mark_run(self.out, self.a.name, asked or provided(self.a), preview)
+        win = self.win
+        mark_run(self.out, self.a.name, asked or provided(self.a), preview,
+                 config=getattr(getattr(win, 'setup', None), 'path', None),
+                 settings=row)
         self.say('$ ' + ' '.join(
             ['python', *argv[1:]]
             if os.path.basename(argv[0]).startswith('python') else argv))
@@ -751,6 +754,16 @@ class AnalysisPanel(QWidget):
             self.proc.deleteLater()
             self.proc = None
         self._running(False)
+        try:  # how it ended, for the Runs page (runfolders.EXIT)
+            import json, time
+            from .runfolders import EXIT
+            with open(os.path.join(self.out, EXIT), 'w',
+                      encoding='utf-8') as fh:
+                json.dump(dict(code=code,
+                               stopped=bool(getattr(self, '_stopped', False)),
+                               ended=time.strftime('%Y-%m-%d %H:%M:%S')), fh)
+        except OSError:
+            pass
         from kicad2ems.core.api.frontend import analysis_of
         made = analysis_of(self.out) if code == 0 else None
         if made is None or made[0] != self.a.name:

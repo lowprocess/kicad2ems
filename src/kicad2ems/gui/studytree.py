@@ -4,7 +4,9 @@ The questions' list in the Study dock: the view of a study.StudyModel.
     StudyTree(model=None)  a row per question, by group: a tick (it is asked),
                            who answers it (a menu: one engine, or several to
                            compare), a tick for its field dumps where an engine
-                           can write them, and its state
+                           can write them, and its state (else when the
+                           config's runs last answered it: a click shows that
+                           run)
 
 The model holds the study (what is asked, by whom, the Fields ticks, what cannot
 run here, each run's state) and answers every question about it; the list draws
@@ -37,6 +39,8 @@ class StudyTree(QTreeWidget):
     run_one = Signal(str)
     # the user ticked or unticked a row's Fields
     fields_ticked = Signal(str, bool)
+    # a State cell clicked: the run that last answered it, to show
+    show_run = Signal(str)
 
     def __init__(self, model=None):
         super().__init__(
@@ -60,6 +64,9 @@ class StudyTree(QTreeWidget):
             "none set: a default, which its settings let you change)")
         self.customContextMenuRequested.connect(self._context)
         self.rows = {}
+        # {question: (the run's label, its folder)}: the config's newest run
+        # that answered it (set_answered)
+        self.answered = {}
         self.boxes = {}  # the solvers' tick boxes (set_solver_boxes)
         self._setting = False
         bold = QFont(self.font())
@@ -200,9 +207,25 @@ class StudyTree(QTreeWidget):
         """A run's state as it was set."""
         return self.m.state(key)
 
+    def set_answered(self, answered):
+        """When each question was last answered: {question: (label, folder)}
+        of the config's newest run that did (the window's Runs page)."""
+        if answered != self.answered:
+            self.answered = dict(answered)
+            for q in self.rows:
+                self._state(q)
+
     def _state(self, q):
         it = self.rows[q]
         text, tip, tone = self.m.state_of(q)
+        last = self.answered.get(q)
+        if last is not None:
+            if not text:  # nothing run of it here: when it last was
+                text, tone = f"last {last[0].split(' · ')[0]}", 'gray'
+            tip = ((tip + '\n') if tip else '') + (
+                f"last answered by the run of {last[0]} (click: show it)")
+        it.setToolTip(C_Q, self.m.about[q] + (
+            f"\nlast answered: {last[0]}" if last is not None else ''))
         it.setText(C_STATE, text)
         it.setToolTip(C_STATE, tip)
         c = TONES.get(tone)
@@ -287,6 +310,9 @@ class StudyTree(QTreeWidget):
             self.ticks_changed.emit()
 
     def _clicked(self, it, col):
+        if (col == C_STATE and self._is_row(it)
+                and self._q(it) in self.answered):
+            self.show_run.emit(self.answered[self._q(it)][1])
         if col == C_BY and self._is_row(it) and self.m.can_ask(self._q(it)):
             q = self._q(it)
             if self.m.is_solver(q) or len(self.m.engines[q]) > 1:

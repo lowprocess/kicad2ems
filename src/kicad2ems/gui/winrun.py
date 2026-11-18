@@ -64,6 +64,8 @@ class WindowRun:
                 why = f"{type(e).__name__}: {e}"
             if why is None:
                 self._job_state(key, 'running')
+                if key != RF:  # (kicad2ems's own: start did)
+                    self.refresh_runs()
                 self.acts['Stop'].setEnabled(True)
                 self.runtab.stop_btn.setEnabled(True)
                 self.show_panel('Run', front=not self._queue_preview)
@@ -232,6 +234,16 @@ class WindowRun:
         board = vals.get('board')
         return default_out(board) if board else os.path.join(os.getcwd(), 'out')
 
+    def run_values(self, preview):
+        """The settings kicad2ems's own run (preview) would start with now: the
+        form's, without the field dumps when the RF row's Fields is not
+        ticked (the settings keep them)."""
+        vals = self.setup.values()
+        if not preview and not self.study.fields_on(RF):
+            for k in self.setup.dump_keys():
+                vals.pop(k, None)
+        return vals
+
     def start(self, preview):
         """Start kicad2ems's own run (the S-parameters analysis) or its preview;
         None, or why it did not start (said in a dialog too when the user
@@ -256,17 +268,14 @@ class WindowRun:
                 "Choose a solver on the list's S-parameters row (or Preview)")
         from kicad2ems.core.api.frontend import mark_run
         from .runfolders import run_dir, preview_dir
-        # no Fields tick on an RF row: the run leaves the dumps out (the
-        # settings keep them)
-        if not preview and not self.study.fields_on(RF):
-            for k in self.setup.dump_keys():
-                vals.pop(k, None)
+        vals = self.run_values(preview)
         base = self.out_dir(vals)  # each run in a folder of its own
         self.current = Run(vals, (preview_dir(base, vals['board']) if preview
                                   else run_dir(base, vals['board'])), preview)
         mark_run(self.current.out, RF,
                  (self.study.asked_of(RF, getattr(self, '_only', None)) or
-                  ('sparams', )), preview)
+                  ('sparams', )), preview, config=self.config_path())
+        self._auto = getattr(self, '_auto', False) and preview
         self.files, self._traceback, self._stopping = [], False, False
         self.runtab.reset()
         self.tail = EventTail(self.current.events)
@@ -295,6 +304,7 @@ class WindowRun:
         self.runtab.started('rf')
         self.show_panel('Run', front=not preview)
         self.timer.start(300)
+        self.refresh_runs()  # listed, running
         return None
 
     def preview(self):
@@ -426,12 +436,22 @@ class WindowRun:
             self.steps.refresh()
             QTimer.singleShot(0, self._auto_preview)
             return
+        auto, self._auto = getattr(self, '_auto', False), False
+        if (auto and self.shown and self.shown != os.path.abspath(out)
+                and self.runs_panel.info(self.shown) is not None):
+            # the preview a config gets: a run of it is shown, and stays
+            self.refresh_runs()
+            if self.system.load_estimates(out):
+                self.new_estimates(self.system.est)
+            self._job_done('rf', code)
+            return
         has_s = any(l.startswith('S-parameters') for l, _ in self.files)
         ant = self.results.load_antenna(None if self.current.preview else out)
         if has_s or not self.current.preview:
             # a preview: the solvers it runs (the line model)
             self.results.show_files(self.files)
         seen = self.viewer.load(out)
+        self.shown = os.path.abspath(out)
         self.refresh_runs(select=out)
         self.acts['Report'].setEnabled(bool(self.results.report))
         if self.current.preview and self.system.load_estimates(out):

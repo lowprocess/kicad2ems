@@ -104,6 +104,6 @@ def test_a_click_on_a_step_goes_where_it_is_done(window, tmp_path):
     w.steps.go.emit('run')
     app.processEvents()
     assert w.docks['Run'].in_front()
-    w.steps.go.emit('results')
+    w.steps.go.emit('results')  # nothing shown yet: the runs, to pick one
     app.processEvents()
-    assert w.docks['Results'].in_front()
+    assert w.docks['Runs'].in_front()

@@ -243,7 +243,7 @@ class PowerCircuitTab(QWidget):
                         for ch in name).strip('_')[:40] or 'circuit')
 
     def open_run(self,folder):
-        """A run's folder is the one shown (picked under Results of): what the
+        """A run's folder is the one shown (picked in Runs): what the
         others may start from. False: it holds no circuit result."""
         if not self.analysis.owns(str(folder)):return False
         self.panel.out=str(folder);self.panel.show_result(str(folder))

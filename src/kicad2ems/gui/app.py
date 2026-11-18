@@ -7,7 +7,9 @@ of it and the settings of the one selected: study.py) and its pages:
              coloured by Z0 (pick a section to read it), field dumps in place or
              as cuts (live while the run goes), the far field, the run's plots
     Run      the analyses of the run and where each is, openEMS's energy decay
-             and mom25d's adaptive sweep, the log of each
+             and mom25d's adaptive sweep, the log of each (the tab reads Log)
+    Runs     this board's runs, a row each: the one the pages show, those laid
+             over it, deleted (runspanel.py)
     Results  S-parameters and antenna results as Cartesian, Smith and polar
              plots you add and remove; an analysis's result as its curves, its
              report to read, or its tables to sort and export
@@ -37,8 +39,8 @@ The window is MainWindow here, made of a part a job (each a class of its own
 module, MainWindow's methods as they were): windocks.py its pages, toolbar and
 menus; winconfigs.py configs and examples; winstudy.py the study, what a run
 still needs and picking on the board; winrun.py the runs as they go;
-winresults.py this board's runs and the one shown; winparts.py the small
-windows and threads.
+winresults.py this board's runs and the one shown (runspanel.py their page);
+winparts.py the small windows and threads.
 """
 import sys
 import pyqtgraph as pg
@@ -95,6 +97,8 @@ class MainWindow(WindowStudy, WindowDocks, WindowConfigs, WindowRun,
         # (the pages that stepped aside for Start)
         self._had_board, self._aside = None, None
         self.filter = FilterTab(self)
+        from .runspanel import RunsPanel
+        self.runs_panel = RunsPanel(self)  # this board's runs: the Runs page
         # what runs each analysis of the registry: a settings panel made from
         # its options (analysispanel.py), or, for the one this window has an
         # editor for (the circuit's schematic), that page
@@ -157,7 +161,7 @@ class MainWindow(WindowStudy, WindowDocks, WindowConfigs, WindowRun,
             'Viewer': self.viewer, 'Run': self.runtab, 'Results': self.results,
             'Filter': self.filter, 'Report': self.results.reportview,
             'Tables': self.results.tablesview, 'Start': self.start_page,
-            'Section': self.viewer.section,
+            'Section': self.viewer.section, 'Runs': self.runs_panel,
             **{BY_KEY[k].page: p
                for k, p in self.editors.items()}
         }
