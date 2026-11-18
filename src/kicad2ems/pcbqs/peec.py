@@ -35,9 +35,9 @@ def electric_field(model, result, fi, pts, chunk=100_000):
     charge = result.charge[np.atleast_1d(fi)].T
     _, D = (node_potential(model)
             if getattr(model, 'charge_of', None) is not None else (None, None))
-    if D is not None:  # face sheets: each copy's share (side panels left out)
+    if D is not None:  # face sheets: each copy's share
         of = model.charge_of
-        charge = (D @ charge)[:of.max() + 1]
+        charge = D @ charge
     else:
         of = model.node_of
     area = np.bincount(of, weights=model.rwg.area, minlength=of.max() + 1)
@@ -129,7 +129,7 @@ def capacitance_matrix(model):
 
 
 def charge_nodes(model):
-    """Face sheets (and side panels): the charge unknowns -> circuit nodes, as a
+    """Face sheets: the charge unknowns -> circuit nodes, as a
     sparse (n_charge, n_nodes) incidence. None without face sheets (a charge per
     circuit node)."""
     charge_of = getattr(model, 'charge_of', None)
@@ -137,9 +137,6 @@ def charge_nodes(model):
         return None
     rep = np.zeros(charge_of.max() + 1, int)
     rep[charge_of] = model.node_of
-    side = getattr(model, 'side_owner', None)
-    if side is not None:
-        rep = np.r_[rep, model.node_of[side]]
     return coo_matrix((np.ones(len(rep)), (np.arange(len(rep)), rep)),
                       shape=(len(rep), model.n_nodes)).tocsc()
 
@@ -149,8 +146,7 @@ def node_potential(model):
     over each node's copies.
 
     With face sheets a node's charge is free to move between its copies (both
-    faces, its side panels): they are one conductor at one potential. So for
-    node charges q, the copies hold Pc^-1 Bn v with Bn^T Pc^-1 Bn v = q, i.e.
+    faces): they are one conductor at one potential. So for node charges q, the copies hold Pc^-1 Bn v with Bn^T Pc^-1 Bn v = q, i.e.
     node-level P_eff = (Bn^T Pc^-1 Bn)^-1 and copy charges D q, D = Pc^-1 Bn
     P_eff. Without face sheets: (model._potential, None)."""
     Bn = charge_nodes(model)

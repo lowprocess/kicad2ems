@@ -227,7 +227,7 @@ class MQS:
                  compression_leaf=64, compression_eta=1., solver_tol=1e-8,
                  solver_maxiter=500, drop_lone_pads=True, pad_area=1.0,
                  pad_sides=8, via_sides=6, thickness_sheets=None,
-                 thick_kernel=False, side_charge=False, ideal_terminals=True):
+                 thick_kernel=False, ideal_terminals=True):
         """Mesh the selected copper. `near` controls analytic 1/R integration
         (infinity: all pairs); `outer_levels` refines its close-pair quadrature.
         `capacitance=True` enables surface-charge PEEC: homogeneous `er`, or
@@ -362,14 +362,6 @@ class MQS:
         # (thick.py), which bounds the edge current a zero-thickness sheet makes
         # singular
         self.thick_kernel = bool(thick_kernel)
-        # side_charge=True (experimental): with capacitance and face sheets, the
-        # copper's sides as charged panels between the faces (side_charge.py; no
-        # current), homogeneous dielectric (either backend)
-        if side_charge and not (capacitance and dielectric == 'homogeneous'):
-            raise NotImplementedError(
-                "side_charge needs capacitance=True, a homogeneous dielectric "
-                "and thickness_sheets=2")
-        self.side_charge = bool(side_charge)
         self._thick_D = None
         # ideal_terminals (default): a terminal's (and a via fan's) inner sheet
         # edges carry no loop current, the terminal an ideal contact; False
@@ -724,23 +716,6 @@ class MQS:
         area = np.bincount(of, weights=self.rwg.area, minlength=n)
         W = coo_matrix((1 / area[of], (np.arange(len(self.tris)), of)),
                        shape=(len(self.tris), n)).tocsr()
-        if getattr(self, 'side_charge', False) and self.thickness_sheets == 2:
-            from .side_charge import side_moments, side_panels
-            p = side_panels(self)
-            Mtp, Mpp = side_moments(self, p)
-            M0 = np.block([[np.asarray(M0), Mtp], [Mtp.T, Mpp]])
-            npn = len(p['area'])
-            Wp = coo_matrix((1 / p['area'][p['panel']],
-                             (np.arange(len(p['panel'])), n + p['panel'])),
-                            shape=(len(p['panel']), n + npn))
-            Wc = W.tocoo()
-            W = coo_matrix((Wc.data, (Wc.row, Wc.col)),
-                           shape=(len(self.tris), n + npn))
-            from scipy.sparse import vstack
-            W = vstack([W, Wp]).tocsr()
-            # each panel's charge node: its triangle's conductor
-            self.side_owner = p['owner']
-            self.log(f'mqs: {npn:,} side panels carry charge')
         self._potential = (qform(W, M0, W) / (4 * np.pi * EPS0 *
                                               (self.er if er is None else er)))
 
