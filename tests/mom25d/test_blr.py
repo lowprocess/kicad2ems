@@ -9,9 +9,9 @@ from kicad2ems.mom25d.multilayer import Layer, LayerStack
 from kicad2ems.mom25d.sim import Simulation, Via, ViaPort
 
 
-def _sim(solver='blr', dmax=0.25e-3):
+def _sim(solver='blr', dmax=0.25e-3, sides=None):
     """A strip on M2 over a plane on M1 (an antipad round a via to the ground),
-    a via port at each end."""
+    a via port at each end. sides: Simulation's (thick copper's sides)."""
     from shapely.geometry import box, Point
     st = LayerStack([Layer(0.2e-3, 4.3, 0.02), Layer(0.2e-3, 4.3, 0.02)])
     w, L = 0.35e-3, 8e-3
@@ -25,7 +25,7 @@ def _sim(solver='blr', dmax=0.25e-3):
                      [ViaPort(Via(-L / 2, 0, 1, 2, 0.1e-3)),
                       ViaPort(v1)], dmax=dmax, dmax_layer={1: 0.6e-3},
                      w_ref={2: w, 1: 1e-3}, solver=solver, precision='double',
-                     verbose=False)
+                     verbose=False, sides=sides)
     sim.gpu, sim.loop_tree = 'off', 'off'
     return sim
 
@@ -44,6 +44,19 @@ def test_the_compiled_blr_solves_as_the_direct_solver():
     st, N = sim.fast.blr.stats, _sim().Ne + _sim().Nv
     assert st['lowrank'] > 0 and st['singular'] == 0
     assert st['bytes'] < 8.0 * N * N  # less than a complex64 matrix
+
+
+def test_the_blr_factor_has_the_sides_functions_rows():
+    """With thick copper's sides (their functions after the vias') the factor
+    has every unknown's row (it had lacked the sides': 'R must have N rows')
+    and gives the direct solver's S."""
+    pytest.importorskip('kicad2ems.mom25d._core')
+    sides = dict(t={1: 35e-6, 2: 35e-6}, up={1: False, 2: True})
+    ref = _sim('direct', sides=sides).sparams(4e9)
+    sim = _sim(sides=sides)
+    assert sim.sides is not None and len(sim.sides) > 0
+    S = sim.sparams(4e9)
+    assert np.abs(S - ref).max() < 1e-6
 
 
 def test_a_smaller_eta_compresses_more_tiles_to_the_same_answer():

@@ -1161,13 +1161,19 @@ class FastOperator:
 
     def _points(self):
         """Every unknown's place: the edges' midpoints, the via chains' axes,
-        the PEC planes' holes'."""
+        the PEC planes' holes', the sides' functions' (a fold at its plate's
+        middle, a vertical at the corner it turns: without them the block
+        low-rank factor had fewer rows than the matrix)."""
         sim = self.sim
         border = ([[v.x, v.y] for v, _, _ in sim.chains] + [
             list(fr.xy)
             for fr in getattr(sim, 'frills', ())
             for _ in range(fr.count)
         ] + [list(m) for sl in getattr(sim, 'slots', ()) for m in sl.rwg.mid])
+        sd, nd = getattr(sim, 'sides', None), sim.rwg.nodes
+        if sd is not None and len(sd):
+            border += (0.5 * (nd[sd.ia] + nd[sd.ib])).tolist()
+            border += nd[sd.ib[sd.vert[:, 1]]].tolist()
         return np.vstack([sim.rwg.mid] + ([np.array(border)] if border else []))
 
     def _raw_entry(self, dZx):
