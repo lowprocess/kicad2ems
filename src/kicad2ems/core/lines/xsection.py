@@ -17,8 +17,8 @@ coarser neighbour's side is tied to that side's ends, and the matrix reduced to
 the nodes left, T^T K T (as quads.py reduces mom25d's). The charge on a
 conductor is the net flux out of its nodes, so C is symmetric. Dielectric loss
 is the perturbation G / w = eps0 Phi^T K_tand Phi of the lossless solution. The
-tensor grid the solver began on is kept (MESH = False, _solve_on_grid): the
-independent check of the mesh, and what potential() solves on.
+tensor grid the solver began on is what potential() and finish.loss_share solve
+on.
 
     xs = CrossSection(dielectrics=[Dielectric(0.0, 0.2, 4.3, 0.02)],
                       planes=[0.0])
@@ -45,7 +45,6 @@ from dataclasses import dataclass, field
 import numpy as np
 from ..constants import C0, EPS0
 
-MESH = True             # the mesh of rectangles (False: the tensor grid)
 # the mesh: cell size / distance from the nearest copper corner
 MESH_GROW = 0.4
 # the cell at a corner, as a fraction of the feature there (nearest other
@@ -404,13 +403,6 @@ def _capacitance(stiffness, own, er, et):
     return C, Ca, 0.5 * (G_w + G_w.T)
 
 
-def _solve_grid(xs, x, z):
-    """(C, Ca, G_w, nodes) on one grid."""
-    er, et, own = _grid_cells(xs, x, z)
-    return (*_capacitance(lambda eps: _laplacian(x, z, eps), own, er, et),
-            own.size)
-
-
 def potential(xs, volts=None, air=False):
     """(x, z, phi, er): the grid lines (mm), the potential on its nodes (len(x),
     len(z)) with the signal conductors at `volts` (default 1 V on the first, 0
@@ -438,22 +430,6 @@ def _potential(A, own, volts):
     phi[free] = spsolve(A[free][:, free].tocsc(),
                         -(A[free][:, fixed] @ phi[fixed]))
     return phi
-
-
-def _bisect(a):
-    return np.sort(np.concatenate([a, 0.5 * (a[:-1] + a[1:])]))
-
-
-def _solve_on_grid(xs):
-    """The Result on the tensor grid: the edges' field singularity makes its
-    error first order in the cell size, so the solve is made on the grid and on
-    the grid with every cell halved, and extrapolated (2 X_fine - X_coarse)."""
-    x, z = _grid(xs)
-    c1 = _solve_grid(xs, x, z)
-    if not REFINE:
-        return Result(*c1)
-    c2 = _solve_grid(xs, _bisect(x), _bisect(z))
-    return Result(*(2 * b - a for a, b in zip(c1[:3], c2[:3])), nodes=c2[3])
 
 
 # ---- the mesh of rectangles -------------------------------------------------
@@ -648,8 +624,6 @@ def solve(xs):
     grading and corner cells twice as coarse, extrapolated (MESH_MIX: within 0.3
     % of a converged solve on a real board's cuts, where the mesh alone is up to
     0.7 % low; without the coarser solve, REFINE = False, 30 % faster)."""
-    if not MESH:
-        return _solve_on_grid(xs)
     c2 = _solve_mesh(xs, _mesh(xs))
     if not REFINE:
         return Result(*c2)

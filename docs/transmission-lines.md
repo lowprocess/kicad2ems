@@ -93,8 +93,9 @@ structure heights beyond the copper, with mom25d's methods ([coarsening](mom.md#
   `tests/test_xsection.py`).
 
 Each cross-section is solved on this mesh and on one twice as coarse, and the two extrapolated (`MESH_MIX`);
-`REFINE = False` skips the coarse solve (30 % faster, Z0 up to 0.7 % low). `MESH = False` uses the tensor grid the
-solver began on, kept as the independent check.
+`REFINE = False` skips the coarse solve (30 % faster, Z0 up to 0.7 % low). The tensor grid the solver began on was
+the independent check until 2026-11 (its column below); it is now only what `potential()` and the finish's loss
+share solve on.
 
 | Against | Case | Mesh | Tensor grid | Nodes, mesh / grid |
 |---|---|---|---|---|
@@ -111,7 +112,8 @@ Closed forms are not exact either: on the second CPW the mesh is within 0.02 % o
 0.56 % above it. On a real board, the 2,200 cross-sections of the CM5 Minima's 94 nets (up to 75 conductors), the
 mesh's worst error against the same one converged is 0.31 % (median 0.04 %, at most 30,800 nodes); the tensor grid's
 0.54 % (603,000 nodes). A cross-section takes about 20 ms (up to 0.2 s); it is quasi-static: no dispersion, no
-conductor loss. `tools/xsection_study.py` makes these tables, `tools/xsection_figures.py` the figures here.
+conductor loss. `tools/xsection_study.py` makes these tables (the mesh's columns), `tools/xsection_figures.py` the
+figures here.
 
 **Copper thickness on a pair, by full-wave simulation** (`tools/xsection_fullwave.py`, openEMS): on `rf_diffvia`'s
 two pairs, thickness takes 7.1 % off the microstrip pair's Zdiff and 14.2 % off the stripline pair's; the field

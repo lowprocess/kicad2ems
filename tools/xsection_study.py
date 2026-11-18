@@ -8,7 +8,7 @@ docs/transmission-lines.md#field-solver quotes this.
     python tools/xsection_study.py --board BOARD.kicad_pcb [--every N]
         # every cross-section of a real board
 
-Against each reference: the shipped mesh and the tensor grid (nodes, time). With
+Against each reference: the shipped mesh (nodes, time). With
 --board: each cross-section the line model asks for on the board, by default and
 with --lines-field, against the same one converged (corners 1/1024 of their
 features, the grading extrapolated from 0.2 and 0.1, no coarser far corners, the
@@ -20,10 +20,6 @@ import argparse, math, multiprocessing, os, sys, time
 
 import numpy as np
 
-sys.path.insert(
-    0,
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                 'src'))
 from kicad2ems.core.constants import C0, EPS0  # noqa: E402
 from kicad2ems.core.lines import (  # noqa: E402
     coupled as K, formulas as F, xsection as X)
@@ -106,30 +102,23 @@ def references():
                lambda: converged(five)[0], 'converged')]
     print(
         f"{'case':42s} {'reference':20s} {'value':>8s}   {'mesh':>8s} "
-        f"{'nodes':>6s} {'ms':>4s}   {'grid':>8s} {'nodes':>6s} {'ms':>4s}"
+        f"{'nodes':>6s} {'ms':>4s}"
     )
     for name, xs, f, ref, what in cases:
         ref = ref() if callable(ref) else ref
         t = time.perf_counter(); m = xs.solve(); tm = time.perf_counter() - t
-        t = time.perf_counter()
-        g = X._solve_on_grid(xs)
-        tg = (time.perf_counter() - t)
         print(
             f"{name:42s} {what:20s} {ref:8.3f}   "
-            f"{(f(m) / ref - 1) * 100:+7.2f}% {m.nodes:6d} {tm * 1e3:4.0f}   "
-            f"{(f(g) / ref - 1) * 100:+7.2f}% {g.nodes:6d} {tg * 1e3:4.0f}")
+            f"{(f(m) / ref - 1) * 100:+7.2f}% {m.nodes:6d} {tm * 1e3:4.0f}")
 
 
 def _judge(xs):
     t = time.perf_counter()
     r = xs.solve()
     tm = time.perf_counter() - t
-    t = time.perf_counter()
-    g = X._solve_on_grid(xs)
-    tg = time.perf_counter() - t
     T = converged(xs)
-    err = lambda q: float(np.abs(values(q.C, q.Ca) / T - 1).max() * 100)
-    return err(r), err(g), tm, tg, r.nodes, g.nodes, len(xs.conductors)
+    err = float(np.abs(values(r.C, r.Ca) / T - 1).max() * 100)
+    return err, tm, r.nodes, len(xs.conductors)
 
 
 def board(path, every):
@@ -157,15 +146,14 @@ def board(path, every):
     X.CrossSection.solve = lambda self: solve(self)
     with multiprocessing.Pool(max(1, (os.cpu_count() or 2) - 2)) as p:
         out = np.array(p.map(_judge, seen[::every], chunksize=4))
-    print(f"{len(out)} cross-sections, up to {int(out[:, 6].max())} conductors")
-    for name, e, ts, n in (('mesh', out[:, 0], out[:, 2], out[:, 4]),
-                           ('tensor grid', out[:, 1], out[:, 3], out[:, 5])):
-        print(
-            f"{name:12s} error worst {e.max():.3f} %, p99 "
-            f"{np.percentile(e, 99):.3f} %, median {np.median(e):.3f} %; time "
-            f"total {ts.sum():.1f} s, worst {ts.max() * 1e3:.0f} ms, median "
-            f"{np.median(ts) * 1e3:.0f} ms; nodes up to {int(n.max())}"
-        )
+    print(f"{len(out)} cross-sections, up to {int(out[:, 3].max())} conductors")
+    e, ts, n = out[:, 0], out[:, 1], out[:, 2]
+    print(
+        f"mesh error worst {e.max():.3f} %, p99 {np.percentile(e, 99):.3f} %, "
+        f"median {np.median(e):.3f} %; time total {ts.sum():.1f} s, worst "
+        f"{ts.max() * 1e3:.0f} ms, median {np.median(ts) * 1e3:.0f} ms; nodes "
+        f"up to {int(n.max())}"
+    )
 
 
 if __name__ == '__main__':

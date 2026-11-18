@@ -233,14 +233,17 @@ def convergence(out):
     x, z = X._grid(xs)
     prev = None
     for level in range(4):
-        C, Ca, _, n = X._solve_grid(xs, x, z)
+        er, et, own = X._grid_cells(xs, x, z)
+        C, Ca, _ = X._capacitance(lambda eps: X._laplacian(x, z, eps), own, er,
+                                  et)
+        n = own.size
         grid.append((n, err(C[0, 0], Ca[0, 0])))
         if prev is not None:
             grid2.append(
                 (n + prev[2], err(2 * C[0, 0] - prev[0],
                                   2 * Ca[0, 0] - prev[1])))
         prev = (C[0, 0], Ca[0, 0], n)
-        x, z = X._bisect(x), X._bisect(z)
+        x, z = (np.sort(np.r_[v, 0.5 * (v[:-1] + v[1:])]) for v in (x, z))
     mesh, mesh2 = [], []
     prev = None
     for grow, fine in ((1.6, 1 / 32), (0.8, 1 / 64), (0.4, 1 / 128),

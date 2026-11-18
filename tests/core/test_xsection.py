@@ -196,22 +196,6 @@ def test_the_mesh_converges_to_the_exact_stripline():
     assert xs.solve().single()[0] == pytest.approx(exact, rel=1.5e-3)
 
 
-@pytest.mark.parametrize('xs', SECTIONS[:12])
-def test_the_mesh_agrees_with_the_grid(xs):
-    """Two solvers that share only the charge's sum: the cross-section's whole C
-    and Ca, in fewer nodes."""
-    m, g = xs.solve(), X._solve_on_grid(xs)
-    n = len(m.C)
-    self_ = np.arange(n)
-    assert (np.allclose(m.C[self_, self_], g.C[self_, self_], rtol=8e-3)
-            and np.allclose(m.Ca[self_, self_], g.Ca[self_, self_], rtol=8e-3))
-    if n > 1:
-        # the coupling that matters
-        big = np.abs(g.C) > 0.02 * np.abs(g.C).max()
-        assert np.allclose(m.C[big], g.C[big], rtol=2.5e-2)
-    assert m.nodes < g.nodes
-
-
 @pytest.mark.parametrize('xs', SECTIONS)
 def test_maxwell_form(xs):
     """C symmetric, positive on the diagonal, negative off it, and each line's
@@ -231,13 +215,6 @@ def test_refine_off_is_one_solve(monkeypatch):
     assert one.nodes == both.nodes
     # the grading's error: Z0 low
     assert both.single()[0] * 0.985 < one.single()[0] < both.single()[0]
-
-
-def test_the_tensor_grid_still_solves(monkeypatch):
-    monkeypatch.setattr(X, 'MESH', False)
-    assert (X.stripline(0.15, 0.2, 0.2,
-                        4.3).solve().single()[0] == pytest.approx(
-                            _cohn(0.15, 0.4, 4.3), rel=5e-3))
 
 
 def test_a_dielectric_of_limited_width():
