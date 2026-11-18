@@ -1,8 +1,8 @@
 // mom25d_core.cpp - compiled kernels for mom25d (pybind11 + OpenMP)
 //
 //   fill_far      : centroid-rule (far-field) entries for all edge pairs,
-//                   written straight into a dense Z (complex128 or complex64),
-//                   symmetric, row-parallel, no temporaries
+//                   added to a dense Z (complex128 or complex64),
+//                   triangle-parallel, a kernel row a triangle
 //   fold_far      : far_block of every row with some columns, a triangle at
 //                   a time (mom25d.sides' folds)
 //   far_block     : the same for arbitrary row / column edge lists (ACA
@@ -62,6 +62,8 @@
 #include <chrono>
 #include <string>
 #include <array>
+#include <atomic>
+#include <memory>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -188,8 +190,12 @@ static inline double dist(const double *c, int p, int q) {
 }
 
 // -----------------------------------------------------------------------------
-// far field: dense fill (symmetric) - row-parallel, kernel rows for the two
-// triangles of edge m
+// far field: dense fill, added to Z (zeros as it comes) - triangle-parallel.
+// A triangle's kernel row against every triangle once (an edge at a time, each
+// triangle's row was made for each of its edges: three times), summed over
+// each edge's two triangles (R: with the edge's vector, x and y, and its
+// charge), and each half on the triangle adds its row of Z from R; an edge's
+// two halves are two triangles', so its row is locked for each.
 // -----------------------------------------------------------------------------
 template <class T>
 void fill_far_t(py::array_t<T> Z, py::dict geom, py::dict tabs, double w) {
@@ -198,44 +204,56 @@ void fill_far_t(py::array_t<T> Z, py::dict geom, py::dict tabs, double w) {
     auto buf = Z.request();
     T *z = (T *)buf.ptr;
     const size_t ld = buf.shape[1];
-    const cd jw(0, w), inv_jw = 1.0 / cd(0, w);
     const int Ne = g.Ne, Nt = g.Nt;
-    py::gil_scoped_release nogil;
-#pragma omp parallel
+    // each edge's two halves: weight (alpha x area), vector (centroid - vertex)
+    std::vector<double> ha(2 * (size_t)Ne), hx(2 * (size_t)Ne),
+        hy(2 * (size_t)Ne);
+    for (int n = 0; n < Ne; ++n) {
+        const int p0 = g.ep[n], p1 = g.em[n];
+        ha[2 * n] = g.ap[n] * g.area[p0];
+        ha[2 * n + 1] = g.am[n] * g.area[p1];
+        hx[2 * n] = g.cent[2 * p0] - g.vp[2 * n];
+        hy[2 * n] = g.cent[2 * p0 + 1] - g.vp[2 * n + 1];
+        hx[2 * n + 1] = g.cent[2 * p1] - g.vm[2 * n];
+        hy[2 * n + 1] = g.cent[2 * p1 + 1] - g.vm[2 * n + 1];
+    }
+    std::unique_ptr<std::atomic<char>[]> lock(new std::atomic<char>[Ne]());
     {
-        std::vector<cd> GA(2 * (size_t)Nt), GQ(2 * (size_t)Nt);
+        py::gil_scoped_release nogil;
+#pragma omp parallel
+        {
+            std::vector<cd> GA(Nt), GQ(Nt), Rx(Ne), Ry(Ne), Rq(Ne);
 #pragma omp for schedule(dynamic, 8)
-        for (int m = 0; m < Ne; ++m) {
-            int pm[2] = {g.ep[m], g.em[m]};
-            for (int s = 0; s < 2; ++s)
+            for (int p = 0; p < Nt; ++p) {
                 for (int q = 0; q < Nt; ++q)
-                    tb.kern(g.lt[pm[s]], g.lt[q], dist(g.cent, pm[s], q),
-                            GA[s * Nt + q], GQ[s * Nt + q]);
-            double am_[2] = {g.ap[m] * g.area[pm[0]], g.am[m] * g.area[pm[1]]};
-            double dx[2], dy[2];
-            dx[0] = g.cent[2 * pm[0]] - g.vp[2 * m];
-            dy[0] = g.cent[2 * pm[0] + 1] - g.vp[2 * m + 1];
-            dx[1] = g.cent[2 * pm[1]] - g.vm[2 * m];
-            dy[1] = g.cent[2 * pm[1] + 1] - g.vm[2 * m + 1];
-            for (int n = m; n < Ne; ++n) {
-                int pn[2] = {g.ep[n], g.em[n]};
-                double an[2] = {g.ap[n] * g.area[pn[0]],
-                                g.am[n] * g.area[pn[1]]};
-                double ex[2], ey[2];
-                ex[0] = g.cent[2 * pn[0]] - g.vp[2 * n];
-                ey[0] = g.cent[2 * pn[0] + 1] - g.vp[2 * n + 1];
-                ex[1] = g.cent[2 * pn[1]] - g.vm[2 * n];
-                ey[1] = g.cent[2 * pn[1] + 1] - g.vm[2 * n + 1];
-                cd v = 0;
-                for (int s = 0; s < 2; ++s)
-                    for (int t = 0; t < 2; ++t) {
-                        size_t k = s * (size_t)Nt + pn[t];
-                        double dot = dx[s] * ex[t] + dy[s] * ey[t];
-                        v += am_[s] * an[t] *
-                             (jw * dot * GA[k] + 4.0 * GQ[k] * inv_jw);
+                    tb.kern(g.lt[p], g.lt[q], dist(g.cent, p, q), GA[q],
+                            GQ[q]);
+                for (int n = 0; n < Ne; ++n) {
+                    const int p0 = g.ep[n], p1 = g.em[n];
+                    const cd a0 = ha[2 * n] * GA[p0],
+                             a1 = ha[2 * n + 1] * GA[p1];
+                    Rx[n] = hx[2 * n] * a0 + hx[2 * n + 1] * a1;
+                    Ry[n] = hy[2 * n] * a0 + hy[2 * n + 1] * a1;
+                    Rq[n] = ha[2 * n] * GQ[p0] + ha[2 * n + 1] * GQ[p1];
+                }
+                for (int s = 0; s < 3; ++s) {
+                    const int m = g.te[3 * p + s];
+                    if (m < 0) continue;
+                    // jw (x Rx + y Ry) + 4 Rq / (jw) = j (wx Rx + wy Ry - q Rq)
+                    const double a = g.ta[3 * p + s] * g.area[p],
+                                 wx = w * a * (g.cent[2 * p] -
+                                               g.tv[6 * p + 2 * s]),
+                                 wy = w * a * (g.cent[2 * p + 1] -
+                                               g.tv[6 * p + 2 * s + 1]),
+                                 q = 4.0 * a / w;
+                    T *row = z + (size_t)m * ld;
+                    while (lock[m].exchange(1, std::memory_order_acquire)) {}
+                    for (int n = 0; n < Ne; ++n) {
+                        const cd v = wx * Rx[n] + wy * Ry[n] - q * Rq[n];
+                        row[n] += T(cd(-v.imag(), v.real()));
                     }
-                z[(size_t)m * ld + n] = T(v);
-                z[(size_t)n * ld + m] = T(v);
+                    lock[m].store(0, std::memory_order_release);
+                }
             }
         }
     }
