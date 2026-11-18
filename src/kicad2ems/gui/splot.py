@@ -19,13 +19,12 @@ import json
 import numpy as np
 from PySide6.QtCore import Qt, Signal, QSettings, QSignalBlocker
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-                               QComboBox, QPushButton, QLabel, QTreeWidget,
-                               QTreeWidgetItem, QTableWidget, QTableWidgetItem,
-                               QSplitter, QFileDialog, QMessageBox, QHeaderView,
-                               QAbstractItemView, QToolButton, QMenu, QFrame,
-                               QScrollArea, QSizePolicy)
+                               QComboBox, QLabel, QTreeWidget, QTreeWidgetItem,
+                               QSplitter, QFileDialog, QMessageBox, QToolButton,
+                               QMenu, QFrame, QScrollArea, QSizePolicy)
 import pyqtgraph as pg
 from .panels import FlowLayout
+from .markers import plot_buttons, MarkerTable
 from . import theme
 from .traces import (KINDS, SMITH, DIFF_KINDS, transform, difference,
                      counterpart, value_at, fmt_value, nearest, smith_grid,
@@ -238,20 +237,12 @@ class SPlot(QWidget):
             a.triggered.connect(lambda _=False, k=kind: self.add_subplot(k))
         add.setMenu(menu)
         bar.addWidget(add)
-        for text, slot, tip in (
-            ('Fit', self.fit, 'Zoom every plot to what it shows'),
-            ('Clear markers', self.clear_markers,
-             'Remove every marker (or select one and press Delete)'),
-            ('Export CSV…', self.export_csv,
-             'The shown traces as the first plot shows them'),
-            ('Save image…', self.save_image, 'Every plot as one PNG')):
-            bar.addWidget(QPushButton(text, toolTip=tip, clicked=slot))
-        bar.addStretch(1)
-        bar.addWidget(
-            QLabel(
-                'click: marker · drag a marker to move it · wheel / drag: '
-                'zoom, pan',
-                styleSheet='color: gray'))
+        plot_buttons(bar, self.fit, self.clear_markers, self.export_csv,
+                     self.save_image,
+                     ('Zoom every plot to what it shows',
+                      'Remove every marker (or select one and press Delete)',
+                      'The shown traces as the first plot shows them',
+                      'Every plot as one PNG'))
         lay.addLayout(bar)
 
         self.tree = QTreeWidget(
@@ -278,12 +269,8 @@ class SPlot(QWidget):
         self.readout = QLabel(' ',
                               textInteractionFlags=Qt.TextSelectableByMouse,
                               wordWrap=True)
-        self.table = QTableWidget(
-            0, 0, editTriggers=QAbstractItemView.NoEditTriggers,
-            selectionBehavior=QAbstractItemView.SelectRows, maximumHeight=150)
-        self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeToContents)
-        self.table.keyPressEvent = self._table_key
+        self.table = MarkerTable(maximumHeight=150)
+        self.table.removed.connect(self._remove_markers)
         right = QWidget()
         rl = QVBoxLayout(right)
         rl.setContentsMargins(0, 0, 0, 0)
@@ -819,16 +806,11 @@ class SPlot(QWidget):
         self.markers = []
         self.redraw()
 
-    def _table_key(self, ev):
-        if ev.key() in (Qt.Key_Delete, Qt.Key_Backspace):
-            for r in sorted({i.row()
-                             for i in self.table.selectedIndexes()},
-                            reverse=True):
-                if r < len(self.markers):
-                    del self.markers[r]
-            self.redraw()
-        else:
-            QTableWidget.keyPressEvent(self.table, ev)
+    def _remove_markers(self, rows):
+        for r in rows:
+            if r < len(self.markers):
+                del self.markers[r]
+        self.redraw()
 
     def _ant_value(self, key, f):
         rows = (self.antenna or {}).get('rows') or []
@@ -868,22 +850,10 @@ class SPlot(QWidget):
 
     def _update_table(self):
         cols = self._columns()
-        self.table.setColumnCount(1 + len(cols))
-        self.table.setHorizontalHeaderLabels(['f (GHz)'] + [c for c, _ in cols])
-        self.table.setRowCount(len(self.markers))
-        self.table.setVerticalHeaderLabels([m['name'] for m in self.markers])
-        for r, m in enumerate(self.markers):
-            self.table.setItem(r, 0, QTableWidgetItem(f"{m['f'] / 1e9:.4f}"))
-            for c, (_, val) in enumerate(cols):
-                self.table.setItem(r, 1 + c, QTableWidgetItem(val(m['f'])))
-        self.table.setVisible(bool(self.markers))
-        if self.markers:  # as tall as its rows, up to five of them
-            rows = min(len(self.markers), 5)
-            h = (self.table.horizontalHeader().height()
-                 + rows * self.table.verticalHeader().defaultSectionSize())
-            sb = (self.table.horizontalScrollBar().sizeHint().height()
-                  if self.table.horizontalScrollBar().isVisible() else 0)
-            self.table.setFixedHeight(h + sb + 2 * self.table.frameWidth() + 2)
+        self.table.fill(['f (GHz)'] + [c for c, _ in cols],
+                        [[f"{m['f'] / 1e9:.4f}"] + [v(m['f']) for _, v in cols]
+                         for m in self.markers],
+                        [m['name'] for m in self.markers])
 
     # ---- export ----
     def export_csv(self, path=None):

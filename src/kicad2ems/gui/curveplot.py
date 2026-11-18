@@ -14,12 +14,11 @@ import pyqtgraph as pg
 from . import theme
 from PySide6.QtCore import Qt, QSignalBlocker
 from PySide6.QtGui import QColor, QBrush
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-                               QLabel, QSplitter, QTreeWidget, QTreeWidgetItem,
-                               QTableWidget, QTableWidgetItem, QFileDialog,
-                               QHeaderView, QAbstractItemView)
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
+                               QTreeWidget, QTreeWidgetItem, QFileDialog)
 
 from . import curves as C
+from .markers import plot_buttons, MarkerTable
 
 COLORS = [
     '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
@@ -36,43 +35,31 @@ class CurvePlot(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         row = QHBoxLayout()
-        for text, tip, slot in (
-            ('Fit', 'the whole of the curves shown', self.fit),
-            ('Clear markers',
-             "remove every marker (Delete removes the selected row's)",
-             self.clear_markers),
-            ('Export CSV…',
-             'the curves shown, each run with its own frequencies',
-             self.export_csv), ('Save image…', 'the plot as a PNG',
-                                self.save_image)):
-            row.addWidget(
-                QPushButton(text, toolTip=tip,
-                            clicked=lambda _=False, f=slot: f()))
-        self.hint = QLabel(
-            'click: marker · drag a marker to move it · wheel / drag: zoom, '
-            'pan',
-            styleSheet='color: gray')
-        row.addWidget(self.hint)
-        row.addStretch(1)
+        plot_buttons(row, self.fit, self.clear_markers, self.export_csv,
+                     self.save_image,
+                     ('the whole of the curves shown',
+                      "remove every marker (Delete removes the selected "
+                      "row's)",
+                      'the curves shown, each run with its own frequencies',
+                      'the plot as a PNG'))
         lay.addLayout(row)
         self.split = QSplitter(Qt.Horizontal, objectName='curves')
         self.tree = QTreeWidget(headerHidden=True, itemChanged=self._ticked)
         self.split.addWidget(self.tree)
-        right = QSplitter(Qt.Vertical)
+        right = QWidget()
+        rl = QVBoxLayout(right)
+        rl.setContentsMargins(0, 0, 0, 0)
         self.plot = pg.PlotWidget()
         self.plot.showGrid(x=True, y=True, alpha=0.3)
         for ax in ('bottom', 'left'):  # log axes: decades as they are
             self.plot.getAxis(ax).enableAutoSIPrefix(False)
         self.legend = self.plot.addLegend(offset=(-10, 10))
         self.plot.scene().sigMouseClicked.connect(self._clicked)
-        right.addWidget(self.plot)
-        self.table = QTableWidget(
-            0, 1, editTriggers=QAbstractItemView.NoEditTriggers,
-            selectionBehavior=QAbstractItemView.SelectRows)
+        rl.addWidget(self.plot, 1)
+        self.table = MarkerTable()
         self.table.verticalHeader().hide()
-        self.table.hide()
-        right.addWidget(self.table)
-        right.setSizes([600, 140])
+        self.table.removed.connect(self._remove_markers)
+        rl.addWidget(self.table)
         self.split.addWidget(right)
         self.split.setSizes([220, 1000])
         lay.addWidget(self.split, 1)
@@ -256,56 +243,35 @@ class CurvePlot(QWidget):
         self.markers = []
         self._update_table()
 
-    def keyPressEvent(self, ev):
-        if (ev.key() in (Qt.Key_Delete, Qt.Key_Backspace)
-                and self.table.hasFocus()):
-            rows = sorted({i.row()
-                           for i in self.table.selectedIndexes()}, reverse=True)
-            for r in rows:
-                if r < len(self.markers):
-                    self.plot.removeItem(self.markers.pop(r))
-            for k, m in enumerate(self.markers):
-                m.label.setFormat(str(k + 1))
-            self._update_table()
-            return
-        super().keyPressEvent(ev)
+    def _remove_markers(self, rows):
+        for r in rows:
+            if r < len(self.markers):
+                self.plot.removeItem(self.markers.pop(r))
+        for k, m in enumerate(self.markers):
+            m.label.setFormat(str(k + 1))
+        self._update_table()
 
     def _update_table(self, *_):
         m = self.main
         cols = self.shown(('data',))  # the bare planes: on the plot, not here
-        self.table.setVisible(bool(self.markers) and m is not None)
-        if m is None or not self.markers:
-            self.table.setRowCount(0)
+        if m is None:
+            self.table.fill([], [])
             return
-        self.table.setColumnCount(1 + len(cols))
-        self.table.setHorizontalHeaderLabels(
-            ['marker'] +
-            [c.name if not k else f"{cs.label}: {c.name}" for cs, c, k in cols])
-        self.table.setRowCount(len(self.markers))
+        rows = []
         for r, line in enumerate(self.markers):
             x = self._x_of(line.value())
-            self.table.setItem(
-                r, 0,
-                QTableWidgetItem(
-                    f"{r + 1}: "
-                    f"{C.fmt_hz(x) if 'Hz' in m.xlabel else f'{x:.4g}'}"
-                ))
-            for k, (cs, c, _n) in enumerate(cols):
-                self.table.setItem(
-                    r, 1 + k,
-                    QTableWidgetItem(
-                        C.fmt(C.value_at(c, x, m.logx, m.logy), c.unit)))
-        self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeToContents)
+            rows.append(
+                [f"{r + 1}: {C.fmt_hz(x) if 'Hz' in m.xlabel else f'{x:.4g}'}"]
+                + [C.fmt(C.value_at(c, x, m.logx, m.logy), c.unit)
+                   for _cs, c, _k in cols])
+        self.table.fill(
+            ['marker'] +
+            [c.name if not k else f"{cs.label}: {c.name}" for cs, c, k in cols],
+            rows)
 
     def values(self):
-        """The marker table as it reads: [[cell, ...]] (the tests', and what a
-        copy would give)."""
-        return [[
-            self.table.item(r, c).text() if self.table.item(r, c) else ''
-            for c in range(self.table.columnCount())
-        ]
-                for r in range(self.table.rowCount())]
+        """The marker table as it reads: [[cell, ...]] (the tests')."""
+        return self.table.values()
 
     # ---- export ----
     def export_csv(self, path=None):

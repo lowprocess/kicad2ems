@@ -148,6 +148,11 @@ def test_results_of_lists_every_analysis_and_compares_runs(window, tmp_path):
     assert row[0] == '1: 1 MHz' and len(row) == 3
     assert (float(row[1].split()[0]) == pytest.approx(
         2 * float(row[2].split()[0]), rel=0.02))
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    cp.table.selectRow(0)  # Delete in the table: the marker goes
+    QTest.keyClick(cp.table, Qt.Key_Delete)
+    assert cp.markers == [] and cp.table.isHidden()
     r._fill_compare()  # the Plots page's menu: the one laid over, unticked
     acts = [a for a in r.cmp_menu.actions() if a.isCheckable()]
     assert [a.text() for a in acts] == [os.path.basename(old)]

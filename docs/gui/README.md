@@ -155,6 +155,7 @@ It needs PySide6, pyqtgraph and PyOpenGL (installed with it).
 | `viewer.py`, `volumetab.py`, `volume3d.py` | the Viewer's Plan, 2D and 3D views; `volume3d` holds their arrays, without Qt |
 | `sectionview.py` | the field across a line-model section: the Section page (the KiCad plugin's too) |
 | `splot.py`, `traces.py` | S-parameter plots, Smith charts, traces and their export |
+| `markers.py` | what both plots share: their buttons, their markers' table |
 | `fieldtab.py`, `antennatab.py`, `steering.py` | field maps, antenna results, beam steering |
 | `filtertab.py` | the Filter page (dfsynth) |
 | `impedance.py` | Tools > Impedance calculator: a stack-up's Z0 and the width of a target (kicad2ems's `lines.calc`) |
