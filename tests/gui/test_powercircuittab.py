@@ -9,12 +9,49 @@ from kicad2ems.pcbqs import analyses as A
 
 
 @pytest.fixture
-def tab():
+def blank():
     from PySide6.QtWidgets import QApplication
     app=QApplication.instance() or QApplication([])
     t=PowerCircuitTab(analysis=A.Circuit())
     yield t
     t.close();app.processEvents()
+
+
+@pytest.fixture
+def tab(blank):
+    """A page with pcbqs.circuit's boost converter on it (a new page is blank:
+    test_a_new_circuit_is_blank)."""
+    blank.new_model('boost')
+    blank.status.clear()
+    return blank
+
+
+def test_a_new_circuit_is_blank(blank, tmp_path):
+    """A new page has no circuit on it (no parts, no file), says so, and can
+    still be given one: parts added, a model loaded, an example. A run of it
+    says what it lacks; saved, it writes no model."""
+    assert (blank.values() == dict(format=2, name='circuit', parts=[])
+            and blank.is_blank() and blank.model_path is None)
+    assert blank.status.text().startswith('No circuit yet')
+    assert blank.run_btn.isEnabled()
+    (m,) = blank.panel.needs()
+    assert m['text'].startswith('The circuit is blank')
+    blank.schematic.insert_part('source', 'V1', '12', 'vin', '0')
+    blank.schematic.insert_part('resistor', 'R1', '10', 'vin', '0')
+    assert ([p['ref'] for p in blank.values()['parts']] == ['V1', 'R1']
+            and not blank.is_blank() and blank.panel.needs() == [])
+    blank.load_settings({})  # a study without a circuit: blank again
+    assert blank.is_blank() and blank.status.text().startswith('No circuit')
+    assert blank.save_settings(str(tmp_path / 's.toml')) == {}
+
+    class Study:
+        def ticked(self):return ['circuit']
+    blank.win = type('Win', (), dict(study=Study()))()  # asked, still blank
+    assert (blank.save_settings(str(tmp_path / 's.toml')) == {}
+            and list(tmp_path.iterdir()) == [])
+    blank.win = None
+    blank.new_model('buck')
+    assert not blank.is_blank() and blank.values()['parts']
 
 
 def test_the_page_is_the_model_s_editor(tab):
@@ -142,11 +179,10 @@ def test_a_study_s_config_holds_the_circuit(tab,tmp_path):
     saved=json.loads((tmp_path/'m.json').read_text())
     assert (saved['board']['file'] == 'b.kicad_pcb'
             and 123456 in saved['parameters'].values())
-    tab.load_settings({})  # a study without a circuit: the page as it opens
-    assert (tab.model_path is None
-            and tab.values()['name'].startswith('Boost converter')
+    tab.load_settings({})  # a study without a circuit: a blank page
+    assert (tab.model_path is None and tab.is_blank()
             and not tab.copper.isChecked())
-    assert tab.panel.values()['set']=='' and tab.run_tag().startswith('Boost')
+    assert tab.panel.values()['set']=='' and tab.run_tag()=='circuit'
     assert (not tab.load_model(str(tmp_path / 'none.json'))
             and 'none.json' in tab.status.text())
     # the old tool's model
@@ -178,11 +214,10 @@ def test_a_study_s_config_holds_the_circuit(tab,tmp_path):
 
 def test_a_study_whose_model_will_not_load_keeps_it(tab,tmp_path):
     """A config that names the old full-bridge tool's model (format 1, under the
-    window's own <config>_circuit.json): refused, the page starts from its
-    template, and saving the study leaves that file as it was and the config
-    naming it. Opened after another study, nothing of that one's is written into
-    it. Started anew, the study's model goes in a file of its own, the old one
-    kept."""
+    window's own <config>_circuit.json): refused, the page is blank, and saving
+    the study leaves that file as it was and the config naming it. Opened after
+    another study, nothing of that one's is written into it. Started anew, the
+    study's model goes in a file of its own, the old one kept."""
     other = (tmp_path / 'a_circuit.json')
     tab.write_model(str(other), tab.values())
     tab.load_settings(dict(model=str(other)))
@@ -194,7 +229,7 @@ def test_a_study_whose_model_will_not_load_keeps_it(tab,tmp_path):
     tab.load_settings(dict(model=str(old)))
     assert (tab.model_path is None and tab.refused == str(old)
             and 'left as it is' in tab.status.text())
-    assert tab.values()['name'].startswith('Boost converter')
+    assert tab.is_blank()
     assert tab.save_settings(str(tmp_path/'s.toml'))['model']=='s_circuit.json'
     assert old.read_text()==before and other.read_text()==kept
     tab.new_model('boost')  # started anew: its own file, the old one kept

@@ -31,10 +31,11 @@ itself until a board is chosen or a result opened; *View > Start* brings it back
 - **Toolbar**: New, Open, Save, Save as, Preview, Run, Stop, the run's estimate, the results folder, the report,
   *Filter* (the wand: [Filter Synthesis](#filter), a window of its own), and *Results of*: this board's preview
   or one of its runs ([below](#run-folders)). The estimate (after a preview) is the time and memory of the
-  full-wave solvers ticked, or of the one *auto* would pick (`~4 min · 1.3 GB`); grey once the settings change,
-  red when it won't fit in the memory available. It opens the Solvers window. **Run says what it will do**
-  (*Run 2*: its tooltip names them in order) or, while something is missing, what that is (*Choose the board*):
-  clicking it then goes to where it is set ([Still needed](#needed)).
+  full-wave solvers ticked, or of the one *auto* would pick, and how many solvers a Run uses, named under it
+  (`~13 s · 0.5 GB · 2 solvers` over `gfdtd (auto) + Circuit`; before a preview `No estimate · 2 solvers`);
+  grey once the settings change, red when it won't fit in the memory available. It opens the Solvers window.
+  **Run** reads Run, always: its tooltip names what it will run, in order, or, while something is missing,
+  what that is (*Choose the board*), and clicking it then goes to where it is set ([Still needed](#needed)).
 - <a id="steps"></a>**Steps**, a bar under the toolbar: *Board*, *Questions*, *Set up*, *Run*, *Results*, each
   with where it stands in a line (the board's layers and nets; what is asked; what is still needed; the
   estimate, or the run's state; what the result is). Those done have a tick, the first that is not is marked;
@@ -45,12 +46,13 @@ itself until a board is chosen or a result opened; *View > Start* brings it back
 - **Left: the board and the questions.** The *Board* (its file and extra ports; the rest under *More about the
   board*), then the **Questions** asked of it ([below](#the-study)).
 - **The workspace: the board**, in the [Viewer](#the-viewer). While *Circuit* is asked its schematic is a tab beside
-  it, as Filter Synthesis is when opened. A result has a page for each thing it is: its [Plots](#plots), beside
+  it, as Filter Synthesis is when opened; while it is not, the page is not there at all (*View* has it greyed). A result has a page for each thing it is: its [Plots](#plots), beside
   the board where the window has the width (1,400 px of workspace; else the first tab under it), and under the
   board, tabbed, its [Report, its Tables](#report-page), the [Log](#the-log-page) and, with a line model, the
   [Section](#section) picked. A page comes to the front when it has something new: the Log when a run starts,
   the Report (or, for S-parameters, the Plots) when one ends.
-- **Left, under the questions: the settings of the question selected.** For S-parameters, the few a run is set up with: the frequency
+- **Left, under the questions: the settings of the question selected** (highlighted in the list, always: a
+  page brought to the front leaves them as they are; a double-click on a question shows its page). For S-parameters, the few a run is set up with: the frequency
   range and points, and the main cell size of each solver chosen. The rest are under **More settings**: the
   sections *Frequency*, *Solvers* (the driven ports), one per solver (*FDTD (openEMS, gfdtd)*: the mesh, run and
   field-dump settings both share; *gfdtd*; *mom25d*; ...) and *Output*, each counting its settings that are set,
@@ -282,7 +284,10 @@ frequencies is written at the end.
 ## The Log page
 
 Progress per driven port, the FDTD runs' energy decay, mom25d's adaptive sweep (its model change and prediction
-error per solve, in dB, against its tolerance), the log, and *Stop*.
+error per solve, in dB, against its tolerance), the log, and *Stop*. It shows what has run for the study open
+and nothing else: each plot once its run sends data (a run of neither has none), *Log of* the runs started
+(once there are two); before anything runs it says *nothing run yet*, and opening another config, or New,
+clears it (unless a run of the last one is still going).
 
 <a id="report-page"></a>
 ## The Report and Tables pages

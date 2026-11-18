@@ -78,7 +78,8 @@ BESIDE = ('Results',)                           # and beside it
 # pages closed when the window opens: the toolbar's Filter opens it ('Start'
 # comes and goes with the board: _start_follows)
 ON_DEMAND = ('Filter',)
-# pages shown while their analysis is ticked (or opened by hand)
+# pages there only while their analysis is ticked (or running): not opened by
+# hand otherwise (View has them greyed)
 FOLLOWS_TICK = dict(EDITORS)
 WAND = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wand.svg')
 STATE_VERSION = 4  # saved dock layouts of older windows: ignored
@@ -330,12 +331,9 @@ class MainWindow(QMainWindow):
             d.topLevelChanged.connect(
                 lambda floating, d=d: floating and QTimer.singleShot(
                     100, lambda: self._fit_floating(d)))
+            # (a page in front leaves the selected question, and so the
+            # settings, as they are: the list's highlight drives the dock)
             self.docks[name] = d
-            key = EDITORS.get(name)
-            if key:  # an analysis's page in front: its settings
-                d.visibilityChanged.connect(
-                    lambda on, k=key: (on and self._study_ready
-                                       and self.study.select(k)))
         # the line model's cross-section: a page under the board, so the plan it
         # is picked on stays in view; there while the folder shown has sections,
         # solved while it is in view (its tab picked)
@@ -500,10 +498,11 @@ class MainWindow(QMainWindow):
         self._need = first
         # (the steps bar's Set up)
         self._needs_all = [m for r in asked for m in needs.get(r, [])]
+        # the button reads Run, always: what a Run uses is counted beside it
+        # (the estimate), what it still needs in the steps bar and here
         run = self.acts['Run']
+        run.setText('Run')
         if first is not None:
-            text = first['text'][0].upper() + first['text'][1:]
-            run.setText(text if len(text) <= 30 else text[:29].rstrip() + '…')
             run.setToolTip(
                 f"{BY_KEY[first['run']].title} still needs: "
                 f"{first['text']}\n(click: go to where it is set; Run > Run "
@@ -512,9 +511,9 @@ class MainWindow(QMainWindow):
             )
         else:
             titles = [BY_KEY[k].title for k in asked]
-            run.setText(f"Run {len(titles)}" if len(titles) > 1 else 'Run')
             run.setToolTip(('Run ' + ', then '.join(titles) if titles else
                             'Tick a question in the list first') + ' (Ctrl+R)')
+        self.update_estimate()
         self.steps.refresh()
 
     def go_to_step(self, key):
@@ -575,7 +574,10 @@ class MainWindow(QMainWindow):
             key = self.study.run_of(key)
         if key in BY_KEY:
             if BY_KEY[key].page:
-                self.show_panel(BY_KEY[key].page)
+                if not self.show_panel(BY_KEY[key].page):
+                    self.statusBar().showMessage(
+                        f"Tick {BY_KEY[key].title} in the list: its page is "
+                        "there while it is asked", 6000)
             else:
                 self.show_result()
 
@@ -697,6 +699,7 @@ class MainWindow(QMainWindow):
                 bad=not self._queue_stopped, seconds=took)
             self._drop_after(key)
         self.job = None
+        self._page_visibility()  # (a page of a run alone, not ticked: gone)
         if self.queue:  # after this one's own end is dealt with
             QTimer.singleShot(0, self._next_job)
             return
@@ -913,20 +916,26 @@ class MainWindow(QMainWindow):
     def _page_visibility(self, opening=False):
         """The pages that come and go: Filter Synthesis closed when the window
         opens (the toolbar's Filter, or View, opens it); Circuit there while
-        Circuit is asked, and gone when it is not."""
+        Circuit is asked, and gone when it is not (nor can View open it)."""
         if opening:
             for name in ON_DEMAND:
                 self.docks[name].hide()
             self._start_follows(opening=True)
             self._section_follows()
-        ticked = set(self.study.ticked())
         for name, key in FOLLOWS_TICK.items():
-            d = self.docks[name]
-            if key in ticked and d.isHidden():
+            d, on = self.docks[name], self._page_allowed(name)
+            d.toggleViewAction().setEnabled(on)
+            if on and d.isHidden() and key in self.study.ticked():
                 self.show_panel(name, front=False)
-            elif (key not in ticked and not d.isHidden() and
-                  not (self.job == key or self.queue and key in self.queue)):
+            elif not on and not d.isHidden():
                 d.hide()
+
+    def _page_allowed(self, name):
+        """Whether a page may be shown: one that follows its analysis's tick
+        only while it is ticked, or its run is going or queued."""
+        key = FOLLOWS_TICK.get(name)
+        return (key is None or key in self.study.ticked() or self.job == key
+                or key in self.queue)
 
     def reset_layout(self):
         """The docks where a new window has them, at their first sizes: the
@@ -1091,7 +1100,10 @@ class MainWindow(QMainWindow):
         """Open a page (it may have been closed) and, front: bring it to the
         front of its tab group. A floated page that was closed comes back
         docked: on Wayland a separate window can't be raised or placed by the
-        app."""
+        app. A page that follows its analysis's tick, not ticked: not shown
+        (False)."""
+        if not self._page_allowed(name):
+            return False
         d = self.docks[name]
         if d.isFloating() and not d.isVisible():
             d.setFloating(False)
@@ -1109,6 +1121,7 @@ class MainWindow(QMainWindow):
         else:  # only there: what was in front stays
             for x in before:
                 x.raise_()
+        return True
 
     def show_result(self, front=True):
         """The pages of the result shown: its plots there, and what an analysis
@@ -1396,25 +1409,50 @@ class MainWindow(QMainWindow):
 
     def update_estimate(self):
         """The toolbar's estimate for the solvers ticked now (greyed when other
-        settings changed since)."""
+        settings changed since), and how many solvers a Run uses."""
         if not hasattr(self, 'est_btn'):
             return
         from .meters import estimate
         est = self.setup.est
-        if not est:
-            self.est_btn.show_estimate(None, has_preview=False)
-            return
         info = self.system.info or {}
-        usable = ({x['name'] for x in info.get('solvers', []) if x['ok']}
-                  if info.get('solvers') else None)
-        e = estimate(est, self.setup.values(), usable, self.meters.free_gb)
         labels = {
             x['name']: x['label'].split(' (')[0]
             for x in info.get('solvers', [])
         }
+        e = None
+        if est:
+            usable = ({x['name'] for x in info.get('solvers', []) if x['ok']}
+                      if info.get('solvers') else None)
+            e = estimate(est, self.setup.values(), usable, self.meters.free_gb)
+        jobs = (self.study.jobs(False)
+                if getattr(self, '_study_ready', False) else [])
+        runs = ((self._rf_solvers(e, labels) if RF in jobs else []) +
+                [BY_KEY[k].title for k in jobs if k != RF])
         self.est_btn.show_estimate(
-            e, stale=(self._est_basis is not None
-                      and self._basis() != self._est_basis), labels=labels)
+            e, has_preview=bool(est), labels=labels, runs=runs,
+            rf=RF in jobs, stale=(e is not None and self._est_basis is not None
+                                  and self._basis() != self._est_basis))
+
+    def _rf_solvers(self, e, labels):
+        """The solvers the S-parameters run uses, a name each: the full-wave
+        ones the estimate is of (auto's choice), else those ticked ('auto' while
+        none is), then the others ticked (the line model's)."""
+        from kicad2ems.core.api.frontend import registry, AUTO
+        try:
+            plan = self.setup.values().get('solvers')
+        except ValueError:  # (a field half typed)
+            plan = None
+        plan = [AUTO] if plan is None else list(plan)
+        full = {n for n, sv in registry().items() if sv.consumes == 'board'}
+        name = lambda n: labels.get(n, n)
+        if e is not None:
+            out = [name(n) + (' (auto)' if auto else '')
+                   for n, *_, auto in e['rows']] + list(e.get('missing') or [])
+        else:
+            out = ([name(n) for n in plan if n in full]
+                   or (['auto'] if AUTO in plan else []))
+        return out + [name(n) for n in plan
+                      if n not in full and n != AUTO and n in registry()]
 
     def update_title(self):
         name = (os.path.basename(self.setup.path)
@@ -1583,6 +1621,7 @@ class MainWindow(QMainWindow):
         if not self.busy():
             # another study: the last one's states are not its
             self.study.clear_states()
+        self._fresh_log()
         base = os.path.dirname(os.path.abspath(path)) if path else os.getcwd()
         if path:
             try:
@@ -1658,6 +1697,17 @@ class MainWindow(QMainWindow):
         run = self.study.run_of(first) if first in self.study.rows else RF
         if path and run in self.editors:
             self.show_panel(BY_KEY[run].page)
+
+    def _fresh_log(self):
+        """Another study: the Log page blank, unless a run of the last one is
+        going (not its preview, which ends: board_loaded), whose log it is."""
+        going = (self.job not in (None, RF) or self.queue
+                 or any(p.proc is not None for p in self.pages.values())
+                 or self.proc is not None and not self.current.preview)
+        if going:
+            return
+        self.tail = None  # (the preview's last events: not this study's)
+        self.runtab.clear()
 
     def _fields_set(self, question, study):
         """Whether a question's settings ask for field dumps, for a study that
@@ -1997,6 +2047,7 @@ class MainWindow(QMainWindow):
                     and not os.path.isdir(os.path.join(folder, 'preview'))
                     and not any(
                         f.endswith('_run.json') for f in os.listdir(folder))):
+                self.runtab.started('rf')
                 self.runtab.log.setPlainText(run_log(folder) or '(no log)')
                 self.runtab.stage.setText(f"this run: {ending(folder)}")
                 self.show_panel('Run')
@@ -2140,7 +2191,7 @@ class MainWindow(QMainWindow):
         self.runtab.stop_btn.setEnabled(True)
         self.acts['Stop'].setEnabled(True)
         self.runtab.stage.setText('starting…')
-        self.runtab.show_log('rf')
+        self.runtab.started('rf')
         self.show_panel('Run', front=not preview)
         self.timer.start(300)
         return None

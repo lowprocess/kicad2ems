@@ -1292,10 +1292,22 @@ class SchematicEditor(QWidget):
     @staticmethod
     def check(config,before=None):
         """Raise what is wrong with a model, by pcbqs.circuit's own checks, down
-        to the deck it would run."""
+        to the deck it would run. A blank model (no parts yet: a new circuit) is
+        one to start from: nothing to check; one drawn from it (before: the
+        model the edit started from, which made no deck either) need not make a
+        deck yet (a source and no drive: no period), only be a model."""
+        if config.get('format') == 2 and config.get('parts') == []:
+            return
         M=_model();M.validate(config)
         from kicad2ems.pcbqs.circuit.deck import build
-        for point in M.cases(config)[:1]:build(M.resolve(config,point))
+        def deck(c):
+            for point in M.cases(c)[:1]:build(M.resolve(c,point))
+        try:deck(config)
+        except (ValueError, KeyError, TypeError):
+            if before is None:raise
+            try:M.validate(before);deck(before)
+            except (ValueError, KeyError, TypeError, IndexError):return
+            raise
 
     def set_model(self,config,reset_history=True,undoable=False):
         """Show `config`: a model loaded (reset_history: the undo steps of
@@ -1318,7 +1330,8 @@ class SchematicEditor(QWidget):
             if (source != self._rendered_source):
                 self.set_sheets({})
                 self._rendered_source = copy.deepcopy(source)
-            self.check(self.config)
+            # (a model being drawn, checked as its edit was)
+            self.check(self.config, self.config)
             self.scene.load(
                 records(self.config),
                 self.config.get('schematic', {}).get('positions', {}),

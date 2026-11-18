@@ -322,27 +322,120 @@ def test_the_fields_tick(window):
     w.close()
 
 
-def test_an_analysis_page_in_front_selects_its_settings(window):
+def test_the_highlighted_question_drives_the_settings(window):
+    """The Settings dock is the highlighted question's, always: a page brought
+    to the front leaves both as they are (the Circuit page had switched the
+    dock to Circuit settings with S-parameters highlighted); a double-click on
+    a question shows its page; a group's heading is no question (a click on it
+    selects nothing, the keys step over it)."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
     w, app, _ = window
     w.show()
     app.processEvents()
+    st, title = w.study, w.setup.panel_title
+    shown = lambda: (st.current_question(), title.text(),
+                     [st._q(i) for i in st.selectedItems()])
     # the window opening selects nothing else
-    assert w.study.current() == 'rf'
-    # its editor comes with its tick
-    w.study.set_ticked(['rf', 'circuit'])
+    assert shown() == ('sparams', 'S-parameters settings', ['sparams'])
+    w.study.set_ticked(['rf', 'circuit'])  # its page comes with its tick
+    app.processEvents()
+    assert not w.places['Circuit'].isHidden()
     w.show_panel('Circuit')
     app.processEvents()
-    assert (w.study.current() == 'circuit'
-            and not w.setup.panels['circuit'].isHidden())
-    w.show_panel('Viewer')  # a shared page: the settings stay
-    app.processEvents()
-    assert w.study.current() == 'circuit'
+    assert (shown() == ('sparams', 'S-parameters settings', ['sparams'])
+            and w.places['Circuit'].in_front())
     w.show_analysis('pdn')  # one without a page of its own: its settings,
     app.processEvents()     # and where its results are
     assert w.study.current() == 'pdn' and not w.places['Results'].isHidden()
     w.show_analysis('circuit')
     app.processEvents()
-    assert w.study.current() == 'circuit' and w.places['Circuit'].in_front()
+    assert (shown() == ('circuit', 'Circuit settings', ['circuit'])
+            and w.places['Circuit'].in_front())
+    st.setCurrentItem(st.rows['sparams'])  # the user's pick
+    w.show_panel('Viewer')
+    w.show_panel('Circuit')
+    app.processEvents()
+    assert shown() == ('sparams', 'S-parameters settings', ['sparams'])
+    head = st.rows['circuit'].parent()  # 'Power': a heading
+    QTest.mouseClick(st.viewport(), Qt.LeftButton,
+                     pos=st.visualItemRect(head).center())
+    assert shown() == ('sparams', 'S-parameters settings', ['sparams'])
+    st.setCurrentItem(st.rows['lines'])  # the last RF row, then down
+    QTest.keyClick(st, Qt.Key_Down)
+    app.processEvents()
+    assert shown() == ('crosstalk', 'Crosstalk settings', ['crosstalk'])
+    QTest.keyClick(st, Qt.Key_Up)
+    app.processEvents()
+    assert shown()[0] == 'lines'
+    w.close()
+
+
+def test_the_circuit_page_is_there_only_while_asked(window):
+    """The Circuit page: there while Circuit is ticked, and otherwise not at
+    all (View has it greyed, nothing opens it); a new study's circuit is blank,
+    whatever the page had."""
+    w, app, _ = window
+    w.show()
+    app.processEvents()
+    d, page = w.places['Circuit'], w.pages['circuit']
+    act = d.toggleViewAction()
+    assert 'circuit' not in w.study.ticked()
+    assert d.isHidden() and not act.isEnabled() and page.is_blank()
+    assert w.show_panel('Circuit') is False and d.isHidden()
+    w.show_analysis('circuit')  # a double-click on its row: said why
+    assert d.isHidden() and 'Tick Circuit' in w.statusBar().currentMessage()
+    w.study.set_ticked(['rf', 'circuit'])
+    app.processEvents()
+    assert not d.isHidden() and act.isEnabled()
+    page.new_model('buck')
+    w.study.set_ticked(['rf'])
+    app.processEvents()
+    assert d.isHidden() and not act.isEnabled()
+    w.reset_layout()  # (every page back: not this one)
+    app.processEvents()
+    assert d.isHidden() and not act.isEnabled()
+    w.load_analyses(None)  # a new study: no circuit on the page
+    assert page.is_blank() and page.model_path is None
+    w.close()
+
+
+def test_the_log_shows_what_ran_and_clears_with_another_study(
+        window, monkeypatch):
+    """The Log page: nothing before anything runs (no plot, no list of logs);
+    the runs that started listed under Log of (not S-parameters in a study
+    that does not run them), a plot once its run sends data; another study
+    opened: blank again."""
+    from kicad2ems.gui.runtab import IDLE
+    w, app, _ = window
+    rt = w.runtab
+    blank = lambda: (rt.stage.text() == IDLE and rt.log_of.count() == 0
+                     and rt.log_of.isHidden() and rt.plot.isHidden()
+                     and rt.sweep.isHidden() and rt.jobs.isHidden()
+                     and rt.logs.currentIndex() == 0)
+    assert blank()
+    monkeypatch.setattr(w, '_start_job', lambda key, preview: None)
+    w.study.set_ticked(['circuit', 'thermal'])
+    w.run_study()
+    logs = lambda: [rt.log_of.itemText(i) for i in range(rt.log_of.count())]
+    # one run: its log, no list to choose from
+    assert (logs() == ['Circuit'] and rt.log_of.isHidden()
+            and rt.logs.currentIndex() == rt.views['circuit'][1])
+    w._job_done('circuit', 0)
+    for _ in range(5):
+        app.processEvents()
+    assert (logs() == ['Circuit', 'Thermal'] and not rt.log_of.isHidden()
+            and rt.log_of.currentData() == 'thermal')
+    assert rt.plot.isHidden()  # no FDTD run: no energy plot
+    rt.status(dict(run='P1', step=1000, db=-10.0, fraction=0.1))
+    assert not rt.plot.isHidden()
+    rt.log.appendPlainText('the last study\'s line')
+    assert not blank()
+    w._job_done('thermal', 0)
+    for _ in range(5):
+        app.processEvents()
+    w.load_analyses(None)  # another study
+    assert blank() and rt.log.toPlainText() == ''
     w.close()
 
 
@@ -455,7 +548,8 @@ def test_an_analysis_runs_from_the_window(window, tmp_path):
     w.study.set_ticked(['pdn'])
     w.run()  # no board, no rail: Run says so, and starts nothing
     assert (w.job is None and w.study.state('pdn') == ''
-            and w.acts['Run'].text() == 'Choose a board first')
+            and w.acts['Run'].text() == 'Run' and w.acts['Run'].toolTip(
+            ).startswith('Power integrity still needs: choose a board'))
     w.run_study()  # started all the same (one question alone is):
     # its row says why
     assert (w.job is None
@@ -758,16 +852,17 @@ def test_the_few_settings_first_and_the_rest_found(window):
 
 def test_still_needed_and_what_run_says(window, tmp_path):
     """What a run still needs is listed under the selected question's settings,
-    each line leading to where it is set, and the Run button says the first of
-    them instead of starting; with nothing missing it says what it will run. An
-    analysis says what it needs itself (Analysis.missing: what its command
-    raises, by default)."""
+    each line leading to where it is set, and the Run button (it reads Run,
+    always) goes to the first of them instead of starting, its tooltip saying
+    which; with nothing missing the tooltip says what it will run, and the
+    estimate beside it how many solvers. An analysis says what it needs itself
+    (Analysis.missing: what its command raises, by default)."""
     w, app, _ = window
     w.show()
     app.processEvents()
     need, run = w.setup.needed, w.acts['Run']
     w.update_needed()
-    assert (run.text() == 'Choose the board'
+    assert (run.text() == 'Run' and 'choose the board' in run.toolTip()
             and [m['text'] for m in need.items] == ['choose the board'])
     assert not need.isHidden() and need.title.text() == 'Still needed'
     w.run()  # goes there, starts nothing
@@ -781,36 +876,49 @@ def test_still_needed_and_what_run_says(window, tmp_path):
             and 'S-parameters' in run.toolTip())
     w.setup.set_values(dict(board=str(board), fmin=5, fmax=2))
     w.update_needed()
-    assert (run.text() == 'F max is not above f min'
-            and need.items[0]['key'] == 'fmax')
+    assert (run.text() == 'Run' and 'f max is not above f min' in
+            run.toolTip().lower() and need.items[0]['key'] == 'fmax')
     w.setup.set_values(dict(board=str(board), out=str(tmp_path / 'out')))
     w.study.set_ticked(['rf', 'pdn'])  # an analysis that needs its rail named
     w.study.select('dc')
     w.update_needed()
-    assert (run.text() == 'Name the rail (its net)'
+    assert (run.text() == 'Run'
             and [m['run'] for m in need.items] == ['pdn'])
     assert run.toolTip().startswith(
         'Power integrity still needs: name the rail')
     w.study.select('sparams')  # the list: the selected question's
-    assert need.items == [] and run.text() == 'Name the rail (its net)'
+    assert (need.items == [] and run.text() == 'Run'
+            and 'name the rail' in run.toolTip())
     w.pages['pdn'].set_values(dict(rail='+3V3'))
     w.update_needed()
-    assert (run.text() == 'Run 2' and
+    assert (run.text() == 'Run' and
             run.toolTip().startswith('Run S-parameters, then Power integrity'))
+    # beside it: the solvers it uses (no preview yet: no estimate)
+    assert w.est_btn.text().startswith('No estimate · 2 solvers')
+    assert 'auto, Power integrity' in w.est_btn.toolTip()
     w.study.set_ticked(['thermal'])  # the temperature alone: it has no losses
     w.study.select('thermal')
     w.update_needed()
     assert ('losses' in need.items[0]['text']
-            and run.text().startswith('Give the parts'))
+            and run.toolTip().startswith('Thermal still needs: give the parts'))
+    assert w.est_btn.text() == 'No estimate · 1 solver\nThermal'
     # with the circuit asked, which runs first and will give them: nothing to
     # ask for
     w.study.set_ticked(['circuit', 'thermal'])
     w.update_needed()
     assert ([m for m in need.items if m['run'] == 'thermal'] == []
             and w.needs(['circuit', 'thermal'])['thermal'] == [])
+    # a new circuit is blank: what it lacks (the steps bar says it too)
+    assert (w.pages['circuit'].is_blank() and w._needs_all[0]['text'].
+            startswith('The circuit is blank'))
+    from kicad2ems.gui.steps import steps_of
+    (setup,) = [s for s in steps_of(w) if s['key'] == 'setup']
+    assert 'still needed: The circuit is blank' in setup['text']
+    assert w.est_btn.text() == 'No estimate · 2 solvers\nCircuit + Thermal'
     w.study.set_ticked([])
     w.update_needed()
     assert run.text() == 'Run' and 'Tick a question' in run.toolTip()
+    assert w.est_btn.text() == 'No estimate\nnothing asked'
     w.setup.dirty = False
 
 

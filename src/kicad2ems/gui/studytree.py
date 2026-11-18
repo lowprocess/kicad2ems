@@ -12,7 +12,7 @@ it, passes on the user's hand, and says which question is selected. What the
 model has is reached through the list too (`list.asked()`, `list.jobs()`,
 `list.choice`), so the window talks to one object.
 """
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (QTreeWidget, QTreeWidgetItem, QHeaderView,
                                QAbstractItemView, QMenu)
@@ -244,10 +244,32 @@ class StudyTree(QTreeWidget):
         if q is not None and self.current_question() != q:
             self.setCurrentItem(self.rows[q])
 
-    def _current(self, cur, _old):
-        # (a group's heading: not a selection)
-        if cur is not None and self._is_row(cur):
+    def _current(self, cur, old):
+        """The selected question: its settings shown. A group's heading is not
+        one: the keys step over it (to the row beyond, the way they went)."""
+        if cur is None:
+            return
+        if self._is_row(cur):
             self.selected.emit(self._q(cur))
+            return
+        down = (old is None or self.visualItemRect(cur).y() >
+                self.visualItemRect(old).y())
+        it = cur
+        while it is not None and not self._is_row(it):
+            it = self.itemBelow(it) if down else self.itemAbove(it)
+        if it is None:
+            it = old if self._is_row(old) else self.rows.get('sparams')
+        if it is not None:  # (once the key's own selection is done)
+            QTimer.singleShot(0, lambda: self.setCurrentItem(it))
+
+    def mousePressEvent(self, ev):
+        # a group's heading: no question to select (it had kept the last one's
+        # settings in the dock, with none highlighted)
+        it = self.itemAt(ev.position().toPoint())
+        if it is not None and not self._is_row(it):
+            ev.accept()
+            return
+        super().mousePressEvent(ev)
 
     # ---- the user's hand ----
     def _changed(self, it, col):

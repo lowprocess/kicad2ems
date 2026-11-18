@@ -106,9 +106,12 @@ with its board, its model on the Circuit page and the circuit ticked.
 
 Filter Synthesis opens from the toolbar's Filter, in a window of its own. The
 **Circuit** page, the one analysis with an editor of its own, is a tab beside
-the board while Circuit is asked. It is the model's editor only (its schematic,
-its JSON): the model is a file the config names, saved back beside the config
-with the study. The circuit's settings are a panel in the Settings dock like any
+the board while Circuit is asked, and not there at all while it is not (View
+has it greyed). It is the model's editor only (its schematic, its JSON): the
+model is a file the config names, saved back beside the config with the study.
+A new study, or a config that names no model, starts it blank (no parts; it
+says so, and a Run says what it lacks): add parts, load a model or start from
+an example. A blank page writes no model. The circuit's settings are a panel in the Settings dock like any
 analysis's, made from the analysis's options (`kicad2ems.pcbqs.circuit
 --describe`), with a *Model* section for the model's parameters and sweep. Its
 results are on the Plots, Report and Tables pages and its log on the Log page,

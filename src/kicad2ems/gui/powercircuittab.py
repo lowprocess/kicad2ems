@@ -25,6 +25,13 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QScrollArea, QTableWidget, QTableWidgetItem,
                                QHeaderView)
 
+# a new circuit: no parts yet (the page's model until one is loaded, started
+# from an example or drawn)
+BLANK = dict(format=2, name='circuit', parts=[])
+SAY_BLANK = ('No circuit yet: add parts, load a model or start from one of '
+             'the Examples')
+
+
 def _is_number(text):
     try:float(text);return True
     except (TypeError,ValueError):return False
@@ -58,6 +65,9 @@ class _Run:
         try:c=page.values()
         except (ValueError, KeyError) as e:
             raise ValueError(f'The model needs attention: {e}') from None
+        if not c.get('parts'):
+            raise ValueError('The circuit is blank: add parts, load a model or '
+                             'start from an example')
         on = lambda k: values.get(k) is True or str(values.get(k)).strip(
         ).lower() in ('1', 'true', 'yes', 'on')
         board = (page.board.text().strip()
@@ -195,8 +205,7 @@ class PowerCircuitTab(QWidget):
             self._scroll.setWidget(self.panel)
             self.split.addWidget(self._scroll)
         try:
-            # a small circuit to open on, not a board's
-            self.set_model(self.template('simple'))
+            self.blank()  # a new circuit: nothing on it
         except (OSError, ValueError, ImportError, KeyError, TypeError) as e:
             self.status.setText(
                 "pcbqs (kicad2ems.pcbqs) failed to open its circuit: " + str(e))
@@ -284,6 +293,18 @@ class PowerCircuitTab(QWidget):
             )
         from kicad2ems.pcbqs.circuit import model
         return model.template(name)
+
+    def blank(self):
+        """The page as a new circuit: no parts, no file (blank())."""
+        self.set_model(dict(BLANK))
+        self.model_path, self.refused = None, None
+        self.status.setText(SAY_BLANK)
+        self.matching_note.setText(SAY_BLANK)  # (over the empty schematic)
+
+    def is_blank(self):
+        """No parts on the page (a new circuit's, or every part removed)."""
+        try:return not json.loads(self.editor.toPlainText()).get('parts')
+        except (ValueError, AttributeError):return False
 
     def new_model(self,name):
         try:
@@ -454,10 +475,10 @@ class PowerCircuitTab(QWidget):
         model it names, the options it sets (the copper and fields ticks), a
         board and a folder of its own. An empty one: the page as it opens;
         keep_model (a proposal that names no model, only settings for it): the
-        model on the page stays. A model that will not load (not a circuit
-        model): the page starts from its template, and the config keeps naming
-        that file, which nothing writes over until another model is loaded,
-        started or edited."""
+        model on the page stays; else no model named: the page is blank (a new
+        circuit). A model that will not load (not a circuit model): the page is
+        blank, and the config keeps naming that file, which nothing writes over
+        until another model is loaded, started or edited."""
         tab=dict(tab)
         self.panel.reset()
         self.panel.set_own(tab.pop('board', None), tab.pop('out', None))
@@ -470,7 +491,7 @@ class PowerCircuitTab(QWidget):
                 self.status.setText(f"Model: {Path(str(model)).name}")
             else:
                 said=self.status.text()
-                try:self.set_model(self.template('simple'))
+                try:self.blank()
                 except (OSError,ValueError,ImportError,KeyError,TypeError):pass
                 self.model_path, self.refused = (None,
                                                  str(
@@ -481,27 +502,22 @@ class PowerCircuitTab(QWidget):
                     '  The study still names it, and it is left as it is: load '
                     'or start a model to replace it.'
                 )
-        elif keep_model:
-            pass
-        elif self.model_path is not None:
-            try:self.set_model(self.template('simple'))
+        elif not keep_model:
+            try:self.blank()
             except (OSError,ValueError,ImportError,KeyError,TypeError):pass
-            self.model_path=None
-        else:  # the model stays: its values back in their fields
-            try:
-                self.set_model(json.loads(self.editor.toPlainText()),
-                               diagram=False)
-            except (ValueError,KeyError):pass
         self.panel.set_values(tab)
 
     def save_settings(self,config):
         """What the config at `config` holds of the circuit, {key: value} (paths
         relative to it), the model written as a file: the one it came from, else
-        <config>_circuit.json beside the config. {}: the page was never given a
-        model and the analysis is not asked, so the study has no circuit."""
+        <config>_circuit.json beside the config. A blank page: no model, nor a
+        file of one. {}: the page was never given a model and the analysis is
+        not asked, so the study has no circuit."""
         ticked = (self.win is not None and hasattr(self.win, 'study')
                   and 'circuit' in self.win.study.ticked())
-        if (self.model_path is None and self.refused is None and not ticked):
+        blank = self.refused is None and self.is_blank()
+        if not ticked and (blank or self.model_path is None
+                           and self.refused is None):
             return {}
         base=Path(config).resolve().parent;tab={}
         rel = lambda p: os.path.relpath(os.path.abspath(p), base).replace(
@@ -509,7 +525,7 @@ class PowerCircuitTab(QWidget):
         # the config's own, which would not load: as it was
         if self.refused is not None and self.model_path is None:
             tab['model']=rel(self.refused)
-        else:
+        elif not blank:
             try:
                 c=self.values()
                 # its own file beside the config, never another's

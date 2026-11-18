@@ -168,7 +168,8 @@ def test_solver_boxes_estimates_and_availability():
 def test_run_panel_plots_the_mom25d_sweep():
     """mom25d's adaptive-sweep steps (status events with change / pred) go to
     the Run panel's plot: its model change and prediction error in dB per solve,
-    and the tolerance it stops at."""
+    and the tolerance it stops at. A plot is there once its run sends data: no
+    plot before (a run of neither has none)."""
     pytest.importorskip('PySide6')
     pytest.importorskip('pyqtgraph')
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -177,6 +178,7 @@ def test_run_panel_plots_the_mom25d_sweep():
     app = application()
     w = MainWindow()
     rt = w.runtab
+    assert rt.plot.isHidden() and rt.sweep.isHidden()  # nothing has run
     for k, (c, p) in enumerate([(2.0, float('inf')), (0.1, 0.5), (1e-3, 2e-3)],
                                6):
         # progress: a bar, no curve
@@ -195,7 +197,7 @@ def test_run_panel_plots_the_mom25d_sweep():
     assert (not rt.sweep.isHidden() and not rt.plot.isHidden()
             and 'P1' in rt.curves)
     rt.reset()
-    assert rt.sweep.isHidden() and not rt.plot.isHidden() and not rt.curves
+    assert rt.sweep.isHidden() and rt.plot.isHidden() and not rt.curves
     w.close()
     app.processEvents()
 
@@ -806,13 +808,22 @@ def test_estimate_follows_the_solvers():
     assert w.est_btn.text().startswith('No estimate')
     w.setup.set_values(dict(board='b.kicad_pcb'))
     w.new_estimates(est)
-    assert (w.est_btn.text().startswith('~4 min · 1.3 GB · GPU 0.8 GB')
-            and '(auto)' in w.est_btn.text())
+    assert (w.est_btn.text().startswith(
+        '~4 min · 1.3 GB · GPU 0.8 GB · 1 solver\n') and '(auto)' in
+            w.est_btn.text())
     assert 'changed' not in w.est_btn.text()
     # a named solver: auto's choice gives way
     w.setup.solver_boxes['openems'].setChecked(True)
     assert (w.est_btn.text().startswith('~14 min')
             and 'changed' not in w.est_btn.text())
+    # an analysis asked too: counted, named after the solvers
+    w.study.set_ticked(['rf', 'circuit'])
+    w.update_needed()
+    (top, who) = w.est_btn.text().split('\n')
+    assert (top.endswith('· 2 solvers') and who.startswith('openems')
+            and who.endswith(' + Circuit') and w.acts['Run'].text() == 'Run')
+    w.study.set_ticked(['rf'])
+    w.update_needed()
     # where results go: the same estimate
     w.setup.edits['out'][0].setText('elsewhere')
     assert 'changed' not in w.est_btn.text()

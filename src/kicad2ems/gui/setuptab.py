@@ -338,6 +338,13 @@ class SetupTab(QWidget):
         self.panel_title.setText(
             f"{self.study.labels.get(question, 'S-parameters')} settings")
         self.panel_title.setVisible(True)
+        it = self.study.rows.get(question)
+        if it is not None and self.study.isVisible():
+            # its row in view: the highlight the settings are of (a config
+            # opened on a question below the fold)
+            r = self.study.visualItemRect(it)
+            at = self.study.viewport().mapTo(self._lw, r.center())
+            self.scroll.ensureVisible(at.x(), at.y(), 0, r.height())
 
     def _ticks(self):
         asked = self.study.asked()

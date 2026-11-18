@@ -1,6 +1,10 @@
 """The Log page: the runs of a study and where each is, openEMS's energy decay
 and mom25d's adaptive sweep, and the log of each (RunTab); run_notes, what a
-run's summary says to note. Moved out of app.py (R-F2)."""
+run's summary says to note. Moved out of app.py (R-F2).
+
+The page shows what has run for the study open, and nothing else: a plot once
+its run sends data, the 'Log of' list the runs started; another config opened,
+it is blank again (clear)."""
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QComboBox,
@@ -10,6 +14,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QComboBox,
 from .study import BY_KEY
 
 
+IDLE = 'nothing run yet'  # the page before anything has run
 COLORS = [
     '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',
     '#7f7f7f'
@@ -22,7 +27,7 @@ class RunTab(QWidget):
         self.win = win
         lay = QVBoxLayout(self)
         top = QHBoxLayout()
-        self.stage = QLabel('idle')
+        self.stage = QLabel(IDLE)
         self.stop_btn = QPushButton('Stop', enabled=False, clicked=win.stop)
         top.addWidget(self.stage, 1)
         top.addWidget(self.stop_btn)
@@ -54,15 +59,20 @@ class RunTab(QWidget):
             p.addLegend()
             p.showGrid(x=True, y=True, alpha=0.3)
             plots.addWidget(p, 1)
+        self.plot.hide()  # (each once its run sends data: _layout)
         self.sweep.hide()
         lay.addLayout(plots, 2)
         self.log = QPlainTextEdit(readOnly=True, maximumBlockCount=5000)
         row = QHBoxLayout()  # whose log: the S-parameter run's, a page's
         self.log_label = QLabel('Log of')
         self.log_of = QComboBox()
-        self.log_of.addItem(BY_KEY['rf'].title, 'rf')
+        # every run's log, {key: (title, its place in self.logs)}; those listed:
+        # the runs started (self.ran)
+        self.views = {'rf': (BY_KEY['rf'].title, 0)}
+        self.ran = []
         self.log_of.currentIndexChanged.connect(
-            lambda i: self.logs.setCurrentIndex(max(i, 0)))
+            lambda i: i >= 0 and self.logs.setCurrentIndex(
+                self.views[self.log_of.itemData(i)][1]))
         row.addWidget(self.log_label)
         row.addWidget(self.log_of)
         row.addStretch(1)
@@ -83,15 +93,40 @@ class RunTab(QWidget):
         # follows, as the page's
         log.document().contentsChanged.connect(
             lambda: bar.setValue(bar.maximum()))
-        self.logs.addWidget(view)
-        self.log_of.addItem(title, key)
-        self.log_label.show()
-        self.log_of.show()
+        self.views[key] = (title, self.logs.addWidget(view))
+
+    def started(self, key):
+        """A run started: its log listed (in the order they ran), and shown."""
+        if key not in self.ran:
+            self.ran.append(key)
+            self.log_of.blockSignals(True)
+            self.log_of.clear()
+            for k in self.ran:
+                self.log_of.addItem(self.views[k][0], k)
+            self.log_of.blockSignals(False)
+            # whose log: once there are two to choose from
+            self.log_label.setVisible(len(self.ran) > 1)
+            self.log_of.setVisible(len(self.ran) > 1)
+        self.show_log(key)
 
     def show_log(self, key):
+        """A run's log in view: one that has run (started)."""
         i = self.log_of.findData(key)
         if i >= 0:
             self.log_of.setCurrentIndex(i)
+            self.logs.setCurrentIndex(self.views[key][1])
+
+    def clear(self):
+        """Nothing run: another study opened (its runs' logs and plots are not
+        this one's)."""
+        self.reset()
+        self.set_jobs([])
+        self.ran = []
+        self.log_of.clear()
+        self.log_label.hide()
+        self.log_of.hide()
+        self.logs.setCurrentIndex(0)
+        self.stage.setText(IDLE)
 
     def set_jobs(self, jobs):
         """The analyses of a study run [(key, title)], queued; one alone: no
@@ -111,6 +146,8 @@ class RunTab(QWidget):
                 + 2 * self.jobs.frameWidth() + 4)
 
     def job_state(self, key, text, seconds=None):
+        if text == 'running':
+            self.started(key)
         it = self.job_rows.get(key)
         if it is None:
             return
@@ -141,7 +178,7 @@ class RunTab(QWidget):
         self.sweep.clear()
         self.curves = {}
         self._tol = None
-        self.plot.show()
+        self.plot.hide()
         self.sweep.hide()
         self.log.clear()
 
@@ -177,15 +214,15 @@ class RunTab(QWidget):
 
     def _layout(self):
         """The plots with something in them: openEMS's energy (timesteps) and
-        mom25d's sweep (EM solves) one above the other when both run; the energy
-        plot alone while nothing has come in."""
+        mom25d's sweep (EM solves) one above the other when both run; neither
+        while nothing has come in (a run of neither: no plot)."""
         sweep = any(
             k.endswith(('model change', 'prediction error'))
             for k in self.curves)
         energy = any(not k.endswith(('model change', 'prediction error'))
                      for k in self.curves)
         self.sweep.setVisible(sweep)
-        self.plot.setVisible(energy or not sweep)
+        self.plot.setVisible(energy)
 
     def status(self, ev):
         run = ev.get('run', '?')

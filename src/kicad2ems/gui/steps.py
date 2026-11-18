@@ -27,6 +27,7 @@ ACCENT, DONE, TODO = '#2f7fd6', '#2e9d5b', '#8a8f98'
 def steps_of(win):
     """Where a window's study stands, step by step (no Qt in what it
     returns)."""
+    from .runtab import IDLE
     values = win.setup.values()
     board = str(values.get('board') or '').strip()
     drawn = getattr(win, 'drawn', None)
@@ -74,7 +75,8 @@ def steps_of(win):
             key='run', title='Run', done=ran and not busy,
             text=(('running'
                    + (f": {win.runtab.stage.text()}"
-                      if win.runtab.stage.text() not in ('', 'idle') else ''))
+                      if win.runtab.stage.text() not in ('', 'idle', IDLE)
+                      else ''))
                   if busy else failed[0] if failed
                   else states[-1] if ran
                   else est if est and not est.lower().startswith('no estimate')

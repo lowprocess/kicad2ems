@@ -7,9 +7,10 @@ The status bar's memory meters and the toolbar's estimate.
                    process; without either tool, the GPU as the Solvers window's
                    check found it
     EstimateButton what the next run should take (meters.estimate): time, RAM
-                   and GPU memory for the solvers it runs; grey when the
-                   settings changed since the preview, red when it won't fit;
-                   opens the Solvers window
+                   and GPU memory for the solvers it runs, and how many
+                   solvers a Run uses; grey when the settings changed since
+                   the preview, red when it won't fit; opens the Solvers
+                   window
 """
 from PySide6.QtCore import Qt, QTimer, QProcess
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QLabel, QProgressBar,
@@ -132,7 +133,8 @@ class MemoryMeters(QWidget):
 
 
 class EstimateButton(QToolButton):
-    """The toolbar's estimate: '~4 min · 1.3 GB' over the solvers it is for."""
+    """The toolbar's estimate: '~4 min · 1.3 GB · 2 solvers' over the solvers a
+    Run uses."""
     def __init__(self):
         super().__init__()
         self.setToolButtonStyle(Qt.ToolButtonTextOnly)
@@ -141,17 +143,27 @@ class EstimateButton(QToolButton):
         self.setMinimumWidth(130)
         self.show_estimate(None, has_preview=False)
 
-    def show_estimate(self, e, has_preview=True, stale=False, labels=None):
+    def show_estimate(self, e, has_preview=True, stale=False, labels=None,
+                      runs=None, rf=True):
         """e: meters.estimate's dict, or None. stale: the settings changed since
-        the preview."""
+        the preview. runs: the solvers a Run uses, a name each (those of the
+        S-parameters run, then each analysis), counted on the first line; rf:
+        S-parameters are asked (an estimate is of their run)."""
         labels = labels or {}
+        k = len(runs or ())
+        count = f" · {k} solver{'s' if k != 1 else ''}" if k else ''
+        uses = ([f"a Run uses {k}: " + ', '.join(runs)] if k else
+                ['nothing asked: tick a question'] if runs is not None else [])
         if e is None:
-            self.setText('No estimate\n' + ('no full-wave solver' if has_preview
-                                            else 'Preview to estimate'))
-            self.setToolTip(
+            why = ('no full-wave solver'
+                   if has_preview else 'Preview to estimate')
+            self.setText('No estimate' + count + '\n' + (
+                'nothing asked' if runs == [] else
+                why if rf or not runs else ' + '.join(runs)))
+            self.setToolTip('\n'.join(uses + [
                 'Preview a board: each full-wave solver\'s time and memory on '
                 'it shows here and beside its tick box (click for the Solvers '
-                'window)')
+                'window)']))
             self.setStyleSheet('QToolButton { color: gray; }')
             return
         head = (f"{meters.duration(e['seconds'])} · {e['gb']:.1f} GB" +
@@ -161,8 +173,10 @@ class EstimateButton(QToolButton):
             for n, *_, auto in e['rows'])
         if e.get('missing'):
             who += ' + ' + ', '.join(e['missing']) + ' (no estimate)'
-        self.setText(f"{head}\n{who}" + (' · changed' if stale else ''))
-        tip = [
+        if runs:  # (the estimate is of the S-parameters run alone)
+            who = ' + '.join(runs)
+        self.setText(f"{head}{count}\n{who}" + (' · changed' if stale else ''))
+        tip = uses + [
             f"{labels.get(n, n)}{' (auto)' if auto else ''}: "
             f"{meters.duration(s)}, {gb:.1f} GB RAM"
             + (f", {g:.1f} GB GPU" if g else '')
@@ -176,8 +190,9 @@ class EstimateButton(QToolButton):
                 'the settings changed since the preview: preview again for a '
                 'new estimate'
             )
-        self.setToolTip('\n'.join(['Estimate of the last preview'] + tip
-                                  + ['(click for the Solvers window)']))
+        self.setToolTip('\n'.join(
+            ['Estimate of the last preview (the S-parameters run)'] + tip
+            + ['(click for the Solvers window)']))
         colour = '#c0392b' if not e['fits'] else ('gray' if stale else '')
         self.setStyleSheet(
             f"QToolButton {{ color: {colour}; }}" if colour else '')
