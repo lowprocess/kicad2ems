@@ -1,5 +1,5 @@
 """The circuit decks' parts and the copper's ports, as the circuit engine uses
-them: a winding's parasitics (pcbqs.wpt), the copper's port extraction, its R-L
+them: a winding's parasitics (pcbqs.power_spice), the copper's port extraction, its R-L
 and Foster fits and their passivity, the ngspice deck's passives, copper, Foster
 sections and switch models in actual transients, the adaptive Fourier series of
 a port's current, cancelling runs, the solver's options, a gate pulse across the
@@ -15,10 +15,9 @@ from kicad2ems.pcbqs.mqs_ports import CopperPorts, rl_equivalent, rl_error
 
 
 def test_srf_gives_the_winding_s_capacitance():
-    from kicad2ems.pcbqs.wpt import coil_capacitance, series_resistance
+    from kicad2ems.pcbqs.power_spice import coil_capacitance
     c=dict(L_H=24e-6,R_ohm=.11,SRF_Hz=7.7e6)
-    assert (coil_capacitance(c) == pytest.approx(17.80113e-12)
-            and series_resistance(c) == .11)
+    assert coil_capacitance(c) == pytest.approx(17.80113e-12)
 
 
 def test_copper_port_signs_reciprocity_and_passivity():
@@ -98,7 +97,8 @@ def test_parallel_core_loss_matches_q_and_damps_srf():
     """fit_core_resistance gives the core_R_ohm that makes the winding's AC
     resistance the measured one (wpthb's coils: 30.77 kohm, now written into
     their model rather than fitted at each deck build)."""
-    from kicad2ems.pcbqs.wpt import fit_core_resistance,coil_capacitance
+    from kicad2ems.pcbqs.power_spice import (fit_core_resistance,
+                                             coil_capacitance)
     rc = fit_core_resistance(24e-6, .11, .1216100382, 125e3, SRF_Hz=7.7e6)
     w = (2 * np.pi * 125e3)
     zz = (.11 + 1 / (1 / (1j * w * 24e-6) + 1 / rc))

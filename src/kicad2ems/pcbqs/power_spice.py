@@ -10,7 +10,6 @@ inference.
 import json, re, shutil, subprocess, threading, time
 from pathlib import Path
 import numpy as np
-from .wpt import coil_capacitance, series_resistance, core_resistance
 
 
 # ngspice transient options. reltol dominates run time on hard-switched
@@ -20,6 +19,42 @@ from .wpt import coil_capacitance, series_resistance, core_resistance
 # no power/current/ripple result by more than 0.03% on the same netlist.
 SOLVER_DEFAULTS = dict(method='gear', maxord=2, reltol=1e-4, abstol=1e-6,
                        vntol=1e-6, chgtol=1e-12, gmin=1e-10, rshunt=1e12)
+
+
+# ---- a winding's parasitics as the decks have them: its self-capacitance
+# (from its SRF) and a parallel core-loss resistance (core_R_ohm)
+def coil_capacitance(coil):
+    """The winding's self-capacitance: Cp_F, else from its SRF_Hz, else 0."""
+    return coil.get('Cp_F', (1 / ((2 * np.pi * coil['SRF_Hz'])**2 * coil['L_H'])
+                             if coil.get('SRF_Hz') else 0.))
+
+
+def fit_core_resistance(L_H, R_ohm, ac_ohm, f_Hz, SRF_Hz=None, Cp_F=None):
+    """The parallel core-loss resistance (ohm) that gives a winding of
+    inductance L_H and DC resistance R_ohm the AC resistance ac_ohm at f_Hz (its
+    Q there), with its self-capacitance (Cp_F, or from SRF_Hz): a model's
+    core_R_ohm. None when the DC resistance alone is already as lossy. Its
+    constant conductance is an assumption, not broadband ferrite data; it damps
+    the DCR-only SRF pole passively. (The fit had been done at every deck build
+    from Rac_ref_ohm, loss_model and loss_reference_Hz, for wpthb's coils alone:
+    R-F1.)"""
+    w = 2 * np.pi * f_Hz
+    x = w * L_H
+    cp = coil_capacitance(
+        dict(L_H=L_H, SRF_Hz=SRF_Hz, **({'Cp_F': Cp_F} if Cp_F else {})))
+
+    def real_z(logr):
+        rc = np.exp(logr); z = R_ohm + 1 / (1 / (1j * x) + 1 / rc)
+        return (z / (1 + 1j * w * cp * z)).real
+    from scipy.optimize import brentq
+    lo, hi = np.log(max(x, 1e-9)), np.log(1e15)
+    if ac_ohm <= real_z(hi):
+        return None
+    if ac_ohm >= real_z(lo):
+        raise ValueError(
+            'the AC resistance is past what a parallel core resistance can give'
+        )
+    return float(np.exp(brentq(lambda t: real_z(t) - ac_ohm, lo, hi)))
 
 
 def _series_modes(R, L):
@@ -250,7 +285,7 @@ class Circuit:
 
     def coil(self, ref, a, b, coil):
         L = coil['L_H']
-        R = series_resistance(coil)
+        R = coil['R_ohm']
         C = coil_capacitance(coil)
         for k, v in [('L', L), ('R', R), ('Cp', C)]:
             _positive(v, ref + '.' + k, k != 'L')
@@ -265,7 +300,7 @@ class Circuit:
         if C:
             self.lines.append(f'C_{ref}_self {n} {end} {C:.17g}' + (
                 f' IC={coil["initial_V"]:.17g}' if 'initial_V' in coil else ''))
-        rc = core_resistance(coil)
+        rc = coil.get('core_R_ohm')
         if rc:
             self.lines.append(f'R_{ref}_core {mid} {end} {rc:.17g}')
             self.resistance(ref, ref + '.core_V', mid, end, rc)

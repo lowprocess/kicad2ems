@@ -35,29 +35,12 @@ from dataclasses import dataclass, field
 
 from shapely.geometry import shape
 
-_SI = {
-    'f': 1e-15, 'p': 1e-12, 'n': 1e-9, 'u': 1e-6, 'µ': 1e-6, 'μ': 1e-6,
-    'm': 1e-3, 'k': 1e3, 'K': 1e3, 'M': 1e6, 'G': 1e9, 'R': 1.0, 'r': 1.0,
-    'E': 1.0
-}
-_NUM = re.compile(
-    r'^(\d*)(?:[.,](\d+))?([fpnuµμmkKMGRrE]?)(\d*)\s*(F|H|Ω|ohms?|OHMS?|R)?$')
+from kicad2ems.core.parts import parse_value
+
 BEAD = re.compile(r'(\d+\s*(R|Ω|ohm)\s*@|bead|ferrite|^BLM|^MPZ|^FB)', re.I)
 DEFAULT_BEAD_DCR, DEFAULT_BEAD_Z100 = 0.05, 600.0
 # a followed series inductor without a DCR: assumed, and flagged
 DEFAULT_INDUCTOR_DCR = 0.01
-
-
-def parse_value(text):
-    """'0R001' 1e-3, '4k7' 4700, '1u8' 1.8e-6, '2.2uH' 2.2e-6, '100n' 1e-7,
-    '10m' 0.01; None if not a value."""
-    m = _NUM.match(str(text).strip())
-    if not m or not (m.group(1) or m.group(2) or m.group(4)):
-        return None
-    whole, frac, pre, frac2, _ = m.groups()
-    if frac and frac2:
-        return None
-    return float(f"{whole or '0'}.{frac or frac2 or '0'}") * _SI.get(pre, 1.0)
 
 
 def part_value(fp):

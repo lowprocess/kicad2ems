@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
 
-from .pdn.rail import parse_value
+from kicad2ems.core.parts import parse_value
 
 PASSIVES=('resistor','capacitor','inductor')
 
@@ -28,7 +28,9 @@ def engineering_value(value):
         text=re.sub(r'(?<=\d)\s+(?=[fpnumkKMGRr])','',text)
         text=re.sub(r'\s*(ohms?|Ω|[FHAaVv])\s*$', '',text,flags=re.I).strip()
         try:number=float(text)
-        except ValueError:number=parse_value(text)
+        except ValueError:  # one word: core's takes the first ('33n 10%')
+            number = (parse_value(text)
+                      if len(re.split(r'[\s/_]', text)) == 1 else None)
     if (number is None or not math.isfinite(number)):
         raise ValueError(
             'Expected a finite number or SI value, such as 33n or 5m')

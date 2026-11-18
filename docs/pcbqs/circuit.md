@@ -41,7 +41,7 @@ model: `parameters.vin`, `drives.pwm.duty`, `R1.resistance_ohm`, `Q1.model.Ron_o
 |---|---|---|
 | `resistor` | a, b | `value` |
 | `capacitor` | a, b | `value`, `ESR_ohm`, `ESL_H`, `leakage_ohm`, `bias_factor` |
-| `inductor` | a, b | `value`, `DCR_ohm`; with `SRF_Hz` / `Cp_F` / `core_R_ohm`, a winding with self-capacitance and core loss (`kicad2ems.pcbqs.wpt.fit_core_resistance` gives a `core_R_ohm` from a measured AC resistance at a frequency); `AC_R_ohm` and `core_loss`: [losses after the run](#an-inductors-ac-and-core-losses) |
+| `inductor` | a, b | `value`, `DCR_ohm`; with `SRF_Hz` / `Cp_F` / `core_R_ohm`, a winding with self-capacitance and core loss (`kicad2ems.pcbqs.power_spice.fit_core_resistance` gives a `core_R_ohm` from a measured AC resistance at a frequency); `AC_R_ohm` and `core_loss`: [losses after the run](#an-inductors-ac-and-core-losses) |
 | `diode` | anode, cathode | `model`: `Vf_V` at `If_A` (0.7 V at 1 A), `n`, `R_ohm`, `Cj_F`, `TT_s`, `spice_parameters` (over them); or a [vendor's](#vendor-models) |
 | `switch` | drain, source | `drive`, `invert`; `model`: `type` (`vdmos`, the default; `switch`, `ideal`, `mosfet`, `subcircuit`), `Ron_ohm`, `Cgs_F`, `Cgd_F`, `Cds_F` (a vdmos without them: 1 nF, 50 pF, 500 pF), `body_diode`, `diode_TT_s`, `vdmos_parameters`, ...; or a [vendor's](#vendor-models) |
 | `source` | +, − | `dc_V`, or `wave` (`pulse`, `sine`, `pwl`), or `dc_A`; `R_ohm`, `L_H` in series |
