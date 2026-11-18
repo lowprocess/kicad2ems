@@ -549,8 +549,8 @@ def test_part_ports_are_delta_gaps_closing_to_the_parts(tmp_path, run_cli,
     """kicad2ems R-E5: a part port is a delta gap across the part's strip (the
     strip and its pads kept: a shunt part's ground pad with its vias is not a
     lone stitching pad), and closed by the parts' values it is the board with
-    its parts (as sheets: the sides break at a port's sample cuts too, not
-    only at its gap, 5e-3 apart)."""
+    its parts (as sheets: with the sides, a part's port and the part itself
+    differ by 0.012)."""
     pytest.importorskip('kicad2ems.mom25d._core')   # (the mesher)
     from kicad2ems.core.config import build_settings
     from kicad2ems.core.pipeline import board_from_settings
