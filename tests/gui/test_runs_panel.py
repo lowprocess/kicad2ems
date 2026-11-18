@@ -148,7 +148,26 @@ def test_a_config_s_runs(window, tmp_path, monkeypatch):
               p.tree.topLevelItem(i).toolTip(C_SET))
              for i in range(p.tree.topLevelItemCount())}
     assert cells[r1][0] == '' and cells[r2][0] == '≠ settings'
-    assert 'fmax: 7500000000.0 -> ' in cells[r2][1]
+    # one field changed: that key alone
+    assert ([l.split(':')[0] for l in cells[r2][1].splitlines()[1:]]
+            == ['fmax'] and 'fmax: 7500000000.0 -> ' in cells[r2][1])
+    # the preview: current while the form is as it ran, stale with one change
+    pv = rf.preview_dir(base, b)
+    os.makedirs(pv)
+    write_toml(os.path.join(pv, 'gui_run.toml'),
+               dict(w.run_values(True), out=pv))
+    w.refresh_runs()
+    last = p.tree.topLevelItem(p.tree.topLevelItemCount() - 1)
+    assert last.text(0) == 'preview' and last.text(3) == 'current'
+    assert last.text(C_SET) == ''
+    w.setup.edits['fmax'][0].setText('2.5')
+    w.update_needed()
+    assert last.text(3) == 'stale' and [
+        l.split(':')[0] for l in last.toolTip(C_SET).splitlines()[1:]
+    ] == ['fmax']
+    w.setup.edits['fmax'][0].setText(str(now['fmax']))
+    w.update_needed()
+    assert last.text(3) == 'current' and not cells[r1][0]
     # the study's list: when each was last answered; a click shows that run
     tree = w.study
     assert (tree.answered['dc'][1] == t0 and tree.answered['sparams'][1] == r2
@@ -171,4 +190,4 @@ def test_a_config_s_runs(window, tmp_path, monkeypatch):
             and ' B)' in asked[0] and 'the one going is kept' in asked[0])
     assert (not os.path.exists(r1) and not os.path.exists(t2)
             and os.path.isdir(t0))
-    assert [r.folder for r in p.runs()] == [r2, t0]
+    assert [r.folder for r in p.runs() if not r.preview] == [r2, t0]
