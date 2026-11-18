@@ -3,14 +3,11 @@ The GUI's settings form, without Qt (testable without a display): its fields and
 sections (made from the option tables and the solver registry), the solver tick
 boxes, and a config read into the form and written back (save_config keeps the
 file's comments and order). The run itself (Run, EventTail, stop_runs,
-find_results, write_toml) is kicad2ems.core.runs, which the KiCad plugin uses
-too.
+find_results) is kicad2ems.core.runs, which the KiCad plugin uses too.
 """
 import os
 
 from kicad2ems.core.runs import write_toml as _write_toml
-from kicad2ems.core.runs import (  # noqa: F401
-    Run, EventTail, stop_runs, find_results, toml_value)
 
 # the core option groups (options.Option.group) as the form's group boxes; a
 # solver's under their own name, its section ('FDTD/Mesh': the Mesh sub-section

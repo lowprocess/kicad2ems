@@ -1,6 +1,7 @@
 """The Runs page (runspanel.py) and the one index of runs it reads
-(runfolders.index): a config's runs and no other's, the one shown, ≠ settings,
-deleting several, the toolbar's Showing, the steps bar and the study's list.
+(kicad2ems.core.runs.index): a config's runs and no other's, the one shown, ≠
+settings, deleting several, the toolbar's Showing, the steps bar and the
+study's list.
 The analyses are the stand-ins (fake_analyses.py)."""
 import datetime
 import os
@@ -8,7 +9,7 @@ import os
 import pytest
 
 import fake_analyses as FA
-from kicad2ems.core import study
+from kicad2ems.core import runs, study
 from kicad2ems.core.runs import write_toml
 from kicad2ems.gui import runfolders as rf
 
@@ -36,21 +37,21 @@ def window(tmp_path, monkeypatch):
 
 
 def _pdn(base, board, cfg, minutes, rail='P', settings=None, done=True):
-    d = rf.tool_dir(base, board, 'pdn', rail,
+    d = runs.tool_dir(base, board, 'pdn', rail,
                     now=T + datetime.timedelta(minutes=minutes))
     if done:
         FA.write('pdn', d, rail=rail)
-    study.mark(d, 'pdn', ('dc', ), config=cfg, settings=settings)
+    runs.mark(d, 'pdn', ('dc', ), config=cfg, settings=settings)
     return d
 
 
 def _rf(base, board, cfg, minutes, values, code=0):
-    d = rf.run_dir(base, board, T + datetime.timedelta(minutes=minutes))
+    d = runs.run_dir(base, board, T + datetime.timedelta(minutes=minutes))
     os.makedirs(d)
     write_toml(os.path.join(d, 'gui_run.toml'), dict(values, out=d))
-    study.mark(d, 'rf', ('sparams', ), config=cfg)
+    runs.mark(d, 'rf', ('sparams', ), config=cfg)
     if code == 0:
-        with open(os.path.join(d, f"{rf.board_name(board)}_run.json"), 'w',
+        with open(os.path.join(d, f"{runs.board_name(board)}_run.json"), 'w',
                   encoding='utf-8') as fh:
             fh.write('{"solvers": ["qucs"]}')
     return d
@@ -66,19 +67,19 @@ def test_index_scopes_settings(tmp_path):
     mine = _pdn(base, board, a, 1)
     theirs = _pdn(base, board, c, 2)
     other = _pdn(base, str(tmp_path / 'z.kicad_pcb'), a, 3)
-    pv = rf.preview_dir(base, board)
+    pv = runs.preview_dir(base, board)
     os.makedirs(pv)
-    runs = rf.index(base, board)
-    assert [r.folder for r in runs] == [theirs, mine, old, pv]
-    assert runs[-1].preview and runs[-1].label() == 'preview'
-    assert [r.folder for r in rf.in_scope(runs, 'config', a)] == [mine, pv]
-    assert [r.folder for r in rf.in_scope(runs, 'config', None)] == [old, pv]
-    assert rf.in_scope(runs, 'board', a) == runs
-    every = rf.index(base)
+    rs = runs.index(base, board)
+    assert [r.folder for r in rs] == [theirs, mine, old, pv]
+    assert rs[-1].preview and rs[-1].label() == 'preview'
+    assert [r.folder for r in rf.in_scope(rs, 'config', a)] == [mine, pv]
+    assert [r.folder for r in rf.in_scope(rs, 'config', None)] == [old, pv]
+    assert rf.in_scope(rs, 'board', a) == rs
+    every = runs.index(base)
     assert ({r.board for r in every} == {'b', 'z'}
             and other in [r.folder for r in every])
-    assert (runs[0].config == c and runs[0].size > 0
-            and runs[0].questions == ('dc', ))
+    assert (rs[0].config == c and rs[0].size > 0
+            and rs[0].questions == ('dc', ))
     assert rf.differ(dict(fmax=6e9, solvers=['qucs', 'openems'], out='x',
                           events='e', mom=False, name=''),
                      dict(fmax=6e9, solvers=('openems', 'qucs'))) == []
@@ -152,7 +153,7 @@ def test_a_config_s_runs(window, tmp_path, monkeypatch):
     assert ([l.split(':')[0] for l in cells[r2][1].splitlines()[1:]]
             == ['fmax'] and 'fmax: 7500000000.0 -> ' in cells[r2][1])
     # the preview: current while the form is as it ran, stale with one change
-    pv = rf.preview_dir(base, b)
+    pv = runs.preview_dir(base, b)
     os.makedirs(pv)
     write_toml(os.path.join(pv, 'gui_run.toml'),
                dict(w.run_values(True), out=pv))

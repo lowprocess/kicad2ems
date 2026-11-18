@@ -15,7 +15,8 @@ from .runner import (FIELDS, SEMICOLON_LISTS, SECTION_SOLVERS, SECTION_TITLES,
 from kicad2ems.core.fields.dumps import G_DUMP
 from .panels import Section, NeededList
 from .meters import duration
-from .study import BY_KEY, run_key
+from kicad2ems.core.analyses import registry
+from .study import run_key
 
 
 def _helps():
@@ -278,7 +279,6 @@ class SetupTab(QWidget):
         """The questions' list under the board, and each run's settings {key:
         widget} ('rf': the solvers' own sections; an analysis: its page's form,
         moved here): those of the selected question's engines are shown."""
-        from .study import ANALYSES
         self.study = study
         holder = QWidget()
         hl = QVBoxLayout(holder)
@@ -296,17 +296,17 @@ class SetupTab(QWidget):
         self.study_slot.addWidget(self.study_section)
         at = self._left.indexOf(self.rf_box) + 1
         self.engine_titles = {}  # an analysis: whose settings (several shown)
-        for a in ANALYSES:
-            w = panels.get(a.key)
-            if w is None or a.key in self.panels:
+        for key, a in registry().items():
+            w = panels.get(key)
+            if w is None or key in self.panels:
                 continue
             lab = QLabel(
                 f"{a.tool}", styleSheet=
                 'font-weight: bold; color: gray; padding: 6px 4px 0px 4px;',
                 visible=False)
-            self.engine_titles[a.key] = lab
+            self.engine_titles[key] = lab
             self._left.insertWidget(at, lab)
-            self.panels[a.key] = w
+            self.panels[key] = w
             self._left.insertWidget(at + 1, w)
             at += 2
         study.set_solver_boxes(self.solver_boxes)
@@ -338,8 +338,8 @@ class SetupTab(QWidget):
             or run_key(e) == e.name
         }
         for k, lab in self.engine_titles.items():
-            lab.setText(f"{labels.get(k, k)}  ·  {BY_KEY[k].tool}" if k in
-                        BY_KEY else k)
+            a = registry().get(k)
+            lab.setText(f"{labels.get(k, k)}  ·  {a.tool}" if a else k)
             lab.setVisible(k in keys and len(keys) > 1)
         self.panel_title.setText(
             f"{self.study.labels.get(question, 'S-parameters')} settings")

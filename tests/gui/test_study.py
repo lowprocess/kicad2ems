@@ -8,35 +8,28 @@ from kicad2ems.gui import study
 from waiting import wait_until
 
 
-def test_order_and_needs():
-    keys = [a.key for a in study.ANALYSES]
-    # thermal: after the circuit run
-    assert keys[0] == 'rf' and keys.index('circuit') < keys.index('thermal')
-    # its losses may be typed: no needs
-    assert study.with_needs(['thermal']) == ['thermal']
-    # the list's order, not the caller's
-    assert study.with_needs(['circuit', 'rf']) == ['rf', 'circuit']
-    assert study.dependents('pdn') == [] and study.dependents('rf') == []
-    assert study.run_order(['circuit', 'mqs', 'rf']) == ['rf', 'mqs', 'circuit']
-    assert study.run_order(['thermal', 'circuit']) == ['circuit', 'thermal']
-    assert study.run_order(['rf', 'pdn', 'mqs'], preview=True) == ['rf', 'mqs']
-    # pcbqs not installed
-    assert study.run_order(['rf', 'pdn'], available={'rf'}) == ['rf']
-    assert study.run_order(['mqs'], preview=True, available={'rf'}) == []
-
-
-def test_an_analysis_that_starts_from_another_runs_after_it(monkeypatch):
-    """An analysis that starts from another's results runs after that; without
-    its own tool here (not available) only what it needs runs, and not at all
-    when that cannot run."""
-    base = study.ANALYSES
-    a = (*base, study.Analysis('later', 'Later', 'tool', needs=('pdn',)))
-    monkeypatch.setattr(study, 'ANALYSES', a)
-    monkeypatch.setattr(study, 'BY_KEY', {x.key: x for x in a})
-    assert (study.run_order(['later']) == ['pdn', 'later']
-            and study.dependents('pdn') == ['later'])
-    assert study.run_order(['later'], available={'pdn', 'rf'}) == ['pdn']
-    assert study.run_order(['later'], available={'later'}) == []
+def test_the_steps_a_run_takes_are_kicad2ems_s_plan(monkeypatch):
+    """The window's Run is kicad2ems's plan of the questions asked (the
+    solvers' run first, then the analyses in the registry's order: thermal
+    after the circuit); a preview, the runs that have one; a run that cannot be
+    made here left out; an analysis that needs one that did not finish is not
+    made (core.study.unmet, as `kicad2ems study` has it)."""
+    from kicad2ems.core import analyses
+    from kicad2ems.core.study import unmet
+    m = study.StudyModel()
+    for q in ('thermal', 'circuit', 'nearfield', 'sparams'):
+        m.tick(q)
+    assert m.jobs() == ['rf', 'mqs', 'circuit', 'thermal']
+    assert [st.questions for st in m.steps()][:2] == [('sparams', ),
+                                                      ('nearfield', )]
+    assert m.jobs(preview=True) == ['rf', 'mqs']
+    assert m.jobs(only='thermal') == ['thermal']
+    m.set_available('mqs', False, 'not here')
+    assert m.jobs() == ['rf', 'circuit', 'thermal']
+    reg = analyses.registry()
+    monkeypatch.setattr(reg['thermal'], 'needs', ('circuit', ))
+    assert (unmet('thermal', {'circuit'}) == ['circuit']
+            and unmet('thermal', {'pdn'}) == [] and unmet('rf', {'x'}) == [])
 
 
 @pytest.fixture
@@ -496,7 +489,7 @@ def test_run_starts_the_ticked_analyses_in_turn(window, monkeypatch):
     why.clear()
     started.clear()
     stopped = []
-    monkeypatch.setattr(w.pages['pdn'], 'stop', lambda: stopped.append('pdn'))
+    monkeypatch.setattr(w.runner, 'stop', lambda: stopped.append('pdn') or '')
     w.study.set_ticked(['pdn', 'circuit'])
     w.run_study()
     assert w.job == 'pdn'
@@ -609,7 +602,7 @@ def test_two_engines_of_one_question_run_and_are_compared(window, tmp_path):
     who was asked."""
     from PySide6.QtCore import Qt
     from kicad2ems.core.analyses import analysis_of
-    from kicad2ems.core import study
+    from kicad2ems.core import runs, study
     w, app, _ = window
     w.show()
     tree = w.study
@@ -636,16 +629,17 @@ def test_two_engines_of_one_question_run_and_are_compared(window, tmp_path):
     assert (tree.rows['thermal'].text(3).startswith('done ')
             and 'Elmer: done' in tree.rows['thermal'].toolTip(3))
     # the drop alone was asked
-    mark = study.marked(pdn.out)  # and the config and settings it ran with
-    assert (dict(mark, config=None, settings=None) == dict(
+    mark = runs.marked(pdn.out)  # and the config and settings it ran with
+    assert (dict(mark, config=None, settings=None, ended=None) == dict(
         engine='pdn', questions=('dc', ), preview=False, config=None,
-        settings=None) and mark['config'] == str(cfg)
+        settings=None, outcome='done', ended=None)
+            and mark['config'] == str(cfg)
             and mark['settings']['rail'] == '+3V3')
 
     assert (analysis_of(th.out) == ('thermal', False)
             and analysis_of(el.out) == ('elmer_thermal', False))
     assert (os.path.basename(el.out).startswith('b_elmer_thermal_losses_')
-            and study.marked(el.out)['questions'] == ('thermal', ))
+            and runs.marked(el.out)['questions'] == ('thermal', ))
     r = w.results  # the last one's report, the other beside it
     assert r.kind() == 'elmer_thermal' and r.modes() == ['Report', 'Tables']
     titles = [t for t, _ in r.reportview._tables]
@@ -674,7 +668,7 @@ def test_the_runs_are_read_once_for_a_settings_change(window, tmp_path,
     """What each analysis still needs asks the latest results, once per analysis
     and row: a run folder is read once while it is unchanged (each ask had read
     them all), again once a run is added."""
-    from kicad2ems.gui import runfolders
+    from kicad2ems.core import runs
     import fake_analyses as FA
     w, app, _ = window
     board = tmp_path / 'b.kicad_pcb'
@@ -682,10 +676,10 @@ def test_the_runs_are_read_once_for_a_settings_change(window, tmp_path,
     out = tmp_path / 'out'
     w.setup.set_values(dict(board=str(board), out=str(out)))
     first = FA.write(
-        'circuit', runfolders.tool_dir(str(out), str(board), 'circuit', 'buck'))
+        'circuit', runs.tool_dir(str(out), str(board), 'circuit', 'buck'))
     w.update_needed()  # (the board chosen: its runs listed)
-    reads, read = [], runfolders._read
-    monkeypatch.setattr(runfolders, '_read',
+    reads, read = [], runs._read
+    monkeypatch.setattr(runs, '_read',
                         lambda d, *a: reads.append(d) or read(d, *a))
     w.refresh_runs()
     assert w.latest_results() == dict(circuit=first) == w.latest_results()
@@ -695,7 +689,7 @@ def test_the_runs_are_read_once_for_a_settings_change(window, tmp_path,
          + __import__('datetime').timedelta(minutes=1))
     second = FA.write(
         'circuit',
-        runfolders.tool_dir(str(out), str(board), 'circuit', 'buck', now=t))
+        runs.tool_dir(str(out), str(board), 'circuit', 'buck', now=t))
     assert w.latest_results() == dict(circuit=second) and reads == [second]
     w.refresh_runs()
     assert reads == [second]
@@ -706,7 +700,7 @@ def test_one_analysis_starts_from_another_s_result(window, tmp_path):
     circuit's losses): the one shown, else the newest; and what a result
     proposes for another analysis (a converter's input rail), with what it could
     not say to be set before a run."""
-    from kicad2ems.gui import runfolders
+    from kicad2ems.core import runs
     import fake_analyses as FA
     w, app, _ = window
     pdn, mqs, th = w.pages['pdn'], w.pages['mqs'], w.pages['thermal']
@@ -719,11 +713,11 @@ def test_one_analysis_starts_from_another_s_result(window, tmp_path):
     t = __import__('datetime').datetime(2026, 11, 11, 1, 0, 0)
     old = FA.write(
         'circuit',
-        runfolders.tool_dir(str(tmp_path / 'out'), str(board), 'circuit',
+        runs.tool_dir(str(tmp_path / 'out'), str(board), 'circuit',
                             'buck', now=t))
     new = FA.write(
         'circuit',
-        runfolders.tool_dir(str(tmp_path / 'out'), str(board), 'circuit',
+        runs.tool_dir(str(tmp_path / 'out'), str(board), 'circuit',
                             'buck', now=t.replace(minute=5)))
     assert w.latest_results() == dict(circuit=new)
     w.run_study(only='thermal')
@@ -942,10 +936,10 @@ def test_the_window_s_own_run_starts_and_ends(window, tmp_path, monkeypatch):
     w.setup.set_values(dict(board=str(board), out=str(tmp_path / 'out')))
     w.study.set_ticked(['rf'])
     w.preview()
-    assert w.job == 'rf' and w.proc is not None
+    assert w.job == 'rf' and w.runner.proc is not None
     run_to_the_end(w, app)
     assert not w.busy() and 'fake run here' in w.runtab.log.toPlainText()
-    monkeypatch.setattr(type(w), 'start', lambda self, preview: 1 / 0)
+    monkeypatch.setattr(type(w), 'start', lambda self, *a: 1 / 0)
     w.preview()
     assert not w.busy() and 'ZeroDivisionError' in w.study.state('rf')
     # its traceback in the log
@@ -972,9 +966,9 @@ def test_stop_asks_the_run_then_ends_its_process(window, tmp_path, monkeypatch):
         [sys.executable,
          str(script), self.toml, '--events', self.events])
     asked = []
-    # (Stop is the window's runs' part: winrun.py)
-    import kicad2ems.gui.winrun as winrun
-    monkeypatch.setattr(winrun, 'stop_runs', lambda out: asked.append(out))
+    # (Stop is the launcher's: runprocess.py)
+    import kicad2ems.gui.runprocess as rp
+    monkeypatch.setattr(rp, 'stop_runs', lambda out: asked.append(out))
     w.setup.set_values(dict(board=str(board), out=str(tmp_path / 'out')))
     w.study.set_ticked(['rf'])
     w.preview()
@@ -1006,7 +1000,7 @@ def test_another_board_lists_its_own_runs(window, tmp_path):
     """Results of follows the board: after another board is chosen it lists that
     board's runs, and a run of the last one leaves the pages (they had kept it,
     shown under the new study)."""
-    from kicad2ems.gui import runfolders
+    from kicad2ems.core import runs
     import fake_analyses as FA
     w, app, _ = window
     a, b = tmp_path / 'a.kicad_pcb', tmp_path / 'b.kicad_pcb'
@@ -1015,7 +1009,7 @@ def test_another_board_lists_its_own_runs(window, tmp_path):
     w.setup.set_values(dict(board=str(a), out=str(tmp_path / 'out')))
     w.want_layout()
     run = FA.write(
-        'pdn', runfolders.tool_dir(str(tmp_path / 'out'), str(a), 'pdn', '3V3'))
+        'pdn', runs.tool_dir(str(tmp_path / 'out'), str(a), 'pdn', '3V3'))
     w.refresh_runs()
     listed = lambda: [r.folder for r in w.runs_panel.runs()]
     assert run in listed()
@@ -1176,15 +1170,8 @@ def xt_window(tmp_path, monkeypatch):
     reg = dict(analyses.registry(), crosstalk=Crosstalk())
     monkeypatch.setattr(analyses, '_registry', reg)
     from PySide6.QtCore import QSettings
-    from kicad2ems.gui import application, study as gstudy, app as gui
-    from kicad2ems.gui import winstudy, winconfigs, winrun
+    from kicad2ems.gui import application, study as gstudy
     from kicad2ems.gui.app import MainWindow
-    listed = gstudy.installed()
-    for module in (gstudy, gui, winstudy, winconfigs, winrun):
-        for name, v in (('ANALYSES', listed),
-                        ('BY_KEY', {a.key: a for a in listed})):
-            if hasattr(module, name):
-                monkeypatch.setattr(module, name, v)
     monkeypatch.setattr(gstudy, 'TREE', gstudy.tree())
     app = application()
     QSettings('kicad2ems', 'gui').clear()
@@ -1207,7 +1194,7 @@ def test_the_crosstalk_s_full_wave_solvers_are_its_engines(xt_window,
     with the engine."""
     from kicad2ems.core.study import Study
     from kicad2ems.core import study
-    from kicad2ems.core.study import marked
+    from kicad2ems.core.runs import marked
     w, app, json = xt_window
     tree, xt = w.study, w.pages['crosstalk']
     texts = lambda q: [(a.text(), a.isEnabled())

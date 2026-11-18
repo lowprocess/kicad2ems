@@ -113,7 +113,7 @@ thermal analyses, the Elmer and Palace tools).
 
 | Module | Names |
 |---|---|
-| `kicad2ems.core.analyses` | `Analysis`, `KINDS` (the kinds of an option), `RF` (the S-parameter run's key in a front end's lists: no analysis's), `registry()` (`{name: Analysis}`), `analysis_of(folder)` (`(name, preview)` of the analysis whose result a folder holds, or `None`), `read_config`, `read_sets` |
+| `kicad2ems.core.analyses` | `Analysis`, `KINDS` (the kinds of an option), `RF` (the S-parameter run's key in a front end's lists: no analysis's), `registry()` (`{name: Analysis}`), `analysis_of(folder)` (`(name, preview)` of the analysis whose finished result a folder holds, as its mark says, or `None`), `read_config`, `read_sets` |
 | `kicad2ems.core.study` | `Question` (name, label, group, about, shares, answer, order), `QUESTIONS` (kicad2ems's own: what an analysis may `provides`) |
 | maps for a viewer | `Dump`, `write_info`, `write_npz` (`core.fields.dumps`): field dumps, as a solver's; `save` (`core.meshes`) |
 
@@ -213,10 +213,15 @@ that answer it (`Engine`: `name`, `label`, `kind` `'solver'` or `'analysis'`,
 `{engine: the questions asked of it}`: one run for the questions an engine
 answers together. A front end passes an analysis engine's settings through
 `for_questions` before `command`, runs the solver engines as one kicad2ems run,
-and leaves a mark in each run's folder (`study.mark(folder, engine, asked,
-preview)`; `study.marked(folder)` reads it), by which `analysis_of` knows a result's
-engine even where two engines write a file of the same name. `kicad2ems --check`
-lists the questions with their engines.
+and leaves a mark in each run's folder (`runs.mark(folder, engine, asked,
+preview)`, completed by `runs.ended(folder, outcome)` when it ends;
+`runs.marked(folder)` reads it). The mark is what a folder is: `runs.info(folder)`
+and `runs.index(base, board)` (the Runs page's list, a `RunInfo` per run: kind, when,
+questions, engines, outcome, took, size, settings, config) read it, and
+`analysis_of` knows a result's engine by it even where two engines write a file of
+the same name. A folder made before marks were, or a mark of before they kept the
+outcome, is read once more the old way: whose result file it holds (`Analysis.owns`).
+`kicad2ems --check` lists the questions with their engines.
 
 A config holds a study as its `[study]` tables ([usage](usage.md#study)). `study.read_config(config, strict=True)` gives
 it as a `Study`: `asked` `{question: [engine names]}` in the order written (`[]`: the default engine; for
@@ -225,10 +230,13 @@ S-parameters, the solvers the settings name), `fields` `{question: True | False}
 does not know as written, for a front end to grey. `study.write_config(config, study)` writes the tables anew and keeps
 the rest of the file. `study.plan(study)` is the runs it takes, in order, `[Step]`: `kind` (`'solvers'`: one
 kicad2ems run, or `'analysis'`), `engines`, `questions`, `mode` (`'antenna'`, `'sparams'` or `''`: as the settings
-say), `fields`, `name` (`'rf'` or the analysis). `kicad2ems study` runs them (`kicad2ems.core.study.run`); a front end
-that starts each itself puts it in `run_dir(base, board)` or `tool_dir(base, board, analysis, what)` (a preview
-in `preview_dir`, `tool_preview_dir`), marks the folder, and gives an analysis the results it may start from
-(`latest_results(base, board)`: `{analysis: its newest result's folder}`).
+say), `fields`, `name` (`'rf'` or the analysis). `kicad2ems study` runs them (`kicad2ems.core.study.run`), each as a
+command of its own: the solvers' as `python -m kicad2ems <folder>/gui_run.toml --events ...` (`runs.Run`), an
+analysis's as its `command`. The GUI makes the same plan and the same commands. A front end that starts each itself
+puts it in `run_dir(base, board)` or `tool_dir(base, board, analysis, what)` (a preview in `preview_dir`,
+`tool_preview_dir`), marks the folder, skips an analysis whose `needs` did not finish (`study.unmet(engine,
+failed)`), and gives an analysis the results it may start from (`runs.latest_results(base, board, config)`:
+`{analysis: its newest finished run's folder}`, the config's first).
 
 **Two engines' answers side by side.** An engine's report is its own, and two
 engines' headline numbers need not be the same quantity (a rail's drop with its
@@ -276,8 +284,8 @@ For programs that drive kicad2ems: read a board, show its line model, start runs
 | `kicad2ems.core.config` | `Settings`, `build_settings`, `read_toml`, `all_options`, `default_out`, `PATH_KEYS`, `OPTIONS` (`{key: Option}`), `CORE` (kicad2ems's own options), `ConfigError`, `setting_keys(cfg)` (where a config's settings are written, [its older forms](usage.md#older-forms) too) |
 | `kicad2ems.core.solvers` | `registry`, `get`, `resolve_lines`, `AUTO`, `LINES` |
 | `kicad2ems.core.analyses` | `registry()` (`{name: Analysis}`: every analysis), `analysis_of(folder)`, `read_config(config)` (`{name: {key: value}}` of a config's `[analysis]` tables; an analysis given several: its first), `read_sets(config)` (`{name: [{key: value}, ...]}`: every table of each, [a run for each](usage.md#several)) |
-| `kicad2ems.core.study` | `study_tree()`, `questions()` (`{name: Question}`), `engines()` (`{name: Engine}`), `provided`, `dump_options`, `runs_for(asked)`, `mark(folder, engine, asked, preview)`, `marked(folder)`; a config's: `Study`, `read_config`, `write_config`, `plan`, `engine_named`, `latest_results`, `default_fields`, `compare`, `rf_needs`, `load_config(config)` (its tables, [older forms](usage.md#older-forms) migrated), `RF`; `check_lines()` (`--check`'s lines), `main(argv)` (`kicad2ems study`) ([Questions and engines](#study-api)) |
-| `kicad2ems.core.runs` | `Run`, `EventTail`, `stop_runs`, `find_results`, `toml_value`, `write_toml`, `update_toml` (a config edited in place, its comments kept), `load_toml`, `read_summary`; where a front end's runs go: `run_dir`, `preview_dir`, `tool_dir`, `tool_preview_dir`, `board_name` |
+| `kicad2ems.core.study` | `study_tree()`, `questions()` (`{name: Question}`), `engines()` (`{name: Engine}`), `provided`, `dump_options`, `runs_for(asked)`; a config's: `Study`, `read_config`, `write_config`, `plan`, `unmet`, `engine_named`, `default_fields`, `compare`, `rf_needs`, `load_config(config)` (its tables, [older forms](usage.md#older-forms) migrated), `RF`; `check_lines()` (`--check`'s lines), `main(argv)` (`kicad2ems study`) ([Questions and engines](#study-api)) |
+| `kicad2ems.core.runs` | `Run`, `EventTail`, `stop_runs`, `find_results`, `toml_value`, `write_toml`, `update_toml` (a config edited in place, its comments kept), `load_toml`, `read_summary`; where a front end's runs go: `run_dir`, `preview_dir`, `tool_dir`, `tool_preview_dir`, `board_name`; a run folder's mark: `mark`, `ended`, `outcome(code, stopped, crashed)`, `marked`, `MARK`; the runs: `info(folder)`, `index(base, board, running)` (a `RunInfo` per run), `latest_results`, `run_log`, `same_config`, `when_text` |
 | `kicad2ems.core.formats` | `check` (a JSON of kicad2ems's, e.g. `python -m kicad2ems.core.sysinfo`'s: None, or why this kicad2ems cannot read it) |
 | `kicad2ems.core.touchstone` | `read_touchstone`, `port_names` (a kicad2ems Touchstone file's port names), `read_matrix` (the file's matrices as written: S, Y, Z, H or G), `to_s` |
 | results | `core.fields.antenna` (`read`, `read_sphere`, `sphere_cuts`, `sphere_gain`), `core.fields.frames` (`find_dumps`, `write_frames`), `core.meshes`, `core.phased` ([For solvers](#for-solvers)) |

@@ -5,18 +5,13 @@ that takes.
     TREE                        what the list shows: kicad2ems's study_tree (the
                                 questions by group, each with the engines
                                 that answer it)
-    ANALYSES                    the runs the window can make on a board, in the
-                                order it makes them: kicad2ems's own ('rf': the
-                                solvers together), then each analysis
-    with_needs(keys)            keys and the analyses they start from, in that
-                                order
-    dependents(key)             the analyses that start from key's results
-    run_order(ticked, preview)  what a Run (a Preview) of those runs starts, in
-                                order
+    title(key), key_of(step)    a run's name ('rf': S-parameters); the run a
+                                Step of kicad2ems's plan is
     StudyModel                  the study itself, with no window: what can be
                                 asked, what is, who answers each question, the
                                 Fields ticks, what cannot run here and why, each
-                                run's state
+                                run's state, and the Steps a Run takes
+                                (kicad2ems.core.study.plan)
     StudyTree                   the list in the Study dock (studytree.py: the
                                 model's view): a row per question, with a tick
                                 (it is asked), who answers it (a menu: one
@@ -30,46 +25,15 @@ analysis that answers it. The three RF questions are answered by the
 solvers, together, as kicad2ems's one run; every other engine is a run of its
 own, in the registry's order, which is also a run's: Thermal, which takes its
 losses from the latest circuit run unless they are typed, runs after Circuit.
-`needs` is how one analysis follows another (none does now).
+The plan, and an analysis's `needs` (one not made when what it needs did not
+finish: core.study.unmet), are kicad2ems's own, as `kicad2ems study` has them.
 
 Nothing in this module needs Qt (or a display): a program that drives a study
 without the window (kicad2ems-ipc, a test) imports it alone.
 """
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True)
-class Analysis:
-    key: str
-    title: str
-    tool: str               # what runs it, as the list shows it
-    # its own page (a name of app.PANELS: the circuit's editor); '': Viewer, Run
-    # and Results
-    page: str = ''
-    needs: tuple = ()       # the analyses whose results it starts from
-    preview: bool = False   # it has a preview (the model and meshes, no solve)
-    note: str = ''          # the list's tooltip
-
+import re
 
 RF = 'rf'                       # kicad2ems's own run: not an analysis's
-
-
-def installed():
-    """S-parameters, then the analyses of kicad2ems's registry in its order
-    (none: only S-parameters)."""
-    out = [
-        Analysis(
-            RF, 'S-parameters', 'the solvers ticked', preview=True, note=
-            "kicad2ems's run: the solvers chosen on the RF rows, their "
-            "S-parameters, fields and antenna results")
-    ]
-    from kicad2ems.core import analyses
-    for a in analyses.registry().values():
-        out.append(
-            Analysis(a.name, a.label, a.tool, page=a.label if a.page else '',
-                     needs=tuple(a.needs), preview=bool(a.previewed),
-                     note=a.about))
-    return tuple(out)
 
 
 def tree():
@@ -79,52 +43,26 @@ def tree():
     return study_tree()
 
 
-ANALYSES = installed()
-BY_KEY = {a.key: a for a in ANALYSES}
 TREE = tree()
 
 
-def with_needs(keys):
-    """keys and, for each, the analyses it starts from (and theirs), in
-    ANALYSES' order."""
-    want, todo = set(), list(keys)
-    while todo:
-        k = todo.pop()
-        if k in BY_KEY and k not in want:
-            want.add(k)
-            todo += BY_KEY[k].needs
-    return [a.key for a in ANALYSES if a.key in want]
+def title(key):
+    """A run's name as the window shows it: 'S-parameters', an analysis's
+    label."""
+    from kicad2ems.core.analyses import registry
+    a = registry().get(key)
+    return 'S-parameters' if key == RF else a.label if a else key
 
 
-def dependents(key):
-    """The analyses that start from key's results (and from theirs), in
-    ANALYSES' order."""
-    out, grew = {key}, True
-    while grew:
-        grew = False
-        for a in ANALYSES:
-            if a.key not in out and out & set(a.needs):
-                out.add(a.key)
-                grew = True
-    return [a.key for a in ANALYSES if a.key in out and a.key != key]
-
-
-def run_order(ticked, preview=False, available=None):
-    """What a Run of the ticked analyses starts, in order: each after what it
-    starts from; those (with `available`, a set) that cannot run here left out,
-    with what follows them. preview: only the analyses that have one, each alone
-    (a preview solves nothing, so nothing follows another)."""
-    if preview:
-        return [a.key for a in ANALYSES if a.key in ticked and a.preview
-                and (available is None or a.key in available)]
-    out = []
-    for k in with_needs(ticked):
-        a = BY_KEY[k]
-        if ((available is not None and k not in available)
-                or any(n not in out for n in a.needs)):
-            continue
-        out.append(k)
-    return out
+def key_of(step):
+    """The run a Step of the plan (kicad2ems.core.study.plan) is in the
+    window: 'rf' for the solvers', else its analysis's name (a variant's: the
+    analysis it is one of)."""
+    from kicad2ems.core.study import engines
+    if step.kind == 'solvers':
+        return RF
+    e = engines().get(step.engines[0])
+    return run_key(e) or step.engines[0]
 
 
 # what the solvers answer: together, kicad2ems's one run
@@ -161,6 +99,8 @@ class StudyModel:
     (None: several)."""
 
     def __init__(self, tree=None):
+        from kicad2ems.core.analyses import registry
+        reg = registry()
         self.groups, self.labels, self.about, self.engines, self.missing = ([],
                                                                             {},
                                                                             {},
@@ -174,7 +114,7 @@ class StudyModel:
                 self.labels[q.name], self.about[q.name] = q.label, q.about
                 self.engines[q.name] = [
                     e for e in row['engines']
-                    if q.name in SOLVER_QUESTIONS or run_key(e) in BY_KEY
+                    if q.name in SOLVER_QUESTIONS or run_key(e) in reg
                 ]
                 self.missing[q.name] = (row['missing']
                                         or 'no engine for it is installed')
@@ -374,11 +314,15 @@ class StudyModel:
             self.fields[q] = bool(study.fields.get(q, False))
         self.changed('study')
 
-    def jobs(self, preview=False, only=None):
-        """The runs the questions asked take, in order: 'rf' when a solver
-        question is asked, then the analyses of the others in the registry's
-        order (run_order). preview: those that have one. only: a question (or a
-        run) alone, ticked or not."""
+    def steps(self, preview=False, only=None):
+        """The runs the questions asked take, in order (kicad2ems.core.study's
+        plan: [Step]): the solvers' (one run) when an RF question is asked,
+        then each analysis engine's in the registry's order; those that cannot
+        run here left out. preview: those that have one. only: a question (or
+        a run) alone, ticked or not."""
+        import dataclasses
+        from kicad2ems.core.analyses import registry
+        from kicad2ems.core.study import Study, plan
         if only is not None:
             qs = ([only] if only in self.labels else [
                 q for q in self.questions
@@ -387,10 +331,24 @@ class StudyModel:
             qs = [q for q in qs if self.can_ask(q)]
         else:
             qs = list(self.asked())
-        keys = set()
-        for q in qs:
-            keys |= {RF} if self.is_solver(q) else set(self.runs_for(q))
-        return run_order(keys, preview, self.available())
+        reg, out = registry(), []
+        for st in plan(Study({q: self.engines_for(q) for q in qs}, {})):
+            key = key_of(st)
+            if key in self.why or preview and key != RF and not (
+                    key in reg and reg[key].previewed):
+                continue
+            if st.kind == 'solvers' and out and out[0].kind == 'solvers':
+                # (the window's settings choose its solvers: one run)
+                out[0] = dataclasses.replace(
+                    out[0], questions=out[0].questions + st.questions)
+                continue
+            out.append(st)
+        return out
+
+    def jobs(self, preview=False, only=None):
+        """The runs (their keys) the questions asked take, in order:
+        steps'."""
+        return [key_of(st) for st in self.steps(preview, only)]
 
     def asked_of(self, key, only=None):
         """The questions asked of a run ('rf' or an analysis), in the list's
@@ -433,9 +391,6 @@ class StudyModel:
         self.changed('engines', q)
 
     # ---- as the runs see it ----
-    def available(self):
-        return {a.key for a in ANALYSES if a.key not in self.why}
-
     def ticked(self):
         """The runs of the questions asked, in order."""
         return self.jobs()
@@ -514,9 +469,12 @@ class StudyModel:
                if self.states.get(k, ('', ''))[0]]
         cut = lambda t: t.split(' (')[0].split(': ')[0]
         if len(keys) > 1:
-            same = (len(got) == len(keys) and len({cut(t)
+            # alike but for the time each ended ('done 21:42', 'done 21:43'):
+            # the last's
+            word = lambda t: re.sub(r' \d\d:\d\d$', '', cut(t))
+            same = (len(got) == len(keys) and len({word(t)
                                                    for _, t, _ in got}) == 1)
-            text = (cut(got[0][1]) if same else ' · '.join(
+            text = (max(cut(t) for _, t, _ in got) if same else ' · '.join(
                 f"{by.get(k, k)} {cut(t)}" for k, t, _ in got))
             tip = '\n'.join(f"{by.get(k, k)}: {t}" for k, t, _ in got)
         else:

@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QComboBox,
                                QPushButton, QLabel, QPlainTextEdit,
                                QProgressBar, QTreeWidget, QTreeWidgetItem,
                                QHeaderView, QStackedWidget)
-from .study import BY_KEY
+from .study import title
 
 
 IDLE = 'nothing run yet'  # the page before anything has run
@@ -68,7 +68,7 @@ class RunTab(QWidget):
         self.log_of = QComboBox()
         # every run's log, {key: (title, its place in self.logs)}; those listed:
         # the runs started (self.ran)
-        self.views = {'rf': (BY_KEY['rf'].title, 0)}
+        self.views = {'rf': (title('rf'), 0)}
         self.ran = []
         self.log_of.currentIndexChanged.connect(
             lambda i: i >= 0 and self.logs.setCurrentIndex(

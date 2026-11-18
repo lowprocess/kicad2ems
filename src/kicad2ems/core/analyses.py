@@ -29,8 +29,7 @@ An analysis declares (class attributes)
                           when there is one (the temperature from a circuit's
                           losses): not required, as `needs` are
   result, preview_result  the file a finished run (a preview) leaves in its
-                          folder ('pdn.json'): how a folder is known as its
-                          result
+                          folder ('pdn.json'): owns' default
   paths                   the options whose values are paths: relative to the
                           config file they are read from
   page                    False: its settings and its results are all a front
@@ -101,7 +100,9 @@ and implements
                           value})] to pick from; finds '': none
   owns(folder, preview)   whether the folder holds its result (its preview): by
                           default, that its result file is there. An engine
-                          whose file another engine also writes looks inside it
+                          whose file another engine also writes looks inside
+                          it. Asked of a folder whose mark does not say how
+                          its run ended (made before marks kept that)
   report(folder)          what a result holds, to read: dict(title, summary,
                           sections=[dict(title, text, table= dict(columns=[...],
                           rows=[[...]], formats=[...]), notes=[...])], notes,
@@ -310,25 +311,13 @@ def get(name):
 
 
 def analysis_of(folder):
-    """(name, preview) of the analysis whose result (or preview) the folder
-    holds, or None: not an analysis's. The mark whoever started the run left
-    says (study.mark: its engine, a variant's being the analysis it runs);
-    without one, the first analysis that owns the folder."""
-    from .study import marked
-    reg = registry()
-    m = marked(folder)
-    # (a variant's engine: crosstalk_gfdtd is the crosstalk's)
-    name = m and next((n for n, a in reg.items()
-                       for suffix, *_ in (a.variants or (('', ), ))
-                       if m['engine'] == n + ('_' + suffix if suffix else '')),
-                      None)
-    if name and reg[name].owns(folder, m['preview']):
-        return name, m['preview']
-    for name, a in reg.items():
-        for preview in (False, True):
-            if a.owns(folder, preview):
-                return name, preview
-    return None
+    """(name, preview) of the analysis whose finished result (or preview) the
+    folder holds, or None: what its mark says (runs.info: the engine that made
+    it, a variant's being the analysis it runs, and how it ended)."""
+    from .runs import info
+    r = info(folder) if folder else None
+    return ((r.kind, r.preview) if r is not None and r.ok
+            and r.kind in registry() else None)
 
 
 def read_sets(path):

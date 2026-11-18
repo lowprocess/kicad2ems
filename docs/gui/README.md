@@ -135,20 +135,21 @@ It needs PySide6, pyqtgraph and PyOpenGL (installed with it).
 | `windocks.py` | the window's shape: the pages as docks of the workspace, which are there, the toolbar and menus, the layout remembered |
 | `winconfigs.py` | configs and examples: open, recent, a config's study and analyses read and written, a file dropped on the window |
 | `winstudy.py` | the study in the list, what a run still needs, a result's proposal for another analysis, a setting picked on the board |
-| `winrun.py` | the runs as they go: the study's queue, kicad2ems's own run and its events, Stop, the estimate |
+| `winrun.py` | the runs as they go: the study's queue (the Steps of kicad2ems's plan), each step's commands given to the launcher, kicad2ems's own run's events, Stop, the estimate |
+| `runprocess.py` | the one launcher: `Command`, `RunProcess` (a QProcess wrapper: commands one after the other, the events tail, the output into `stdout.log`, the outcome into the folder's mark, Stop) |
 | `winresults.py` | this board's runs and the one shown in the pages, those laid over it, the toolbar's Showing, runs deleted |
 | `runspanel.py` | the Runs page: a row per run (scope, ≠ settings, the preview current or stale), picking, comparing, deleting |
 | `winparts.py` | the Solvers window, the second Viewer (the run picked second on Runs), a page's dock, the example and layout threads |
 | `setuptab.py`, `runtab.py`, `resultstab.py` | the study and the settings of what is selected in it; the Log page (the runs and their logs); the Plots page (S-parameter, antenna and curve plots) |
-| `study.py` | the study with no window (no Qt): the runs a board can have (the solvers', then each analysis), what follows what, and `StudyModel`: what is asked, who answers each question, the Fields ticks, what cannot run here, each run's state |
+| `study.py` | the study with no window (no Qt): `StudyModel`, what is asked, who answers each question, the Fields ticks, what cannot run here, each run's state, and the Steps a Run takes (kicad2ems's `plan`) |
 | `studytree.py` | the list in the Study dock, the model's view: a row per question, who answers it, its Fields tick and its state |
-| `analysispanel.py` | an analysis's settings and its run, for any analysis: the form from its options, its command as a child process |
+| `analysispanel.py` | an analysis's settings, for any analysis: the form from its options, its commands for the launcher (a row of its table each), their log and status line |
 | `curves.py`, `curveplot.py` | an analysis's curves on the Plots page (a rail's impedance, a spectrum, waveforms), other runs over them |
 | `reportview.py` | an analysis's report: the Report page to read, the Tables page's tables to sort, copy and export |
 | `startpage.py` | the Start page: open a board, a config or a results folder; the examples as tiles, their boards drawn in a thread and kept in the cache folder |
 | `steps.py` | the steps bar: `steps_of(win)`, where the study stands as plain data, and the toolbar that shows it |
 | `runner.py` | the settings form without Qt: fields, sections, solver tick boxes, configs read and written back |
-| `runfolders.py` | a folder per run and one per board's preview; `index`, the one list of runs (`RunInfo`: kind, when, questions, engines, outcome, took, size, settings, config), kept per folder while unchanged; scopes and settings compared |
+| `runfolders.py` | the Runs page's words for kicad2ems's index of runs (`kicad2ems.core.runs.index`, `RunInfo`, read from each folder's mark): scopes, settings compared, sizes and times |
 | `planview.py`, `meshpick.py` | the board seen from above, with the line model and the meshes (the KiCad plugin's map too) |
 | `viewer.py`, `volumetab.py`, `volume3d.py` | the Viewer's Plan, 2D and 3D views; `volume3d` holds their arrays, without Qt |
 | `sectionview.py` | the field across a line-model section: the Section page (the KiCad plugin's too) |
@@ -157,7 +158,7 @@ It needs PySide6, pyqtgraph and PyOpenGL (installed with it).
 | `filtertab.py` | the Filter page (dfsynth) |
 | `impedance.py` | Tools > Impedance calculator: a stack-up's Z0 and the width of a target (kicad2ems's `lines.calc`) |
 | `powercircuittab.py`, `schematicview.py` | the Circuit page: the circuit analysis's model as a schematic to edit; its settings panel (the analysis's options, and the model's own values) |
-| `toolprocess.py` | a tool as a child process (an analysis's command, dfsynth) |
+| `toolprocess.py` | a short tool as a child process (an analysis's Find, dfsynth), a tool's `--describe` |
 | `systempanel.py`, `statusbar.py`, `meters.py` | what this machine can run, memory, estimates |
 | `panels.py` | a collapsible section, the Still-needed list, an image panel, a row of controls that wraps |
 | `api.py` | what the other parts may use (the KiCad plugin): `PlanView`, `SectionView` |

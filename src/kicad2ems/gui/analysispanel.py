@@ -2,8 +2,10 @@
 An analysis's settings and its run, for any analysis kicad2ems's registry holds
 (kicad2ems.core.analyses.registry:
 pcbqs's power integrity, near field and thermal): the form made from its
-options, in sections by their groups; its command started as a child process;
-its output followed (the Run page shows the log, the status line its progress).
+options, in sections by their groups; its commands (a run each: a row of its
+table of runs) for the one launcher to start (runprocess.RunProcess: the
+window's, or the panel's own when it is alone); their output followed (the Run
+page shows the log, the status line its progress).
 
 The panel is the analysis's part of the Study dock. It has no page: what a run
 leaves is shown where every result is, its maps in the Viewer (it writes them as
@@ -14,7 +16,13 @@ Analysis (command, status, discover and choices, suggest).
     panel = AnalysisPanel(analysis, win)
         # win: the window (its board, its output folder), or None alone
     panel.values(), panel.set_values({...}), panel.reset()
+    panel.commands(preview, asked, engine, sets)
+        # its runs as they stand, for the launcher: each made when its turn
+        # comes (its folder, its mark), or why it cannot start
+    panel.began(cmd), panel.output(text), panel.done(cmd, code, outcome)
+        # what the launcher says of them: the log, the status line
     panel.start(preview=False), panel.stop(), panel.proc, panel.out
+        # alone: its Run and Stop (in the window: the toolbar's)
     config_values(panel)
         # what a config's [analysis.<name>] table holds of it
     panel.set_runs([{...}, ...]), panel.runs()
@@ -25,7 +33,7 @@ import os
 import re
 from contextlib import contextmanager
 
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QObject
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QFormLayout,
                                QLineEdit, QPushButton, QPlainTextEdit,
@@ -39,6 +47,7 @@ UNSET = '(default)'
 CELL = '(the selected cell)'
 
 from .panels import Section, FlowLayout
+from .runprocess import Command, RunProcess
 from .toolprocess import run_tool
 
 # a config table's keys that are the panel's own: its board, its folder
@@ -109,8 +118,19 @@ class AnalysisPanel(QWidget):
     def __init__(self, analysis, win=None):
         super().__init__()
         self.a, self.win = analysis, win
-        (self.proc, self.out, self.result, self._preview, self._found,
-         self._setting) = (None, None, None, False, None, 0)
+        self.out, self.result, self._found, self._setting = None, None, None, 0
+        self._count, self._k, self._vals = 1, 1, {}
+        # its runs' launcher: the window's, else its own (Run alone)
+        self.runner = getattr(win, 'runner', None)
+        if self.runner is None:
+            self.runner = RunProcess(self)
+            r = self.runner
+            for sig, slot in ((r.began, self.began),
+                              (r.output, lambda _c, t: self.output(t)),
+                              (r.ended, self.done), (r.skipped, self.skipped),
+                              (r.finished, self.ended.emit)):
+                sig.connect(slot)
+        self._finder = _Finder(self)
         # options a run needs set (proposed without a value)
         self.required = set()
         self.options = list(analysis.options())
@@ -628,79 +648,91 @@ class AnalysisPanel(QWidget):
         self.busy.setVisible(on)
 
     # ---- a run ----
+    @property
+    def proc(self):
+        """The process of its run (or its Find) going, or None."""
+        cmd = self.runner.cmd
+        return (self.runner.proc if cmd is not None and cmd.key == self.a.name
+                else self._finder.proc)
+
     def start(self, preview=False):
-        """Start the analysis (its preview): with a table of runs, each row's
-        after the other (a preview: the first's alone). The status line says why
+        """Alone: start the analysis (its preview), a table's rows one after
+        the other (a preview: the first's alone). The status line says why
         when it cannot start; ended(code) when it all ends."""
         if self.proc is not None or (preview and not self.a.previewed):
             return
-        runs = self.runs()
-        self._queue = runs[1:] if self.table and not preview else []
-        self._stopped = False
-        self._count, self._failed = len(self._queue) + 1, 0
-        # one log for the rows' runs together
-        self.log.clear()
-        # (one that cannot start: said, the next tried)
-        while not self._start_one(runs[0], preview):
-            if not self._queue:
-                return
-            self._failed = 1
-            runs = [self._queue.pop(0)]
+        self.log.clear()  # one log for the rows' runs together
+        why = self.runner.start(self.commands(
+            preview, getattr(self, 'asked', None) or (),
+            getattr(self, 'engine', None), getattr(self, 'sets', None)))
+        if why:
+            self.status.setText(why)
 
-    def _start_one(self, vals, preview):
-        # the questions this run is asked (the study's)
-        asked, row = tuple(getattr(self, 'asked', None) or ()), dict(vals)
-        if asked:
-            vals = self.a.for_questions(vals, asked)
-        # what the engine chosen fixes (Analysis.variants: the crosstalk's
-        # full-wave check; the mark names that engine)
-        vals = dict(vals, **(getattr(self, 'sets', None) or {}))
+    def commands(self, preview=False, asked=(), engine=None, sets=None):
+        """Its runs as they stand, for the launcher: a function each (a row of
+        the table: a preview, the first's alone) that makes its Command when
+        its turn comes (its folder, its mark) or says why it cannot start.
+        asked: the questions it is asked; engine: the engine chosen (one of
+        its variants: the mark names it), sets: what that engine fixes."""
+        if preview and not self.a.previewed:
+            return []
+        runs = self.runs()[:1] if preview else self.runs()
+        self._count, self._k = len(runs), 0
+        return [lambda v=v: self._command(v, preview, tuple(asked or ()),
+                                          engine, sets)
+                for v in runs]
+
+    def _command(self, row, preview, asked, engine, sets):
+        vals = self.a.for_questions(row, asked) if asked else dict(row)
+        vals = dict(vals, **(sets or {}))
+        many = self._count > 1
+        said = f"{self._label(vals) or self.a.several}: " if many else ''
         unset = sorted(k for k in self.required
                        if not str(vals.get(k, '')).strip())
         if unset:
-            self.status.setText(
-                f"Set {', '.join(k.replace('_', ' ') for k in unset)} before "
-                f"Run: {'it was' if len(unset) == 1 else 'they were'} not "
-                "known where these settings came from"
-            )
-            return False
+            return (said + "Set " + ', '.join(k.replace('_', ' ')
+                                              for k in unset)
+                    + " before Run: " + ('it was' if len(unset) == 1 else
+                                         'they were')
+                    + " not known where these settings came from")
         board = self.board_path() or None
         try:
             named = self.outdir.text().strip()
             tag = self.a.tag(vals)
             # several runs: a folder each under the named one
-            if named and self._count > 1:
+            if named and many:
                 named = os.path.join(
                     named, ''.join(c if c.isalnum() else '_' for c in tag))
-            out = ((os.path.join(named, 'preview') if preview else named)
-                   if named else self.default_out(board, tag, preview))
+            out = os.path.abspath(
+                (os.path.join(named, 'preview') if preview else named)
+                if named else self.default_out(board, tag, preview))
             latest = (self.win.latest_results() if self.win is not None
                       and hasattr(self.win, 'latest_results') else {})
-            argv = self.a.command(vals, board, os.path.abspath(out),
-                                  preview=preview, results=latest)
+            argv = self.a.command(vals, board, out, preview=preview,
+                                  results=latest)
         except ValueError as e:
-            self.status.setText((f"{self._label(vals) or self.a.several}: "
-                                 if self._count > 1 else '') + str(e))
-            return False
-        self.out, self._preview, self._vals = (os.path.abspath(out), preview,
-                                               vals)
-        from kicad2ems.core import study
+            return said + str(e)
+        from kicad2ems.core.runs import mark
         from kicad2ems.core.study import provided
-        # whose run this folder is
-        win = self.win
-        study.mark(self.out,
-                 getattr(self, 'engine', None) or self.a.name,
-                 asked or provided(self.a), preview,
-                 config=getattr(getattr(win, 'setup', None), 'path', None),
-                 settings=row)
-        self.say('$ ' + ' '.join(
-            ['python', *argv[1:]]
-            if os.path.basename(argv[0]).startswith('python') else argv))
+        mark(out, engine or self.a.name, asked or provided(self.a), preview,
+             config=getattr(getattr(self.win, 'setup', None), 'path', None),
+             settings=row)
+        return Command(self.a.name, argv, out, env=dict(self.a.env or {}),
+                       preview=preview, label=self._label(vals), values=vals)
+
+    def began(self, cmd):
+        """One of its runs started (the launcher's)."""
+        self.out, self._vals = cmd.folder, cmd.values or {}
+        self._k += 1
+        python = os.path.basename(cmd.argv[0]).startswith('python')
+        self.say('$ ' + ' '.join(['python', *cmd.argv[1:]] if python
+                                 else cmd.argv))
         self._running(True)
         self.status.setText(self._progress('running…'))
-        run_tool(self, argv, self._stdout, self._finished, env=dict(self.a.env
-                                                                    or {}))
-        return True
+
+    def skipped(self, why):
+        """One of its runs could not start: why."""
+        self.status.setText(why)
 
     def _label(self, vals):
         """A run of the table by its first column (the rail's net), or ''."""
@@ -709,42 +741,22 @@ class AnalysisPanel(QWidget):
     def _progress(self, text):
         """A status line that says which run of how many, when there are
         several."""
-        if getattr(self, '_count', 1) <= 1:
+        if self._count <= 1:
             return text
-        k = self._count - len(self._queue)
-        return (f"{self.a.several} {k} of {self._count} "
+        return (f"{self.a.several} {self._k} of {self._count} "
                 f"({self._label(self._vals)}): {text}")
 
-    # how long a tool has to stop what it started before it is killed
-    STOP_GRACE_MS = 5000
-
     def stop(self):
-        """The tool asked to end (SIGTERM: it stops what it started, pcbqs's
-        ngspice runs, kicad2ems-fem's Elmer and Palace, and exits), killed if it
-        has not after STOP_GRACE_MS; a table's next rows are not run. (It was
-        killed at once, so what it had started ran on, and a table's next row
-        started.)"""
-        self._queue = []
-        if self.proc is None:
-            return
-        self._stopped = True
-        proc = self.proc
-        proc.terminate()
+        """Its run asked to stop (a table's next rows not run), its Find
+        ended: RunProcess.stop."""
+        if self.runner.cmd is not None and self.runner.cmd.key == self.a.name:
+            self.runner.stop()
+        if self._finder.proc is not None:
+            self._finder.proc.kill()
 
-        def kill():
-            try:
-                if proc.state() != proc.ProcessState.NotRunning:
-                    proc.kill()
-            except RuntimeError:  # (ended and deleted meanwhile)
-                pass
-        QTimer.singleShot(self.STOP_GRACE_MS, kill)
-
-    def _read(self):
-        return (bytes(self.proc.readAllStandardOutput()).decode(
-            errors='replace') if self.proc is not None else '')
-
-    def _stdout(self):
-        for line in self._read().splitlines():
+    def output(self, text):
+        """Its run's output: into its log, its progress on the status line."""
+        for line in text.splitlines():
             # a library's warning: not the tool's word
             if re.search(r'\.py:\d+: \w*Warning', line):
                 continue
@@ -753,60 +765,34 @@ class AnalysisPanel(QWidget):
             if st:
                 self.status.setText(st)
 
-    def _finished(self, code, _status=None):
-        if self.proc is not None:
-            self._stdout()
-            self.proc.deleteLater()
-            self.proc = None
+    def done(self, cmd, code, how):
+        """One of its runs ended (how: its outcome): the status line says how,
+        its result the one shown."""
         self._running(False)
-        try:  # how it ended, for the Runs page (runfolders.EXIT)
-            import json, time
-            from .runfolders import EXIT
-            with open(os.path.join(self.out, EXIT), 'w',
-                      encoding='utf-8') as fh:
-                json.dump(dict(code=code,
-                               stopped=bool(getattr(self, '_stopped', False)),
-                               ended=time.strftime('%Y-%m-%d %H:%M:%S')), fh)
-        except OSError:
-            pass
-        from kicad2ems.core.analyses import analysis_of
-        made = analysis_of(self.out) if code == 0 else None
-        if made is None or made[0] != self.a.name:
-            lines = [
-                l for l in self.log.toPlainText().splitlines() if l.strip()
-            ]
-            errs = [
-                l for l in lines
-                if 'error' in l.lower() or l.startswith(('RuntimeError',
-                                                         'ValueError'))
-            ]
-            last = (errs or lines or [''])[-1].strip()
-            if getattr(self, '_stopped', False):
-                self.status.setText(self._progress('stopped'))
-            else:
-                self.status.setText(
-                    self._progress(f"the run failed (exit {code})"
-                                   + (f": {last[:200]}" if last else '')
-                                   + ' (the whole log: the Run page)'))
-            self.status.setToolTip('\n'.join((errs or lines)[-8:]))
-            self._failed = self._failed or (code or 1)
-        else:
+        if code == 0 and self.a.owns(cmd.folder, cmd.preview):
             self.status.setToolTip('')
-            rep = self.a.report(self.out) or {}
+            rep = self.a.report(cmd.folder) or {}
             self.status.setText(
-                self._progress('preview ready' if self._preview else (
+                self._progress('preview ready' if cmd.preview else (
                     'done: '
                     + rep['summary'] if rep.get('summary') else 'done')))
-            self.show_result(self.out)
-        queue = getattr(self, '_queue', [])
-        # the next row's run (one that cannot start: said, the others go on)
-        while queue:
-            nxt = queue.pop(0)
-            if self._start_one(nxt, False):
-                return
-            self._failed = self._failed or 1
-        self.ended.emit(
-            getattr(self, '_failed', 0) if code == 0 else (code or 1))
+            self.show_result(cmd.folder)
+            return
+        lines = [l for l in self.log.toPlainText().splitlines() if l.strip()]
+        errs = [
+            l for l in lines
+            if 'error' in l.lower() or l.startswith(('RuntimeError',
+                                                     'ValueError'))
+        ]
+        last = (errs or lines or [''])[-1].strip()
+        if how == 'stopped':
+            self.status.setText(self._progress('stopped'))
+        else:
+            self.status.setText(
+                self._progress(f"the run failed (exit {code})"
+                               + (f": {last[:200]}" if last else '')
+                               + ' (the whole log: the Run page)'))
+        self.status.setToolTip('\n'.join((errs or lines)[-8:]))
 
     # ---- what a result proposes, what the board proposes ----
     def show_result(self, folder):
@@ -839,6 +825,7 @@ class AnalysisPanel(QWidget):
         from, the pick into the form."""
         if self.proc is not None:
             return
+        f = self._finder
         try:
             argv = self.a.discover(self.values(), self.board_path() or None)
         except ValueError as e:
@@ -852,13 +839,14 @@ class AnalysisPanel(QWidget):
         self._running(True)
 
         def output():
-            self._found.append(self._read())
+            self._found.append(bytes(f.proc.readAllStandardOutput()).decode(
+                errors='replace') if f.proc is not None else '')
 
         def finished(code, _status=None):
-            if self.proc is not None:
+            if f.proc is not None:
                 output()
-                self.proc.deleteLater()
-                self.proc = None
+                f.proc.deleteLater()
+                f.proc = None
             self._running(False)
             text = ''.join(self._found)
             picks = self.a.choices(text) if code == 0 else None
@@ -870,7 +858,7 @@ class AnalysisPanel(QWidget):
                 )
                 return
             self.pick(picks)
-        run_tool(self, argv, output, finished)
+        run_tool(f, argv, output, finished)
 
     def pick(self, choices):
         """One of [(label, values)] into the form: the only one, else the one
@@ -890,3 +878,11 @@ class AnalysisPanel(QWidget):
         self.changed.emit()
         self.status.setText(f"{label.split(' (')[0]}: set; Run"
                             + (' or Preview' if self.a.previewed else ''))
+
+
+class _Finder(QObject):
+    """A panel's Find: its discover command's process (toolprocess.run_tool),
+    apart from its runs'."""
+    def __init__(self, panel):
+        super().__init__(panel)
+        self.proc, self.say = None, panel.say

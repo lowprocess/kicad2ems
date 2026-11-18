@@ -3,7 +3,7 @@
 questions takes, and a run folder's mark."""
 import os
 import pytest
-from kicad2ems.core import analyses, study
+from kicad2ems.core import analyses, runs, study
 from kicad2ems.core.analyses import Analysis
 from kicad2ems.core.study import Question
 
@@ -150,19 +150,23 @@ def test_a_run_folder_says_whose_it_is(fakes, tmp_path):
     assert analyses.analysis_of(str(a)) == ('thermal', False)
     # the first that owns it: not Elmer's, wrongly
     assert analyses.analysis_of(str(b)) == ('thermal', False)
-    path = study.mark(str(c), 'elmer_thermal', ('thermal',))
-    assert (os.path.basename(path) == study.MARK
-            and study.marked(str(c)) == dict(
+    path = runs.mark(str(c), 'elmer_thermal', ('thermal',))
+    assert (os.path.basename(path) == runs.MARK
+            and runs.marked(str(c)) == dict(
                 engine='elmer_thermal', questions=('thermal', ), preview=False))
     # the mark says
     assert analyses.analysis_of(str(c)) == ('elmer_thermal', False)
-    # a mark the folder does not bear out: ignored
-    study.mark(str(a), 'elmer_thermal')
-    assert analyses.analysis_of(str(a)) == ('thermal', False)
-    assert (study.marked(str(tmp_path)) is None
+    # the mark is what the folder is: its run said how it ended, else (a mark
+    # of before it did) whether that engine's result is there
+    runs.mark(str(a), 'elmer_thermal')
+    assert analyses.analysis_of(str(a)) is None
+    runs.ended(str(c), 'stopped')
+    assert (runs.marked(str(c))['outcome'] == 'stopped'
+            and analyses.analysis_of(str(c)) is None)
+    assert (runs.marked(str(tmp_path)) is None
             and analyses.analysis_of(str(tmp_path)) is None)
-    (tmp_path / study.MARK).write_text('not json')
-    assert study.marked(str(tmp_path)) is None
+    (tmp_path / runs.MARK).write_text('not json')
+    assert runs.marked(str(tmp_path)) is None
 
 
 def test_check_lists_the_questions(fakes):
@@ -435,11 +439,12 @@ fail = true
         re.sub(r'_?\d{8}_\d{6}$', '', n[len(name) + 1:]) for n in made)
     assert (kinds == ['', 'circuit_buck', 'elmer_thermal_run',
                       'thermal_run']), list(made)
-    by = {study.marked(str(d))['engine']: d for d in made.values()}
-    # and the config it came from
-    assert (study.marked(str(by['rf'])) == dict(
+    by = {runs.marked(str(d))['engine']: d for d in made.values()}
+    # and the config it came from, how it ended
+    assert (dict(runs.marked(str(by['rf'])), ended=None) == dict(
         engine='rf', questions=('sparams', ), preview=False,
-        config=os.path.abspath(cfg)))
+        config=os.path.abspath(cfg), outcome='done', ended=None))
+    assert runs.marked(str(by['elmer_thermal']))['outcome'] == 'failed, code 3'
     assert ((by['rf'] / f"{name}_mom25d.s2p").exists()
             and (by['rf'] / f"{name}_run.json").exists())
     # its table, the fields asked
@@ -477,7 +482,7 @@ fail = true
             and 'No such file' in capsys.readouterr().out)
     # the solvers' preview: no analysis has one
     assert main(['study', cfg, '--preview', '--only', 'sparams']) == 0
-    assert any(d.name == name + '_preview' and study.marked(str(d))['preview']
+    assert any(d.name == name + '_preview' and runs.marked(str(d))['preview']
                for d in out.iterdir())
 
 
@@ -563,7 +568,7 @@ def test_an_analysis_s_variants_are_engines_of_its_question(
     assert main(['study', cfg]) == 0
     (d, ) = list(out.iterdir())
     assert (json.load(open(d / 'xt.json')) == dict(check='mom25d', nets='A,B')
-            and study.marked(str(d))['engine'] == 'crosstalk_mom25d'
+            and runs.marked(str(d))['engine'] == 'crosstalk_mom25d'
             and analyses.analysis_of(str(d)) == ('crosstalk', False))
     assert '(lines + mom25d)' in capsys.readouterr().out.split('study:')[-1]
     # a table's check, no engine named: that variant; the line model named:
@@ -634,8 +639,9 @@ volts = 3.3
         '+3V3': dict(rail='+3V3', volts=3.3, no_pdn='True')
     })
     assert all(
-        study.marked(str(out / n)) == dict(engine='pdn', questions=(
-            'dc', ), preview=False, config=os.path.abspath(cfg)) for n in made)
+        dict(runs.marked(str(out / n)), ended=None) == dict(
+            engine='pdn', questions=('dc', ), preview=False, ended=None,
+            config=os.path.abspath(cfg), outcome='done') for n in made)
     tail = text[text.rindex('study:'):].splitlines()
     assert ([re.sub(r', \d+ s: .*$', '', t) for t in tail[1:]] == [
         '  Rail drop (fake: +5V)                    done',

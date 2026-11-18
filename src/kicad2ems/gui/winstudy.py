@@ -5,7 +5,7 @@ a proposal of one analysis's result for another, and the board as drawn, with a
 setting picked on it.
 """
 import json, os
-from .study import StudyList, ANALYSES, BY_KEY, RF
+from .study import StudyList, RF, title
 from .winparts import _Layout
 
 
@@ -20,7 +20,8 @@ class WindowStudy:
         as Run always did)."""
         self._study_ready = False
         (self.queue, self.job, self._job_t0, self._queue_preview,
-         self._queue_stopped) = ([], None, 0.0, False, False)
+         self._queue_stopped, self._failed) = ([], None, 0.0, False, False,
+                                               set())
         self.study = StudyList()
         panels = dict(self.panels)
         panels.update({k: p.settings_panel() for k, p in self.editors.items()})
@@ -32,10 +33,7 @@ class WindowStudy:
             # its model could not be made: why
             elif key in self.editors and not page.run_btn.isEnabled():
                 self.study.set_available(key, False, page.status.text())
-            self.runtab.add_log(key, BY_KEY[key].title, page.log)
-        for a in ANALYSES:  # listed without an analysis here (a test's)
-            if a.key != RF and a.key not in self.pages:
-                self.study.set_available(a.key, False, 'not installed')
+            self.runtab.add_log(key, title(key), page.log)
         # an analysis's variants: the solver each takes (openEMS missing)
         for es in self.study.engines.values():
             for e in es:
@@ -74,7 +72,7 @@ class WindowStudy:
             return Study({'sparams': []})
         keys = [
             k for k in ([old] if isinstance(old, str) else list(old))
-            if k in BY_KEY
+            if k == RF or k in self.registry
         ]
         asked = {}
         for k in keys:
@@ -156,13 +154,13 @@ class WindowStudy:
         run.setText('Run')
         if first is not None:
             run.setToolTip(
-                f"{BY_KEY[first['run']].title} still needs: "
+                f"{title(first['run'])} still needs: "
                 f"{first['text']}\n(click: go to where it is set; Run > Run "
                 "the selected question alone runs one whatever the others "
                 "need)"
             )
         else:
-            titles = [BY_KEY[k].title for k in asked]
+            titles = [title(k) for k in asked]
             run.setToolTip(('Run ' + ', then '.join(titles) if titles else
                             'Tick a question in the list first') + ' (Ctrl+R)')
         self.update_estimate()
@@ -206,7 +204,7 @@ class WindowStudy:
             page = self.pages[run]
             getattr(page, 'panel', page).focus(key)
         self.statusBar().showMessage(
-            f"{BY_KEY[run].title if run in BY_KEY else 'The run'} still needs: "
+            f"{title(run) if run else 'The run'} still needs: "
             f"{item['text']}",
             8000)
 
@@ -228,11 +226,11 @@ class WindowStudy:
         self.study.select(key)
         if key in self.study.rows:
             key = self.study.run_of(key)
-        if key in BY_KEY:
-            if BY_KEY[key].page:
-                if not self.show_panel(BY_KEY[key].page):
+        if key == RF or key in self.registry:
+            if key in self.editors:
+                if not self.show_panel(title(key)):
                     self.statusBar().showMessage(
-                        f"Tick {BY_KEY[key].title} in the list: its page is "
+                        f"Tick {title(key)} in the list: its page is "
                         "there while it is asked", 6000)
             else:
                 self.show_result()

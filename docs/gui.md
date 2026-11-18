@@ -94,7 +94,8 @@ and the order of the solvers do not count). The preview is the last row, *curren
 form's, else *stale*.
 
 - **Scope**: *This config* (the default) lists the runs started from the config open: each run's folder names
-  the config file it came from (its mark, `kicad2ems-study.json`, which `kicad2ems study` writes too). With
+  the config file it came from (its mark, `kicad2ems-study.json`, which `kicad2ems study` writes too, and
+  which says how the run ended; its whole output is beside it, `stdout.log`). With
   a form never saved, the runs that name none, which older runs (from before the mark kept it) are too: *This
   board* lists those, and every other config's run of the board; *All*, everything under the output folder,
   with each run's board. The line above the table says how many more the board has.
@@ -124,7 +125,9 @@ same Python version). These are the machine's settings, not a board's: they go i
 `~/.config/kicad2ems/site.toml`.
 
 **Stop** asks the run to stop: openEMS and gfdtd end at once and keep what they computed, mom25d ends after the
-frequency it is solving, and solvers that haven't started are skipped. Press Stop again to end the process at once.
+frequency it is solving, and solvers that haven't started are skipped. An analysis's tool is asked to end
+(SIGTERM: it stops its ngspice, Elmer or Palace runs) and ended five seconds later if it has not, and a table's
+next rows are not run. Press Stop again to end the process at once.
 
 <a id="configs"></a>
 ## Configs

@@ -51,7 +51,6 @@ from .systempanel import SystemPanel
 from .viewer import Viewer
 from .statusbar import MemoryMeters
 from .filtertab import FilterTab
-from .study import ANALYSES, BY_KEY
 # (the window's parts, in modules of their own: R-F2)
 from .setuptab import SetupTab, editor_page
 # (run_notes: as before, app.run_notes)
@@ -83,10 +82,9 @@ class MainWindow(WindowStudy, WindowDocks, WindowConfigs, WindowRun,
         self.qsettings = QSettings('kicad2ems', 'gui')
         # before the plots are made (R-E25)
         theme.set_choice(str(self.qsettings.value('view/plots', 'system')))
-        self.proc, self.tail, self.files, self.current, self.ticks = (None,
-                                                                      None, [],
-                                                                      None, 0)
-        self._traceback = self._stopping = False
+        self.files, self.current, self.ticks = [], None, 0
+        self._traceback = False
+        self._runner()  # the one launcher of every run (winrun.py)
         self.setup, self.runtab, self.results = (SetupTab(self), RunTab(self),
                                                  ResultsTab(self))
         self.viewer = Viewer(self)
@@ -105,25 +103,19 @@ class MainWindow(WindowStudy, WindowDocks, WindowConfigs, WindowRun,
         from kicad2ems.core import analyses
         self.registry = analyses.registry()
         self.panels, self.editors = {}, {}
-        for a in ANALYSES:
-            analysis = self.registry.get(a.key)
-            if analysis is None:
-                continue
-            if a.page and a.key in EDITORS.values():
-                self.editors[a.key] = editor_page(a.key, self)
+        for key, analysis in self.registry.items():
+            if analysis.page and key in EDITORS.values():
+                self.editors[key] = editor_page(key, self)
                 # its settings: a config holds them too
-                if hasattr(self.editors[a.key], 'panel'):
-                    self.editors[a.key].panel.changed.connect(
+                if hasattr(self.editors[key], 'panel'):
+                    self.editors[key].panel.changed.connect(
                         lambda: self.setup.touch())
             else:
-                self.panels[a.key] = AnalysisPanel(analysis, self)
+                self.panels[key] = AnalysisPanel(analysis, self)
                 # a config holds its settings
-                self.panels[a.key].changed.connect(lambda: self.setup.touch())
-        self.pages = {
-            a.key: (self.panels.get(a.key) or self.editors.get(a.key))
-            for a in ANALYSES
-            if a.key in self.panels or a.key in self.editors
-        }
+                self.panels[key].changed.connect(lambda: self.setup.touch())
+        self.pages = {k: self.panels.get(k) or self.editors.get(k)
+                      for k in self.registry}
         self._study()
         # the field views, inside the viewer
         self.fields, self.volume = self.viewer.cuts, self.viewer.volume
@@ -162,7 +154,7 @@ class MainWindow(WindowStudy, WindowDocks, WindowConfigs, WindowRun,
             'Filter': self.filter, 'Report': self.results.reportview,
             'Tables': self.results.tablesview, 'Start': self.start_page,
             'Section': self.viewer.section, 'Runs': self.runs_panel,
-            **{BY_KEY[k].page: p
+            **{self.registry[k].label: p
                for k, p in self.editors.items()}
         }
         self.docks = {}
@@ -214,7 +206,7 @@ class MainWindow(WindowStudy, WindowDocks, WindowConfigs, WindowRun,
 
     def closeEvent(self, ev):
         # kicad2ems's own run: it ends with the window
-        if self.proc is not None and self.current is not None:
+        if self.runner.cmd is not None and self.runner.cmd.key == 'rf':
             kind = 'preview' if self.current.preview else 'run'
             if (QMessageBox.question(
                     self, 'A run is going',
@@ -233,15 +225,13 @@ class MainWindow(WindowStudy, WindowDocks, WindowConfigs, WindowRun,
             q.setValue('work/state', self.work.saveState(STATE_VERSION))
             for name, sp in self._splitters().items():
                 q.setValue(f"splitter/{name}", sp.saveState())
-            # asked above: stopped, as its second Stop does
-            if self.proc is not None:
-                self.proc.kill()
-                self.proc.waitForFinished(3000)
+            # asked above (an analysis's tool: it ends with the window)
+            self.runner.kill(3000)
             # the Section page's and the calculator's solves
             self.viewer.section.wait_jobs()
             if getattr(self, 'impedance', None) is not None:
                 self.impedance.wait_jobs()
-            # a tool still running: stopped with the window
+            # a Find still going: stopped with the window
             for page in self.pages.values():
                 if page.proc is not None:
                     page.stop()

@@ -1,5 +1,5 @@
 """
-The main window's results (app.py): this board's runs (runfolders.index, on the
+The main window's results (app.py): this board's runs (core.runs.index, on the
 Runs page: runspanel.py), the one shown in the pages and those laid over it,
 the toolbar's Showing; runs deleted.
 """
@@ -7,7 +7,9 @@ import os
 import numpy as np
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QMessageBox
-from .runner import find_results
+from kicad2ems.core import runs
+from kicad2ems.core.analyses import analysis_of
+from kicad2ems.core.runs import find_results
 from .study import RF
 from . import runfolders as rf
 
@@ -23,7 +25,6 @@ class WindowResults:
         viewer (board, meshes, line model, dumps, far field) and the results
         page (S-parameters and antenna, or an analysis's report and curves);
         front: the page with something new in front."""
-        from kicad2ems.core.analyses import analysis_of
         self.shown = os.path.abspath(out_dir)
         files = find_results(out_dir)
         if not files:  # a --vary run's folder: its first run shown,
@@ -105,33 +106,26 @@ class WindowResults:
         this config's newest, else the board's. An analysis that starts from
         another's result (the temperature, from a circuit's losses) is given
         these."""
-        out, runs = {}, self.run_index()
-        for r in rf.in_scope(runs, 'config', self.config_path()) + runs:
-            if r.ok and r.kind in self.pages:
-                out.setdefault(r.kind, r.folder)
+        out = runs.latest_results(None, None, self.config_path(),
+                                  runs=self.run_index())
         for key, page in self.pages.items():
             d = getattr(page, 'out', None)
-            if d and rf.tool_kind(str(d)) == key:
+            if d and analysis_of(str(d)) == (key, False):
                 out[key] = str(d)
         return out
 
-    # ---- this board's runs: one index (runfolders.py) ----
+    # ---- this board's runs: one index (kicad2ems.core.runs) ----
     def config_path(self):
         """The config open (None: the form not saved as one)."""
         return getattr(self.setup, 'path', None)
 
     def running_folders(self):
-        """The folders of the runs going now: kicad2ems's own, the
-        analyses'."""
-        out = ([self.current.out]
-               if self.proc is not None and self.current is not None else [])
-        return out + [
-            str(p.out) for p in self.pages.values()
-            if getattr(p, 'proc', None) is not None and getattr(p, 'out', None)
-        ]
+        """The folder of the run going now (kicad2ems's own, an
+        analysis's)."""
+        return [self.runner.cmd.folder] if self.runner.cmd else []
 
     def run_index(self, scope='board'):
-        """runfolders.index of this board's runs ('all': of every board under
+        """core.runs.index of this board's runs ('all': of every board under
         the output folder)."""
         try:
             vals = self.setup.values()
@@ -140,14 +134,15 @@ class WindowResults:
         board = vals.get('board')
         if scope != 'all' and not board:
             return []
-        return rf.index(self.out_dir(vals), None if scope == 'all' else board,
-                        self.running_folders())
+        return runs.index(self.out_dir(vals),
+                          None if scope == 'all' else board,
+                          self.running_folders())
 
     def settings_now(self, info):
         """The settings a run like info's would be started with now (its ≠
         settings are against these); None: not known (an analysis's run of a
         row no longer in its table)."""
-        if info.kind in ('rf', 'preview'):
+        if info.kind == RF:
             try:
                 return self.run_values(info.preview)
             except ValueError:
@@ -214,9 +209,9 @@ class WindowResults:
         self.want_layout()  # the board as drawn, where nothing of it is shown
         # the last board's preview, still going: ended (its finish leaves the
         # pages to this board, and starts this one's)
-        if self.proc is not None and self.current and self.current.preview:
-            self._stopping = True
-            self.proc.kill()
+        cmd = self.runner.cmd
+        if cmd is not None and cmd.key == RF and cmd.preview:
+            self.runner.kill()  # (its end leaves the pages to this board)
         QTimer.singleShot(0, self._auto_preview)
 
     def _auto_preview(self):
@@ -243,20 +238,19 @@ class WindowResults:
         did; another analysis's results go into the pages as they stand (the
         one in front is usually the one being compared). One that left no
         results: its log."""
-        from .runfolders import tool_kind, ending, run_log
         if folder and os.path.isdir(folder):
+            r = runs.info(folder)
             # stopped, failed: its log
-            if (tool_kind(folder) is None and not find_results(folder)
-                    and not os.path.isdir(os.path.join(folder, 'preview'))
-                    and not any(
-                        f.endswith('_run.json') for f in os.listdir(folder))):
+            if (r is None or not r.ok) and not find_results(folder):
                 self.runtab.started('rf')
-                self.runtab.log.setPlainText(run_log(folder) or '(no log)')
-                self.runtab.stage.setText(f"this run: {ending(folder)}")
+                self.runtab.log.setPlainText(runs.run_log(folder)
+                                             or '(no log)')
+                self.runtab.stage.setText(
+                    f"this run: {r.outcome if r else 'no result'}")
                 self.show_panel('Run')
                 return
-            self.open_results(folder, quiet=True, front=tool_kind(folder)
-                              is None)
+            self.open_results(folder, quiet=True,
+                              front=r is None or r.kind == RF)
 
     def compare_runs(self, folders, viewer=False):
         """These runs laid over the one shown (and no others): their curves in

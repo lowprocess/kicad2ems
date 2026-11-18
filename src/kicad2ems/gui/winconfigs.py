@@ -7,7 +7,7 @@ import os
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QMessageBox
 from .analysispanel import config_values
-from .study import BY_KEY, RF, run_key
+from .study import RF, run_key, title
 from .winparts import _Preparing
 
 MAX_RECENT = 8
@@ -196,17 +196,18 @@ class WindowConfigs:
         self.study.select(first)
         run = self.study.run_of(first) if first in self.study.rows else RF
         if path and run in self.editors:
-            self.show_panel(BY_KEY[run].page)
+            self.show_panel(title(run))
 
     def _fresh_log(self):
         """Another study: the Log page blank, unless a run of the last one is
         going (not its preview, which ends: board_loaded), whose log it is."""
+        cmd = self.runner.cmd
         going = (self.job not in (None, RF) or self.queue
                  or any(p.proc is not None for p in self.pages.values())
-                 or self.proc is not None and not self.current.preview)
+                 or cmd is not None and not cmd.preview)
         if going:
             return
-        self.tail = None  # (the preview's last events: not this study's)
+        self.runner.tail = None  # (the preview's last events: not this study's)
         self.runtab.clear()
 
     def _fields_set(self, question, study):

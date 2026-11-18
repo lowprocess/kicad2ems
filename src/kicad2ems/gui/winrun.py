@@ -1,47 +1,66 @@
 """
-The main window's runs as they go (app.py): the study's queue, one analysis
-after the other, kicad2ems's own run as a process with its events, Stop, and
-the estimate of what a Run takes.
+The main window's runs as they go (app.py): the study's queue (the Steps of
+kicad2ems's plan, StudyModel.steps), each step's commands run by the one
+launcher (runprocess.RunProcess: kicad2ems's own run with its events, an
+analysis's tool a command per row of its table), Stop, and the estimate of what
+a Run takes.
 """
 import json, os
-from PySide6.QtCore import QProcess, QTimer
 from PySide6.QtWidgets import QMessageBox
-from .runner import Run, EventTail, stop_runs
-from .study import BY_KEY, RF, dependents
+from kicad2ems.core import runs
+from kicad2ems.core.runs import Run
+from kicad2ems.core.study import engines, unmet
+from .runprocess import Command, RunProcess
+from .study import RF, title
 
 
 class WindowRun:
     """MainWindow's runs: started, followed, stopped."""
 
+    def _runner(self):
+        """The one launcher, its signals to the window and the pages."""
+        self.runner = r = RunProcess(self)
+        r.began.connect(self._began)
+        r.output.connect(self._output)
+        r.ended.connect(self._ended)
+        r.skipped.connect(lambda text: self._panel(self.job) is not None
+                          and self._panel(self.job).skipped(text))
+        r.finished.connect(lambda code: self._job_done(
+            r.last.key if r.last else None, code))
+
+    def _panel(self, key):
+        page = self.pages.get(key)
+        return getattr(page, 'panel', page)
+
     def busy(self):
         """A run of the window's or a tool of a page's is going."""
-        return (self.proc is not None or self.job is not None
-                or bool(self.queue)
+        return (self.runner.busy() or self.job is not None or bool(self.queue)
                 or any(p.proc is not None for p in self.pages.values()))
 
     def run_study(self, preview=False, only=None):
         """Run (preview) the questions asked: the runs they take, one after the
-        other (the solvers' first, then each analysis after what it starts
-        from); only: that question (or run) alone. One that cannot start (a
-        setting missing) says why in the list, and the rest go on, except those
-        that start from it."""
+        other (kicad2ems's plan: the solvers' first, then each analysis);
+        only: that question (or run) alone. One that cannot start (a setting
+        missing) says why in the list, and the rest go on, except those that
+        need it."""
         if self.busy():
             QMessageBox.information(self, 'Busy',
                                     'A run is going: stop it first')
             return
-        keys = self.study.jobs(preview, only=only)
-        if not keys:
+        steps = self.study.steps(preview, only=only)
+        if not steps:
             QMessageBox.warning(self, 'Study', (
                 'None of the questions asked has a preview: tick S-parameters '
                 'or Converter near field in the list'
                 if preview else 'Tick a question in the list first'))
             return
-        # the question a run of one alone answers
-        self._only = only if only in self.study.rows else None
-        self.queue, self._queue_preview, self._queue_stopped = (list(keys),
-                                                                preview, False)
-        self.runtab.set_jobs([(k, BY_KEY[k].title) for k in keys])
-        for k in keys:
+        from .study import key_of
+        self._steps = {key_of(st): st for st in steps}
+        self.queue, self._queue_preview, self._queue_stopped = (
+            list(self._steps), preview, False)
+        self._failed = set()
+        self.runtab.set_jobs([(k, title(k)) for k in self.queue])
+        for k in self.queue:
             self.study.set_state(k, 'queued', 'gray')
         self._next_job()
 
@@ -51,6 +70,14 @@ class WindowRun:
             return
         while self.queue:
             key = self.queue.pop(0)
+            st = getattr(self, '_steps', {}).get(key)
+            need = (unmet(st.engines[0], self._failed)
+                    if st is not None and st.kind == 'analysis' else [])
+            if need:
+                self._failed.add(key)
+                self._job_state(key, "not run: " + ', '.join(map(title, need))
+                                + ' did not finish', bad=True)
+                continue
             self.job, self._job_t0 = key, time.monotonic()
             try:
                 why = self._start_job(key, self._queue_preview)
@@ -58,68 +85,68 @@ class WindowRun:
             # on (the window must not stay busy with nothing running)
             except Exception as e:
                 import traceback
-                page = self.pages.get(key)
-                (page.log if page is not None else
+                panel = self._panel(key)
+                (panel.log if panel is not None else
                  self.runtab.log).appendPlainText(traceback.format_exc())
                 why = f"{type(e).__name__}: {e}"
             if why is None:
                 self._job_state(key, 'running')
-                if key != RF:  # (kicad2ems's own: start did)
-                    self.refresh_runs()
                 self.acts['Stop'].setEnabled(True)
                 self.runtab.stop_btn.setEnabled(True)
                 self.show_panel('Run', front=not self._queue_preview)
                 return
+            self._failed.add(key)
             self._job_state(key, f"not started: {why}", bad=True)
-            self._drop_after(key)
         self.job = None
-        self.acts['Stop'].setEnabled(self.proc is not None)
-        self.runtab.stop_btn.setEnabled(self.proc is not None)
+        self.acts['Stop'].setEnabled(self.runner.busy())
+        self.runtab.stop_btn.setEnabled(self.runner.busy())
 
     def _start_job(self, key, preview):
-        """Start one analysis; None, or why it did not start."""
-        if key == 'rf':
-            return self.start(preview)
-        page = self.pages[key]
-        # what this run is asked
-        page.asked = self.study.asked_of(key, getattr(self, '_only', None))
-        # the engine chosen (one of the analysis's variants), its settings
-        page.engine = self.study.engine_of(key)
-        page.sets = self.study.sets_of(key)
-        page.start(preview=True) if preview else page.start()
-        proc = page.proc
-        if proc is None:  # the page said why on its status line
-            return page.status.text() or 'see its page'
-        # its settings' panel: it says when it all ended (a table of runs: the
-        # last row's end)
-        panel = getattr(page, 'panel', page)
-        def ended(code, k=key, panel=panel):
-            panel.ended.disconnect(ended)
-            self._job_done(k, code)
-        panel.ended.connect(ended)
-        return None
+        """Start one step: kicad2ems's own run, or an analysis's commands (a
+        row of its table each); None, or why it did not start."""
+        st = self._steps[key]
+        if key == RF:
+            return self.start(preview, st.questions)
+        panel = self._panel(key)
+        panel.log.clear()  # one log for the rows' runs together
+        e = engines()[st.engines[0]]
+        return self.runner.start(panel.commands(
+            preview, st.questions, e.name, e.sets)) or None
+
+    def _began(self, cmd):
+        if cmd.key != RF and self._panel(cmd.key) is not None:
+            self._panel(cmd.key).began(cmd)
+            self.refresh_runs()  # listed, running
+        p = self.runner.proc
+        p.started.connect(lambda: self.meters.set_run(p.processId() or None))
+
+    def _output(self, cmd, text):
+        if cmd.key == RF:
+            self._stdout(text)
+        elif self._panel(cmd.key) is not None:
+            self._panel(cmd.key).output(text)
+
+    def _ended(self, cmd, code, how):
+        self.meters.set_run(None)
+        if cmd.key == RF:
+            self._finished(code, how)
+        elif self._panel(cmd.key) is not None:
+            self._panel(cmd.key).done(cmd, code, how)
 
     def _job_state(self, key, text, bad=False, seconds=None):
         self.runtab.job_state(key, text, seconds)
         self.study.set_state(key, text, 'bad' if bad else '')
         self.steps.refresh()
         if key != 'rf':  # kicad2ems's own run says its stages itself
-            self.runtab.stage.setText(f"{BY_KEY[key].title}: {text}")
+            self.runtab.stage.setText(f"{title(key)}: {text}")
             if text == 'running':
                 self.runtab.own_plots(False)
 
-    def _drop_after(self, key):
-        """The queued analyses that start from one that failed: not run."""
-        for k in [k for k in self.queue if k in dependents(key)]:
-            self.queue.remove(k)
-            self._job_state(k, f"not run: {BY_KEY[key].title} did not finish",
-                            bad=True)
-
     def _job_done(self, key, code):
-        """An analysis of the queue ended: its state and time, then the next
-        (the last one's page in front)."""
+        """A step of the queue ended: its state and time, then the next (the
+        last one's page in front)."""
         import time
-        if self.job != key:
+        if self.job != key or key is None:
             return
         took = time.monotonic() - self._job_t0
         if code == 0:
@@ -130,14 +157,16 @@ class WindowRun:
                 self.refresh_runs(select=str(out))
                 self.open_results(str(out), quiet=True, front=False)
         else:
+            self._failed.add(key)
             self._job_state(
                 key,
                 ('stopped' if self._queue_stopped else f"failed (exit {code})"),
                 bad=not self._queue_stopped, seconds=took)
-            self._drop_after(key)
         self.job = None
+        self.steps.refresh()
         self._page_visibility()  # (a page of a run alone, not ticked: gone)
         if self.queue:  # after this one's own end is dealt with
+            from PySide6.QtCore import QTimer
             QTimer.singleShot(0, self._next_job)
             return
         self._next_job()               # none left: the toolbar's Stop
@@ -184,7 +213,7 @@ class WindowRun:
         jobs = (self.study.jobs(False)
                 if getattr(self, '_study_ready', False) else [])
         runs = ((self._rf_solvers(e, labels) if RF in jobs else []) +
-                [BY_KEY[k].title for k in jobs if k != RF])
+                [title(k) for k in jobs if k != RF])
         self.est_btn.show_estimate(
             e, has_preview=bool(est), labels=labels, runs=runs,
             rf=RF in jobs, stale=(e is not None and self._est_basis is not None
@@ -216,7 +245,7 @@ class WindowRun:
         under the output folder (the board's 'out', or the Output setting), so
         earlier runs stay to compare with; a preview: one per board."""
         from kicad2ems.core.config import default_out
-        from .runfolders import tool_dir, tool_preview_dir
+        from kicad2ems.core.runs import tool_dir, tool_preview_dir
         try:
             base = self.setup.values().get('out')
         except ValueError:
@@ -247,17 +276,17 @@ class WindowRun:
                 vals.pop(k, None)
         return vals
 
-    def start(self, preview):
-        """Start kicad2ems's own run (the S-parameters analysis) or its preview;
-        None, or why it did not start (said in a dialog too when the user
-        started it alone)."""
+    def start(self, preview, asked=None):
+        """Start kicad2ems's own run (the S-parameters analysis) or its preview,
+        asked those questions (None: the RF ones asked); None, or why it did
+        not start (said in a dialog too when the user started it alone)."""
         def no(title, why):
             # alone: a dialog; in a queue: the list says it
             if self.job != 'rf' or not self.queue:
                 (QMessageBox.information
                  if title == 'Busy' else QMessageBox.warning)(self, title, why)
             return why
-        if self.proc is not None:
+        if self.runner.busy():
             return no('Busy', 'A run is going: stop it first')
         vals = self.setup.values()
         if getattr(self.setup, 'bad', None):
@@ -269,38 +298,20 @@ class WindowRun:
             return no(
                 'Setup',
                 "Choose a solver on the list's S-parameters row (or Preview)")
-        from kicad2ems.core import study
-        from .runfolders import run_dir, preview_dir
         vals = self.run_values(preview)
         base = self.out_dir(vals)  # each run in a folder of its own
-        self.current = Run(vals, (preview_dir(base, vals['board']) if preview
-                                  else run_dir(base, vals['board'])), preview)
-        study.mark(self.current.out, RF,
-                 (self.study.asked_of(RF, getattr(self, '_only', None)) or
-                  ('sparams', )), preview, config=self.config_path())
+        self.current = Run(vals, (
+            runs.preview_dir(base, vals['board']) if preview else
+            runs.run_dir(base, vals['board'])), preview)
+        runs.mark(self.current.out, RF,
+                  asked or self.study.asked_of(RF) or ('sparams', ), preview,
+                  config=self.config_path())
         self._auto = getattr(self, '_auto', False) and preview
-        self.files, self._traceback, self._stopping = [], False, False
+        self.files, self._traceback = [], False
         self.runtab.reset()
-        self.tail = EventTail(self.current.events)
-        self.proc = QProcess(self)
-        self.proc.setProcessChannelMode(QProcess.MergedChannels)
-        # in the output folder: started where the GUI was, the run could import
-        # a folder there named like one of its packages (a mom25d/ of the
-        # user's) in place of the package
-        self.proc.setWorkingDirectory(self.current.out)
-        self.proc.readyReadStandardOutput.connect(self._stdout)
-        self.proc.finished.connect(self._finished)
-        # (one that cannot start ends with no finished)
-        self.proc.errorOccurred.connect(self._proc_error)
-        # its whole output, in its folder (the Log has its events)
-        try:
-            self._stdout_fh = open(os.path.join(self.current.out, 'stdout.log'),
-                                   'a', encoding='utf-8')
-        except OSError:
-            self._stdout_fh = None
-        argv = self.current.argv()
-        self.proc.start(argv[0], argv[1:])
-        self.meters.set_run(self.proc.processId() or None)
+        self.runner.start([Command(RF, self.current.argv(), self.current.out,
+                                   events=self.current.events,
+                                   preview=preview)])
         self.runtab.stop_btn.setEnabled(True)
         self.acts['Stop'].setEnabled(True)
         self.runtab.stage.setText('starting…')
@@ -323,47 +334,36 @@ class WindowRun:
         self.run_study()
 
     def stop(self):
-        """What is queued: not run. The analysis running: a page's tool ends at
-        once; kicad2ems's own run is asked to stop at the first press (stop.py:
-        mom25d after the frequency it is solving, openEMS at once with what it
-        has, later solvers skipped) and its process ended at the second."""
+        """What is queued: not run. The run going: asked to stop at the first
+        press (kicad2ems's own: stop.py, mom25d after the frequency it is
+        solving, openEMS at once with what it has, later solvers skipped; a
+        tool: SIGTERM, it stops what it started), its process ended at the
+        second (RunProcess.stop)."""
         for k in self.queue:
             self._job_state(k, 'not run: stopped')
         self.queue = []
-        if self.job in self.pages:
-            self._queue_stopped = True
-            self.pages[self.job].stop()
-            return
-        if not (self.current and self.proc):
+        if self.job is None and not self.runner.busy():
             return
         self._queue_stopped = True
-        if self._stopping:
-            self.runtab.log.appendPlainText("stop: ending the process")
-            self.proc.kill()
-            return
-        self._stopping = True
-        stop_runs(self.current.out)
-        self.runtab.log.appendPlainText(
-            "stop: requested - the run ends after its current step "
-            "(press Stop again to end the process at once)")
+        said = self.runner.stop()
+        if said:
+            self.runtab.log.appendPlainText(said)
 
-    def _stdout(self):
-        """The process's own output: the log already comes as events, so only
-        errors - a traceback whole."""
-        data = bytes(self.proc.readAllStandardOutput()).decode(
-            'utf-8', 'replace')
-        if getattr(self, '_stdout_fh', None) is not None:
-            self._stdout_fh.write(data)
-            self._stdout_fh.flush()
+    def _stdout(self, data):
+        """kicad2ems's own output: the log already comes as events, so only
+        errors - a traceback whole - and the launcher's word that it could not
+        start."""
         for line in data.splitlines():
             self._traceback = self._traceback or line.startswith('Traceback')
-            if self._traceback or 'error' in line.lower():
+            if (self._traceback or 'error' in line.lower()
+                    or line.startswith('the run could not start')):
                 self.runtab.log.appendPlainText(line)
 
     def poll(self):
-        if not self.tail:
+        tail = self.runner.tail
+        if not tail:
             return
-        for ev in self.tail.read():
+        for ev in tail.read():
             k = ev.get('kind')
             if k == 'log':
                 self.runtab.log.appendPlainText(ev.get('text', ''))
@@ -384,46 +384,21 @@ class WindowRun:
             except Exception as e:  # never stop following the run over a frame
                 self.runtab.log.appendPlainText(f"field view: {e}")
 
-    def _proc_error(self, err):
-        """The run's process could not start (no Python there, a missing file):
-        said, and the window idle again (FailedToStart ends with no finished
-        signal). A crash is finished's to say."""
-        if err != QProcess.FailedToStart or self.proc is None:
-            return
-        self.runtab.log.appendPlainText(
-            f"the run could not start: {self.proc.errorString()}")
-        self._finished(-1, QProcess.CrashExit, started=False)
-
-    def _finished(self, code, status=None, started=True):
-        """The run is over: its results into the pages. A run: Results in front
-        (S-parameters, antenna); a preview: the Viewer (the board, its meshes,
-        the line model), and the estimates on the solver tick boxes. Its folder
-        keeps how it ended (runfolders.EXIT), so a run with no results stays
-        listed, with its log."""
+    def _finished(self, code, how):
+        """kicad2ems's own run is over (how: its outcome, which its mark
+        keeps, so a run with no results stays listed, with its log): its
+        results into the pages. A run: Results in front (S-parameters,
+        antenna); a preview: the Viewer (the board, its meshes, the line
+        model), and the estimates on the solver tick boxes. The queue's next:
+        the launcher's finished (_job_done)."""
+        from PySide6.QtCore import QTimer
         self.poll()
         self.timer.stop()
-        crashed = (started and status == QProcess.CrashExit
-                   and not self._stopping)
-        fh, self._stdout_fh = getattr(self, '_stdout_fh', None), None
-        if fh is not None:
-            fh.close()
-        try:
-            import time as _time
-            from .runfolders import EXIT
-            with open(os.path.join(self.current.out, EXIT), 'w',
-                      encoding='utf-8') as f:
-                json.dump(
-                    dict(code=code, crashed=bool(crashed),
-                         stopped=bool(self._stopping), started=started,
-                         ended=_time.strftime('%Y-%m-%d %H:%M:%S')), f)
-        except OSError:
-            pass
+        crashed = how == 'crashed'
         if crashed:
             self.runtab.log.appendPlainText(
                 "the run's process ended abnormally (crashed): its whole "
                 f"output is in {os.path.join(self.current.out, 'stdout.log')}")
-        self.proc = None
-        self.meters.set_run(None)
         self.runtab.stop_btn.setEnabled(False)
         self.acts['Stop'].setEnabled(False)
         out = self.current.out
@@ -435,7 +410,6 @@ class WindowRun:
             # went): listed with its board's runs, not shown over this one's
             # (a preview of rf_coupler's had drawn over demo_lowpass)
             self.refresh_runs()
-            self._job_done('rf', code)
             self.steps.refresh()
             QTimer.singleShot(0, self._auto_preview)
             return
@@ -446,7 +420,6 @@ class WindowRun:
             self.refresh_runs()
             if self.system.load_estimates(out):
                 self.new_estimates(self.system.est)
-            self._job_done('rf', code)
             return
         has_s = any(l.startswith('S-parameters') for l, _ in self.files)
         ant = self.results.load_antenna(None if self.current.preview else out)
@@ -470,5 +443,4 @@ class WindowRun:
             self.show_result()
         else:
             self.show_panel('Viewer' if seen else 'Run')
-        self._job_done('rf', code)  # in a study run: the next analysis
         self.steps.refresh()  # (it had kept 'running' after a preview)

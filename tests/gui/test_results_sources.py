@@ -1,7 +1,7 @@
 """Every analysis's results in the pages: the run folders of the analyses' tools
-(runfolders), their curves on the Results page (curves.py, curveplot.py) with
-other runs over them, a result's three views (its plots, its report, its
-tables), the pages that come and go, a second Viewer. The analyses are the
+(kicad2ems.core.runs), their curves on the Results page (curves.py,
+curveplot.py) with other runs over them, a result's three views (its plots,
+its report, its tables), the pages that come and go, a second Viewer. The analyses are the
 stand-ins (fake_analyses.py)."""
 import json
 import os
@@ -11,7 +11,8 @@ import numpy as np
 import pytest
 
 import fake_analyses as FA
-from kicad2ems.gui import curves, runfolders
+from kicad2ems.core import runs
+from kicad2ems.gui import curves
 
 _pdn = lambda folder, scale=1.0, rail='P': FA.write('pdn', folder, rail=rail,
                                                     scale=scale)
@@ -21,43 +22,39 @@ _mqs = lambda folder: FA.write('mqs', folder, converter='U3')
 def test_tool_run_folders(tmp_path):
     base, board = str(tmp_path / 'out'), str(tmp_path / 'b.kicad_pcb')
     t0 = __import__('datetime').datetime(2026, 11, 11, 1, 31, 36)
-    a = runfolders.tool_dir(base, board, 'pdn', '+3V3', now=t0)
+    a = runs.tool_dir(base, board, 'pdn', '+3V3', now=t0)
     assert os.path.basename(a) == 'b_pdn_3V3_20261111_013136'
-    assert runfolders.tool_preview_dir(base, board,
-                                       'mqs').endswith('b_mqs_preview')
-    assert (runfolders.tool_titles() == dict(
-        pdn='Power integrity', mqs='Near field', circuit='Circuit',
-        thermal='Thermal', elmer_thermal='Temperature (Elmer)'))
+    assert runs.tool_preview_dir(base, board,
+                                 'mqs').endswith('b_mqs_preview')
     _pdn(a)
     # stopped: no result
     os.makedirs(
-        runfolders.tool_dir(base, board, 'pdn', 'X', now=t0.replace(second=40)))
-    # the old place: beside the board
+        runs.tool_dir(base, board, 'pdn', 'X', now=t0.replace(second=40)))
+    # the old place, beside the board: not a run folder any more
     _mqs(str(tmp_path / 'mqs_U3'))
     # another board's
     _pdn(str(tmp_path / 'out' / 'other_pdn_P_20261111_013136'))
     # a preview: not a run
-    FA.write('mqs', runfolders.tool_preview_dir(base, board, 'mqs'),
+    FA.write('mqs', runs.tool_preview_dir(base, board, 'mqs'),
              preview=True)
     th = FA.write(
         'thermal',
-        runfolders.tool_dir(base, board, 'thermal', 'circuit',
-                            now=t0.replace(second=50)))
-    found = [r for r in runfolders.index(base, board) if r.kind != 'rf']
+        runs.tool_dir(base, board, 'thermal', 'circuit',
+                      now=t0.replace(second=50)))
+    found = [r for r in runs.index(base, board) if r.kind != 'rf']
     assert ([(os.path.basename(r.folder), r.kind, r.outcome) for r in found
-             ] == [('mqs_U3', 'mqs', 'done'),
-                   ('b_thermal_circuit_20261111_013150', 'thermal', 'done'),
+             ] == [('b_thermal_circuit_20261111_013150', 'thermal', 'done'),
                    ('b_pdn_X_20261111_013140', 'pdn', 'no result'),
                    ('b_pdn_3V3_20261111_013136', 'pdn', 'done')])
-    assert (found[3].what == '3V3' and found[3].questions == ('dc', 'pdn')
-            and found[3].engines == ('pdn', )
-            and found[3].label().endswith(
+    assert (found[2].what == '3V3' and found[2].questions == ('dc', 'pdn')
+            and found[2].engines == ('pdn', )
+            and found[2].label().endswith(
                 'Rail drop, Rail impedance · 3V3 · fake'))
-    assert (runfolders.tool_kind(a) == 'pdn'
-            and runfolders.tool_kind(str(tmp_path)) is None
-            and runfolders.tool_kind(th) == 'thermal')
-    assert (runfolders.tool_kind(runfolders.tool_preview_dir(
-        base, board, 'mqs')) is None)
+    # one folder alone, wherever it is (no mark: whose result it holds)
+    kind = lambda d: getattr(runs.info(d), 'kind', None)
+    assert (kind(a) == 'pdn' and kind(str(tmp_path)) is None
+            and kind(th) == 'thermal' and runs.info(runs.tool_preview_dir(
+                base, board, 'mqs')).preview)
     assert (curves.run_label(a) == '3V3, 11-11 01:31:36'
             and curves.run_label(str(tmp_path / 'mqs_U3')) == 'mqs_U3')
 
@@ -120,11 +117,11 @@ def test_results_of_lists_every_analysis_and_compares_runs(window, tmp_path):
     w.setup.set_values(dict(board=str(board)))
     base = w.out_dir()
     t = __import__('datetime').datetime(2026, 11, 11, 1, 0, 0)
-    old = _pdn(runfolders.tool_dir(base, str(board), 'pdn', 'P', now=t))
+    old = _pdn(runs.tool_dir(base, str(board), 'pdn', 'P', now=t))
     new = _pdn(
-        runfolders.tool_dir(base, str(board), 'pdn', 'P',
+        runs.tool_dir(base, str(board), 'pdn', 'P',
                             now=t.replace(minute=5)), scale=2)
-    nf = _mqs(runfolders.tool_dir(base, str(board), 'mqs', 'U3', now=t))
+    nf = _mqs(runs.tool_dir(base, str(board), 'mqs', 'U3', now=t))
     w.refresh_runs()
     rows = [(r.when.strftime('%H:%M'), r.about(), r.folder)
             for r in w.runs_panel.runs()]
@@ -179,11 +176,11 @@ def test_a_result_as_its_plots_its_report_or_its_tables(window, tmp_path):
     w.setup.set_values(dict(board=str(board)))
     base = w.out_dir()
     th = FA.write('thermal',
-                  runfolders.tool_dir(base, str(board), 'thermal', 'losses'),
+                  runs.tool_dir(base, str(board), 'thermal', 'losses'),
                   loss='L1=0.48\nQ2=0.2')
     ci = FA.write('circuit',
-                  runfolders.tool_dir(base, str(board), 'circuit', 'buck'))
-    pd = FA.write('pdn', runfolders.tool_dir(base, str(board), 'pdn', 'P'),
+                  runs.tool_dir(base, str(board), 'circuit', 'buck'))
+    pd = FA.write('pdn', runs.tool_dir(base, str(board), 'pdn', 'P'),
                   note=True)
     r = w.results
     w.refresh_runs()
@@ -260,9 +257,9 @@ def test_second_viewer(window, tmp_path):
     w.setup.set_values(dict(board=str(board)))
     base = w.out_dir()
     t = __import__('datetime').datetime(2026, 11, 11, 1, 0, 0)
-    a = _pdn(runfolders.tool_dir(base, str(board), 'pdn', 'P', now=t))
+    a = _pdn(runs.tool_dir(base, str(board), 'pdn', 'P', now=t))
     b = _pdn(
-        runfolders.tool_dir(base, str(board), 'pdn', 'P',
+        runs.tool_dir(base, str(board), 'pdn', 'P',
                             now=t.replace(minute=5)))
     w.refresh_runs()
     w.show_run(b)

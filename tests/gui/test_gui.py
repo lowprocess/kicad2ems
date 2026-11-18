@@ -917,7 +917,8 @@ def test_run_folders(tmp_path):
     <board>_preview; a board's runs are only its own, the newest first; one that
     wrote no summary is listed by how it ended (R-E24)."""
     import datetime
-    from kicad2ems.gui.runfolders import run_dir, preview_dir, index, board_name
+    from kicad2ems.core.runs import (run_dir, preview_dir, index, board_name,
+                                     mark, ended)
     base = str(tmp_path)
     assert (board_name('/x/rf_coupler.kicad_pcb') == 'rf_coupler'
             and board_name('a/b_board.json') == 'b')
@@ -946,8 +947,8 @@ def test_run_folders(tmp_path):
     assert (rs[1].engines == ('mom25d', 'qucs') and rs[1].outcome == 'done'
             and rs[1].label(now=t) == '14:20 · S-parameters · mom25d (MoM), '
             'line model (qucsator)' and rs[0].outcome == 'no result')
-    json.dump(dict(code=0, stopped=True),
-              open(os.path.join(d3, 'run_exit.json'), 'w', encoding='utf-8'))
+    mark(d3, 'rf')  # how it ended: its mark says
+    ended(d3, 'stopped')
     assert index(base, 'x/rf_coupler.kicad_pcb')[0].outcome == 'stopped'
     # every board's
     assert ({r.board for r in index(base)} == {'rf_coupler', 'rf_coupler2'}

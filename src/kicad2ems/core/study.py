@@ -25,9 +25,9 @@ several, to compare them), and starts them: an analysis engine by the command
 its Analysis gives (Analysis.command, its settings first passed through
 Analysis.for_questions with the questions asked of it), the solver engines
 together as one kicad2ems run. Whoever starts a run leaves a mark in its folder
-(mark) saying which engine made it and what was asked, so a folder is known as
-that engine's result even when two engines leave a file of the same name
-(analyses.analysis_of).
+(kicad2ems.core.runs.mark) saying which engine made it, what was asked and how
+it ended, so a folder is known as that engine's result even when two engines
+leave a file of the same name (runs.index, analyses.analysis_of).
 
 A config holds a study as its [study] tables (Study, read_config, write_config),
 plan() gives the runs it takes in order, and run() makes them, which is the
@@ -45,16 +45,14 @@ import sys
 import time
 from dataclasses import dataclass, field
 
-from .runs import load_toml, update_toml
+from .runs import RF, load_toml, mark, update_toml
 
 __all__ = ['Study', 'RF', 'study_tree', 'questions', 'engines', 'provided',
-           'dump_options', 'default_fields', 'runs_for', 'mark', 'marked',
-           'check_lines', 'load_config', 'read_config', 'write_config', 'plan',
-           'engine_named', 'compare', 'latest_results', 'rf_needs', 'main']
+           'dump_options', 'default_fields', 'runs_for', 'check_lines',
+           'load_config', 'read_config', 'write_config', 'plan', 'unmet',
+           'engine_named', 'compare', 'rf_needs', 'main']
 
 GROUPS = ('RF', 'Signal integrity', 'Power', 'Thermal', 'Other')
-# in a run's folder: the engine that made it and what was asked of it
-MARK = 'kicad2ems-study.json'
 
 
 @dataclass(frozen=True)
@@ -330,47 +328,6 @@ def compare(results):
     return dict(engines=names, labels=[es[n].label for n in names], rows=rows)
 
 
-def mark(folder, engine, asked=(), preview=False, config=None,
-         settings=None):
-    """Leave the mark of a run in its folder (made if it is not there): the
-    engine that makes it, the questions asked of it, whether it is a preview;
-    config: the config file it was started from, settings: the settings it ran
-    with (a front end's form: JSON, anything else as its text), each kept when
-    given. Returns the mark's path."""
-    os.makedirs(folder, exist_ok=True)
-    path = os.path.join(folder, MARK)
-    d = dict(format='kicad2ems-study-run', version=1, engine=engine,
-             questions=list(asked), preview=bool(preview))
-    if config:
-        d['config'] = os.path.abspath(str(config))
-    if settings is not None:
-        d['settings'] = json.loads(json.dumps(dict(settings), default=str))
-    with open(path, 'w', encoding='utf-8') as fh:
-        json.dump(d, fh, indent=1)
-    return path
-
-
-def marked(folder):
-    """The mark of a run's folder: dict(engine, questions, preview), with config
-    and settings when it has them; None (no mark, or not readable)."""
-    try:
-        with open(os.path.join(folder or '', MARK), encoding='utf-8') as fh:
-            d = json.load(fh)
-    except (OSError, ValueError):
-        return None
-    if (not isinstance(d, dict) or d.get('format') != 'kicad2ems-study-run'
-            or not d.get('engine')):
-        return None
-    out = dict(engine=str(d['engine']),
-               questions=tuple(d.get('questions') or ()),
-               preview=bool(d.get('preview')))
-    if d.get('config'):
-        out['config'] = str(d['config'])
-    if isinstance(d.get('settings'), dict):
-        out['settings'] = d['settings']
-    return out
-
-
 def check_lines():
     """--check's lines about the questions: each one with the engines that
     answer it."""
@@ -385,7 +342,6 @@ def check_lines():
 
 
 # ---- a config's study: what it asks, the runs that takes, and running them --
-RF = 'rf'  # the S-parameter run's name in a plan and in a run folder's mark
 # what solver engines answer: together, one kicad2ems run
 SOLVER_QUESTIONS = ('sparams', 'antenna', 'lines')
 
@@ -705,39 +661,30 @@ def _fresh(folder_at):
     return d
 
 
-def latest_results(base, board):
-    """{analysis: the folder of its newest finished result on this board under
-    base}: what an analysis that starts from another's result is given
-    (Analysis.command's results)."""
-    import glob
-    from .analyses import analysis_of
-    from .runs import board_name
-    out, when = {}, {}
-    for d in glob.glob(
-            os.path.join(glob.escape(base),
-                         f"{glob.escape(board_name(board))}_*")):
-        made = analysis_of(d) if os.path.isdir(d) else None
-        if made and not made[1] and os.path.getmtime(d) > when.get(made[0], 0):
-            out[made[0]], when[made[0]] = d, os.path.getmtime(d)
-    return out
+def unmet(name, failed):
+    """The analyses an engine's run needs (Analysis.needs) of `failed`, the
+    runs that did not finish: it is not made then."""
+    e = engines().get(name)
+    return ([n for n in e.impl.needs if n in failed]
+            if e is not None and e.kind == 'analysis' else [])
 
 
 def run(config, only=None, preview=False, out=None, echo=print, extra=None):
     """Run the study a config asks, one run after the other (plan), each into a
-    folder of its own under the output folder: the solvers' as kicad2ems's own
-    run, an analysis as the command its Analysis gives, with its settings from
-    [analysis.<name>] (given several tables, [[analysis.<name>]]: a run for
-    each, a board's rails). only:
-    the questions (or engines) to run of those it asks; preview: the runs that
-    have one, without solving; extra:
-    settings typed on the command line, for the solvers' run. A run that cannot
-    start or fails says why and the rest go on, except an analysis that needs
-    its result. Returns 0 when every run finished, 1 when one did not, 2 when
-    the study cannot be read."""
+    folder of its own under the output folder and each a command of its own:
+    the solvers' kicad2ems's run of the config's settings, an analysis the
+    command its Analysis gives, with its settings from [analysis.<name>] (given
+    several tables, [[analysis.<name>]]: a run for each, a board's rails).
+    only: the questions (or engines) to run of those it asks; preview: the runs
+    that have one, without solving; extra: settings typed on the command line,
+    for the solvers' run. A run that cannot start or fails says why and the
+    rest go on, except an analysis that needs its result. Returns 0 when every
+    run finished, 1 when one did not, 2 when the study cannot be read."""
     import subprocess
     from .analyses import read_sets, registry
-    from .config import ConfigError, build_settings, default_out
-    from .runs import preview_dir, run_dir, tool_dir, tool_preview_dir
+    from .config import ConfigError, build_settings, default_out, read_toml
+    from .runs import (Run, ended, latest_results, outcome, preview_dir,
+                       run_dir, tool_dir, tool_preview_dir)
     from .solvers import registry as solvers
     try:
         study = read_config(config)
@@ -772,13 +719,26 @@ def run(config, only=None, preview=False, out=None, echo=print, extra=None):
     echo(f"study of {os.path.basename(board or config)}: {count} run(s)")
     for line in describe(steps, tables):
         echo(line)
-    results, state, failed = latest_results(base, board), [], set()
+    results = latest_results(base, board, config)
+    state, failed = [], set()
+
+    def spawn(argv, folder, env=None):
+        """A run's command, its output echoed, its end into its mark."""
+        proc = subprocess.Popen(argv, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True,
+                                env=dict(os.environ, **(env or {})))
+        for line in proc.stdout:
+            echo('  ' + line.rstrip('\n'))
+        code = proc.wait()
+        ended(folder, outcome(code))
+        return code
+
     for st in steps:
         t0 = time.time()
         if st.kind == 'solvers':
             folder = (preview_dir(base, board)
                       if preview else _fresh(lambda: run_dir(base, board)))
-            cli = dict(extra or {}, out=folder, preview=bool(preview))
+            cli = dict(extra or {}, out=folder)
             if st.engines:
                 cli['solvers'] = list(st.engines)
             if st.mode:
@@ -790,17 +750,18 @@ def run(config, only=None, preview=False, out=None, echo=print, extra=None):
                     for o in dump_options(sv)
                 })
             try:
-                s = build_settings(cli, config)
+                build_settings(cli, config)  # (what is wrong: said here)
+                values = dict(read_toml(config)[0], **cli)
+                values.pop('vary', None)
                 mark(folder, RF, st.questions, preview, config=config)
-                from .pipeline import Job
-                code = Job(s, command=f"kicad2ems study {config}").run()
+                code = spawn(Run(values, folder, preview).argv(), folder)
             except (ConfigError, ValueError, OSError) as e:
                 echo(f"study: {st.name}: not started: {e}")
                 code = 2
         else:
             eng = es[st.engines[0]]
             a = registry()[eng.run]
-            need = [n for n in a.needs if n in failed]
+            need = unmet(eng.name, failed)
             if need:
                 echo(
                     f"study: {a.label}: not run: {', '.join(need)} did not "
@@ -838,12 +799,7 @@ def run(config, only=None, preview=False, out=None, echo=print, extra=None):
                 shown = (['python', *argv[1:]] if argv[0] == sys.executable
                          else argv)
                 echo(f"study: {who}: {' '.join(shown)}")
-                proc = subprocess.Popen(argv, stdout=subprocess.PIPE,
-                                        stderr=subprocess.STDOUT, text=True,
-                                        env=dict(os.environ, **(a.env or {})))
-                for line in proc.stdout:
-                    echo('  ' + line.rstrip('\n'))
-                code = proc.wait()
+                code = spawn(argv, folder, a.env)
                 if code == 0 and not preview:
                     results[a.name] = folder
                 if code != 0:

@@ -103,9 +103,9 @@ def test_a_run_is_the_analysis_s_command_on_the_model_as_edited(
     """Run: the model as edited written into the run's folder, pcbqs.circuit
     with the options set; the board's copper needs a board (the model's own, the
     one named, else said)."""
-    import kicad2ems.gui.analysispanel as panel
+    from kicad2ems.gui.runprocess import RunProcess
     ran=[]
-    monkeypatch.setattr(panel,'run_tool',lambda p,argv,*a,**k:ran.append(argv))
+    monkeypatch.setattr(RunProcess,'_launch',lambda p,cmd:ran.append(cmd.argv))
     tab.outdir.setText(str(tmp_path/'out'))
     tab.params.item(0,1).setText('123456');tab.start()
     assert (ran[-1][1:5] == [

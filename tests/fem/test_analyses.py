@@ -10,7 +10,7 @@ import sys
 import pytest
 from shapely.geometry import box, mapping
 
-from kicad2ems.core import analyses as registry_module, study
+from kicad2ems.core import analyses as registry_module, runs, study
 from kicad2ems.fem import analyses as A
 from kicad2ems.fem.elmer import run as elmer
 
@@ -222,7 +222,7 @@ def test_a_drop_run_through_its_command(tmp_path, registered):
         a.for_questions(
             dict(net='N', source='S', load='L=1', h=0.5),
             ('dc', )), str(path), str(out))
-    study.mark(str(out), 'elmer_dc', ('dc',))
+    runs.mark(str(out), 'elmer_dc', ('dc',))
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(p for p in sys.path if p))
     done = subprocess.run(line, capture_output=True, text=True, env=env,
                           timeout=600)

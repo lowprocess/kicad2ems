@@ -1,7 +1,7 @@
 """
-The Runs page: this board's runs as a table (runfolders.index), the one shown
-and the ones compared picked there; and the toolbar's Showing, which says which
-run the pages show and brings the page forward.
+The Runs page: this board's runs as a table (kicad2ems.core.runs.index), the
+one shown and the ones compared picked there; and the toolbar's Showing, which
+says which run the pages show and brings the page forward.
 
     RunsPanel(win)       a row per run: when, what it answered, the engines,
                          how it ended, how long it took, its size, whether its
@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QComboBox,
                                QPushButton, QLabel, QTreeWidget,
                                QTreeWidgetItem, QAbstractItemView,
                                QHeaderView, QMenu)
+from kicad2ems.core.runs import when_text
 from . import runfolders as rf
 
 COLS = ('When', 'Answered', 'Engines', 'Outcome', 'Took', 'Size', 'Settings',
@@ -118,7 +119,7 @@ class RunsPanel(QWidget):
                      if r.folder == d), None)
 
     def refresh(self, select=None):
-        """The table read again (runfolders.index); select: the folder to
+        """The table read again (core.runs.index); select: the folder to
         select (else the selection as it was)."""
         win = self.win
         self._all = win.run_index('board')
@@ -146,8 +147,8 @@ class RunsPanel(QWidget):
 
     def _item(self, r):
         it = QTreeWidgetItem([
-            'preview' if r.preview else rf.when_text(r.when, seconds=True),
-            r.about(), ', '.join(map(rf.engine_label, r.engines)),
+            'preview' if r.preview else when_text(r.when, seconds=True),
+            r.about(), r.engine_labels(),
             r.outcome, rf.took_text(r.took), rf.size_text(r.size), '',
             r.board])
         it.setData(0, Qt.UserRole, r.folder)
@@ -181,7 +182,7 @@ class RunsPanel(QWidget):
             r = self.info(it.data(0, Qt.UserRole))
             if r is None:
                 continue
-            key = (r.kind, r.what)  # (a form read once a pass)
+            key = (r.kind, r.what, r.preview)  # (a form read once a pass)
             if key not in nows:
                 nows[key] = self.win.settings_now(r)
             now = nows[key]

@@ -8,7 +8,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QComboBox, QPushButton,
                                QLabel, QFileDialog, QMessageBox, QToolButton,
                                QStackedWidget, QMenu)
-from .runner import find_results
+from kicad2ems.core.runs import find_results
 from .splot import SPlot, default_layout
 from .curveplot import CurvePlot
 from .curves import load_sets

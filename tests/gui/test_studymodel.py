@@ -77,7 +77,7 @@ def test_who_answers_and_what_cannot_run_here():
     # cannot be asked, and says why
     m.set_available('thermal', False, 'no ngspice')
     assert (m.engines_for('thermal') == ['elmer_thermal'] and 'thermal' in m.on
-            and m.available() >= {'elmer_thermal'})
+            and m.usable('thermal') == ['elmer_thermal'])
     m.set_available('elmer_thermal', False, 'no Elmer')
     assert not m.can_ask('thermal') and 'thermal' not in m.on and m.jobs() == []
     text, tip, tone = m.state_of('thermal')
@@ -133,6 +133,9 @@ def test_a_run_s_state_on_its_questions():
     text, tip, tone = m.state_of('thermal')
     assert (tone == 'bad' and 'done' in text and 'failed' in text
             and tip.count('\n') == 1)
+    # both done, a minute apart: done, at the last one's time
+    m.set_state('elmer_thermal', 'done 21:43')
+    assert m.state_of('thermal')[0] == 'done 21:43'
     m.set_available('mqs', False, 'not here')
     m.set_state('mqs', 'done')  # a run that cannot be made has no state
     assert (m.state('mqs') == ''

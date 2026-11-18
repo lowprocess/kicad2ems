@@ -18,12 +18,28 @@ here.
                            # the output folder
     write_toml(path, settings); toml_value(v); load_toml(path)
     update_toml(path, keys, tables)  # a config edited, its comments kept
+
+A run folder is known by its mark, which whoever starts the run leaves in it
+(`kicad2ems study`, the GUI) and completes with how it ended:
+
+    mark(folder, engine, asked, preview, config, settings)
+    ended(folder, outcome)  # 'done', 'stopped', 'crashed', 'failed, code 1'
+    marked(folder)          # dict(engine, questions, preview, ...), or None
+    info(folder)            # RunInfo: what the folder is, read from its mark
+    index(base, board=None, running=())
+                            # [RunInfo] of the runs under base, the newest
+                            # first, the board's preview last
+    latest_results(base, board, config=None)
+                            # {analysis: its newest finished run's folder}
 """
-import datetime, glob, json, os, re, sys
+import datetime, glob, json, os, re, sys, time
+from dataclasses import dataclass
 
 __all__ = ['toml_value', 'write_toml', 'load_toml', 'Run', 'read_summary',
            'EventTail', 'stop_runs', 'board_name', 'run_dir', 'preview_dir',
-           'tool_dir', 'tool_preview_dir', 'find_results', 'update_toml']
+           'tool_dir', 'tool_preview_dir', 'find_results', 'update_toml',
+           'MARK', 'mark', 'marked', 'ended', 'outcome', 'RunInfo', 'info',
+           'index', 'latest_results', 'run_log', 'same_config', 'when_text']
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -46,7 +62,7 @@ def toml_value(v):
 def write_toml(path, values):
     """A flat TOML file of the non-empty settings (solvers = [] kept: no solver,
     as the GUI says so)."""
-    lines = ["# written by the kicad2ems GUI"]
+    lines = ["# a run's settings, written by kicad2ems"]
     for k, v in values.items():
         if (v is None or v == '' or (v == [] and k != 'solvers')
                 or (k in ('cut_ports', 'mom') and v is False)):
@@ -313,14 +329,391 @@ def tool_preview_dir(base, board, kind):
 
 def find_results(out_dir):
     """(label, path) of the files of the newest finished run in out_dir (from
-    its <name>_run.json, or the <name>_openems.json of an older run)."""
-    sums = sorted(
-        glob.glob(os.path.join(out_dir, '*_run.json'))
-        + glob.glob(os.path.join(out_dir, '*_openems.json')),
-        key=os.path.getmtime)
+    its <name>_run.json)."""
+    sums = sorted(glob.glob(os.path.join(glob.escape(out_dir), '*_run.json')),
+                  key=os.path.getmtime)
     if not sums:
         return []
     with open(sums[-1], encoding='utf-8') as fh:
         files = json.load(fh).get('files', [])
     return [(lab, p if os.path.isabs(p) else os.path.join(out_dir, p))
             for lab, p in files]
+
+
+# ---- a run folder's mark, and the runs known by it ----
+MARK = 'kicad2ems-study.json'
+RF = 'rf'  # kicad2ems's own run (the solvers together): its mark's engine
+ENDED = '%Y-%m-%d %H:%M:%S'
+
+
+def mark(folder, engine, asked=(), preview=False, config=None,
+         settings=None):
+    """Leave the mark of a run in its folder (made if it is not there): the
+    engine that makes it, the questions asked of it, whether it is a preview;
+    config: the config file it was started from, settings: the settings it ran
+    with (a front end's form: JSON, anything else as its text), each kept when
+    given. Returns the mark's path."""
+    os.makedirs(folder, exist_ok=True)
+    d = dict(format='kicad2ems-study-run', version=1, engine=engine,
+             questions=list(asked), preview=bool(preview))
+    if config:
+        d['config'] = os.path.abspath(str(config))
+    if settings is not None:
+        d['settings'] = json.loads(json.dumps(dict(settings), default=str))
+    return _write_mark(folder, d)
+
+
+def _write_mark(folder, d):
+    path = os.path.join(folder, MARK)
+    with open(path + '.tmp', 'w', encoding='utf-8') as fh:
+        json.dump(d, fh, indent=1)
+    os.replace(path + '.tmp', path)  # (the folder's time: the index reads it)
+    return path
+
+
+def outcome(code, stopped=False, crashed=False):
+    """How a run ended, as its mark keeps it: 'done', 'stopped', 'crashed',
+    'failed, code 1'."""
+    return ('stopped' if stopped else 'crashed' if crashed else
+            'done' if code == 0 else f"failed, code {code}")
+
+
+def ended(folder, how):
+    """A marked run's end into its mark: how (outcome's words) and when."""
+    try:
+        with open(os.path.join(folder, MARK), encoding='utf-8') as fh:
+            d = json.load(fh)
+        _write_mark(folder, dict(d, outcome=how, ended=time.strftime(ENDED)))
+    except (OSError, ValueError):
+        pass
+
+
+def marked(folder):
+    """The mark of a run's folder: dict(engine, questions, preview), with
+    config, settings, outcome and ended when it has them; None (no mark, or not
+    readable)."""
+    try:
+        with open(os.path.join(folder or '', MARK), encoding='utf-8') as fh:
+            d = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if (not isinstance(d, dict) or d.get('format') != 'kicad2ems-study-run'
+            or not d.get('engine')):
+        return None
+    out = dict(engine=str(d['engine']),
+               questions=tuple(d.get('questions') or ()),
+               preview=bool(d.get('preview')))
+    for k in ('config', 'outcome', 'ended'):
+        if d.get(k):
+            out[k] = str(d[k])
+    if isinstance(d.get('settings'), dict):
+        out['settings'] = d['settings']
+    return out
+
+
+@dataclass
+class RunInfo:
+    """A run folder as its mark says."""
+    folder: str
+    kind: str              # 'rf' (kicad2ems's own) or an analysis's name
+    board: str             # the board's name (board_name)
+    when: datetime.datetime
+    what: str = ''         # what an analysis solved: the rail, the converter
+    questions: tuple = ()
+    engines: tuple = ()
+    # 'done', 'running', 'stopped', 'crashed', 'failed, code 1', 'no result'
+    outcome: str = 'done'
+    took: float = None     # s
+    size: int = 0          # bytes
+    settings: dict = None  # what it ran with, None: not known
+    config: str = None     # the config file it was started from
+    preview: bool = False
+
+    @property
+    def ok(self):
+        return self.outcome == 'done'
+
+    def about(self):
+        """What it answered: 'S-parameters', 'DC drop · P'."""
+        from .study import questions
+        qs = questions()
+        return ' · '.join(x for x in (', '.join(
+            qs[q].label if q in qs else q for q in self.questions), self.what)
+                          if x)
+
+    def short(self):
+        """'14:02:31 · gfdtd (GPU FDTD)': a curve's source when compared."""
+        return ' · '.join(x for x in (when_text(self.when, seconds=True),
+                                      self.what, self.engine_labels()) if x)
+
+    def engine_labels(self):
+        from .study import engines
+        es = engines()
+        return ', '.join(es[n].label if n in es else n for n in self.engines)
+
+    def label(self, now=None):
+        """One line: '14:02 · S-parameters · gfdtd'; 'preview'."""
+        if self.preview:
+            return 'preview'
+        return ' · '.join(x for x in (when_text(self.when, now), self.about(),
+                                      self.engine_labels()) if x)
+
+
+def when_text(when, now=None, seconds=False):
+    """'14:02' today, '11-17 14:02' this year, else '2025-11-17 14:02'
+    (seconds: '14:02:31')."""
+    if when is None:
+        return ''
+    now = now or datetime.datetime.now()
+    t = f"{when:%H:%M:%S}" if seconds else f"{when:%H:%M}"
+    if when.date() == now.date():
+        return t
+    return (f"{when:%m-%d} {t}" if when.year == now.year else
+            f"{when:%Y-%m-%d} {t}")
+
+
+def run_log(folder):
+    """A run's log as text: the events' log lines, else its process's whole
+    output (stdout.log); '' if neither."""
+    lines = []
+    for f in sorted(
+            glob.glob(os.path.join(glob.escape(folder), '*events*.jsonl'))):
+        try:
+            for raw in open(f, encoding='utf-8', errors='replace'):
+                try:
+                    ev = json.loads(raw)
+                except ValueError:
+                    continue
+                if ev.get('kind') == 'log':
+                    lines.append(ev.get('text', ''))
+        except OSError:
+            pass
+    if not lines and os.path.isfile(os.path.join(folder, 'stdout.log')):
+        return open(os.path.join(folder, 'stdout.log'), encoding='utf-8',
+                    errors='replace').read()
+    return '\n'.join(lines)
+
+
+def _walk(d):
+    """(bytes under d, the newest time of its own entries)."""
+    size, last, stack, top = 0, 0.0, [d], True
+    while stack:
+        try:
+            it = os.scandir(stack.pop())
+        except OSError:
+            continue
+        with it:
+            for e in it:
+                try:
+                    st = e.stat(follow_symlinks=False)
+                    if e.is_dir(follow_symlinks=False):
+                        stack.append(e.path)
+                    else:
+                        size += st.st_size
+                    if top:
+                        last = max(last, st.st_mtime)
+                except OSError:
+                    pass
+        top = False
+    return size, last
+
+
+def _parse(name, want, kinds):
+    """(board, kind, what, when) of a folder's name, or None: not a run's.
+    want: the board's name (None: any board's); kinds: the analyses', the
+    longest first (elmer_thermal before thermal). A preview's kind:
+    'preview'."""
+    m = re.match(r'(.+)_(\d{8}_\d{6})$', name)
+    if m:
+        prefix = m.group(1)
+        when = datetime.datetime.strptime(m.group(2), STAMP)
+        if want is not None:
+            if prefix == want:
+                return want, RF, '', when
+            for k in kinds:
+                if prefix.startswith(f"{want}_{k}_"):
+                    return want, k, prefix[len(want) + len(k) + 2:], when
+            return None
+        for k in kinds:
+            i = prefix.find(f"_{k}_")
+            if i > 0:
+                return prefix[:i], k, prefix[i + len(k) + 2:], when
+        return prefix, RF, '', when
+    if name.endswith('_preview'):
+        prefix = name[:-len('_preview')]
+        if want is not None:
+            return (want, 'preview', '', None) if prefix == want else None
+        if not any(prefix.endswith('_' + k) for k in kinds):
+            return prefix, 'preview', '', None
+    return None
+
+
+def _has_result(d, kind, preview):
+    """Whether a folder holds the result of a run of that kind: kicad2ems's own
+    summary, or what the analysis says it leaves (Analysis.owns)."""
+    if kind == RF:
+        at = lambda pat: glob.glob(os.path.join(glob.escape(d), pat))
+        return bool(preview or at('*_run.json') or at('*_vary.json'))
+    from .analyses import registry
+    a = registry().get(kind)
+    return a is not None and a.owns(d, preview)
+
+
+def _identity(d, named):
+    """(kind, preview, outcome, mark) of a folder: its mark's. A run's own
+    outcome is kept there when it ends; a mark written before it was (and a
+    folder made before marks were, the one-time reader of those): its result
+    there or not. named: the kind its name says, or None."""
+    from .study import engines
+    m = marked(d)
+    if m is not None:
+        e = engines().get(m['engine'])
+        kind = (getattr(e, 'run', '') or m['engine']) if e else m['engine']
+        preview = m['preview']
+    else:  # before marks: the name, else whose result it holds
+        from .analyses import registry
+        kind, preview = (RF, True) if named == 'preview' else (named, False)
+        if named is None:
+            kind, preview = next(
+                ((k, p) for k, a in registry().items()
+                 for p in (False, True) if a.owns(d, p)), (None, False))
+            if kind is None:
+                return None
+        m = {}
+    how = m.get('outcome') or ('done' if _has_result(d, kind, preview)
+                               else 'no result')
+    return kind, preview, how, m
+
+
+# folder: (its time, RunInfo)
+_SEEN = {}
+
+
+def _read(d, board, named, what, when, live):
+    """A run folder's RunInfo, from its mark, its settings, its summary and its
+    size; None: not a run's."""
+    got = _identity(d, named)
+    if got is None:
+        return None
+    kind, preview, how, m = got
+    settings = m.get('settings')
+    if kind == RF:
+        if os.path.isfile(os.path.join(d, 'gui_run.toml')):
+            try:
+                settings = load_toml(os.path.join(d, 'gui_run.toml'))
+            except (OSError, ValueError):
+                pass
+        engines = ()
+        for summary in glob.glob(os.path.join(glob.escape(d), '*_run.json')):
+            try:
+                engines = tuple(read_summary(summary).get('solvers') or ())
+            except (OSError, ValueError):
+                pass
+        if (not engines and settings
+                and isinstance(settings.get('solvers'), list)):
+            engines = tuple(settings['solvers'])
+        questions = m.get('questions') or ('sparams', )
+    else:
+        from .analyses import registry
+        from .study import provided
+        engines = (m.get('engine') or kind, )
+        a = registry().get(kind)
+        questions = m.get('questions') or (provided(a) if a else (kind, ))
+    size, last = _walk(d)
+    if when is None:  # a preview, a folder named otherwise
+        when = datetime.datetime.fromtimestamp(os.path.getmtime(d))
+    took = None
+    if live:
+        took = time.time() - when.timestamp()
+    elif m.get('ended'):
+        try:
+            took = (datetime.datetime.strptime(m['ended'], ENDED)
+                    - when).total_seconds()
+        except ValueError:
+            pass
+    elif last and not preview:
+        took = last - when.timestamp()
+    if took is not None and took < 0:
+        took = None
+    return RunInfo(d, kind, board, when, what, tuple(questions), engines,
+                   'running' if live else how, took, size, settings,
+                   m.get('config'), preview)
+
+
+def _info(d, board, named, what, when, running=()):
+    """_read's, kept while the folder and its own files are unchanged (a
+    result rewritten in place leaves the folder's time as it was)."""
+    try:
+        with os.scandir(d) as it:
+            stamp = max([os.stat(d).st_mtime_ns]
+                        + [e.stat().st_mtime_ns for e in it if e.is_file()])
+    except OSError:
+        return None
+    live = d in running
+    hit = _SEEN.get(d)
+    if hit is not None and hit[0] == stamp and not live:
+        return hit[1]
+    got = _read(d, board, named, what, when, live)
+    if not live:
+        _SEEN[d] = (stamp, got)
+    return got
+
+
+def _kinds():
+    from .analyses import registry
+    return sorted(registry(), key=len, reverse=True)
+
+
+def info(folder):
+    """The RunInfo of one run folder, wherever it is (None: not a run's)."""
+    d = os.path.abspath(str(folder or ''))
+    if not os.path.isdir(d):
+        return None
+    got = _parse(os.path.basename(d), None, _kinds())
+    return _info(d, *(got or ('', None, '', None)))
+
+
+def index(base, board=None, running=()):
+    """The runs under base: of the board (None: of every board), the newest
+    first and the board's preview last; running: the folders of runs going now
+    (only the front end that started them knows)."""
+    running = {os.path.abspath(str(d)) for d in running if d}
+    kinds = _kinds()
+    want = board_name(board) if board else None
+    out, previews = [], []
+    try:
+        names = os.listdir(base)
+    except OSError:
+        names = []
+    for n in names:
+        got = _parse(n, want, kinds)
+        d = os.path.abspath(os.path.join(base, n))
+        if got is None or not os.path.isdir(d):
+            continue
+        r = _info(d, *got, running)
+        if r is not None:
+            (previews if r.preview else out).append(r)
+    out.sort(key=lambda r: (r.when, os.path.basename(r.folder)), reverse=True)
+    return out + sorted(previews, key=lambda r: r.board)
+
+
+def same_config(a, b):
+    """Whether two runs' configs are the same file (None: none, the form as it
+    was not saved, or a run from before the mark kept one)."""
+    if not a or not b:
+        return not a and not b
+    return (os.path.normcase(os.path.abspath(a))
+            == os.path.normcase(os.path.abspath(b)))
+
+
+def latest_results(base, board, config=None, runs=None):
+    """{analysis: the folder of its newest finished run on this board under
+    base}, a run of `config` (None: of none) before the others: what an
+    analysis that starts from another's result is given (Analysis.command's
+    results). runs: the index, when read already."""
+    rs = index(base, board) if runs is None else runs
+    out = {}
+    for r in [r for r in rs if same_config(r.config, config)] + rs:
+        if r.ok and not r.preview and r.kind != RF:
+            out.setdefault(r.kind, r.folder)
+    return out

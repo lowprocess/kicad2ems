@@ -182,10 +182,11 @@ def test_stop_lets_the_tool_stop_what_it_started(app, tmp_path):
     p.set_values(dict(rail='SLOW'))
     p.start()
     wait_until(lambda: not ('pdn: solving' not in p.log.toPlainText()), 30)
-    p._queue = [dict(rail='+3V3')]  # as a table's next row
+    p.runner._todo = [dict(rail='+3V3')]  # as a table's next row
     p.stop()
     wait(app, p)
-    assert (p._queue == [] and 'stopped what it started' in p.log.toPlainText()
+    assert (p.runner._todo == []
+            and 'stopped what it started' in p.log.toPlainText()
             and p.status.text() == 'stopped')
     child = int((tmp_path / 'child.pid').read_text())
     with pytest.raises(ProcessLookupError):

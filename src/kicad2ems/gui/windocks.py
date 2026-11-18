@@ -11,14 +11,15 @@ from PySide6.QtGui import (QDesktopServices, QAction, QActionGroup,
 from PySide6.QtWidgets import QToolBar, QToolButton, QStyle
 from .viewer import VIEWS
 from .statusbar import EstimateButton
-from .study import ANALYSES
+from kicad2ems.core.analyses import registry
 from . import theme
 from .winparts import ViewerWindow
 
 DOCS = 'https://github.com/lowprocess/kicad2ems/blob/main/docs/index.md'
 # an analysis with a page of its own here (the circuit's schematic): {page:
 # its key}
-EDITORS = {a.page: a.key for a in ANALYSES if a.page and a.key in ('circuit',)}
+EDITORS = {a.label: k for k, a in registry().items()
+           if a.page and k in ('circuit', )}
 # The pages (each a dock of the workspace, by its name here). A result is on
 # pages of its own kind, not one page with a switch: 'Results' is its plots (the
 # tab reads Plots), Report what an analysis found, to read, Tables the report's

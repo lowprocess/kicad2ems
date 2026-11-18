@@ -736,7 +736,7 @@ class FilterTab(QWidget):
         solvers check), and ends dfsynth."""
         if self.proc is not None:
             if self.base:
-                from .runner import stop_runs
+                from kicad2ems.core.runs import stop_runs
                 for d in glob.glob(self.base + '_em*'):
                     if os.path.isdir(d):
                         stop_runs(d)
