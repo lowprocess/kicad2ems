@@ -46,6 +46,24 @@ def test_window_builds(tmp_path):
     w.close()
 
 
+def test_a_numeric_choice_loads_and_saves_as_a_number():
+    """A setting whose choices are numbers (Palace's ABC order 1, 2): listed,
+    loaded from a config (it had raised in findText, so no example opened and
+    the last one's pages stayed) and saved back as a number."""
+    pytest.importorskip('PySide6')
+    pytest.importorskip('pyqtgraph')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    from PySide6.QtWidgets import QApplication
+    from kicad2ems.gui.app import MainWindow
+    app = QApplication.instance() or QApplication([])
+    w = MainWindow()
+    box = w.setup.edits['abc'][0]  # (the stand-in's, standins.py)
+    assert [box.itemText(i) for i in range(box.count())] == ['1', '2']
+    w.setup.set_values(dict(board='x.kicad_pcb', abc=2))
+    assert box.currentText() == '2' and w.setup.values()['abc'] == 2
+    w.close()
+
+
 def test_dump_lists_and_extra_settings(tmp_path):
     cfg = tmp_path / 'c.toml'
     cfg.write_text(

@@ -1882,6 +1882,11 @@ class MainWindow(QMainWindow):
                 preview_dir(self.out_dir(), board) if board
                 else os.path.join(os.getcwd(), 'out', '-'))
         self.want_layout()  # the board as drawn, where nothing of it is shown
+        # the last board's preview, still going: ended (its finish leaves the
+        # pages to this board, and starts this one's)
+        if self.proc is not None and self.current and self.current.preview:
+            self._stopping = True
+            self.proc.kill()
         QTimer.singleShot(0, self._auto_preview)
 
     def _auto_preview(self):
@@ -2257,6 +2262,18 @@ class MainWindow(QMainWindow):
         self.runtab.stop_btn.setEnabled(False)
         self.acts['Stop'].setEnabled(False)
         out = self.current.out
+        board = self.setup.values().get('board')
+        if os.path.normcase(os.path.abspath(str(
+                self.current.values.get('board') or ''))) != os.path.normcase(
+                    os.path.abspath(str(board or ''))):
+            # a run of a board no longer open (another config opened while it
+            # went): listed with its board's runs, not shown over this one's
+            # (a preview of rf_coupler's had drawn over demo_lowpass)
+            self.refresh_runs()
+            self._job_done('rf', code)
+            self.steps.refresh()
+            QTimer.singleShot(0, self._auto_preview)
+            return
         has_s = any(l.startswith('S-parameters') for l, _ in self.files)
         ant = self.results.load_antenna(None if self.current.preview else out)
         if has_s or not self.current.preview:
@@ -2279,6 +2296,7 @@ class MainWindow(QMainWindow):
         else:
             self.show_panel('Viewer' if seen else 'Run')
         self._job_done('rf', code)  # in a study run: the next analysis
+        self.steps.refresh()  # (it had kept 'running' after a preview)
 
 
 def install_excepthook():

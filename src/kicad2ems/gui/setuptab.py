@@ -151,7 +151,9 @@ class SetupTab(QWidget):
                     self.solver_boxes[key[len(TICK):]] = w
             elif isinstance(kind, tuple):
                 w = QComboBox()
-                w.addItems([c or '(none)' for c in kind])
+                # (a choice may be a number: Palace's ABC order 1, 2)
+                w.addItems(['(none)' if c in (None, '') else str(c)
+                            for c in kind])
                 w.currentIndexChanged.connect(self._changed)
             else:
                 w = QLineEdit()
@@ -701,7 +703,9 @@ class SetupTab(QWidget):
                 continue
             if isinstance(kind, tuple):
                 t = w.currentText()
-                out[key] = '' if t == '(none)' else t
+                # the choice itself (a number stays one in the config)
+                out[key] = '' if t == '(none)' else next(
+                    (c for c in kind if str(c) == t), t)
                 continue
             t = w.text().strip()
             if (hasattr(w, 'setStyleSheet')
@@ -748,7 +752,8 @@ class SetupTab(QWidget):
                 if kind == 'bool':
                     w.setChecked(bool(v))
                 elif isinstance(kind, tuple):
-                    w.setCurrentIndex(max(w.findText(v or '(none)'), 0))
+                    w.setCurrentIndex(max(w.findText(
+                        '(none)' if v in (None, '') else str(v)), 0))
                 elif v is None:
                     w.setText('')
                 elif isinstance(v, (list, tuple)):

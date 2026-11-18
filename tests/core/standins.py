@@ -68,6 +68,9 @@ MESH = [
         group=G_MESH),
     Option('curves', 'extremes', "mesh lines on curves (stand-in)",
            choices=('extremes', 'vertices'), group=G_MESH),
+    # (numbers as choices, as Palace's palace_abc)
+    Option('abc', 1, "absorbing boundary order (stand-in)", int,
+           choices=(1, 2), gui='Absorbing boundary order', group=G_MESH),
 ]
 RUN = [
     Option('bc', 'auto', "boundary conditions (stand-in)",
