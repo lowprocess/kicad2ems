@@ -1,0 +1,3 @@
+board = "b.kicad_pcb"
+mask = true
+no_mask = false

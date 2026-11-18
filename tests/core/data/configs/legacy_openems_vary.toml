@@ -1,0 +1,15 @@
+board = "b.kicad_pcb"
+[openems]
+dump = ["E@F.Cu-0.1@2,6", "J@In2.Cu@4"]
+fast = "auto"
+[OpenEMS]
+air = 4
+[vary]
+fmax = [4, 6]
+[solver.mom25d]
+d-max = 0.3
+nosuch = 1
+[solver.nosuch]
+x = 1
+[foo]
+bar = 1

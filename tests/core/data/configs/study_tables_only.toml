@@ -1,0 +1,5 @@
+board = "b.kicad_pcb"
+[study.dc]
+[study.thermal]
+engine = "elmer_thermal"
+fields = false

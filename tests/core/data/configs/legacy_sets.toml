@@ -1,0 +1,11 @@
+board = "b.kicad_pcb"
+[analysis]
+
+[[analysis.pdn]]
+rail = "+5V"
+volts = 5.0
+
+[[analysis.pdn]]
+rail = "+3V3"
+volts = 3.3
+load = "load.csv"

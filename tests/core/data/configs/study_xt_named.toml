@@ -1,0 +1,8 @@
+board = "b.kicad_pcb"
+[study]
+run = ['crosstalk', 'sparams']
+[study.crosstalk]
+engine = 'lines'
+[analysis.crosstalk]
+nets = 'A,B'
+check = 'mom25d'

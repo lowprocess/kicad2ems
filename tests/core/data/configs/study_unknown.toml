@@ -1,0 +1,14 @@
+board = "b.kicad_pcb"
+[study]
+run = ["sparams", "warmth"]
+[study.sparams]
+engine = ["mom25d", "nosuch"]
+fields = true
+[study.warmth]
+engine = "x"
+[analysis.nosuch]
+a = 1
+[[analysis.other]]
+b = 2
+[[analysis.other]]
+b = 3

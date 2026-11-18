@@ -1,0 +1,9 @@
+board = "b.kicad_pcb"
+[analysis]
+run = ["pdn", "rf"]
+[[analysis.pdn]]
+rail = "+5V"
+[[analysis.pdn]]
+rail = "+3V3"
+[analysis.circuit]
+model = "buck.json"

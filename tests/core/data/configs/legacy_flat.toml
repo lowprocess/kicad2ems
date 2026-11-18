@@ -1,0 +1,10 @@
+# the older forms: [openems] read like the top level, no_mask, dashes
+nets = ["RF", "GND"]
+fmax = 8.0
+no_mask = true
+dmax = 0.4
+f-min = 0.5
+[openems]
+air = 3.0
+excite = ["P1"]
+end-db = -30

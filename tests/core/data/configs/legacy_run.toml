@@ -1,0 +1,6 @@
+board = "b.kicad_pcb"
+[analysis]
+run = ["rf", "pdn", "thermal"]
+[analysis.pdn]
+rail = "+5V"
+volts = 5

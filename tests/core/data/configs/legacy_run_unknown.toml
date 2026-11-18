@@ -1,0 +1,5 @@
+board = "b.kicad_pcb"
+[analysis]
+run = ["mqs", "rf"]
+[analysis.mqs]
+x = 1

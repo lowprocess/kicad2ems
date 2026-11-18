@@ -1,0 +1,6 @@
+board = "b.kicad_pcb"
+[study]
+run = ['crosstalk']
+[analysis.crosstalk]
+nets = 'A,B'
+check = 'gfdtd'
