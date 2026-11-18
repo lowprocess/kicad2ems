@@ -93,6 +93,7 @@ f, S, info = solve_band(sim, 1e9, 6e9, points=101, zref=m.port_z0)
 | `geo.py` | wave ports in any direction; the mesher on mom25d's core (`kicad2ems.emsdev.numerics`'s `geo` and `cdtmesh`: offset rings along the copper edges; a hexagonal seed inside, smoothed; mesh2d in the core triangulates) |
 | `sing.py` | the off-plane 1/R integrals with the rule over the smaller triangle (emsdev.numerics.sing's) |
 | `quads.py` | quad cells |
+| `thickness.py` | the copper's thickness: the mode a run gets (`resolve`); `sides.py`, `edge.py` model it |
 | `fast.py` | the matrix fill and the solvers (the block low-rank solver's tiling; its factor is compiled in `core/`) |
 | `looptree.py` | the loop/tree basis the direct solver takes at low frequency (pcbqs's) |
 | `gpu.py` | the GPU backends (Vulkan, and an emulated one for the tests) |

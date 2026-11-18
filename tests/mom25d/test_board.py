@@ -478,15 +478,15 @@ def test_thickness_sides_stand_the_copper_edges_up():
 
 
 def test_thickness_sides_with_wave_ports(monkeypatch):
-    """Wave ports with the sides (model.WAVE_SIDES): the plates run on through
-    a feed's sample cuts and its gap (excited across them too), a cut's
+    """Wave ports with the sides (thickness.WAVE_SIDES): the plates run on
+    through a feed's sample cuts and its gap (excited across them too), a cut's
     current is the sheet's and the plates' (a third of it on the 0.38 mm
     line), and the line characterisation has the sides: the thru line's Zc
     falls as thick copper's (-4.4 % de-embedded with via ports; -5.6 %) and
     the line stays matched."""
-    from kicad2ems.mom25d import model
+    from kicad2ems.mom25d import thickness
     from kicad2ems.mom25d.api import build_board, solve_board
-    monkeypatch.setattr(model, 'WAVE_SIDES', True)
+    monkeypatch.setattr(thickness, 'WAVE_SIDES', True)
     data = board('thru')
     f = np.array([3e9, 6e9])
     zc, S = {}, {}

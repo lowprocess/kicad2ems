@@ -232,6 +232,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **mom25d's copper thickness decided in one place (`mom25d.thickness.resolve`).** The request, the board's
+  planes and stack and its ports give the mode (`sides` becomes `edge` with meshed planes or the whole stack,
+  sheets with holed or slot planes; `sides` and `edge` become sheets with wave ports), and its reason is the
+  log's one note; BoardModel and the simulation both ask it (they had their own rules, and the mixed solver a
+  third). `grow+sides` is gone (median 0.040 against `sides`' 0.037, mean 0.050 against 0.051).
 - **pcbqs shares core's leaf helpers instead of copying them.** pcbqs may import `kicad2ems.core.units` (new:
   part values with SI prefixes), `constants`, `touchstone` and `fields.dumps`, which import nothing from kicad2ems;
   nothing else of core (`tests/pcbqs/test_standalone.py`). Removed its copies: `pcbqs/_artifacts.py` (the dump

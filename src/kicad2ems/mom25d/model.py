@@ -35,14 +35,6 @@ KNOWN_SPAN = 0.1
 # -52 dB at 1 GHz and FEXT -34 dB at 6 GHz, against -31.7 and -17.5 dB with
 # lumped ports (Palace: -31.0 and -17.2 dB)
 COUPLED_REACH = 8.0
-# wave ports with thickness 'sides' (sim: the plates run on through the feed's
-# cuts, its gap across them; the line characterisations with the sides): off,
-# the copper as sheets with wave ports. Above 2 GHz they follow the lumped
-# ports' shift on the 7 wave-port boards (RMS 0.004-0.03 apart); below it on
-# short feeds the sides' charge along a feed is noisy at some cell shapes
-# (demo_transition's P1 at 1 GHz: the cuts' current +-4 %, 0.08 % as sheets),
-# and the fit amplifies it (|S11| up to 1.8; rf_diffvia's pair 0.17 off)
-WAVE_SIDES = False
 
 
 def _cross(g, p, d, half):
@@ -303,10 +295,13 @@ class PlanarModel:
             out.append((max(a, b - cap), b))
         return out
 
-    def characterize(self, ports, fmin, fmax, n=3, dmax=0.4e-3, log=print):
+    def characterize(self, ports, fmin, fmax, n=3, dmax=0.4e-3, log=print,
+                     sides=None):
         """Reference impedance of each wave port's line cross-section (trace +
         metal on other layers covering the port), solved as a short centre-fed
-        line at n frequencies and interpolated."""
+        line at n frequencies and interpolated. sides: thick copper's sides on
+        the lines too (mom25d.sides' options, the board's): the ports' Zc and
+        gamma those of the board's copper."""
         from .geo import LinePort
         from .sim import line_char_xs, DiffPort, line_char_pair
         from .linecache import cached
@@ -326,9 +321,6 @@ class PlanarModel:
             for k, W in planes.items()
         }
         cache = {}
-        # thick copper's sides on the lines too (mom25d.sides): the ports'
-        # Zc and gamma those of the board's copper
-        sides = (getattr(self, 'sides', None) or None) if WAVE_SIDES else None
         for p in ports:
             if isinstance(p, DiffPort):
                 a, b = p.pos, p.neg
@@ -427,10 +419,19 @@ class PlanarModel:
         fit degrades below KNOWN_SPAN of sample span, with a warning).
         metal= (sim.Metal): conductor loss (default lossless)."""
         from .sim import Simulation
+        from .thickness import resolve
         ports = self.ports(step=step, dmax=dmax, fmin=wave_down_to)
+        # thick copper (mom25d.sides, mom25d.edge, or the grown sheets that
+        # BoardModel made), as mom25d.thickness allows it with these ports
+        mode, why = resolve(getattr(self, 'thickness', 'off'), self, ports)
+        if why and why not in self.notes:
+            self.notes.append(why)
+        if mode in ('sides', 'edge') and getattr(self, mode, None):
+            kw.setdefault(mode, getattr(self, mode))
         if characterize:
             # the cells the feeds get: the same gamma
-            self.characterize(ports, fmin, fmax, dmax=dmax)
+            self.characterize(ports, fmin, fmax, dmax=dmax,
+                              sides=kw.get('sides'))
         kw.setdefault('lumped', list(self.lumped))
         if getattr(self, 'frills', None):
             # the holes of the PEC planes inside the stack
@@ -440,25 +441,6 @@ class PlanarModel:
             kw.setdefault('slots', list(self.slots))
         if getattr(self, 'signal', None) is not None:
             kw.setdefault('signal', self.signal)
-        # thick copper (mom25d.sides, mom25d.edge); not with wave ports: their
-        # S moves 3-7 x what gfdtd's solid copper moves it (rf_diffvia's
-        # pairs: 0.24 with sides, 0.32 with edge, gfdtd 0.043; lumped ports
-        # 0.046 and 0.065); with WAVE_SIDES the sides' wave ports
-        thick = {k: v for k in ('sides', 'edge')
-                 for v in [getattr(self, k, None)] if v}
-        if thick:
-            from .sim import DiffPort
-            from .geo import LinePort
-            wave = [p.name for p in ports
-                    if isinstance(p, (LinePort, DiffPort))]
-            if wave and not WAVE_SIDES:
-                self.notes.append(
-                    f"thickness: no {' or '.join(thick)} with wave ports "
-                    f"({', '.join(wave)}; not modelled), the copper as "
-                    "sheets: --mom-port lumped for them")
-            else:
-                for k, v in thick.items():
-                    kw.setdefault(k, v)
         zone = kw.pop('zone', None)
         if zone is not None and zone != 'off':
             # (experimental) mesh detail only near the signal copper: zone = the

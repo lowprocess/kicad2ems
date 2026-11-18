@@ -57,7 +57,8 @@ solid copper the median RMS of the 17 boards went from 0.065 to 0.037 (`grow` 0.
 0.21 → 0.037, rf_meander 0.13 → 0.050, sma_launch 0.090 → 0.032, rf_steplpf 0.083 → 0.041, rf_combline 0.26 →
 0.20; worse on rf_ratrace (0.039 → 0.056, where gfdtd's two grids differ by 0.07). Plates only on the edges
 facing copper across a narrow gap did little (median 0.049 within 0.4 or 0.8 mm, 0.065 within 0.2 mm): the
-sides matter on every edge. `grow+sides` does both (median 0.040, mean 0.050 against `sides`' 0.051). The
+sides matter on every edge. Both together (`grow+sides`, removed 2026-11-18) gained nothing (median 0.040,
+mean 0.050 against `sides`' 0.037 and 0.051). The
 cost: three unknowns a plate (+30-45 % on these boards, +26 % on sma_launch) and their blocks (in the compiled
 core): 1.7-2 times the solve time (sma_launch 314 s against 165 s, hairpin 11.9 s against 6.8). A plate's
 functions are charge-dominated (its triangles 35 µm high), so their loops were lost to the complex64 LU of mixed
@@ -78,7 +79,7 @@ stack: S11 −15 dB at 5 GHz, sheets −34, gfdtd with solid copper −23). With
 `edge` as well (a wave port's S moved 3-7 times what gfdtd's solid copper moves it: rf_diffvia's pairs 0.24
 with sides, 0.32 with edge, gfdtd 0.043, lumped ports 0.046 and 0.065), so `--mom-port lumped` for them; at
 low frequency the loop/tree basis is not used with them. Wave ports with the sides are built
-(`mom25d.model.WAVE_SIDES`, off): the plates run on through a feed's sample cuts and its gap (the gap's
+(`mom25d.thickness.WAVE_SIDES`, off): the plates run on through a feed's sample cuts and its gap (the gap's
 voltage across them too), a cut's current adds the plates' crossing it (a third of it on a 0.38 mm
 microstrip), and the line characterisation has the sides (the thru line's Zc 51.4 → 48.6 Ω). A cut's ends
 are moved onto the copper's edge within 2 % of the port's width: a board's feed 0.2 µm wider than its port
@@ -88,7 +89,8 @@ ports' on the 7 wave-port boards (RMS 0.004-0.05 apart; over the band rf_interdi
 rf_diffvia's pair 0.24 → 0.06, sma_launch 0.044 → 0.017); below 2 GHz the sides' charge along a short feed
 is noisy at some cell shapes (demo_transition's P1 at 1 GHz: the cuts' current ±4 %, as sheets 0.08 %; with
 0.2 mm cells P1 is smooth and P2 noisy), which the wave fit amplifies (|S11| up to 1.8; rf_diffvia's pair
-0.17 off), hence off. `--mom-thickness off` gives the sheets: the
+0.17 off), hence off. One function decides the mode a run gets (`mom25d.thickness.resolve`: the request, the
+board's planes and stack, its ports), and its reason is the log's note. `--mom-thickness off` gives the sheets: the
 openEMS references of the Solver Matrix are zero-thickness sheets, so compare with `off` there.
 
 `--mom-thickness edge` adds no unknowns: a triangle on a copper edge has its charge and current

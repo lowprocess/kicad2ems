@@ -14,6 +14,8 @@ import numpy as np
 from kicad2ems.core.options import Option, floatlist
 from kicad2ems.core.solvers import Solver, Result, Deviation
 from kicad2ems.core import stop
+from kicad2ems.mom25d.thickness import (DEFAULT as THICKNESS,
+                                        MODES as THICKNESS_MODES)
 
 G = 'mom25d'
 # --solvers auto (docs/architecture.md#choosing-solvers): seconds per EM solve
@@ -212,7 +214,7 @@ def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
 def _board_kw(m, dmax, port, quads=False, quad_tol=35.0, coarsen=None,
               zone=None, stitching_vias='auto',
               stack='ground', planes='pec', stitching_pads='drop',
-              wideband=None, cells=30.0, thickness='sides'):
+              wideband=None, cells=30.0, thickness=THICKNESS):
     """(pairs, mom25d.api's board and mesh options) of solve()'s settings: what
     the run meshes, and the preview."""
     kind = 'via' if port == 'lumped' else port
@@ -296,7 +298,7 @@ def _model_kw(s):
     wide = getattr(s, 'diel', 'fixed') == 'wideband'
     return dict(planes=getattr(s, 'mom_planes', 'pec'),
                 stitching_pads=getattr(s, 'mom_stitching_pads', 'drop'),
-                thickness=getattr(s, 'mom_thickness', 'sides'),
+                thickness=getattr(s, 'mom_thickness', THICKNESS),
                 wideband=(getattr(s, 'diel_fref', 1.0) * 1e9 if wide else None))
 
 
@@ -538,21 +540,20 @@ class MoM25D(Solver):
             choices=('drop', 'keep'), name='stitching_pads',
             gui='MoM lone stitching-via pads', group=G),
         Option(
-            'mom_thickness', 'sides',
+            'mom_thickness', THICKNESS,
             "sides (default): every copper edge stood up as a plate the "
             "copper's thickness high, carrying charge and current (against "
             "an FDTD with solid copper the median RMS of 17 boards 0.065 to "
-            "0.037, better on 16; about 1.4x the unknowns, 1.7-2x the time; "
-            "sheets with wave ports, so --mom-port lumped, and with meshed "
-            "or holed planes or the whole stack); off: the copper as "
-            "zero-thickness sheets; grow: each copper edge "
+            "0.037, better on 16; about 1.4x the unknowns, 1.7-2x the time); "
+            "off: the copper as zero-thickness sheets; grow: each copper edge "
             "moved out by 0.57 x the copper's thickness (the effective "
-            "width: median 0.052, no extra unknowns); grow+sides: both; "
-            "edge: no unknowns added, the edge triangles' near terms "
-            "averaged over the copper's height (median RMS 0.048, hairpin "
-            "0.052) (docs/mom.md#thickness)",
-            choices=('off', 'grow', 'sides', 'grow+sides', 'edge'),
-            name='thickness',
+            "width: median 0.052, no extra unknowns); edge: no unknowns "
+            "added, the edge triangles' near terms averaged over the copper's "
+            "height (median RMS 0.048, hairpin 0.052). Sides become edge with "
+            "meshed planes or the whole stack, sheets with holed or slot "
+            "planes; sides and edge become sheets with wave ports, so "
+            "--mom-port lumped (the log says which; docs/mom.md#thickness)",
+            choices=THICKNESS_MODES, name='thickness',
             gui='MoM copper thickness', group=G),
         Option(
             'mom_stitching_vias', 'auto',

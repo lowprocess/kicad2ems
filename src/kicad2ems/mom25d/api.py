@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from .thickness import DEFAULT as THICKNESS
+
 
 @dataclass
 class Result:
@@ -62,7 +64,7 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
                 stitching_vias='auto',
                 keep_at=(), quad_tol=35.0, coarsen=None, planes='pec',
                 stitching_pads='drop', wideband=None, cells=CELLS,
-                thickness='sides'):
+                thickness=THICKNESS):
     """S-parameters of a board (a <name>_board.json path, or its content) on
     `freq` (Hz).
 
@@ -82,10 +84,9 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
     planes: 'pec' (default: solid planes as the ground and a PEC cover, not
     meshed: mom25d.board) or 'mesh'. stitching_pads: 'drop' (default: a ground
     via's pad with nothing else on its layer left out, the via kept) or 'keep'.
-    thickness: 'sides' (default: the copper's edges stood up as plates,
-    mom25d.sides), 'off' (zero-thickness sheets), 'grow' (its edges moved
-    out by mom25d.board.GROW_T x its thickness), 'grow+sides' or 'edge'
-    (the edges' near terms corrected, mom25d.edge). wideband: None
+    thickness: one of mom25d.thickness.MODES ('sides', the default: the
+    copper's edges stood up as plates; 'off', 'grow', 'edge'), as
+    mom25d.thickness.resolve allows it on the board. wideband: None
     (constant er, tand) or the frequency (Hz) the stack's er and tand hold at,
     Djordjevic-Sarkar elsewhere."""
     from .geo import LinePort
@@ -130,7 +131,7 @@ def build_board(board, fmin, fmax, dmax=0.3e-3, plane_factor=3.0, port='auto',
                 quads=False, zone=None, stitching_vias='auto', quad_tol=35.0,
                 coarsen=None, planes='pec', stitching_pads='drop',
                 wideband=None, title=None, mesh_only=False, characterize=True,
-                cells=CELLS, thickness='sides'):
+                cells=CELLS, thickness=THICKNESS):
     """(BoardModel, Simulation) of a board as solve_board builds them, with its
     options (solve_board's). mesh_only: stop once the mesh and its unknowns are
     known (a preview of the mesh solve_board would solve on; the quad cells are
