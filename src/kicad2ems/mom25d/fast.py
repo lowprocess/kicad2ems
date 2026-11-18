@@ -930,7 +930,7 @@ class FastOperator:
         if self._basis_name == 'loop/tree':
             self._basis('rwg')
         T = sim.qT
-        # quad cells / line functions: Z projected before the LU
+        # quad cells: Z projected before the LU
         quads = T is not None
         Nq = T.shape[1] if quads else N
         # mixed precision with a GPU: Z filled in double and kept on the host
@@ -1149,7 +1149,7 @@ class FastOperator:
     def _loop_tree_at(self, f):
         """Whether f is solved in the loop/tree basis (sim.loop_tree: 'auto'
         below LOOP_TREE_BELOW, 'on', 'off'): the compiled core with near_q, no
-        quad cells or line functions, no holes of PEC planes, and room for the
+        quad cells, no holes of PEC planes, and room for the
         double-precision matrix, the charge matrix and a complex64 copy."""
         sim, mode = self.sim, getattr(self.sim, 'loop_tree', 'auto')
         if mode == 'off' or (mode == 'auto' and self.kh2(f) >= LOOP_TREE_BELOW):
@@ -1158,7 +1158,7 @@ class FastOperator:
             'no compiled core with the loop/tree kernels (python -m '
             'kicad2ems.mom25d.core.build)'
             if self.core is None or not hasattr(self.core, 'charge_into') else
-            'quad cells or line functions' if sim.qT is not None else
+            'quad cells' if sim.qT is not None else
             'holes of PEC planes (frills)' if sim.frills else
             'openings of PEC planes (slots)' if getattr(sim, 'slots', None
                                                         ) else

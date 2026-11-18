@@ -41,7 +41,7 @@
 //                   charge block into Z
 //   BLRFactor     : the block low-rank LU (solve_blr's preconditioner), SciPy's
 //                   BLAS and LAPACK
-//   project       : T^T Z T for the quad cells / line functions
+//   project       : T^T Z T for the quad cells
 //                   (quads.project), Z's rows reduced in place
 //   cdt_triangulate: the mesher's constrained Delaunay triangulation
 //                   (emsdev/native/cdt_mesh.hpp: mesh2d)
@@ -2524,9 +2524,9 @@ PYBIND11_MODULE(_core, m) {
     m.def("fan_q", &fan_q,
           "G_q moments between every triangle and the fan triangles");
     m.def("project", &project_t<cd>,
-          "T^T Z T (quad cells, line functions), complex128, Z overwritten");
+          "T^T Z T (quad cells), complex128, Z overwritten");
     m.def("project_c64", &project_t<cf>,
-          "T^T Z T (quad cells, line functions), complex64, Z overwritten");
+          "T^T Z T (quad cells), complex64, Z overwritten");
     m.def("cdt_triangulate", &cdt_triangulate,
           "the mesher's constrained Delaunay triangulation (mesh2d): "
           "(vertices, triangles)",

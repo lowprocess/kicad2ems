@@ -49,9 +49,6 @@ class Result:
     sim: object = None              # the Simulation
 
 
-# lines=: the line functions' columns, x dmax (1-3 x gave the same S on the test
-# boards)
-LINE_STEP = 2.0
 # cells per wavelength the mesh grows to away from the features (0: dmax
 # everywhere)
 CELLS = 30.0
@@ -63,7 +60,7 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
                 pairs=False, mesher='auto', metal=None, ground=None,
                 max_solves=60, afs_tol=5e-3, log=print, progress=None,
                 on_step=None, core='auto', quads=False, zone=None,
-                signal_vias='round', stitching_vias='auto', lines=None,
+                signal_vias='round', stitching_vias='auto',
                 keep_at=(), quad_tol=35.0, coarsen=None, planes='pec',
                 stitching_pads='drop', wideband=None, cells=CELLS,
                 thickness='sides'):
@@ -106,7 +103,7 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
             board, fmin, fmax, dmax=dmax, plane_factor=plane_factor, port=port,
             pairs=pairs, mesher=mesher, metal=metal, ground=ground, log=log,
             core=core, quads=quads, zone=zone, signal_vias=signal_vias,
-            stitching_vias=stitching_vias, lines=lines, quad_tol=quad_tol,
+            stitching_vias=stitching_vias, quad_tol=quad_tol,
             coarsen=coarsen, planes=planes, stitching_pads=stitching_pads,
             wideband=wideband, title=name, cells=cells, thickness=thickness)
         f, S, info = solve_band(sim, fmin, fmax, points=len(freq),
@@ -139,7 +136,7 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
 def build_board(board, fmin, fmax, dmax=0.3e-3, plane_factor=3.0, port='auto',
                 pairs=False, mesher='auto', metal=None, ground=None, log=print,
                 core='auto', quads=False, zone=None, signal_vias='round',
-                stitching_vias='auto', lines=None, quad_tol=35.0, coarsen=None,
+                stitching_vias='auto', quad_tol=35.0, coarsen=None,
                 planes='pec', stitching_pads='drop', wideband=None, title=None,
                 mesh_only=False, characterize=True, cells=CELLS,
                 thickness='sides'):
@@ -175,8 +172,6 @@ def build_board(board, fmin, fmax, dmax=0.3e-3, plane_factor=3.0, port='auto',
         metal=metal, core=core, quads=quads, quad_tol=quad_tol, coarsen=coarsen,
         signal_vias=signal_vias, stitching_vias=stitching_vias,
         mesh_only=mesh_only, characterize=characterize,
-        **(dict(line_basis=lines, line_step=LINE_STEP)
-           if lines and lines != 'off' else {}),
         **(dict(zone=zone, dmax_out=ZONE_OUT * dmax) if zone else {}))
     return model, sim
 

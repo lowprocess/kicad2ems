@@ -94,7 +94,7 @@ f, S, info = solve_band(sim, 1e9, 6e9, points=101, zref=m.port_z0)
 | `frill.py` | a via through a hole in a PEC plane inside the stack: the hole's field as a few unknowns, axisymmetric and of the first azimuthal order (`planes='holes'`) |
 | `geo.py` | wave ports in any direction; the mesher on mom25d's core (`kicad2ems.emsdev.numerics`'s `geo` and `cdtmesh`: offset rings along the copper edges; a hexagonal seed inside, smoothed; mesh2d in the core triangulates) |
 | `sing.py` | the off-plane 1/R integrals with the rule over the smaller triangle (emsdev.numerics.sing's) |
-| `line.py`, `quads.py` | line basis functions on straight runs; quad cells |
+| `quads.py` | quad cells |
 | `fast.py` | the matrix fill and the solvers |
 | `looptree.py` | the loop/tree basis the direct solver takes at low frequency (pcbqs's) |
 | `gpu.py` | the GPU backends |

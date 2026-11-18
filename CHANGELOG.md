@@ -341,7 +341,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Windows workflow and `ci_deps.py`. `pcbqs.wpt` is `pcbqs.power_spice`'s.
 - **mom25d's retired paths (2026-11-18, wave 2).** The mixed solver
   (`--solvers mixed`, `--mixed-cut`: with long runs cheap in mom25d its cuts
-  saved little).
+  saved little). Line basis functions (`--mom-lines`, experimental: worse than
+  quad cells).
 
 ## 2026-11-14 (0.3.0)
 

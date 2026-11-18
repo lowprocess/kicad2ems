@@ -8,8 +8,7 @@ mom25d's), on numpy, scipy and shapely:
              port and cut lines, vias, coarsening)
     cdtmesh  the points of geo's triangulation (mesh2d: a compiled core's
              cdt_triangulate, emsdev/native/cdt_mesh.hpp)
-    runs     straight runs of trace (find_runs): geo's structured grid, mom25d's
-             line basis functions
+    runs     straight runs of trace (find_runs): geo's structured grid
     sing     analytic 1/R integrals between triangles with an out-of-plane
              offset (offplane_pairs)
     biot     the magnetic field of surface currents and filaments (Biot-Savart),

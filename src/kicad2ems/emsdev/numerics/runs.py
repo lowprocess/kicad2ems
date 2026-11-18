@@ -1,7 +1,6 @@
 """
 Straight runs of trace on copper: geo.mesh_polygons' structured grid
-(structured=) and mom25d's line basis functions (mom25d.line) take them from
-find_runs.
+(structured=) takes them from find_runs.
 """
 import numpy as np
 from shapely.geometry import Polygon

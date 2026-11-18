@@ -378,11 +378,6 @@ mesh (`tools/zone_study.py`, `tools/quad_configs_study.py` in mom25d).
   cost 0.03–0.05 at 5–8 GHz where the via is the structure (the pad and antipad set its capacitance); square
   stitching vias are close (the GCPW's fence: 0.006 at 8 GHz instead of 0.002). `auto` stitching vias are square
   outside `--mom-zone`, else round.
-<a id="lines"></a>
-- **Line functions** (`--mom-lines on`): inside each straight run of signal trace, a few functions per column along
-  it replace the triangles' unknowns, 10 to 20 to one: the current along the line, peaked at both edges, plus an odd
-  shape for coupled lines (`even`: the symmetric one only; `full`: a flat one too). rf_coupler: 5,864 unknowns to
-  4,027, 0.018 from the reference at 8 GHz instead of 0.015.
 
 <a id="quads"></a>
 ### Quad cells (experimental)
@@ -551,8 +546,7 @@ unknowns, at 50 MHz: 29 s; the single-precision low-rank factor gave S11 = 1.000
 0.978 − 0.193j). Where it doesn't fit, the low-rank factor is made in double precision, compressed to a
 hundredth of (k h)²: right (the same S11, 50 s), but nearly dense at these frequencies, so it wants 16 N² bytes
 at worst. A block low-rank solve that does not converge is an error, not an answer. Quad
-cells and line functions, and `--mom-planes holes` solve in the RWG basis at every frequency; so does mom25d
-without its compiled core. In mom25d's Python API `sim.loop_tree` (`auto`, `on`, `off`; or
+cells and `--mom-planes holes` solve in the RWG basis at every frequency. In mom25d's Python API `sim.loop_tree` (`auto`, `on`, `off`; or
 `MOM25D_LOOP_TREE`) chooses. Below about 10 Hz the S-parameters' own extraction (from currents a million times
 the ports') sets the floor: about 1e-6 in |S|.
 

@@ -421,7 +421,6 @@ class Simulation:
                  title='', mesh_only=False, core='auto', quads=False,
                  quad_tol=35.0, zone=None, dmax_out=None, signal_vias='round',
                  stitching_vias='auto', signal=None, via_barrel=True,
-                 line_basis=None, line_w_max=2.0e-3, line_step=2.0,
                  coarsen=None, grow=0.5, structured='auto',
                  gap_rings=(1 / 4, 1 / 8,
                             1 / 16), frills=(), slots=(), dmax_slot=None,
@@ -802,44 +801,12 @@ class Simulation:
         self._gram, self._xcache, self.qT = None, {}, None
         self._edge_sets()
         # port gaps, sample cuts and lumped elements keep their edges as
-        # unknowns (line functions, quad cells)
+        # unknowns (quad cells)
         keep_e = [i for g in self.gap if g is not None for i in g[0]]
         keep_e += [
             i for c in self.cuts if c is not None for idx, _ in c for i in idx
         ]
         keep_e += [i for e in self.lumped_edges for i in e[0]]
-        if line_basis and line_basis != 'off':
-            # (experimental) line basis functions on straight runs of trace
-            # (line.py): per column along a run, a few functions with the
-            # edge-peaked shape across it, in place of the RWG unknowns inside
-            # the run
-            from kicad2ems.emsdev.numerics.runs import find_runs
-            from .line import line_subspace
-            prof = ({
-                'even': ('maxwell', ), 'on': ('maxwell', 'odd'),
-                'full': ('maxwell', 'uniform', 'odd')
-            }[line_basis])
-            # the columns' length along the runs: at least 2 cells - tents a
-            # cell long interpolate onto the triangles badly (their kinks fall
-            # inside cells: the GCPW at 2 GHz 0.17 off, the differential via all
-            # wrong)
-            h_of = {k: max(line_step, 2.0) * dmax for k in self.layers}
-            with self.log.timer('line functions'):
-                self.line_runs = find_runs(self.geoms, h_of, signal=signal,
-                                           w_max=line_w_max)
-                self.qT, qi = line_subspace(r, r.Ne + self.Nv, self.tri_layer,
-                                            self.line_runs, h_of, profiles=prof,
-                                            exclude_tris=self.F,
-                                            exclude_edges=keep_e)
-            self.quad_info = qi
-            self.log.note(
-                f"lines: {qi['runs']} straight runs, {qi['edges_replaced']} "
-                f"edge unknowns -> {qi['functions']} line functions "
-                f"({'+'.join(prof)}), {qi['full']} -> {qi['reduced']} unknowns"
-            )
-            if quads:
-                self.log.note("quads: not with line functions yet - ignored")
-                quads = False
         if quads:
             # (experimental) near-rectangular triangle pairs as quad cells:
             # their diagonal is no longer an unknown (quads.py); the matrix is
@@ -876,9 +843,7 @@ class Simulation:
                 f"{qi['tris']} triangles), {qi['full']} -> {qi['reduced']} "
                 "unknowns")
         if self.qT is not None and solver not in ('dense', 'direct', 'auto'):
-            self.log.note(
-                f"{'lines' if line_basis and line_basis != 'off' else 'quads'}"
-                f": not with solver {solver} yet - ignored")
+            self.log.note(f"quads: not with solver {solver} yet - ignored")
             self.qT = None
         self.tables, self.last = {}, None
         for p in self.ports:

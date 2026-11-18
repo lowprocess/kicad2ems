@@ -146,7 +146,7 @@ def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
     result as 'res' (its model and simulation, for the current dumps). keep_at:
     frequencies (Hz) the sweep solves and keeps the currents of (sim.kept: the
     current dumps'). mesh: _board_kw's options (quads, quad_tol, coarsen, zone,
-    cells, the vias, lines; stack: 'ground' (an infinite ground plane) or
+    cells, the vias; stack: 'ground' (an infinite ground plane) or
     'whole' (every copper layer meshed, mom25d.board ground='none'); planes,
     stitching_pads, thickness, wideband: mom25d.board's (wideband: the
     frequency, Hz, of a Djordjevic-Sarkar stack's er and tand, or None))."""
@@ -211,7 +211,7 @@ def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
 
 
 def _board_kw(m, dmax, port, quads=False, quad_tol=35.0, coarsen=None,
-              zone=None, signal_vias='round', stitching_vias='auto', lines=None,
+              zone=None, signal_vias='round', stitching_vias='auto',
               stack='ground', planes='pec', stitching_pads='drop',
               wideband=None, cells=30.0, thickness='sides'):
     """(pairs, mom25d.api's board and mesh options) of solve()'s settings: what
@@ -223,7 +223,7 @@ def _board_kw(m, dmax, port, quads=False, quad_tol=35.0, coarsen=None,
                  coarsen=coarsen, zone=zone, cells=cells, planes=planes,
                  stitching_pads=stitching_pads, wideband=wideband,
                  thickness=thickness, signal_vias=signal_vias,
-                 stitching_vias=stitching_vias, lines=lines,
+                 stitching_vias=stitching_vias,
                  **(dict(ground='none') if stack == 'whole' else {})))
 
 
@@ -306,14 +306,14 @@ def _model_kw(s):
 def _mesh_kw(s, m=None):
     """solve()'s mesh options from kicad2ems's settings (the run's, the
     preview's): --mom-quads, --mom-quad-tol, --mom-coarsen,
-    --mom-cells, --mom-zone, the vias, --mom-lines; for the board m also
+    --mom-cells, --mom-zone, the vias; for the board m also
     --mom-stack (resolved: _stack) and the BoardModel's."""
     kw = dict(quads={'off': False, 'on': True}.get(s.mom_quads, s.mom_quads),
               quad_tol=s.mom_quad_tol, coarsen=s.mom_coarsen or None,
               cells=getattr(s, 'mom_cells', 30.0),
               zone=('auto' if s.mom_zone == 'on' else None),
               signal_vias=s.mom_signal_vias,
-              stitching_vias=s.mom_stitching_vias, lines=s.mom_lines)
+              stitching_vias=s.mom_stitching_vias)
     return kw if m is None else dict(kw, stack=_stack(s, m), **_model_kw(s))
 
 
@@ -558,16 +558,6 @@ class MoM25D(Solver):
             choices=('off', 'grow', 'sides', 'grow+sides', 'edge'),
             name='thickness',
             gui='MoM copper thickness', group=G),
-        Option(
-            'mom_lines', 'off',
-            "experimental: line basis functions on straight runs of trace - "
-            "per column along the run a few functions with the edge-peaked "
-            "current profile across it, in place of the triangles' unknowns "
-            "inside the run (docs/mom.md#lines): off (default), on (even + odd "
-            "profile: coupled lines), even (isolated lines only), full (even, "
-            "flat and odd)",
-            choices=('off', 'on', 'even', 'full'), name='lines',
-            gui='MoM line functions (experimental)', group=G),
         Option(
             'mom_signal_vias', 'round',
             "how vias on signal nets are meshed: round (default: pads and "

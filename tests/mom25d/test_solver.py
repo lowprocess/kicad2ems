@@ -614,7 +614,6 @@ def test_fast_operators_match_dense():
     assert np.max(np.abs(out['aca'] - out['direct'])) < 1e-3
 
 
-
 def test_a_wideband_stack_is_its_constant_stack_at_each_frequency():
     """A Djordjevic-Sarkar stack (Layer(fref=)) solved at f: the S of the
     constant stack with that frequency's permittivity, on the dense path (its
@@ -1020,33 +1019,6 @@ def test_square_vias_pads_and_antipads():
     hexa = _square_vias(pad, [(0, 0)], sides=6)
     assert (len(hexa.exterior.coords) == 7
             and abs(hexa.area - pad.area) < 1e-3 * pad.area)
-
-
-def test_line_functions_on_a_straight_run():
-    """line_basis= (line.py): the RWG unknowns inside a straight run of trace
-    replaced by a few functions per column with the edge-peaked profile across
-    it. A 10 mm line between via ports: ~8x fewer unknowns in the run, S within
-    0.003 of the triangles."""
-    from shapely.geometry import box, Point
-    w, h, L = 0.35e-3, 0.2e-3, 10e-3
-    st = LayerStack([Layer(h, 4.3)])
-    out = {}
-    for lb in (None, 'on'):
-        v1, v2 = Via(-L / 2, 0, 0, 1, 0.1e-3), Via(L / 2, 0, 0, 1, 0.1e-3)
-        geo = [
-            box(-L / 2, -w / 2, L / 2, w / 2),
-            Point(-L / 2, 0).buffer(0.25e-3),
-            Point(L / 2, 0).buffer(0.25e-3)
-        ]
-        sim = Simulation(st, {1: geo}, [ViaPort(v1, 50.0),
-                                        ViaPort(v2, 50.0)], dmax=0.3e-3,
-                         w_ref=w, ncross=4, verbose=False, solver='direct',
-                         precision='double', line_basis=lb)
-        out[lb] = sim, sim.sparams(6e9)
-    (_, S0), (s1, S1) = out[None], out['on']
-    qi = s1.quad_info
-    assert qi['runs'] == 1 and qi['functions'] < qi['edges_replaced'] / 6
-    assert np.abs(S1 - S0).max() < 0.003
 
 
 # ---- the whole stack (LayerStack bottom='open'): no infinite ground, metal on

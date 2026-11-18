@@ -168,7 +168,7 @@ def project(Z, keep, elim, C, core=None):
     """T^T Z T for T = (identity on `keep` in its first len(keep) columns, rows
     `elim` = C), without forming T: Z (N x N) dense, C (ne x Nr) sparse, Nr >=
     len(keep) (the columns past len(keep) are combined functions on the
-    eliminated unknowns, line.py). Stays in Z's dtype; returns the Nr x Nr
+    eliminated unknowns). Stays in Z's dtype; returns the Nr x Nr
     matrix (C order). core: the compiled core (fast._core), which reduces Z's
     rows in place (Z is overwritten) on every thread: the demo transition's 8.3k
     unknowns in 0.2 s against 1.4 s here."""
