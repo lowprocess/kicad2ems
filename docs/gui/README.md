@@ -155,7 +155,7 @@ It needs PySide6, pyqtgraph and PyOpenGL (installed with it).
 | `viewer.py`, `volumetab.py`, `volume3d.py` | the Viewer's Plan, 2D and 3D views; `volume3d` holds their arrays, without Qt |
 | `sectionview.py` | the field across a line-model section: the Section page (the KiCad plugin's too) |
 | `splot.py`, `traces.py` | S-parameter plots, Smith charts, traces and their export |
-| `markers.py` | what both plots share: their buttons, their markers' table |
+| `markers.py` | what both plots share: their buttons, their markers' table (`MarkerTable`) |
 | `fieldtab.py`, `antennatab.py`, `steering.py` | field maps, antenna results, beam steering |
 | `filtertab.py` | the Filter page (dfsynth) |
 | `impedance.py` | Tools > Impedance calculator: a stack-up's Z0 and the width of a target (kicad2ems's `lines.calc`) |
@@ -190,9 +190,8 @@ passives, undo/redo and save diagram positions. Search references or highlight
 nets; the sweep controls are with the circuit's settings in the Study dock. The optional pcbqs
 backend owns KiCad import: `.kicad_sch` uses `kicad-cli`, or import a KiCad XML
 netlist directly. Review existing/source values and selected parts before
-applying changes. The original sheets can be viewed read-only with Qt SVG
-support. DNP markers, hierarchy, fields and pin/net information remain visible;
-unknown IC behavior is not automatically modeled. All edits affect the saved
+applying changes (KiCad itself shows the sheets). DNP markers, hierarchy,
+fields and pin/net information show in that review; unknown IC behavior is not automatically modeled. All edits affect the saved
 simulation JSON, not the KiCad source file.
 
 ## Tests
