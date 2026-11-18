@@ -167,3 +167,24 @@ def test_a_port_at_an_angle_builds_and_stays_lumped(tmp_path):
     assert readback(m, mesh, resolve_bc('auto', m))['ports'] == ['P1', 'P2']
     plan, notes = LP.plan_ports(m, mesh, 'auto')
     assert plan == {} and all('at an angle' in n for n in notes)
+
+
+def test_port_kind_chooses_the_ports(boards):
+    """--port-kind through the solver (FDTD.line_plan): lumped (default) and
+    antenna mode none; line every port, an error with one undriven; auto
+    keeps them all lumped then."""
+    from kicad2ems.core.config import build_settings
+    from kicad2ems.core.solvers import get
+    m = boards['long']
+    mesh, sv = _mesh(m), get('openems')
+    assert build_settings(dict(board='b.kicad_pcb')).port_kind == 'lumped'
+
+    def plan(kind, excite=(0, 1), antenna=False):
+        run = SimpleNamespace(m=m, log=lambda *a: None, s=SimpleNamespace(
+            port_kind=kind, antenna=antenna))
+        return sv.line_plan(run, SimpleNamespace(excite=list(excite)), mesh)
+    assert plan('lumped') == {} and plan('line', antenna=True) == {}
+    assert set(plan('line')) == set(plan('auto')) == {0, 1}
+    with pytest.raises(ValueError, match='every port driven: P2'):
+        plan('line', excite=[0])
+    assert plan('auto', excite=[0]) == {}

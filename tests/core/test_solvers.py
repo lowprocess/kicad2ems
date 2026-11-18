@@ -209,6 +209,74 @@ def test_deembedding_moves_the_planes_beside_the_solvers_own(run_cli, tmp_path):
     assert code == 0 and 'WARNING' in so and 'not de-embedded' in so
 
 
+def test_a_fixture_file_comes_off_a_port(run_cli, tmp_path):
+    """--deembed-file P1=fixture.s2p: a matched 50 ps line at P1 removed puts
+    its phase back on S21 (twice on S11), |S| as it was; a fixture that does
+    not cover the band is said, S standing."""
+    pytest.importorskip('skrf')
+    import numpy as np
+    from kicad2ems.core.touchstone import read_touchstone, write_touchstone
+    out = tmp_path / 'out'
+    args = (FILTER, '--solvers', 'scikit', '--points', '21', '--out', out)
+    code, so, err = run_cli(*args)
+    assert code == 0, so + err
+    f, S = read_touchstone(str(out / 'rf_interdig_scikit.s2p'))
+    t = np.exp(-2j * np.pi * f * 50e-12)
+    F = np.zeros((len(f), 2, 2), complex)
+    F[:, 0, 1] = F[:, 1, 0] = t
+    write_touchstone(str(tmp_path / 'fix.s2p'), f, F, [50.0, 50.0])
+    code, so, err = run_cli(*args, '--deembed-file',
+                            f"P1={tmp_path / 'fix.s2p'}")
+    assert code == 0 and 'fix.s2p removed' in so, so + err
+    _, D = read_touchstone(str(out / 'rf_interdig_scikit_deembedded.s2p'))
+    assert np.allclose(D[:, 1, 0], S[:, 1, 0] / t, atol=1e-6)
+    assert np.allclose(D[:, 0, 0], S[:, 0, 0] / t**2, atol=1e-6)
+    write_touchstone(str(tmp_path / 'short.s2p'), f[:5], F[:5], [50.0, 50.0])
+    code, so, _ = run_cli(*args, '--deembed-file',
+                          f"P1={tmp_path / 'short.s2p'}")
+    assert code == 0 and 'not de-embedded' in so and 'covers' in so
+
+
+def test_a_vendor_file_closes_a_part_port(run_cli, tmp_path):
+    """--part-file C2=model.s2p: the part port closed by the file's series
+    impedance; a file of C2's own R, L and C gives its values' S, a near short
+    another; a file for no part port is an error."""
+    pytest.importorskip('skrf')
+    import numpy as np
+    from kicad2ems.core import embed
+    from kicad2ems.core.touchstone import read_touchstone, write_touchstone
+    from kicad2ems.examples import prepare_example
+    toml = prepare_example('demo_lowpass', str(tmp_path / 'board'))
+    run = lambda out, *extra: run_cli(toml, '--solvers', 'scikit', '--points',
+                                      '21', '--part-ports', 'all',
+                                      '--no-report', '--out', tmp_path / out,
+                                      *extra)
+    code, so, err = run('own')
+    assert code == 0, so + err
+    f, S0 = read_touchstone(str(tmp_path / 'own' / 'demo_lowpass_scikit.s2p'))
+
+    def model(name, Z):  # a series Z, measured in 50 ohm
+        S = np.zeros((len(f), 2, 2), complex)
+        S[:, 0, 0] = S[:, 1, 1] = Z / (100 + Z)
+        S[:, 0, 1] = S[:, 1, 0] = 100 / (100 + Z)
+        write_touchstone(str(tmp_path / name), f, S, [50.0, 50.0])
+        return f"C2={tmp_path / name}"
+    same = model('same.s2p', embed.impedance(R=0.1, L=0.5e-9, C=6.8e-12, f=f))
+    code, so, err = run('same', '--part-file', same)
+    assert code == 0, so + err
+    _, S1 = read_touchstone(str(tmp_path / 'same' / 'demo_lowpass_scikit.s2p'))
+    assert np.allclose(S1, S0, atol=1e-6)
+    short = model('short.s2p', np.full(len(f), 0.01 + 0j))
+    code, so, err = run('short', '--part-file', short)
+    assert code == 0, so + err
+    _, S2 = read_touchstone(str(tmp_path / 'short' /
+                                'demo_lowpass_scikit.s2p'))
+    assert np.abs(S2[:, 1, 0] - S0[:, 1, 0]).max() > 0.1
+    code, so, err = run('bad', '--part-file',
+                        f"C9={tmp_path / 'short.s2p'}")
+    assert code != 0 and '--part-file C9: not a part port' in so + err
+
+
 def test_named_solver_that_fails_gives_exit_code_1(run_cli, tmp_path,
                                                    monkeypatch):
     pytest.importorskip('skrf')

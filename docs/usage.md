@@ -254,6 +254,7 @@ A config without `[study]` is S-parameters alone, which `kicad2ems board.toml` r
 | `--air` | 5 | air between the board and the boundary, mm (antenna mode: at least λ/4); or six values xmin,xmax,ymin,ymax,zmin,zmax, ymax being the board's top edge in KiCad |
 | `--ratio` | 1.4 | largest size ratio of neighbouring cells |
 | `--nz` | 4 | fewest cells through each dielectric layer |
+| `--nz-mask` | 1 | fewest cells through the solder mask (with `--mask`): its cells set the time step |
 | `--curves extremes\|vertices` | extremes | mesh lines for curved copper |
 | `--z-sheet` | 1 | first z cell next to signal copper, × the fine cell, graded into the dielectric; 0: uniform ([details](meshing.md#z-lines)) |
 | `--curve-res` | 6 | over arcs and fans the largest cell is the dielectric's ÷ this; 1: off |

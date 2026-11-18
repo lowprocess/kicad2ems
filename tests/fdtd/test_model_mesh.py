@@ -281,3 +281,40 @@ def test_bottom_pec_only_on_an_unbroken_plane(name, plane):
     m = Board(KiCadBoard(os.path.join(ROOT, 'examples', name + '.kicad_pcb')),
               nets=['RF', 'GND'], log=lambda *a: None)
     assert bottom_is_plane(m) is plane
+
+
+def test_mesh_zone_setting():
+    """--mesh-zone's values: on, off or a distance in mm; never in antenna
+    mode."""
+    from types import SimpleNamespace as NS
+    from kicad2ems.fdtd.solver import mesh_zone
+    assert (mesh_zone(NS(mesh_zone='on')) is True
+            and mesh_zone(NS()) is True
+            and mesh_zone(NS(mesh_zone='off')) is False
+            and mesh_zone(NS(mesh_zone='2.5')) == 2.5
+            and mesh_zone(NS(mesh_zone='on', antenna=True)) is False)
+    with pytest.raises(ValueError, match='on, off or a distance'):
+        mesh_zone(NS(mesh_zone='near'))
+
+
+def test_nz_mask_sets_the_solder_masks_cells():
+    """--nz-mask (default 1): the cells through the solder mask, which set the
+    time step; unset, --nz's."""
+    from kicad2ems.core.config import build_settings
+    ex = os.path.join(ROOT, 'examples')
+    m = Board(KiCadBoard(os.path.join(ex, 'sma_launch.kicad_pcb')),
+              nets=['REF_SMA_N', 'GND'], include_mask=True,
+              pos_file=os.path.join(ex, 'sma_launch-all.pos'),
+              log=lambda *a: None)
+    masks = [l for l in m.layers if l['kind'] == 'mask']
+    assert len(masks) == 2
+    assert build_settings(dict(board='b.kicad_pcb')).nz_mask == 1
+
+    def cells(nz_mask):
+        g = auto_mesh(m, 1e9, 6e9, nz_mask=nz_mask, log=lambda *a: None)
+        z = np.asarray(g['z'])
+        return ([1 + int(((z > l['z0'] + 1e-9) & (z < l['z1'] - 1e-9)).sum())
+                 for l in masks], g['info']['dt_ps'])
+    (one, dt1), (three, dt3), (nz, dtn) = cells(1), cells(3), cells(None)
+    assert one == [1, 1] and three == [3, 3] and nz == [4, 4]
+    assert dt1 > dt3 > dtn

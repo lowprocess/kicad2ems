@@ -642,8 +642,7 @@ class VulkanBackend(_Compressed, NumpyBackend):
     # is idle after each sync, the energy check's every CHECK_STEPS)
     FIRST = 6
     NBLK = 1024                 # the energy kernel's workgroups
-    # the kernels' index type (kernels_vk.source idx: int); GFDTD_VK_IDX=64 for
-    # int64
+    # the kernels' index type (kernels_vk.source idx: int)
     IDX = np.int32
 
     def __init__(self, op, dtype=np.float32):
@@ -680,11 +679,7 @@ class VulkanBackend(_Compressed, NumpyBackend):
             np.dtype(np.uint8): 'uint8_t',
             np.dtype(np.uint16): 'uint16_t'
         }.get(np.dtype(self.code.dtype), 'uint32_t')
-        if os.environ.get('GFDTD_VK_IDX') == '64':
-            self.IDX = np.int64
-        self.BLOCK = int(os.environ.get('GFDTD_VK_BLOCK') or self.BLOCK)
-        self.k = _vk_kernels(self.dev, ctype, self.BLOCK,
-                             ('int64_t' if self.IDX == np.int64 else 'int'))
+        self.k = _vk_kernels(self.dev, ctype, self.BLOCK, 'int')
         self.V, self.I = (self.zeros((3,) + op.shape) for _ in range(2))
         # Model's fields: the arrays' addresses (these uploaded under their own
         # names), then the values

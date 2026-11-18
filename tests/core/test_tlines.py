@@ -364,3 +364,22 @@ def test_coupled_lines_under_solder_mask_stay_coupled():
     plain, masked = groups[False][0]['pairs'][0], groups[True][0]['pairs'][0]
     # the mask over the gap slows the odd mode
     assert masked['eeff_o'] > plain['eeff_o']
+
+
+def test_grounded_cpw_from_the_field_solver_or_the_formula(boards,
+                                                          monkeypatch):
+    """reference.FIELD_CPW (default True): a grounded CPW section is solved as
+    classified, with its copper's thickness; False keeps the formula's (no
+    thickness: z0 its sheet's)."""
+    from kicad2ems.core.lines import reference
+    base = boards['launch']
+    m = Board(KiCadBoard(base + '.kicad_pcb'), nets=['RF', 'GND'],
+              pos_file=base + '-top.pos', log=lambda *a: None)
+    feed = lambda: build(m).paths[0][2][0][0]
+    on = feed()
+    monkeypatch.setattr(reference, 'FIELD_CPW', False)
+    off = feed()
+    assert on.xs == off.xs == 'cpwg' and on.source != 'formula'
+    assert (off.source == 'formula'
+            and off.z0 == pytest.approx(off.z0_formula)
+            and on.z0 < 0.95 * off.z0)

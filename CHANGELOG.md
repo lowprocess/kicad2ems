@@ -314,6 +314,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   given, so a switching loss is a device's, not the drive ramp's; pcbqs's CHANGELOG has the figures.
 
 ### Removed
+- **gfdtd's `GFDTD_VK_BLOCK` and `GFDTD_VK_IDX`.** Tuning variables nothing
+  set or documented: the Vulkan kernels' workgroup is 64 and their index
+  `int` (2026-11-18). The documented settings that no test had set now have
+  tests: `--part-file`, `--deembed-file`, `--port-kind`, `--mesh-zone`,
+  `--nz-mask` (now in the [usage](docs/usage.md) table) and
+  `lines.reference.FIELD_CPW`.
 - **`kicad2ems.core.api` and `kicad2ems.gui.api`, the re-export layer.** A part imports the module that
   defines a name, by its own name (`kicad2ems.core.study.read_config`, not `read_study`); each such module's
   `__all__` is its API, listed on [APIs](docs/api.md). A test checks that importing the core's solver and
