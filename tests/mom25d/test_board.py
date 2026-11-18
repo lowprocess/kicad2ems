@@ -140,14 +140,15 @@ def test_solve_board_is_the_steps_it_wraps():
 
 def test_wave_ports_with_the_characterised_gamma():
     """A 3 mm 50 ohm line on 1.6 mm FR4 characterises to ~50 ohm (a 16 mm test
-    line gave 1.6 / 24 / 33 ohm), and a thru keeps wave ports down to
-    frequencies where its feed spans too little to fit gamma: the characterised
-    gamma takes over, and the line stays matched and lossless."""
+    line gave 1.6 / 24 / 33 ohm; 48.6 with the sides, 51.4 as sheets), and a
+    thru keeps wave ports down to frequencies where its feed spans too little
+    to fit gamma: the characterised gamma takes over, and the line stays
+    matched and lossless."""
     from kicad2ems.mom25d.run import renorm, _zc
     m = BoardModel(board('thru'), port='wave', log=quiet)
     sim = m.simulation(dmax=0.4e-3, fmin=0.2e9, fmax=6e9, verbose=False,
                        wave_down_to=0.2e9)
-    assert all(abs(p.zc - 51) < 2 for p in sim.ports)
+    assert all(abs(p.zc - 50) < 2 for p in sim.ports)
     for f in (0.3e9, 1e9):
         S = renorm(sim.sparams(f), _zc(sim, f), [50, 50])
         assert all(p.known_gamma for p in sim.ports)
@@ -539,19 +540,21 @@ def test_thickness_edge_corrects_the_edge_near_terms():
 
 
 def test_thickness_sides_blocks_regression():
-    """The plates' blocks in the compiled core (pair_moments3d, sides_blocks)
-    against the NumPy ones they replaced (0228e3f): the thru line's S at 1 and
-    3 GHz to rounding (|dS| 9e-14 when moved)."""
+    """The plates' blocks in the compiled core (pair_moments3d, sides_blocks,
+    the folds' sheet halves in the strips' operator: Sides.strip_part): the
+    thru line's S at 1 and 3 GHz to rounding (|dS| 2e-4 when the folds' sheet
+    halves moved to the strips' rules, S11 and S22 then 7e-8 apart, 3e-6
+    before)."""
     from kicad2ems.mom25d.api import solve_board
     ref = np.array([
-        [[-0.023526524176041 - 0.011159914608115j,
-          0.428235560040414 - 0.903288772767169j],
-         [0.428235560034460 - 0.903288772754609j,
-          -0.023529681407333 - 0.011153254907013j]],
-        [[-0.007336127834070 - 0.029177408590434j,
-          -0.969750553568269 + 0.241968482622342j],
-         [-0.969750553465853 + 0.241968482596795j,
-          -0.007335474507931 - 0.029177571534827j]]])
+        [[-0.023482091967815 - 0.011128197159887j,
+          0.428026941142430 - 0.903389193955950j],
+         [0.428026941137913 - 0.903389193946418j,
+          -0.023482158873540 - 0.011128055948500j]],
+        [[-0.007379381256187 - 0.029386020596133j,
+          -0.969795180555634 + 0.241762990990947j],
+         [-0.969795180463472 + 0.241762990967979j,
+          -0.007382924299807 - 0.029385137370043j]]])
     S = solve_board(board('thru'), np.array([1e9, 3e9]), port='via',
                     thickness='sides', log=quiet).S
     assert np.abs(S - ref).max() < 1e-9

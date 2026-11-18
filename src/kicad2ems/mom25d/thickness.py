@@ -19,20 +19,20 @@ Not modelled, so resolved to another mode:
   dB at 5 GHz, sheets -34, gfdtd with solid copper -23; edge -22.8 dB at 8
   GHz as gfdtd's); with planes 'holes' or 'slots' (the plates do not couple
   to the holes' and openings' unknowns): off;
-- sides or edge with wave ports: off (their S moved 3-7 x what gfdtd's solid
-  copper moves it: rf_diffvia's pairs 0.24 with sides, 0.32 with edge, gfdtd
-  0.043; lumped ports 0.046 and 0.065), unless WAVE_SIDES.
+- edge with wave ports: off (their S moved 3-7 x what gfdtd's solid copper
+  moves it: rf_diffvia's pairs 0.32 with edge, gfdtd 0.043; lumped ports
+  0.065); sides too where WAVE_SIDES is off.
 """
 MODES = ('off', 'grow', 'sides', 'edge')
 DEFAULT = 'sides'
 # wave ports with the sides (sim: the plates run on through the feed's cuts,
-# its gap across them; the line characterisations with the sides): off, the
-# copper as sheets with wave ports. Above 2 GHz they follow the lumped ports'
-# shift on the 7 wave-port boards (RMS 0.004-0.03 apart); below it on short
-# feeds the sides' charge along a feed is noisy at some cell shapes
-# (demo_transition's P1 at 1 GHz: the cuts' current +-4 %, 0.08 % as sheets),
-# and the fit amplifies it (|S11| up to 1.8; rf_diffvia's pair 0.17 off)
-WAVE_SIDES = False
+# its gap across them; the line characterisations with the sides). On the 7
+# wave-port boards their thickness shift follows the lumped ports' (RMS
+# 0.007-0.022 apart over the band, the lumped shift 0.03-0.12). Off, the copper
+# as sheets with wave ports: with the folds' sheet halves in the sides' own
+# rules (before sides.Sides.strip_part) the charge along a short feed was
+# noisy below 2 GHz (demo_transition 0.22 apart, |S11| up to 1.8)
+WAVE_SIDES = True
 
 
 def resolve(requested, model, ports=None):
@@ -55,7 +55,7 @@ def resolve(requested, model, ports=None):
                       f"planes {planes!r}") + " (not modelled)")
     wave = [p.name for p in ports or ()
             if isinstance(p, (LinePort, DiffPort))]
-    if mode in ('sides', 'edge') and wave and not WAVE_SIDES:
+    if wave and (mode == 'edge' or mode == 'sides' and not WAVE_SIDES):
         why.append(f"no {mode} with wave ports ({', '.join(wave)}; not "
                    "modelled), the copper as sheets: --mom-port lumped for "
                    "them")

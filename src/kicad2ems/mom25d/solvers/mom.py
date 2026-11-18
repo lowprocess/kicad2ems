@@ -551,8 +551,8 @@ class MoM25D(Solver):
             "added, the edge triangles' near terms averaged over the copper's "
             "height (median RMS 0.048, hairpin 0.052). Sides become edge with "
             "meshed planes or the whole stack, sheets with holed or slot "
-            "planes; sides and edge become sheets with wave ports, so "
-            "--mom-port lumped (the log says which; docs/mom.md#thickness)",
+            "planes; edge becomes sheets with wave ports, so --mom-port "
+            "lumped (the log says which; docs/mom.md#thickness)",
             choices=THICKNESS_MODES, name='thickness',
             gui='MoM copper thickness', group=G),
         Option(

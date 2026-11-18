@@ -27,7 +27,9 @@ left out), and for the pairs near each other (same layer) the static parts in
 mu0 / (4 pi R) for the vector potential, for the charge 1 / (2 pi eps0 eps_sum
 R) where one of the two is on the interface, (1 / (4 pi eps0 eps1)) (1/R + G/R')
 between two plates (eps1 the plates' medium, eps2 the other side, G = (eps1 -
-eps2) / (eps1 + eps2), R' to the image across the interface).
+eps2) / (eps1 + eps2), R' to the image across the interface). A fold's half on
+the sheet is an RWG half there: with the sheet's triangles, the vias and the
+holes it is the strips' (Sides.strip_part, Sides.virtual).
 """
 import numpy as np
 import shapely
@@ -36,8 +38,6 @@ from scipy.spatial import cKDTree
 
 from kicad2ems.emsdev.numerics.base import _BAR3, _W3, EPS0, MU0
 from kicad2ems.pcbqs.panels3d import _rule
-
-from .sing import offplane_pairs
 
 # near pairs: centroids closer than this x the larger triangle's size
 NEAR = 4.0
@@ -199,6 +199,9 @@ class Sides:
         # plate i's fold (function fold[i]; its diagonal fold[i] + 1), the
         # verticals (function, plate, next plate)
         self.fold = np.array(fold, int)
+        # a fold's half on the sheet: an RWG half on T (alpha, the free vertex
+        # po) at T's boundary edge
+        self.po, self.f_alpha = po, self.L / (2 * np.abs(r.area[self.T]))
         self.vert = np.array(vert, int).reshape(-1, 3)
         self.h_fn = np.array([x[0] for x in H], int)
         kind = np.array([x[1] for x in H], int)
@@ -214,7 +217,7 @@ class Sides:
         # sources: the folds' sheet triangles, then the PTs
         self.src_T = np.unique(tri[kind == 0])
         sT = {int(x): j for j, x in enumerate(self.src_T)}
-        nT = len(self.src_T)
+        self.nT = nT = len(self.src_T)
         self.h_src = np.where(kind == 0, [sT.get(int(x), -1) for x in tri],
                               nT + tri)
         V2 = np.concatenate([r.nodes[r.tris[self.src_T]],
@@ -282,32 +285,22 @@ class Sides:
             np.repeat(np.arange(len(Vo)), m) * len(Vs)
             + np.concatenate([*lo, []]).astype(int)])
         o, s = key // len(Vs), key % len(Vs)
-        same = self.obs_layer[o] == self.src_layer[s]
+        # (a sheet triangle with a fold's: the strips' operator's, strip_part)
+        same = ((self.obs_layer[o] == self.src_layer[s])
+                & ((o >= self.Nt) | self.src_pt[s]))
         o, s = o[same], s[same]
         dist = np.linalg.norm(co[o] - cs[s], axis=1)
         m0 = np.zeros(len(o))
         mro, mrs = np.zeros((len(o), 3)), np.zeros((len(o), 3))
         mrr = np.zeros(len(o))
         close = dist < 1.5 * np.maximum(so[o], ss[s])
-        # a sheet triangle with a fold's: as the strips' own near pairs have
-        # them (sing.offplane_pairs, the 6-point rule over the smaller), so
-        # that the fold's charge on its triangle is the strips' charge there
-        # (with pair_moments' 1 % other self terms, plates on every edge of a
-        # line took 10 % more capacitance than the copper grown flat by t)
-        sheet = (o < self.Nt) & ~self.src_pt[s]
-        c = np.flatnonzero(sheet)
-        if len(c):
-            r = sim.rwg
-            a0, ao, as_, ar = offplane_pairs(r.nodes, r.tris, o[c],
-                                             self.src_T[s[c]], 0.0)
-            m0[c], mro[c, :2], mrs[c, :2], mrr[c] = a0, ao, as_, ar
         # the rule over the smaller triangle of a pair, the analytic integral
         # over the larger (as sing.offplane_pairs: a plate's sliver against
         # a 1 mm strip cell the other way round had rf_combline's resonators
         # off by a factor 2.6 in frequency)
         ao, as_ = _areas(Vo[o]), _areas(Vs[s])
         sw = ao > as_
-        for lev, m in ((2, close & ~sheet), (1, ~close & ~sheet)):
+        for lev, m in ((2, close), (1, ~close)):
             for sel, flip in ((m & ~sw, False), (m & sw, True)):
                 if not sel.any():
                     continue
@@ -382,10 +375,9 @@ class Sides:
         functions are charge-dominated (its triangles t high), their loops
         lost below that in the equilibrated matrix: rf_meander at 0.5 GHz had
         cond 1.4e9 (sheets 3.5e7) and took 84 complex64-LU-preconditioned
-        GMRES iterations (sheets 30); in the loops 2.8e8 and 21. (A fold's
-        charge on its sheet triangle meets the sides' rule, the edges' the
-        strips': the loops keep ~1e-4 of it; cancelled exactly, it took a few
-        iterations more off at most.)"""
+        GMRES iterations (sheets 30); in the loops 2.8e8 and 21. (A loop
+        keeps no charge in Z: the folds' sheet halves are the strips'
+        operator's, strip_part.)"""
         r = sim.rwg
         c0 = sim.Ne + sim.Nv - self.N
         edge = {}
@@ -435,15 +427,19 @@ class Sides:
     def via_d(self, sim, vk, geo):
         """(N, chains): the via chains' smooth potential (via.ViaKernels.D,
         its E_t = grad D on an interface) tested with each function's charge,
-        as sim._via_blocks tests the strips' (3-point rule)."""
+        on the plates (3-point rule; the folds' halves on the sheet take the
+        strips', sim._via_blocks)."""
         from . import _core
         Po, Wo = self.near(sim)[3:]
         out = np.zeros((self.N, len(sim.chains)), complex)
-        Hd = sparse.csr_matrix((2 * self.h_alpha, (self.h_fn, self.h_obs)),
+        pt = self.h_obs >= self.Nt
+        Hd = sparse.csr_matrix((2 * self.h_alpha[pt], (self.h_fn[pt],
+                                                      self.h_obs[pt])),
                                (self.N, len(Po)))
         for span, ns in geo['by_span'].items():
             for k in self.layers:
                 oi = np.flatnonzero(self.obs_layer == k)
+                oi = oi[oi >= self.Nt]
                 D = vk.D[(k, span)]
                 c = _rts(_core, Po[oi, :, 0], Po[oi, :, 1], Wo[oi],
                          geo['x'][ns], geo['y'][ns], D.v, D._dr)
@@ -455,9 +451,11 @@ class Sides:
         """(Bw (Ne, N), Cw (N, N), QF (len(sim.F), N)) at f: the sheet edges
         with the sides' functions, the functions with each other, and the
         potential integral of each function's charge over each via fan
-        triangle (their coupling: with sim.dF, / jw). The Green tables are
-        sim.tables (sim.green_tables(f), as the strips' blocks); the sums in
-        the compiled core (sides_blocks)."""
+        triangle (their coupling: with sim.dF, / jw; the plates' charge). The
+        Green tables are sim.tables (sim.green_tables(f), as the strips'
+        blocks); the sums in the compiled core (sides_blocks). A fold's half on
+        the sheet with the sheet's triangles: the strips' operator's
+        (strip_part)."""
         from . import _core as core
         r, st, w = sim.rwg, sim.st.at(f), 2 * np.pi * f
         (ptr, fn), dA, dq, Po, Wo = self.near(sim)
@@ -494,9 +492,75 @@ class Sides:
             Po, Wo, olay, self.sp, slay, lt, tabs, np.array(drs), sptr, sfn,
             sfx, sfy, sdq, ptr, fn, cA * dA[0], cA * dA[1], cA * dA[2],
             cA * dA[3], nQ, hptr, tgt, al, v, fpos, r.Ne + N, N, len(sim.F),
-            w, chunk)
+            w, chunk, self.Nt, 3 * self.nT)
+        S, fd = self.strip_part(sim), self.fold
+        out[:r.Ne, fd] += S[:r.Ne]
+        out[r.Ne + fd[:, None], fd] += S[r.Ne:]
         Cw = out[r.Ne:]
         return out[:r.Ne], 0.5 * (Cw + Cw.T), QF
+
+    # ---- the folds' halves on the sheet as RWG halves -----------------------
+    # A fold's half on its sheet triangle T and an edge's half on a triangle
+    # (or another fold's) are the same kind of function: integrated by
+    # different rules (the sides' 3 x 3 points and near pairs, the strips'
+    # centroids and theirs), a loop (Sides.loops; no charge on any triangle)
+    # kept a charge, 3.5e-3 of a vertical's (demo_transition): at 1 GHz 4 x
+    # (at most 80 x) a loop's inductive part, the charge between a wave port's
+    # cuts jumping 7 x cut to cut. So these pairs are the strips' operator's:
+    # the folds' halves as half edges Ne + i (T+ = T- = T, alpha- = 0) of its
+    # geometry, its far field (centroids) and near pairs; the vias' and holes'
+    # blocks take them as the edges (virtual).
+
+    def virtual(self, sim):
+        """(D, Aal, Bx, By) of the folds' sheet halves (Nt x plates), as
+        RWG's."""
+        Nt, P, i = len(sim.rwg.tris), self.np_, np.arange(self.np_)
+        sp = lambda v: sparse.csr_matrix((v, (self.T, i)), (Nt, P))
+        a = self.f_alpha
+        return (sp(2 * a), sp(a), sp(a * self.po[:, 0]),
+                sp(a * self.po[:, 1]))
+
+    def _geometry(self, sim):
+        """The strips' core geometry with the folds' halves as edges Ne + i,
+        the strips' near pairs with a fold's triangle as the source."""
+        if getattr(self, '_g', None) is None:
+            op, r, P = sim.fast, sim.rwg, self.np_
+            g = dict(op.g)
+            T = self.T.astype(np.int32)
+            g['ep'], g['em'] = np.r_[g['ep'], T], np.r_[g['em'], T]
+            g['ap'], g['am'] = np.r_[g['ap'], self.f_alpha], np.r_[
+                g['am'], np.zeros(P)]
+            g['vp'] = np.ascontiguousarray(np.r_[g['vp'], self.po])
+            g['vm'] = np.ascontiguousarray(np.r_[g['vm'], self.po])
+            te, ta, tv = g['te'].copy(), g['ta'].copy(), g['tv'].copy()
+            for i, t in enumerate(T.tolist()):  # a free slot of T each
+                sl = int(np.flatnonzero(te[t] < 0)[0])
+                te[t, sl], ta[t, sl], tv[t, sl] = r.Ne + i, self.f_alpha[
+                    i], self.po[i]
+            g['te'], g['ta'], g['tv'] = te, ta, tv
+            sel = np.isin(op.nQ, self.src_T)
+            q = {k: op.q[k] for k in ('nodes', 'tris', 'P3', 'W3', 'P6', 'W6')}
+            q.update(stat=np.zeros((int(sel.sum()), 12)), stat_ready=False)
+            self._g = (g, op.nP32[sel], op.nQ32[sel], q)
+        return self._g
+
+    def strip_part(self, sim):
+        """((Ne + plates) x plates) at the strips' operator's frequency
+        (sim.fast.setup's): the edges and the folds' sheet halves (rows) with
+        the folds' sheet halves (columns), as the strips' operator has the
+        edges with each other."""
+        op, Ne = sim.fast, sim.rwg.Ne
+        g, nP, nQ, q = self._geometry(sim)
+        if not np.array_equal(op.tb['kind'], q.get('kind')):
+            q.update(stat_ready=False, kind=op.tb['kind'])
+        cols = np.arange(Ne, Ne + self.np_, dtype=np.int32)
+        S = op.core.far_block(np.arange(Ne + self.np_, dtype=np.int32), cols,
+                              g, op.tb, op.w)
+        ri, ci, vv, _ = op.core.near_coo(g, op.tb, q, nP, nQ, op.w)
+        q['stat_ready'] = True
+        m = (ri >= 0) & (ci >= Ne)
+        np.add.at(S, (ri[m], ci[m] - Ne), vv[m])
+        return S
 
     def _halves(self, sim):
         """The halves by observer (a CSR: ptr, target row, alpha, v (3D)): the

@@ -176,6 +176,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **mom25d's sides with wave ports (`WAVE_SIDES` on).** A fold's half on the sheet is an RWG half there, but
+  it met the sheet's triangles, the vias and the holes through the plates' own rules (3 × 3 points) where the
+  sheet's edges have the strips' (centroids, their near pairs): a loop of a vertical with its folds and the
+  sheet's edges, no charge on any triangle, kept 3.5e-3 of a vertical's charge, at 1 GHz 4-80 times its
+  inductive part. Along a short feed the charge between a wave port's cuts jumped cut to cut (demo_transition's
+  P1 at 1 GHz: 6.4 times, as sheets 1.15) and the wave fit made |S11| up to 1.8. Those pairs are now the strips'
+  operator's (`Sides.strip_part`): the loops keep 1e-14, the wave ports' thickness shift follows the lumped
+  ports' on the 7 wave-port boards (RMS 0.006-0.022 apart; demo_transition 0.22 before), cond at 0.5 GHz 2.4e10
+  → 1.9e8 (demo_transition; sheets 1.6e8), and the lumped table median 0.037 → 0.036. Wave ports keep the sides
+  (`edge` still becomes sheets with them).
 - **The line model's 45 deg bends, and its junctions on scikit-rf (R-E15).** A bend of another angle than 90 deg keeps
   its arms' centre lines to the vertex, its capacitance there: cut to a corner square's edges, as qucsator's MCORN is at
   90 deg, rf_coupler's eight 45 deg bends had moved it from 0.029 to 0.060 from openEMS (now 0.028 on qucsator, 0.027 on
@@ -234,7 +244,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - **mom25d's copper thickness decided in one place (`mom25d.thickness.resolve`).** The request, the board's
   planes and stack and its ports give the mode (`sides` becomes `edge` with meshed planes or the whole stack,
-  sheets with holed or slot planes; `sides` and `edge` become sheets with wave ports), and its reason is the
+  sheets with holed or slot planes; `edge` becomes sheets with wave ports, see Fixed), and its reason is the
   log's one note; BoardModel and the simulation both ask it (they had their own rules, and the mixed solver a
   third). `grow+sides` is gone (median 0.040 against `sides`' 0.037, mean 0.050 against 0.051).
 - **pcbqs shares core's leaf helpers instead of copying them.** pcbqs may import `kicad2ems.core.units` (new:

@@ -1009,10 +1009,15 @@ class Simulation:
         the current's: its static part cancels the end charges', so it goes as
         jw."""
         w, r = 2 * np.pi * f, self.rwg
+        # the sides' folds' halves on the sheet (mom25d.sides.Sides.virtual):
+        # their rows as the edges' (Bv), into the folds' rows of C at the end
+        sd = self.sides if charges else None
+        V = sd.virtual(self) if sd is not None else None
+        Bv = np.zeros((sd.np_, self.Nv), complex) if sd is not None else None
         B, C = (np.zeros((self.Ne, self.Nv), complex),
                 np.zeros((self.Nv, self.Nv), complex))
         if self.frills:
-            self._frill_blocks(f, B, C)
+            self._frill_blocks(f, B, C, V, Bv)
         if self.slots:
             self._slot_blocks(f, B, C)
         vk = ViaKernels(f, self.st, [(kb, kt) for _, kb, kt in self.chains],
@@ -1028,6 +1033,8 @@ class Simulation:
             T = np.asarray((dF.T @ QF.T).T)
             B += (r.D.T @ T) / (1j * w)
             C += (dF.T @ T[self.F]) / (1j * w)
+            if V is not None:
+                Bv += (V[0].T @ T) / (1j * w)
         if self.sides is not None and charges:
             # the sides' functions (mom25d.sides): with the strips', each
             # other's and the via chains' fan charges
@@ -1056,6 +1063,8 @@ class Simulation:
                         self.P6[idx, :, 0], self.P6[idx, :, 1], self.W6[idx],
                         geo['x'][sel], geo['y'][sel], D.v, D._dr)
                 B[:, sel] += r.D.T @ c
+                if V is not None:
+                    Bv[:, sel] += V[0].T @ c
         if self.sides is not None and len(self.chains):
             # the chains' smooth potential (D) on the sides' charges, as on
             # the strips' (else a fold would see the difference between its
@@ -1064,6 +1073,11 @@ class Simulation:
             c0, Nc = self.Nv - len(self.sides), len(self.chains)
             C[c0:, :Nc] += Xd
             C[:Nc, c0:] += Xd.T
+        if sd is not None:
+            c0 = self.Nv - len(sd)
+            fd = c0 + sd.fold
+            C[fd, :c0] += Bv[:, :c0]
+            C[:c0, fd] += Bv[:, :c0].T
         # via-via: all pairs grouped by (span_m, span_n), each group's Hankel
         # transform evaluated once
         for (sm, sn), (m, n, dd) in geo['groups'].items():
@@ -1084,9 +1098,10 @@ class Simulation:
             C[n, n] += zs * (self.st.z[kt] - self.st.z[kb]) / (2 * np.pi * v.a)
         return B, C
 
-    def _frill_blocks(self, f, B, C):
+    def _frill_blocks(self, f, B, C, V=None, Bv=None):
         """The columns and rows of the holes' unknowns (frill.py: c and -Y),
-        into B and C after the chains'. An axisymmetric shape is a potential on
+        into B and C after the chains' (and into Bv the rows of V's halves,
+        Sides.virtual, as the edges'). An axisymmetric shape is a potential on
         each interface; one of the first order (a dipole shape, its cos or its
         sin) a potential that goes as the angle about the hole, and a field with
         none (its TE part), tested on the edges themselves."""
@@ -1124,10 +1139,12 @@ class Simulation:
                 field[:, idx] = (((self.P6[idx, :, 0] * ex
                                    + self.P6[idx, :, 1] * ey) * W).sum(1),
                                  (ex * W).sum(1), (ey * W).sum(1))
-            B[:, col] = -(r.D.T @ psi)
-            if dip:  # -<f, E>: f = Aal r - (Bx, By) on a triangle
-                B[:, col] -= (r.Aal.T @ field[0] - r.Bx.T @ field[1]
-                              - r.By.T @ field[2])
+            for (Dm, Am, Xm, Ym), Bm in [((r.D, r.Aal, r.Bx, r.By), B)] + (
+                    [(V, Bv)] if V is not None else []):
+                Bm[:, col] = -(Dm.T @ psi)
+                if dip:  # -<f, E>: f = Aal r - (Bx, By) on a triangle
+                    Bm[:, col] -= (Am.T @ field[0] - Xm.T @ field[1]
+                                   - Ym.T @ field[2])
             c = (-(self.dF[:, :Nc].T @ psi[self.F])
                  if len(self.F) else np.zeros(Nc, complex))
             # the chains' remainder, by span

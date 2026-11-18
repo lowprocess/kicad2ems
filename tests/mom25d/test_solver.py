@@ -410,8 +410,8 @@ def test_pads_joined_by_a_via_through_a_plane_s_hole():
         if not couple:  # the hole closed: its unknown on its own
             blocks = s._frill_blocks
 
-            def alone(f, B, C):
-                blocks(f, B, C)
+            def alone(f, B, C, *sides):
+                blocks(f, B, C, *sides)
                 n = len(s.chains)
                 B[:, n:] = 0; C[:n, n:] = 0; C[n:, :n] = 0
             s._frill_blocks = alone

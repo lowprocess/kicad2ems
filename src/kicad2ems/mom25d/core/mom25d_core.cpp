@@ -1847,6 +1847,8 @@ py::object pair_moments3d(arr<double> Vo, arr<double> Vs, arr<double> bar,
 // observer's halves (hptr, a CSR by observer: target row, alpha, v (3D)) add
 //   alpha (jw (M1 - v . M0) + 2 Q / jw)
 // to out (Nrow, N); an observer with fpos >= 0 copies its Q into QF[fpos].
+// The observers o < skip_o leave out the source points p < skip_p (the sheet's
+// triangles both: the strips' operator has those pairs, Sides.strip_part).
 // Observers a chunk at a time (the rows of M: 5 N complex each), each chunk
 // observer-parallel, its scatter column-parallel (no two threads on an entry).
 // -----------------------------------------------------------------------------
@@ -1859,7 +1861,7 @@ py::tuple sides_blocks(arr<double> Po, arr<double> Wo, arr<int> olay,
                        arr<double> dz, arr<cd> dq, arr<i64> hptr,
                        arr<int> htgt, arr<double> hal, arr<double> hv,
                        arr<int> fpos, i64 Nrow, i64 N, i64 nF, double w,
-                       i64 chunk) {
+                       i64 chunk, i64 skip_o, i64 skip_p) {
     const i64 No = Po.shape(0), Ns = sp.shape(0), nl = lt.shape(0),
               nt = (i64)tabs.size();
     if (Wo.shape(0) != No || olay.shape(0) != No || slay.shape(0) != Ns ||
@@ -1910,7 +1912,7 @@ py::tuple sides_blocks(arr<double> Po, arr<double> Wo, arr<int> olay,
                              y[3] = {P[1], P[4], P[7]};
                 const double wx[3] = {W[0] * x[0], W[1] * x[1], W[2] * x[2]},
                              wy[3] = {W[0] * y[0], W[1] * y[1], W[2] * y[2]};
-                for (i64 p = 0; p < 3 * Ns; ++p) {
+                for (i64 p = o < skip_o ? skip_p : 0; p < 3 * Ns; ++p) {
                     if (spt[p] == spt[p + 1]) continue;
                     const int k = L[ol[o] * nl + sl[p / 3]];
                     if (k < 0) continue;

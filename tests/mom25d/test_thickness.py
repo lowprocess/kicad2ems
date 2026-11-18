@@ -22,7 +22,8 @@ def expected(req, planes, whole, wave):
     if req == 'sides' and (whole or planes != 'pec'):
         mode = 'off' if planes in ('holes', 'slots') else 'edge'
         why.append(SIDES_WHOLE if whole else SIDES_PLANES.format(planes))
-    if mode in ('sides', 'edge') and wave:
+    if wave and (mode == 'edge'
+                 or mode == 'sides' and not thickness.WAVE_SIDES):
         why.append(WAVE_NOTE.format(mode))
         mode = 'off'
     return mode, why
@@ -46,7 +47,7 @@ def test_every_request_on_every_board(req, planes, whole, wave):
 
 TABLE = [  # (requested, planes, whole, wave) -> mode
     ('sides', 'pec', False, False, 'sides'),
-    ('sides', 'pec', False, True, 'off'),
+    ('sides', 'pec', False, True, 'sides'),
     ('sides', 'mesh', False, False, 'edge'),
     ('sides', 'mesh', False, True, 'off'),
     ('sides', 'pec', True, False, 'edge'),
@@ -68,26 +69,34 @@ def test_the_table(req, planes, whole, wave, mode):
 
 
 def test_the_board_alone_and_wave_sides(monkeypatch):
-    """ports None: the board's rules alone (BoardModel's); WAVE_SIDES keeps the
-    sides with wave ports; grow+sides and others are refused."""
+    """ports None: the board's rules alone (BoardModel's); WAVE_SIDES (on)
+    keeps the sides with wave ports, off makes sheets of them; grow+sides and
+    others are refused."""
     pec = NS(planes='pec', whole=False)
     assert thickness.resolve('sides', pec) == ('sides', None)
     mesh = NS(planes='mesh', whole=False)
     assert thickness.resolve('sides', mesh)[0] == 'edge'
-    monkeypatch.setattr(thickness, 'WAVE_SIDES', True)
+    assert thickness.WAVE_SIDES
     assert thickness.resolve('sides', pec, WAVE) == ('sides', None)
+    monkeypatch.setattr(thickness, 'WAVE_SIDES', False)
+    assert thickness.resolve('sides', pec, WAVE) == (
+        'off', "thickness 'sides': " + WAVE_NOTE.format('sides')
+        + ", thickness 'off'")
     for bad in ('grow+sides', 'thick'):
         with pytest.raises(ValueError, match='off, grow, sides or edge'):
             thickness.resolve(bad, pec)
 
 
-def test_the_simulation_takes_the_resolved_mode():
+@pytest.mark.parametrize('wave_sides', [True, False])
+def test_the_simulation_takes_the_resolved_mode(monkeypatch, wave_sides):
     """BoardModel and PlanarModel.simulation through resolve: lumped ports
-    keep the sides, wave ports make sheets of them and say so once."""
+    keep the sides, wave ports too (WAVE_SIDES) or make sheets of them and say
+    so once."""
     from kicad2ems.mom25d.board import BoardModel
     from test_board import board, quiet
+    monkeypatch.setattr(thickness, 'WAVE_SIDES', wave_sides)
     data = board('thru')
-    for port, has in (('via', True), ('wave', False)):
+    for port, has in (('via', True), ('wave', wave_sides)):
         m = BoardModel(data, port=port, log=quiet)
         sim = m.simulation(dmax=0.5e-3, fmin=2e9, fmax=4e9, verbose=False,
                            characterize=False, mesh_only=True)

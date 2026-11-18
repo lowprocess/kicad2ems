@@ -252,8 +252,8 @@ that does not need N² memory. In this order:
    product of its 6.4 GB Z, 46 GB/s). Z kept on the GPU beside its LU (the RX 7800 XT: 624 GB/s) would take it to
    about 1 s, for one upload a frequency (0.26 s at PCIe 4's 25 GB/s) and 6.4 GB more of the card.
 3. **Copper thickness, the rest.** The sides are the default since 2026-11-17 (docs/mom.md#thickness), resolved
-   in one place (`mom25d.thickness`); left: wave ports with the sides (`WAVE_SIDES`: the long thin triangles
-   along a feed, next), the sides with holes and openings of PEC planes and a via's vertical current, the
+   in one place (`mom25d.thickness`), with wave ports too since 2026-11-18 (`WAVE_SIDES`); left: the sides
+   with holes and openings of PEC planes and a via's vertical current, the
    copper's top face; the loss takes the port layer's thickness for every layer.
 4. **`fast.py` split** (the rest of R-F3; the three paths are retired, now in the CHANGELOG).
 5. **The numerics shared with pcbqs** (R-F4): one copy since 2026-11-16, `kicad2ems.emsdev.numerics` (the RWG

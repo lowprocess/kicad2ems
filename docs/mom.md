@@ -75,21 +75,27 @@ the vias' vertical current with the plates' (only through their charge and the s
 with holes and openings of PEC planes, and around a via through a meshed plane's antipad (rf_msvia's whole
 stack: S11 −15 dB at 5 GHz, sheets −34, gfdtd with solid copper −23). With `--mom-planes mesh` or
 `--mom-stack whole` the copper takes `edge` instead (rf_msvia: S11 −22.8 dB at 8 GHz, gfdtd's −22.8, sheets
-−31.8), with `holes` or `slots` it stays sheets, and the log says so; with wave ports it stays sheets too, for
-`edge` as well (a wave port's S moved 3-7 times what gfdtd's solid copper moves it: rf_diffvia's pairs 0.24
-with sides, 0.32 with edge, gfdtd 0.043, lumped ports 0.046 and 0.065), so `--mom-port lumped` for them; at
-low frequency the loop/tree basis is not used with them. Wave ports with the sides are built
-(`mom25d.thickness.WAVE_SIDES`, off): the plates run on through a feed's sample cuts and its gap (the gap's
-voltage across them too), a cut's current adds the plates' crossing it (a third of it on a 0.38 mm
-microstrip), and the line characterisation has the sides (the thru line's Zc 51.4 → 48.6 Ω). A cut's ends
-are moved onto the copper's edge within 2 % of the port's width: a board's feed 0.2 µm wider than its port
-had left a sliver between the cut's end and the edge, its current not counted (rf_interdig's wave-fit
-residual 1.7e-2 → 5e-4 as sheets). Above 2 GHz the wave ports' thickness shift then follows the lumped
-ports' on the 7 wave-port boards (RMS 0.004-0.05 apart; over the band rf_interdig 0.15 → 0.009,
-rf_diffvia's pair 0.24 → 0.06, sma_launch 0.044 → 0.017); below 2 GHz the sides' charge along a short feed
-is noisy at some cell shapes (demo_transition's P1 at 1 GHz: the cuts' current ±4 %, as sheets 0.08 %; with
-0.2 mm cells P1 is smooth and P2 noisy), which the wave fit amplifies (|S11| up to 1.8; rf_diffvia's pair
-0.17 off), hence off. One function decides the mode a run gets (`mom25d.thickness.resolve`: the request, the
+−31.8), with `holes` or `slots` it stays sheets, and the log says so; `edge` with wave ports stays sheets
+(a wave port's S moved 3-7 times what gfdtd's solid copper moves it: rf_diffvia's pairs 0.32, gfdtd 0.043,
+lumped ports 0.065), so `--mom-port lumped` for it; at low frequency the loop/tree basis is not used with
+them. With wave ports the sides stay (`mom25d.thickness.WAVE_SIDES`, on since 2026-11-18): the plates run on
+through a feed's sample cuts and its gap (the gap's voltage across them too), a cut's current adds the plates'
+crossing it (a third of it on a 0.38 mm microstrip), and the line characterisation has the sides (the thru
+line's Zc 51.4 → 48.6 Ω). A cut's ends are moved onto the copper's edge within 2 % of the port's width: a
+board's feed 0.2 µm wider than its port had left a sliver between the cut's end and the edge, its current not
+counted (rf_interdig's wave-fit residual 1.7e-2 → 5e-4 as sheets). A fold's half on the sheet is an RWG half
+on the sheet's triangle, so with the sheet's triangles, the vias and the holes it is the strips' operator's
+(centroids far, the strips' near pairs; `Sides.strip_part`): in the plates' own rules (3 × 3 points) a loop of
+a vertical, its folds and the sheet's edges round its node, no charge on any triangle, kept 3.5e-3 of a
+vertical's charge in Z, at 1 GHz 4 times (up to 80) its inductive part, and the charge between a wave port's
+cuts along demo_transition's feed at 1 GHz ranged over 6.4 times cut to cut (now 1.16, as sheets 1.15), which
+the wave fit amplified (|S11| up to 1.8 below 2.7 GHz). Now the wave ports' thickness shift follows the lumped ports'
+on the 7 wave-port boards: RMS 0.006-0.022 apart over the band (the lumped shift 0.03-0.12; demo_transition
+0.22 → 0.008, below 2 GHz 0.57 → 0.007; rf_diffvia 0.069 → 0.019; sma_launch 0.018 → 0.006, its sweep
+920 → 290 s, 1426 → 548 GMRES iterations). The matrix is better conditioned too
+(demo_transition at 0.5 GHz cond 2.4e10 → 1.9e8, sheets 1.6e8; at 1 GHz the complex64 LU's GMRES 15 → 6
+iterations, as sheets), and the lumped table moved little (median 0.037 → 0.036, mean 0.051 → 0.051;
+demo_transition 0.026 → 0.023). One function decides the mode a run gets (`mom25d.thickness.resolve`: the request, the
 board's planes and stack, its ports), and its reason is the log's note. `--mom-thickness off` gives the sheets: the
 openEMS references of the Solver Matrix are zero-thickness sheets, so compare with `off` there.
 
