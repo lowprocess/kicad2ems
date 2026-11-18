@@ -208,10 +208,6 @@ def kind_value(fp):
             (None, f"value '{fp['value']}' not understood"))
 
 
-# its name before kicad2ems.core.api (the KiCad plugin's older releases)
-_kind_value = kind_value
-
-
 def _copper_gap(board, layer, axis, e1, e2, cb, w):
     """The copper-free part of the gap between a part's pads (e1, e2 along axis,
     the part's width w about cb): tracks drawn to a pad's centre reach into the

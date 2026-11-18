@@ -88,7 +88,7 @@ mom25d's `--mom-dump`.
 The same is available from Python:
 
 ```python
-from kicad2ems import fields
+from kicad2ems.core import fields
 src = fields.find_dumps('out')[0]
 fields.save_animation(src, 'ez.gif', axis=2, index=0, component='z')
 ```

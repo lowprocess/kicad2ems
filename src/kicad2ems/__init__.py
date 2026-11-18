@@ -19,7 +19,6 @@ repository of its own until 2026-11-16):
     examples  the example boards and their configs (the checkout's examples/)
 
     from kicad2ems.core import KiCadBoard, Board
-        # (also: from kicad2ems import Board)
 
 Documentation: docs/index.md in the repository.
 """
@@ -34,15 +33,3 @@ if not _os.path.isdir(_os.path.join(__path__[0], 'examples')) and \
         _os.path.isfile(_os.path.join(_checkout, 'examples', '__init__.py')):
     __path__.append(_checkout)
 
-
-def __getattr__(name):
-    """The core's names from the package itself, as before it had parts (from
-    kicad2ems import Board)."""
-    if name.startswith('__'):
-        raise AttributeError(name)
-    from . import core
-    try:
-        return getattr(core, name)
-    except AttributeError:
-        raise AttributeError(
-            f"module 'kicad2ems' has no attribute {name!r}") from None

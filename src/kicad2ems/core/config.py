@@ -20,8 +20,7 @@ comma-separated strings:
     fmin = 1.0
     fmax = 6.0
     no_mask = true
-    solvers = ["openems", "mom25d"] # default: auto (kicad2openems: openems; see
-                                    # Settings.solver_plan)
+    solvers = ["openems", "mom25d"] # default: auto (Settings.solver_plan)
     [solver.openems]
     excite = ["P1"]
     air = 5.0
@@ -142,8 +141,8 @@ CORE = [
     Option(
         'solvers', None,
         "solvers to run, comma-separated: auto (the default: the full-wave "
-        "solver estimated cheapest for this board, plus the line model; "
-        "kicad2openems: openems), openems (3D FDTD), gfdtd (3D FDTD on the GPU "
+        "solver estimated cheapest for this board, plus the line model), "
+        "openems (3D FDTD), gfdtd (3D FDTD on the GPU "
         "or the CPU, openEMS's model; not in all), mom25d (alias mom; 2.5D "
         "MoM: planar boards over a ground plane, no openEMS needed), mixed "
         "(mom25d with long straight runs as transmission lines; not in all), "
@@ -637,11 +636,9 @@ def _suggest(key):
     return f"{key} (did you mean {near[0]}?)" if near else key
 
 
-def build_settings(cli=None, config=None, default_solvers=None):
+def build_settings(cli=None, config=None):
     """Settings from the defaults, a TOML file (path or None) and command-line
-    values (a dict holding only the options that were typed). default_solvers:
-    the solvers when neither names any (kicad2openems: openems; otherwise auto).
-    Raises ConfigError for anything that cannot be used."""
+    values (a dict holding only the options that were typed). Raises ConfigError for anything that cannot be used."""
     cli = dict(cli or {})
     values, notes = {}, []
     if config:
@@ -655,8 +652,6 @@ def build_settings(cli=None, config=None, default_solvers=None):
         raise ConfigError(f"unknown option(s): {', '.join(unknown)}")
     s = Settings(**{k: _convert(k, v) for k, v in values.items()})
     s.notes = notes
-    if s.solvers is None and default_solvers:
-        s.solvers = _convert('solvers', default_solvers)
     if s.fmin >= s.fmax:
         raise ConfigError(
             f"fmin ({s.fmin:g} GHz) must be below fmax ({s.fmax:g} GHz)")

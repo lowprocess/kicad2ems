@@ -17,10 +17,6 @@ def plan(**kw):
 
 def test_solver_plan():
     assert plan() == (['auto'], ['auto'])  # the default: auto, as if named
-    # kicad2openems
-    assert (build_settings(dict(board='b'),
-                           default_solvers=['openems'
-                                            ]).solver_plan()[0] == ['openems'])
     # --mom / --fast add theirs
     assert (plan(mom=True, fast='skrf') == (['auto', 'mom25d',
                                              'scikit'], ['auto']))
@@ -240,17 +236,6 @@ def test_unavailable_reference_is_left_out(run_cli, tmp_path, monkeypatch):
     # named: stops before it starts
     code, so, _ = run_cli(FILTER, '--solvers', 'mom', '--out', out)
     assert code == 2 and 'mom25d cannot run' in so
-
-
-def test_kicad2openems_keeps_openems_as_its_default(tmp_path, monkeypatch,
-                                                    capsys):
-    from kicad2ems.core.cli import main_openems
-    monkeypatch.setattr(
-        standins, 'engine_check', lambda:
-        (False, ['  FAILED  openEMS  ModuleNotFoundError']))
-    # openEMS named by default: stops
-    assert main_openems([FILTER, '--out', str(tmp_path / 'out')]) == 2
-    assert 'openEMS (FDTD) cannot run - details' in capsys.readouterr().out
 
 
 def test_a_solver_s_set_up_or_outputs_failing_leaves_the_run_and_its_report(

@@ -65,12 +65,9 @@ test = ["pytest>=7", "pytest-xdist>=3", "scikit-rf>=1.0"]
 
 [project.scripts]
 kicad2ems = "kicad2ems.core.cli:main"
-# the old name: openEMS unless --solvers says otherwise
-kicad2openems = "kicad2ems.core.cli:main_openems"
 # a stack-up's impedance, without a board
 kicad2ems-z0 = "kicad2ems.core.lines.calc:main"
 kicad2ems-gui = "kicad2ems.gui:main"
-kicad2openems-gui = "kicad2ems.gui:main"              # the old name
 # run an openEMS XML file, as `openEMS model.xml`
 gfdtd = "kicad2ems.gfdtd.fdtd:main"
 dfsynth = "kicad2ems.dfsynth.cli:main"
