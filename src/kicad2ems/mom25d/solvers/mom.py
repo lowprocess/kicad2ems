@@ -435,7 +435,8 @@ class MoM25D(Solver):
         edge_walls='approximated: via rows every 0.5 mm',
         thickness=('approximated: the edges as plates (no top face); '
                    '--mom-thickness grow: the effective width; edge: the '
-                   "edges' near terms corrected; off: sheets"),
+                   "edges' near terms corrected; mixed: the plates on narrow "
+                   "copper and gaps; off: sheets"),
         conductor_loss='yes',
         roughness='yes: Hammerstad at each frequency',
         finish=('approximated: on the outer copper, weighted by the finished '
@@ -550,7 +551,10 @@ class MoM25D(Solver):
             "moved out by 0.57 x the copper's thickness (the effective "
             "width: median 0.052, no extra unknowns); edge: no unknowns "
             "added, the edge triangles' near terms averaged over the copper's "
-            "height (median RMS 0.048, hairpin 0.052). Sides become edge with "
+            "height (median RMS 0.048, hairpin 0.052); mixed: plates where "
+            "copper faces copper within 0.5 mm or is narrower than 1 mm, edge "
+            "on the rest (median 0.038; sma_launch 1113 plates to 195). Sides "
+            "become edge with "
             "meshed planes or the whole stack, sheets with holed or slot "
             "planes; edge becomes sheets with wave ports, so --mom-port "
             "lumped (the log says which; docs/mom.md#thickness)",

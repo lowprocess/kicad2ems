@@ -606,7 +606,8 @@ class Simulation:
                 k: [self._segs[(id(lp), x, k)] for lp, x in lines[k]
                     if x == 0.0 and id(lp) not in wave]
                 for k in self.layers})
-            self.log.note(self.sides.notes(sides.get('s_max')))
+            self.log.note(self.sides.notes(sides.get('s_max'),
+                                            sides.get('wide')))
             if not len(self.sides):
                 self.sides = None
         self.Nv = (len(self.chains) + sum(fr.count for fr in self.frills)

@@ -74,6 +74,12 @@ GROW_T = 0.57
 # edges facing copper within 0.4 or 0.8 mm only to 0.049, within 0.2 mm 0.065:
 # a side matters on every edge, not only across a narrow gap
 SIDES_SMAX = None
+# thickness='mixed': plates where copper faces copper within MIXED_GAP or is
+# narrower than MIXED_WIDE (m); the other edges take mom25d.edge's correction
+# (17 boards against gfdtd's solid copper, 2026-11-18: median 0.0379, mean
+# 0.0515; sides 0.0359, 0.0506; sma_launch's plates 1113 -> 195, rf_bends' 676
+# -> 1)
+MIXED_GAP, MIXED_WIDE = 0.5e-3, 1.0e-3
 # mm2: stitching_pads='drop': a lone pad is smaller than this
 PAD_AREA = 2.0
 # ground_apertures: the signal copper's reach, in heights over the ground
@@ -575,16 +581,17 @@ class BoardModel(PlanarModel):
         # copper's thickness high, up from the sheet (the board's lowest
         # copper: down), as fdtd.thick grows it
         self.sides = None
-        if mode == 'sides':
+        if mode in ('sides', 'mixed'):
             low = min(cu_z, key=cu_z.get)
             tk = {k: c.get('t', 0.0) * MM for c in st['copper']
                   for k in [self.iface.get(c['name'])] if k is not None}
             self.sides = dict(
                 t=tk, up={k: lay != low for lay, k in self.iface.items()},
-                s_max=SIDES_SMAX)
+                s_max=SIDES_SMAX if mode == 'sides' else MIXED_GAP,
+                wide=None if mode == 'sides' else MIXED_WIDE)
         # thickness='edge': the edges' near terms corrected (mom25d.edge)
         self.edge = None
-        if mode == 'edge':
+        if mode in ('edge', 'mixed'):
             low = min(cu_z, key=cu_z.get)
             self.edge = dict(
                 t={k: c.get('t', 0.0) * MM for c in st['copper']

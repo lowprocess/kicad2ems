@@ -426,8 +426,13 @@ class PlanarModel:
         mode, why = resolve(getattr(self, 'thickness', 'off'), self, ports)
         if why and why not in self.notes:
             self.notes.append(why)
-        if mode in ('sides', 'edge') and getattr(self, mode, None):
-            kw.setdefault(mode, getattr(self, mode))
+        for m in {'sides': ('sides', ), 'edge': ('edge', ),
+                  'mixed': ('sides', 'edge')}.get(mode, ()):
+            if getattr(self, m, None):
+                kw.setdefault(m, getattr(self, m))
+        if mode == 'sides' and (self.sides or {}).get('wide'):
+            # ('mixed' made sides: on every edge)
+            kw['sides'] = dict(self.sides, s_max=None, wide=None)
         if characterize:
             # the cells the feeds get: the same gamma
             self.characterize(ports, fmin, fmax, dmax=dmax,

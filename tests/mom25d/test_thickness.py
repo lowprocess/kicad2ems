@@ -19,9 +19,14 @@ WAVE_NOTE = ("no {} with wave ports (P1; not modelled), the copper as sheets: "
 def expected(req, planes, whole, wave):
     """(mode, the reason's parts) as docs/mom.md#thickness states the rules."""
     mode, why = req, []
-    if req == 'sides' and (whole or planes != 'pec'):
+    if req == 'mixed' and (whole or planes != 'pec'):
+        mode = 'sides'
+    if mode == 'sides' and (whole or planes != 'pec'):
         mode = 'off' if planes in ('holes', 'slots') else 'edge'
         why.append(SIDES_WHOLE if whole else SIDES_PLANES.format(planes))
+    if wave and mode == 'mixed':
+        why.append("sides on every edge with wave ports (P1)")
+        mode = 'sides'
     if wave and (mode == 'edge'
                  or mode == 'sides' and not thickness.WAVE_SIDES):
         why.append(WAVE_NOTE.format(mode))
@@ -57,6 +62,10 @@ TABLE = [  # (requested, planes, whole, wave) -> mode
     ('edge', 'pec', False, True, 'off'),
     ('grow', 'mesh', True, True, 'grow'),
     ('off', 'pec', False, True, 'off'),
+    ('mixed', 'pec', False, False, 'mixed'),
+    ('mixed', 'pec', False, True, 'sides'),
+    ('mixed', 'mesh', False, False, 'edge'),
+    ('mixed', 'holes', False, True, 'off'),
 ]
 
 
@@ -83,7 +92,7 @@ def test_the_board_alone_and_wave_sides(monkeypatch):
         'off', "thickness 'sides': " + WAVE_NOTE.format('sides')
         + ", thickness 'off'")
     for bad in ('grow+sides', 'thick'):
-        with pytest.raises(ValueError, match='off, grow, sides or edge'):
+        with pytest.raises(ValueError, match='off, grow, sides, edge or mixed'):
             thickness.resolve(bad, pec)
 
 
@@ -103,3 +112,27 @@ def test_the_simulation_takes_the_resolved_mode(monkeypatch, wave_sides):
         assert (sim.sides is not None) == has, port
         said = [n for n in m.notes if n.startswith("thickness 'sides'")]
         assert len(said) == (0 if has else 1), port
+
+
+def test_mixed_stands_plates_on_narrow_copper_only(monkeypatch):
+    """thickness 'mixed': plates on the edges of copper narrower than
+    MIXED_WIDE or facing copper within MIXED_GAP, the rest left to the edge
+    correction (the 0.38 mm thru line: its sides, not its ends, the line
+    longer than 1 mm behind them); with a wave port the plates on every
+    edge."""
+    from kicad2ems.mom25d import board as B
+    from kicad2ems.mom25d.board import BoardModel
+    from test_board import board, quiet
+    data = board('thru')
+
+    def plates(th, port):
+        m = BoardModel(data, port=port, thickness=th, log=quiet)
+        sim = m.simulation(dmax=0.5e-3, fmin=2e9, fmax=4e9, verbose=False,
+                           characterize=False, mesh_only=True)
+        assert (m.edge is not None) == (th == 'mixed')
+        return sim.sides.np_ if sim.sides is not None else 0
+    every = plates('sides', 'via')
+    assert 0.9 * every < plates('mixed', 'via') < every
+    assert plates('mixed', 'wave') == plates('sides', 'wave') > 0
+    monkeypatch.setattr(B, 'MIXED_WIDE', 0.1e-3)  # (the line wide now)
+    assert plates('mixed', 'via') == 0

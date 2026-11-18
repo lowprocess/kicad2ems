@@ -59,6 +59,8 @@ class Edges:
     def __init__(self, sim, t, up):
         r, st = sim.rwg, sim.st
         on = edge_triangles(r)
+        if getattr(sim, 'sides', None) is not None:
+            on[sim.sides.T] = False  # (thickness 'mixed': plates there)
         tt = np.array([t.get(k, 0.0) for k in sim.tri_layer])
         kq = {}
         for k in sim.layers:

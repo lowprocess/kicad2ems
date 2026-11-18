@@ -67,7 +67,11 @@ cost: two unknowns a plate (+20-30 % on these boards, +17 % on sma_launch; three
 0.0360 → 0.0359, the mean 0.0506 → 0.0506) and their blocks (in the compiled core: pairs of triangles more than
 five sizes apart take one point each, as the strips' far field, not 3 × 3: S within 1e-4): 41 solves of
 sma_launch 179 s against 217 s with the diagonals and 3 × 3 points everywhere, hairpin 10.1 s against 11.1,
-rf_diffvia 31 s against 38. A plate's
+rf_diffvia 31 s against 38. The blocks a frequency (2026-11-18): rf_bends 0.29 → 0.085 s, sma_launch 0.70 → 0.32
+s, the same to 5e-16, with the observers in colours (no two of a colour on one row: each its sums in its
+thread's buffer and at once into its rows; kept for a column-parallel scatter, 5 N complex an observer, their
+traffic bound it) and the folds' far block a triangle at a time (`fold_far`: an observer triangle's kernels once,
+not for each of its edges). A plate's
 functions are charge-dominated (its triangles 35 µm high), so their loops were lost to the complex64 LU of mixed
 precision (rf_meander at 0.5 GHz: cond 1.4e9 against the sheets' 3.5e7); in mixed precision the verticals are
 taken as loops (each with its folds and the sheet's edges round its node: no charge
@@ -124,6 +128,20 @@ strip (a microstrip's eeff -4.2 % at 3 cells across, -3.2 % at 6, -2.4 % at 10);
 suits them (hairpin 2.35, rf_meander 2.9, demo_transition 1.8), which a per-board choice would not fix; the
 copper's top face is not modelled (a stripline's Z0 falls 10.5 %, solid copper's 17 %); the loop/tree basis is
 not used with it.
+Re-measured on 2026-11-18 (the cells grown, e0ed75d): median 0.0474, mean 0.0576 against `sides`' 0.0359 and
+0.0506, worse than `sides` on 15 of the 17 (demo_transition 0.024 → 0.047, hairpin 0.036 → 0.052), as good on
+rf_branchline and rf_gcpw; S 0.012 (median) from `sides`', so it does not replace them.
+
+`--mom-thickness mixed` stands plates only where copper faces copper within 0.5 mm or is narrower than 1 mm
+inward from its edge (`board.MIXED_GAP`, `MIXED_WIDE`), and gives the other edges `edge`'s correction (the edge
+triangles under a plate left out of it). The edges it leaves are those of wide copper facing nothing: rf_bends'
+lines 676 plates → 1, sma_launch's pour 1113 → 195, the arrays' patches and feeds all. Against gfdtd with solid
+copper (17 boards): median 0.0379, mean 0.0515 against `sides`' 0.0359 and 0.0506, S 0.0044 (median) from
+`sides`' (rf_steplpf 0.013, rf_combline and rf_pcoupled 0.011: their wide sections); against openEMS on six
+boards within 0.006 of `sides` but antenna_patch (+0.057: a resonant patch's edges, the edge correction on its
+2 mm cells). With wave ports it is `sides` (`edge`'s part not checked with them). Not the default: the 17
+boards' median is 0.002 worse. (Plates dropped on such edges with no correction instead moved S as far as
+sheets do: antenna_array2x2 0.096 → 0.141 against openEMS, `off` 0.141.)
 
 <a id="planes"></a>
 ### Solid planes and stitching pads

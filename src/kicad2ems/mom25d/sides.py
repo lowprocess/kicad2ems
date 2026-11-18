@@ -11,7 +11,8 @@ check, w 0.4 mm on 0.21 mm FR4, t 35 um: sheet 3.391, solid 3.289, sheet and
 sides 3.318; the sides' charge without their current 3.454, the wrong way).
 
 Every boundary edge of a layer's mesh that faces copper of the same layer within
-s_max (None: every boundary edge) stands up as a plate the copper's thickness t
+s_max (None: every boundary edge), or with wide: of copper narrower than wide
+(thickness 'mixed'), stands up as a plate the copper's thickness t
 high, into the layer the copper grows into (fdtd.thick: up; the board's lowest
 copper down). A plate is two triangles, (a0, b0, b1) and (a0, b1, a1) (0 on the
 sheet, 1 at its top), with RWG functions in 3D, and one cell: its charge the
@@ -52,9 +53,10 @@ FAR = 5.0
 class Sides:
     """The plates of a Simulation's mesh and their functions. t: {interface:
     copper thickness (m)}, up: {interface: True (the plate above the sheet) |
-    False (below)}, s_max (m) or None (every boundary edge)."""
+    False (below)}, s_max (m) or None (every boundary edge); wide (m): also
+    the edges of copper narrower than this (thickness 'mixed')."""
 
-    def __init__(self, sim, t, up, s_max=None, gaps=None):
+    def __init__(self, sim, t, up, s_max=None, wide=None, gaps=None):
         r, lt = sim.rwg, sim.tri_layer
         tris, nodes = r.tris, r.nodes
         e = tris[:, [0, 1, 1, 2, 2, 0]].reshape(-1, 2)
@@ -83,10 +85,14 @@ class Sides:
                 own = shapely.unary_union(
                     shapely.polygons(nodes[tris[lt == k]]))
                 shapely.prepare(own)
-                s0 = mid[on] + n[on] * 1e-3 * L[on, None]
-                s1 = mid[on] + n[on] * s_max
-                keep[on] = shapely.intersects(
-                    shapely.linestrings(np.stack([s0, s1], 1)), own)
+                ray = lambda d: shapely.linestrings(np.stack(
+                    [mid[on] + n[on] * 1e-3 * L[on, None] * np.sign(d),
+                     mid[on] + n[on] * d], 1))
+                keep[on] = shapely.intersects(ray(s_max), own)
+                if wide is not None:
+                    # (and where the copper is narrower than wide inward)
+                    keep[on] |= ~shapely.within(ray(-wide), own)
+        self.dropped = int((~keep).sum())
         bd, ia, ib, po, L = bd[keep], ia[keep], ib[keep], po[keep], L[keep]
         self.N = 0
         self.T, self.ia, self.ib = owner[bd], ia, ib
@@ -159,11 +165,13 @@ class Sides:
     def __len__(self):
         return self.N
 
-    def notes(self, s_max):
+    def notes(self, s_max, wide=None):
         return (f"sides: {self.np_} plates, {self.N} functions on "
                 f"{', '.join(f'M{k}' for k in self.layers)} ("
                 + ('every copper edge' if s_max is None else
-                   f"edges facing copper within {s_max * 1e3:g} mm") + ")")
+                   f"edges facing copper within {s_max * 1e3:g} mm"
+                   + (f" or of copper narrower than {wide * 1e3:g} mm, "
+                      f"{self.dropped} others" if wide else '')) + ")")
 
     # ---- geometry ----------------------------------------------------------
     def _functions(self, sim, po):
