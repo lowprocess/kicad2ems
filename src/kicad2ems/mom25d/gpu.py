@@ -3,10 +3,11 @@ mom25d.gpu - GPU dense LU for the mixed-precision direct solver, through Vulkan
 (gpu_vk.py: any Vulkan GPU, AMD, Intel or NVIDIA)
 
 The matrix is still filled on the CPU (the C++ core takes ~2 s); the expensive
-O(N^3) part, the complex64 LU factorisation, runs on the GPU. Refinement
-products stay on the CPU in double precision, so results match the CPU solver;
-a factor whose GPU triangular solves lose their accuracy is downloaded and
-solved on the CPU.
+O(N^3) part, the complex64 LU factorisation, runs on the GPU. The refinement's
+products are in double precision, so results match the CPU solver: on the GPU
+where it holds the double matrix too (put_dense, mul_dense; policy.GPU_DENSE),
+else on the CPU. A factor whose GPU triangular solves lose their accuracy is
+downloaded and solved on the CPU.
 
 Backends (force one with MOM25D_GPU=vulkan|emulate|off; 'auto' is Vulkan):
   vulkan   slangpy on any Vulkan GPU (gpu_vk.py): a hybrid LU, the panels on
@@ -59,6 +60,36 @@ class EmulatedBackend:
 
     def download(self):
         return self.lu, self.piv
+
+    zd = None
+
+    def dense_ok(self):
+        return True
+
+    def host_buffer(self, nbytes):
+        return _Host(nbytes)
+
+    def put_dense(self, Z, host=None):
+        self.zd = Z
+
+    def drop_dense(self):
+        self.zd = None
+
+    def mul_dense(self, V):
+        return self.zd @ V
+
+    def factor_dense(self, dsc):
+        self.factor((dsc[:, None] * self.zd * dsc).astype(np.complex64))
+
+
+class _Host:
+    """EmulatedBackend.host_buffer's: host memory, HostBuffer's view."""
+    def __init__(self, nbytes):
+        self.nbytes, self.array = int(nbytes), np.zeros(int(nbytes), np.uint8)
+
+    def view(self, dtype, count=None):
+        a = self.array.view(dtype)
+        return a if count is None else a[:count]
 
 
 def _vulkan():

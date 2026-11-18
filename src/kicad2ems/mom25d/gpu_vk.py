@@ -339,6 +339,89 @@ void solve_upd(uint3 tid: SV_DispatchThreadID,
 NAMES = ('gemm', 'gemm_flat', 'trsm', 'copy', 'swap_gather', 'swap_scatter',
          'solve_tri', 'solve_upd')
 
+# the refinement's products in double precision (a module of their own: a GPU
+# without shaderFloat64 still factors). Zd_: Z (N x N complex128), row r in
+# buffer r >> sh at (r & mask) * ld; V, Y: k x N (column c at c N). zgemv: a
+# workgroup of 64 a block of DR rows and DC columns; to_c64: the LU's matrix
+# (Mat C_, column c = Z's row c) Z equilibrated by dsc, rounded
+DSOURCE = r'''
+struct Mat {
+    float2* b[TABLE];
+    int sh, mask, ld, r0, c0;
+};
+struct DMat {
+    double2* b[TABLE];
+    int sh, mask, ld, r0, c0;
+};
+uniform DMat Zd_;
+uniform Mat C_;
+uniform double2* V_;
+uniform double2* Y_;
+uniform double* dsc_;
+uniform int n_, k_;
+#define DR 4
+#define DC 4
+groupshared double2 part[DR * DC][64];
+
+double2* drow(int r)
+{
+    return Zd_.b[r >> Zd_.sh] + (int64_t)(r & Zd_.mask) * Zd_.ld;
+}
+
+[shader("compute")] [numthreads(64, 1, 1)]
+void zgemv(uint3 lid: SV_GroupThreadID, uint3 gid: SV_GroupID)
+{
+    const int t = (int)lid.x, r0 = (int)gid.x * DR, c0 = (int)gid.y * DC;
+    double2 acc[DR][DC];
+    for (int a = 0; a < DR; a++)
+        for (int c = 0; c < DC; c++)
+            acc[a][c] = double2(0.0, 0.0);
+    for (int j = t; j < n_; j += 64) {
+        double2 v[DC];
+        for (int c = 0; c < DC; c++)
+            v[c] = c0 + c < k_ ? V_[(int64_t)(c0 + c) * n_ + j]
+                               : double2(0.0, 0.0);
+        for (int a = 0; a < DR; a++) {
+            const double2 z = drow(min(r0 + a, n_ - 1))[j];
+            for (int c = 0; c < DC; c++) {
+                acc[a][c].x = fma(z.x, v[c].x, fma(-z.y, v[c].y, acc[a][c].x));
+                acc[a][c].y = fma(z.x, v[c].y, fma(z.y, v[c].x, acc[a][c].y));
+            }
+        }
+    }
+    for (int a = 0; a < DR; a++)
+        for (int c = 0; c < DC; c++)
+            part[a * DC + c][t] = acc[a][c];
+    GroupMemoryBarrierWithGroupSync();
+    for (int w = 32; w > 0; w >>= 1) {
+        if (t < w)
+            for (int q = 0; q < DR * DC; q++)
+                part[q][t] += part[q][t + w];
+        GroupMemoryBarrierWithGroupSync();
+    }
+    if (t < DR * DC) {
+        const int r = r0 + t / DC, c = c0 + t % DC;
+        if (r < n_ && c < k_)
+            Y_[(int64_t)c * n_ + r] = part[t][0];
+    }
+}
+
+[shader("compute")] [numthreads(256, 1, 1)]
+void to_c64(uint3 tid: SV_DispatchThreadID)
+{
+    const int64_t t = (int64_t)tid.x + (int64_t)tid.y * 65535 * 256;
+    if (t >= (int64_t)n_ * n_) return;
+    const int i = (int)(t % n_), c = (int)(t / n_);
+    const double2 z = drow(c)[i];
+    const double s = dsc_[c] * dsc_[i];
+    const int cc = c + C_.c0;
+    C_.b[cc >> C_.sh][(int64_t)(cc & C_.mask) * C_.ld + i] =
+        float2((float)(z.x * s), (float)(z.y * s));
+}
+'''
+DNAMES = ('zgemv', 'to_c64')
+DR = DC = 4
+
 
 GT = 4  # each thread's outputs: GT x GT (the tile 16 GT square)
 # trsm's workgroup: TRSM_COLS columns, TRSM_LANES threads each. At N = 16k on an
@@ -421,6 +504,7 @@ class VulkanBackend:
             for n in NAMES
         }
         self.enc, self._tmp, self._hosts = None, {}, {}
+        self.zd, self._dk = None, None
         from .fast import cap_blas_threads
         cap_blas_threads()  # the panels' LAPACK on the fast cores
         self.stats = {}
@@ -716,6 +800,80 @@ class VulkanBackend:
         self.piv = piv
         self.stats = dict(seconds=time.perf_counter() - t0, cpu=t_cpu,
                           wait=t_wait)
+
+    # ---- the double Z on the GPU: the refinement's products ----------------
+    def dense_ok(self):
+        """Whether the double-precision kernels compiled (shaderFloat64)."""
+        if self._dk is None:
+            try:
+                mod = self.dev.load_module_from_source(
+                    'mom25d_dense', f"#define TABLE {TABLE}\n" + DSOURCE)
+                for n in DNAMES:
+                    self.k[n] = self.dev.create_compute_pipeline(
+                        self.dev.link_program([mod], [mod.entry_point(n)]))
+                self._dk = True
+            except Exception:
+                self._dk = False
+        return self._dk
+
+    def host_buffer(self, nbytes):
+        """Mapped host memory of the caller's (emsdev.vulkan.HostBuffer): a
+        matrix filled there is put_dense's across the bus with no staging
+        (0.14 s against 0.43 s at 14.7k unknowns), and the fill's first touch
+        takes no page faults (np.zeros: 0.33 s)."""
+        from kicad2ems.emsdev.vulkan import HostBuffer
+        return HostBuffer(self.dev, nbytes)
+
+    def put_dense(self, Z, host=None):
+        """Z (host complex128, C-ordered, N x N) onto the GPU for mul_dense and
+        factor_dense, until drop_dense: 16 N^2 bytes. host: the host_buffer Z
+        is at the start of, read from there."""
+        self.drop_dense()
+        N = len(Z)
+        self.zd = _Mat(self, 2 * N, N)  # Z's row r: column r, 2N float2
+        if host is not None:
+            self._copy(self._flatdesc(host.address, 2 * N), self.zd.desc(),
+                       2 * N, N)
+            self.dev.wait_for_submit(self._submit())
+        else:
+            self._upload(self.zd, np.ascontiguousarray(Z).view(np.complex64))
+
+    def drop_dense(self):
+        if self.zd is not None:
+            self._submit(wait=True)
+            self.zd = None
+
+    def _zdesc(self):
+        return dict(self.zd.desc(), ld=self.zd.cols)
+
+    def mul_dense(self, V):
+        """Z V in double precision on the GPU (Z: put_dense's; V: N x k)."""
+        N = self.zd.cols
+        V = np.asarray(V, complex).reshape(N, -1)
+        k = V.shape[1]
+        n2 = 2 * N * k  # (as float2)
+        hv, hy = self._host('dv', 8 * n2), self._host('dy', 8 * n2)
+        hv.view(np.complex128, N * k).reshape(k, N)[...] = V.T
+        Vd, Yd = self._work('dv', 8 * n2), self._work('dy', 8 * n2)
+        self._copy(self._flatdesc(hv.address, n2),
+                   self._flatdesc(Vd.device_address, n2), n2, 1)
+        self._run('zgemv', (-(-N // DR), -(-k // DC), 1), Zd_=self._zdesc(),
+                  V_=Vd.device_address, Y_=Yd.device_address, n_=N, k_=k)
+        self._copy(self._flatdesc(Yd.device_address, n2),
+                   self._flatdesc(hy.address, n2), n2, 1)
+        self.dev.wait_for_submit(self._submit())
+        return hy.view(np.complex128, N * k).reshape(k, N).T.copy()
+
+    def factor_dense(self, dsc):
+        """factor() of put_dense's Z equilibrated by dsc, its complex64 copy
+        made on the GPU (none on the host, nothing more uploaded)."""
+        self.release()
+        N, t0 = self.zd.cols, time.perf_counter()
+        A = _Mat(self, N, N)
+        d = self._buffer(8 * N, np.ascontiguousarray(dsc, np.float64))
+        self._run('to_c64', self._flat(N * N), Zd_=self._zdesc(),
+                  C_=A.desc(), dsc_=d.device_address, n_=N)
+        self._factor(A, t0)
 
     # ---- solves and the factor on the host ----------------------------------
     def download(self, chunk=1 << 28):

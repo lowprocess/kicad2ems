@@ -53,6 +53,10 @@ HYBRID_MAX_N = int(os.environ.get('MOM25D_HYBRID_MAX_N', 25000))
 # antenna_vivaldi (21.9k) without a GPU 202 s against 243 s; in a fifth of the
 # memory or less (1.2 GB, 1.2 GB, 2.4 GB)
 BLR_MIN_N = int(os.environ.get('MOM25D_BLR_MIN_N', 20000))
+# the hybrid's double Z on the GPU too, its products there in double
+# precision (the refinement's: a GMRES iteration's cost), where that leaves
+# room for two LUs: MOM25D_GPU_DENSE=off keeps them on the host
+GPU_DENSE = os.environ.get('MOM25D_GPU_DENSE', 'on') != 'off'
 # host bytes besides the solver's matrices
 SPARE = 0.9e9
 PATHS = {('cpu-c128', True): 'double', ('vulkan-c64', True): 'hybrid',
@@ -67,7 +71,8 @@ class SolvePlan:
     complex64, the refinement matrix-free). gpu_factor: factored on the GPU,
     solved on the host (where the GPU's solves failed). keep: LUs kept after
     the solve (a matrix-free one keeps its own alone). loops: the sides'
-    verticals as loops (T^T Z T). why: why not the loop/tree basis."""
+    verticals as loops (T^T Z T). why: why not the loop/tree basis.
+    gpu_dense: the dense Z on the GPU too, the products there."""
     basis: str = 'rwg'
     rung: str = 'cpu-c128'
     dense: bool = True
@@ -75,6 +80,7 @@ class SolvePlan:
     keep: int = 0
     loops: bool = False
     why: str = ''
+    gpu_dense: bool = False
 
     @property
     def path(self):
@@ -103,7 +109,7 @@ def dense_bytes(n, nq):
 
 def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
            solver='direct', reuse=True, history=None, held=None, kh2=1.0,
-           loop_tree='auto', lt_block='', sides=False):
+           loop_tree='auto', lt_block='', sides=False, gpu_dense=False):
     """The SolvePlan at f. n: unknowns, nq: in the LU (fewer with quads), nt:
     triangles. avail: host bytes free. gpu: None, or (free bytes, need:
     unknowns -> an LU's bytes). precision: the run's ('double', 'mixed').
@@ -111,7 +117,7 @@ def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
     (host, GPU) bytes of the LUs kept, theirs to give back}. kh2: (k h)^2 at
     f. loop_tree: 'auto', 'on', 'off'. lt_block: why the loop/tree basis
     cannot be used (quads, holes). sides: the sides of thick copper have
-    verticals."""
+    verticals. gpu_dense: the GPU can hold the double Z (GPU_DENSE)."""
     nq, history = nq or n, history or {}
     basis, why = 'rwg', ''
     if loop_tree == 'on' or (loop_tree == 'auto' and kh2 < LOOP_TREE_BELOW):
@@ -134,8 +140,11 @@ def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
     host = 24.0 * n * n if lt else dense_bytes(n, nq)
     hybrid = fits and (lt or (host + SPARE <= 0.8 * avail
                               and nq <= HYBRID_MAX_N))
+    zd = 16.0 * m * m if hybrid and gpu_dense and GPU_DENSE else 0.0
     if hybrid:
-        room = (0.9 * gpu[0] - 0.4e9) // (8.0 * m * m)
+        room = (0.9 * gpu[0] - 0.4e9 - zd) // (8.0 * m * m)
+        if room < 2 and zd:  # the LUs kept rather than Z
+            zd, room = 0.0, (0.9 * gpu[0] - 0.4e9) // (8.0 * m * m)
     elif not fits:
         room = (0.8 * avail - host - SPARE) // (8.0 * m * m)
     else:  # the GPU's LU, the refinement matrix-free
@@ -145,7 +154,7 @@ def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
     rung = 'vulkan-c64' if fits and (hybrid or not dense) else 'cpu-c64'
     gf = rung == 'vulkan-c64' and near('vulkan-c64')
     return SolvePlan(basis, 'cpu-c64' if gf else rung, dense, gf, keep,
-                     sides and not lt and dense, why)
+                     sides and not lt and dense, why, gpu_dense=bool(zd))
 
 
 def memory_plan(n, avail=None, gpu=None, precision='auto', solver='auto',

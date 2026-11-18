@@ -337,6 +337,62 @@ def test_vulkan_lu_matches_lapack(clean, max_buffer):
 
 
 @vulkan
+@pytest.mark.parametrize('max_buffer', [None, 128 * 1024])
+def test_vulkan_double_z_products_and_factor(clean, max_buffer):
+    """The double Z on the GPU, staged or read from mapped host memory: its
+    products in double precision (NumPy's to round-off), over many buffers
+    too; the LU made from it, equilibrated there, the one of the host's
+    complex64 copy."""
+    from kicad2ems.mom25d import gpu_vk
+    clean.setenv('MOM25D_VK_NB', '64')
+    if max_buffer:
+        clean.setattr(gpu_vk, 'MAX_BUFFER', max_buffer)
+    be = gpu_vk.VulkanBackend()
+    if not be.dense_ok():
+        pytest.skip('no shaderFloat64')
+    rng = np.random.default_rng(5)
+    N = 301
+    Z = rng.standard_normal((N, N)) + 1j * rng.standard_normal((N, N))
+    Z += 4 * np.sqrt(N) * np.eye(N)
+    be.put_dense(Z)
+    assert not max_buffer or len(be.zd.bufs) > 4
+    for k in (1, 3, 6):
+        V = rng.standard_normal((N, k)) + 1j * rng.standard_normal((N, k))
+        Y = Z @ V
+        assert np.abs(be.mul_dense(V) - Y).max() < 1e-13 * np.abs(Y).max()
+    hb = be.host_buffer(16 * N * N)  # (read from mapped memory)
+    Zh = hb.view(np.complex128, N * N).reshape(N, N)
+    Zh[...] = Z
+    be.put_dense(Zh, hb)
+    assert np.abs(be.mul_dense(V) - Y).max() < 1e-13 * np.abs(Y).max()
+    dsc = 1 / np.sqrt(np.abs(np.diagonal(Z)))
+    be.factor_dense(dsc)
+    a, pa = be.download()
+    be.factor((dsc[:, None] * Z * dsc).astype(np.complex64))
+    b, pb = be.download()
+    assert np.array_equal(pa, pb) and np.abs(a - b).max() < 1e-5
+    be.drop_dense()
+    be.release()
+
+
+def test_the_double_z_on_the_gpu_and_freed(clean, S_cpu):
+    """The hybrid's products on the (emulated) GPU: the answer the host's,
+    the LU made from the GPU's copy, which is freed after the solve; with
+    MOM25D_GPU_DENSE off the host's products."""
+    from kicad2ems.mom25d import policy
+    sim = make_sim('emulate')
+    S = sim.sparams(4e9)
+    gpu = mom25d_gpu.get_backend('emulate')
+    assert any(r[0] == 'Z to the GPU' for r in sim.log.records)
+    assert gpu.zd is None and np.abs(S - S_cpu).max() < 1e-6
+    clean.setattr(policy, 'GPU_DENSE', False)
+    sim = make_sim('emulate')
+    S = sim.sparams(4e9)
+    assert not any(r[0] == 'Z to the GPU' for r in sim.log.records)
+    assert np.abs(S - S_cpu).max() < 1e-6
+
+
+@vulkan
 def test_vulkan_backend_matches_cpu(clean, S_cpu):
     sim = make_sim('vulkan')
     S = sim.sparams(4e9)

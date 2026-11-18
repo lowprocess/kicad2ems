@@ -532,7 +532,7 @@ mom25d chooses how to solve from the memory available, and the log says which (`
 |---|---|---|
 | double precision on the CPU | up to 3,500 unknowns, and it fits in half the free RAM | 18 N² bytes |
 | mixed precision on the CPU | above 3,500 unknowns, no GPU: single-precision LU refined to double (about 1.3× faster); LUs kept across the sweep where they fit | 24 N² bytes, plus 8 N² for each LU kept; 10 N² where that doesn't fit |
-| GPU LU, hybrid | up to 25,000 unknowns: the single-precision matrix fits on the GPU, and its double-precision copy in RAM (the refinement's) | 24 N² bytes RAM, 8 N² bytes GPU |
+| GPU LU, hybrid | up to 25,000 unknowns: the single-precision matrix fits on the GPU, and its double-precision copy in RAM (the refinement's); that copy on the GPU too, the refinement's products there, where two LUs still fit beside it | 24 N² bytes RAM, 8 N² bytes GPU; with the products there 16 N² RAM, 24 N² GPU |
 | GPU LU | above 25,000 unknowns, or where the hybrid's RAM doesn't fit: the refinement is matrix-free | 10 N² bytes RAM, 8 N² bytes GPU |
 | block low-rank (BLR), compiled | from 20,000 unknowns where the hybrid does not hold the matrix (any GPU path past it, or no GPU), and wherever nothing else fits | about 3 N² bytes at most: a fifth of a single-precision matrix |
 
@@ -542,6 +542,16 @@ hybrid, antenna_vivaldi (21.9k) 148 s hybrid against 171 s. The GPU takes an LU 
 to spare: on a 16 GB card about 41,000 unknowns. antenna_cp_patch's 40,827 factor there in 19 s; the compiled
 [block low-rank solver](#blr) takes 22.5 s a solve, in 2.4 GB. The free memory is a cgroup's
 where one limits the process (a container, or `systemd-run --scope -p MemoryMax=`).
+
+<a id="gpu-products"></a>
+**The refinement on the GPU.** A GMRES iteration of the hybrid is a product with the double-precision matrix, which
+on the CPU is bound by memory: 3.4 GB read at 14.7k unknowns, 0.12–0.19 s. Where the GPU has room for that matrix
+and two LUs besides, mom25d fills the matrix in the GPU's mapped host memory, copies it across the bus (0.14 s at
+14.7k: no staging copy), makes the single-precision LU's matrix from it there (no complex64 copy on the host, none
+uploaded) and runs the products on the GPU in double precision: 15 ms for two ports at 14.7k, 57 ms for sixteen,
+to 3e-15 of NumPy's. The fresh solve's refinement costs less, and a kept LU serves frequencies further away, a
+solve with it costing a fraction of a new LU. `MOM25D_GPU_DENSE=off` keeps the products on the host; a GPU without
+double precision (shaderFloat64) does so by itself.
 
 Retired on 2026-11-15 (R-F3): the **tiled** GPU solver (half the symmetric matrix on a CuPy GPU; the block
 low-rank solver took its boards, rf_siw's sweep 272 s against its 520 s), the **HODLR** solver (never chosen

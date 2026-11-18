@@ -728,29 +728,56 @@ class FastOperator:
                 return up(d * _lu_solve(lu, B))
         box = [Z]  # (the ladder frees it)
         del Z
-        if plan.dense:
-            # the double Z as filled, equilibrated in its products and in
-            # its complex64 copy (_c64): scaled in place it was two passes
-            # over it, 0.19 s of a 3.5 s solve at 12.3k unknowns
-            A = lambda V: d * (box[0] @ (d * V))
-            k = st.nearest(f, plan.loops, gpu=not plan.gpu_factor)
-            if k is not None:
-                # Z^-1 ~ D0 Z0s^-1 D0: Zs^-1 ~ (D0 / D) Z0s^-1 (D0 / D)
-                r = (k.dsc / dsc)[:, None]
-                Y = self._reused(f, k, A, B, lambda R: r * k.M(r * R))
-                if Y is not None:
-                    return up(dsc[:, None] * Y)
-            # (a dense LU's cost: its factor and refinement, which a kept
-            # one saves; a matrix-free one's: the fill too)
-            t0 = time.time()
-        else:
-            _equilibrate(box[0], dsc)
-            Am = A
-            A = lambda V: d * Am(d * V)
-        Y = self._ladder(f, plan, box, A, B, dsc, t0)
+        G = self._put_dense(plan, box[0])
+        try:
+            if plan.dense:
+                # the double Z as filled, equilibrated in its products and in
+                # its complex64 copy (_c64): scaled in place it was two passes
+                # over it, 0.19 s of a 3.5 s solve at 12.3k unknowns
+                A = ((lambda V: d * G.mul_dense(d * V)) if G is not None else
+                     (lambda V: d * (box[0] @ (d * V))))
+                k = st.nearest(f, plan.loops, gpu=not plan.gpu_factor)
+                if k is not None:
+                    # Z^-1 ~ D0 Z0s^-1 D0: Zs^-1 ~ (D0 / D) Z0s^-1 (D0 / D)
+                    r = (k.dsc / dsc)[:, None]
+                    Y = self._reused(f, k, A, B, lambda R: r * k.M(r * R))
+                    if Y is not None:
+                        return up(dsc[:, None] * Y)
+                # (a dense LU's cost: its factor and refinement, which a kept
+                # one saves; a matrix-free one's: the fill too)
+                t0 = time.time()
+            else:
+                _equilibrate(box[0], dsc)
+                Am = A
+                A = lambda V: d * Am(d * V)
+            Y = self._ladder(f, plan, box, A, B, dsc, t0)
+        finally:
+            if G is not None:
+                G.drop_dense()
         if Y is None:  # matrix-free: Z is gone; f's plan is double now
             return self.solve(f, E)
         return up(dsc[:, None] * Y)
+
+    def _put_dense(self, plan, Z):
+        """The backend holding a copy of the double Z for the refinement's
+        products (plan.gpu_dense; the GPU's LU made from it), or None: the
+        host's."""
+        if not plan.gpu_dense:
+            return None
+        gpu = self._backend()
+        try:
+            with self.sim.log.timer('Z to the GPU', f"N={len(Z)}, double"):
+                zh = getattr(self, '_zh', None)
+                gpu.put_dense(Z, zh if zh is not None and Z.flags.c_contiguous
+                              and Z.ctypes.data == zh.array.ctypes.data
+                              else None)
+            return gpu
+        except Exception as e:  # (out of device memory)
+            gpu.drop_dense()
+            self._once('gpu-dense', "the double-precision Z on the GPU failed"
+                       f" ({type(e).__name__}: {e}): the refinement's "
+                       "products on the host")
+            return None
 
     def plan(self, f):
         """policy.choose's SolvePlan at f, from the simulation and what this
@@ -765,7 +792,8 @@ class FastOperator:
             precision=sim.precision, solver=sim.solver,
             reuse=sim.reuse != 'off', history=self.history, held=held,
             kh2=self.kh2(f), loop_tree=getattr(sim, 'loop_tree', 'auto'),
-            lt_block=self._lt_block(), sides=s is not None and len(s.vert) > 0)
+            lt_block=self._lt_block(), sides=s is not None and len(s.vert) > 0,
+            gpu_dense=gpu is not None and gpu.dense_ok())
         if plan.why:
             self._once('lt', f"loop/tree basis not used at {f / 1e9:.4g} GHz "
                        f"((k h)^2 = {self.kh2(f):.1e}): {plan.why}")
@@ -778,8 +806,9 @@ class FastOperator:
             n = sim.Ne + sim.Nv if plan.basis == 'loop/tree' else (
                 sim.qT.shape[1] if sim.qT is not None else sim.Ne + sim.Nv)
             how = {'hybrid': "complex64 LU there, double-precision refinement "
-                   "on the host", 'gpu-lu': "complex64 LU there, the "
-                   "refinement matrix-free"}
+                   + ("products there too" if plan.gpu_dense
+                      else "on the host"),
+                   'gpu-lu': "complex64 LU there, the refinement matrix-free"}
             self._once('gpu', (
                 f"GPU: {gpu.device} via {gpu.name}, {gpu.mem_free() / 1e9:.1f}"
                 f" GB free, LU needs ~{gpu.vram_needed(n) / 1e9:.1f} GB: "
@@ -808,7 +837,9 @@ class FastOperator:
                 'direct fill',
                 f"N={N}, {np.dtype(dt).name}, {self.core.num_threads()} threads"
         ):
-            Z = np.zeros((N, N), dt)
+            # (gpu_dense: in the GPU's mapped host memory, _put_dense's)
+            Z = (self._host_matrix(N) if plan.gpu_dense else
+                 np.zeros((N, N), dt))
             (self.core.fill_far_c64 if dt == np.complex64 else
              self.core.fill_far)(Z, self.g, self.tb, self.w)
         ready = self._ready == f  # a kept LU's attempt set them up
@@ -884,7 +915,10 @@ class FastOperator:
                 gpu.release()
             with sim.log.timer('LU factor (GPU)', f"N={n}, {gpu.name}"):
                 try:
-                    gpu.factor(c64())
+                    if gpu.zd is not None:  # (_put_dense's: Z there)
+                        gpu.factor_dense(dsc)
+                    else:
+                        gpu.factor(c64())
                     M = GpuLU(gpu, n)
                     return M.to_host() if plan.gpu_factor else M
                 except Exception as e:  # driver / unsupported dtype
@@ -1108,6 +1142,22 @@ class FastOperator:
             return None
         from .gpu import get_backend
         return get_backend(self.sim.gpu)
+
+    def _host_matrix(self, N):
+        """An N x N complex128 Z in the GPU's mapped host memory (the
+        backend's host_buffer), kept for the next solve's."""
+        zh = getattr(self, '_zh', None)
+        if zh is None or zh.nbytes < 16 * N * N:
+            self._zh = None  # (the old one freed first)
+            try:
+                self._zh = zh = self._backend().host_buffer(16 * N * N)
+            except MemoryError:  # (no mapped memory that large)
+                return np.zeros((N, N), complex)
+        return zh.view(np.complex128, N * N).reshape(N, N)
+
+    def release_host(self):
+        """Free _host_matrix's mapped memory (16 N^2 bytes) after a sweep."""
+        self._zh = None
 
     def _points(self):
         """Every unknown's place: the edges' midpoints, the via chains' axes,

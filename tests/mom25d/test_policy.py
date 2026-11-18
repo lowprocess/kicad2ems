@@ -60,6 +60,13 @@ CASES = [
     (dict(sides=True, precision='double'), dict(loops=False)),
     (dict(sides=True, f=1.2e9, history={C64: 1e9}),
      dict(rung='cpu-c128', loops=True)),
+    # the hybrid's double Z on the GPU where two LUs fit beside it
+    (dict(gpu=GPU, gpu_dense=True), dict(gpu_dense=True, keep=4)),
+    (dict(gpu=GPU, gpu_dense=True, n=20000), dict(gpu_dense=True, keep=2)),
+    (dict(gpu=GPU, gpu_dense=True, n=22000),
+     dict(rung='vulkan-c64', gpu_dense=False, keep=3)),
+    (dict(gpu=GPU, gpu_dense=True, avail=4e9), dict(gpu_dense=False)),
+    (dict(gpu_dense=True), dict(gpu_dense=False)),  # (no GPU)
 ]
 
 

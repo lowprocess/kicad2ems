@@ -110,6 +110,7 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
                             zref=model.port_z0, max_solves=max_solves,
                             afs_tol=afs_tol, log=log, progress=progress,
                             on_step=on_step, keep_at=keep_at, freq=freq)
+    sim.fast.release_host()  # (the Result keeps sim)
     # the sweep's grid onto the requested one
     if len(f) != len(freq) or not np.allclose(f, freq):
         S = np.apply_along_axis(
