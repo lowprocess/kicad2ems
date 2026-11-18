@@ -574,8 +574,7 @@ class Sides:
         if not np.array_equal(op.tb['kind'], q.get('kind')):
             q.update(stat_ready=False, kind=op.tb['kind'])
         cols = np.arange(Ne, Ne + self.np_, dtype=np.int32)
-        S = op.core.far_block(np.arange(Ne + self.np_, dtype=np.int32), cols,
-                              g, op.tb, op.w)
+        S = op.core.fold_far(cols, g, op.tb, op.w)  # (far_block's, rows all)
         ri, ci, vv, _ = op.core.near_coo(g, op.tb, q, nP, nQ, op.w)
         q['stat_ready'] = True
         m = (ri >= 0) & (ci >= Ne)

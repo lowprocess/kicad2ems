@@ -3,6 +3,8 @@
 //   fill_far      : centroid-rule (far-field) entries for all edge pairs,
 //                   written straight into a dense Z (complex128 or complex64),
 //                   symmetric, row-parallel, no temporaries
+//   fold_far      : far_block of every row with some columns, a triangle at
+//                   a time (mom25d.sides' folds)
 //   far_block     : the same for arbitrary row / column edge lists (ACA
 //                   callbacks)
 //   matvec_far    : y = Z_far x WITHOUT storing Z (triangle-aggregated, O(Nt^2)
@@ -280,6 +282,86 @@ py::array_t<cd> far_block(arr<int> rows, arr<int> cols, py::dict geom,
                               4.0 * gq * inv_jw);
                     }
                 o[(size_t)i * nc + j] = v;
+            }
+        }
+    }
+    return out;
+}
+
+// fold_far: far_block(arange(Ne), cols) a triangle at a time: each observer
+// triangle's kernels with the columns' triangles once (not again for each of
+// its edges, and not for a half of alpha 0: mom25d.sides' folds, T+ = T-),
+// into the rows of its halves (the triangle's edge slots). The triangles in
+// colours, no two of a colour on one row (edge), a colour's in parallel.
+py::array_t<cd> fold_far(arr<int> cols, py::dict geom, py::dict tabs,
+                         double w) {
+    MeshHold mh(geom); TabHold th(tabs);
+    const Mesh &g = mh.m; const Tables &tb = th.t;
+    const int nc = (int)cols.shape(0), Ne = g.Ne, Nt = g.Nt;
+    const int *C = cols.data();
+    py::array_t<cd> out({Ne, nc});
+    cd *o = out.mutable_data();
+    std::fill(o, o + (size_t)Ne * nc, cd(0.0));
+    std::vector<std::uint64_t> used(Ne, 0);
+    std::vector<std::vector<int>> colour;
+    for (int p = 0; p < Nt; ++p) {
+        std::uint64_t m = 0;
+        for (int sl = 0; sl < 3; ++sl)
+            if (g.te[3 * p + sl] >= 0) m |= used[g.te[3 * p + sl]];
+        int c = 0;  // (the lowest colour free)
+        while (c < 64 && (m >> c & 1)) ++c;
+        if (c == 64) throw std::runtime_error("fold_far: 64 colours");
+        for (int sl = 0; sl < 3; ++sl)
+            if (g.te[3 * p + sl] >= 0) used[g.te[3 * p + sl]] |= 1ull << c;
+        if ((int)colour.size() <= c) colour.resize(c + 1);
+        colour[c].push_back(p);
+    }
+    {
+        py::gil_scoped_release nogil;
+#pragma omp parallel
+        {
+            // per column: sum_t a_t (c_t - v_t) G_A (x, y), sum_t a_t G_q
+            std::vector<cd> sx(nc), sy(nc), s0(nc);
+            for (const auto &col : colour) {
+#pragma omp for schedule(dynamic, 8)
+                for (int ci = 0; ci < (int)col.size(); ++ci) {
+                    const int p = col[ci];
+                    for (int j = 0; j < nc; ++j) {
+                        const int n = C[j];
+                        cd ax = 0, ay = 0, a0 = 0;
+                        for (int t = 0; t < 2; ++t) {
+                            const int q = t ? g.em[n] : g.ep[n];
+                            const double a = (t ? g.am[n] : g.ap[n]) *
+                                             g.area[q];
+                            if (a == 0.0) continue;
+                            const double *v = (t ? g.vm : g.vp) + 2 * n;
+                            cd ga, gq;
+                            tb.kern(g.lt[p], g.lt[q], dist(g.cent, p, q), ga,
+                                    gq);
+                            ax += a * (g.cent[2 * q] - v[0]) * ga;
+                            ay += a * (g.cent[2 * q + 1] - v[1]) * ga;
+                            a0 += a * gq;
+                        }
+                        sx[j] = ax; sy[j] = ay; s0[j] = a0;
+                    }
+                    for (int sl = 0; sl < 3; ++sl) {
+                        const int m = g.te[3 * p + sl];
+                        if (m < 0) continue;
+                        const double a = g.ta[3 * p + sl] * g.area[p],
+                                     dx = g.cent[2 * p] - g.tv[6 * p + 2 * sl],
+                                     dy = g.cent[2 * p + 1] -
+                                          g.tv[6 * p + 2 * sl + 1];
+                        cd *R = o + (size_t)m * nc;
+                        // a (jw (dx sx + dy sy) + 4 s0 / jw)
+                        for (int j = 0; j < nc; ++j) {
+                            const cd d = dx * sx[j] + dy * sy[j];
+                            R[j] += a * cd(4.0 * s0[j].imag() / w -
+                                               w * d.imag(),
+                                           w * d.real() -
+                                               4.0 * s0[j].real() / w);
+                        }
+                    }
+                }
             }
         }
     }
@@ -1852,8 +1934,9 @@ py::object pair_moments3d(arr<double> Vo, arr<double> Vs, arr<double> bar,
 // far > 0: a pair whose centres are further apart than far x the larger
 // triangle's size takes one point each (the centroids, the triangle's
 // functions summed over its points), as the strips' far field.
-// Observers a chunk at a time (the rows of M: 5 N complex each), each chunk
-// observer-parallel, its scatter column-parallel (no two threads on an entry).
+// The observers in colours (no two of one on a row), each colour observer-
+// parallel, an observer's sums in its thread's buffer and then into its rows
+// (chunk: unused, the call's as before).
 // -----------------------------------------------------------------------------
 py::tuple sides_blocks(arr<double> Po, arr<double> Wo, arr<int> olay,
                        arr<double> sp, arr<int> slay, arr<int> lt,
@@ -1897,9 +1980,6 @@ py::tuple sides_blocks(arr<double> Po, arr<double> Wo, arr<int> olay,
               *fp = fpos.data();
     const i64 *spt = sptr.data(), *npt = nptr.data(), *hpt = hptr.data();
     const cd *nq = dq.data();
-    const cd jw(0.0, w), ijw = 1.0 / jw;
-    chunk = std::max<i64>(1, std::min(chunk, No));
-    std::vector<cd> buf(chunk * 5 * N);
     // the far rule's sources: each triangle's centre and size (twice its
     // points' spread), and its functions with their three points summed
     // (linear: the centroid rule's)
@@ -1936,103 +2016,129 @@ py::tuple sides_blocks(arr<double> Po, arr<double> Wo, arr<int> olay,
             }
             tpt[t + 1] = (i64)tfn.size();
         }
+    // the observers' colours (their halves' rows; in chunks of observers,
+    // the sums kept for a column-parallel scatter, the buffer's traffic bound
+    // it: 5 N complex an observer: rf_bends' 0.117 s against 0.034)
+    std::vector<std::uint64_t> used(Nrow, 0);
+    std::vector<std::vector<i64>> colour;
+    for (i64 o = 0; o < No; ++o) {
+        std::uint64_t m = 0;
+        for (i64 h = hpt[o]; h < hpt[o + 1]; ++h) m |= used[tg[h]];
+        int c = 0;  // (the lowest colour free)
+        while (c < 64 && (m >> c & 1)) ++c;
+        if (c == 64) throw std::runtime_error("sides_blocks: 64 colours");
+        for (i64 h = hpt[o]; h < hpt[o + 1]; ++h) used[tg[h]] |= 1ull << c;
+        if ((int)colour.size() <= c) colour.resize(c + 1);
+        colour[c].push_back(o);
+    }
+    (void)chunk;
     {
         py::gil_scoped_release nogil;
-        for (i64 o0 = 0; o0 < No; o0 += chunk) {
-            const i64 o1 = std::min(No, o0 + chunk);
-#pragma omp parallel for schedule(dynamic, 2)
-            for (i64 o = o0; o < o1; ++o) {
-                cd *M1 = &buf[(o - o0) * 5 * N], *Mx = M1 + N, *My = Mx + N,
-                   *Mz = My + N, *Q = Mz + N;
-                std::fill(M1, M1 + 5 * N, cd(0.0));
-                if (ol[o] < 0) continue;
-                const double *P = po + 9 * o, *W = wo + 3 * o;
-                const double x[3] = {P[0], P[3], P[6]},
-                             y[3] = {P[1], P[4], P[7]};
-                const double wx[3] = {W[0] * x[0], W[1] * x[1], W[2] * x[2]},
-                             wy[3] = {W[0] * y[0], W[1] * y[1], W[2] * y[2]};
-                const double ocx = (x[0] + x[1] + x[2]) / 3.0,
-                             ocy = (y[0] + y[1] + y[2]) / 3.0,
-                             osz = far > 0.0 ? spread(P) : 0.0,
-                             Wt = W[0] + W[1] + W[2];
-                for (i64 p = o < skip_o ? skip_p : 0; p < 3 * Ns; ++p) {
-                    if (spt[p] == spt[p + 1]) continue;
-                    const int k = L[ol[o] * nl + sl[p / 3]];
-                    if (k < 0) continue;
-                    if (far > 0.0 && p % 3 == 0) {
-                        // a pair further apart than far x the larger of the
-                        // two: one point each (as the strips' far field)
-                        const i64 t = p / 3;
-                        const double d = std::hypot(ocx - scx[t], ocy - scy[t]);
-                        if (d > far * std::max(osz, ssz[t])) {
-                            const double u = std::min(d / dr[k], top[k]);
+#pragma omp parallel
+        {
+            // M1, Mx, My, Mz, Q and the far pairs' Mx, My apart (their M1 is
+            // the observer's centre . (Mx, My): a sum fewer a pair)
+            std::vector<cd> buf(7 * N);
+            for (const auto &col : colour) {
+#pragma omp for schedule(dynamic, 4)
+                for (i64 ci = 0; ci < (i64)col.size(); ++ci) {
+                    const i64 o = col[ci];
+                    if (ol[o] < 0) continue;
+                    cd *M1 = buf.data(), *Mx = M1 + N, *My = Mx + N,
+                       *Mz = My + N, *Q = Mz + N, *Fx = Q + N, *Fy = Fx + N;
+                    std::fill(M1, M1 + 7 * N, cd(0.0));
+                    const double *P = po + 9 * o, *W = wo + 3 * o;
+                    const double x[3] = {P[0], P[3], P[6]},
+                                 y[3] = {P[1], P[4], P[7]};
+                    const double wx[3] = {W[0] * x[0], W[1] * x[1],
+                                          W[2] * x[2]},
+                                 wy[3] = {W[0] * y[0], W[1] * y[1],
+                                          W[2] * y[2]};
+                    const double ocx = (x[0] + x[1] + x[2]) / 3.0,
+                                 ocy = (y[0] + y[1] + y[2]) / 3.0,
+                                 osz = far > 0.0 ? spread(P) : 0.0,
+                                 Wt = W[0] + W[1] + W[2];
+                    for (i64 p = o < skip_o ? skip_p : 0; p < 3 * Ns; ++p) {
+                        if (spt[p] == spt[p + 1]) continue;
+                        const int k = L[ol[o] * nl + sl[p / 3]];
+                        if (k < 0) continue;
+                        if (far > 0.0 && p % 3 == 0) {
+                            // a pair further apart than far x the larger of
+                            // the two: one point each (as the strips' far
+                            // field)
+                            const i64 t = p / 3;
+                            const double d =
+                                std::hypot(ocx - scx[t], ocy - scy[t]);
+                            if (d > far * std::max(osz, ssz[t])) {
+                                const double u = std::min(d / dr[k], top[k]);
+                                const i64 i = (i64)u;
+                                const double f = u - (double)i, g = 1.0 - f;
+                                const cd *T = tp[k];
+                                const cd A = (T[2 * i] * g + T[2 * i + 2] * f) *
+                                             Wt,
+                                         G = (T[2 * i + 1] * g +
+                                              T[2 * i + 3] * f) *
+                                             Wt;
+                                for (i64 e = tpt[t]; e < tpt[t + 1]; ++e) {
+                                    const int n = tfn[e];
+                                    Fx[n] += tfx[e] * A;
+                                    Fy[n] += tfy[e] * A;
+                                    Q[n] += tfq[e] * G;
+                                }
+                                p += 2;
+                                continue;
+                            }
+                        }
+                        const cd *T = tp[k];
+                        const double ir = 1.0 / dr[k], tk = top[k];
+                        const double sx = ps[3 * p], sy = ps[3 * p + 1];
+                        cd a0(0.0), ax(0.0), ay(0.0), q0(0.0);
+                        for (int q = 0; q < 3; ++q) {
+                            const double u = std::min(
+                                std::hypot(x[q] - sx, y[q] - sy) * ir, tk);
                             const i64 i = (i64)u;
                             const double f = u - (double)i, g = 1.0 - f;
-                            const cd *T = tp[k];
-                            const cd A = (T[2 * i] * g + T[2 * i + 2] * f) * Wt,
-                                     G = (T[2 * i + 1] * g + T[2 * i + 3] * f) *
-                                         Wt;
-                            const cd Ax = A * ocx, Ay = A * ocy;
-                            for (i64 e = tpt[t]; e < tpt[t + 1]; ++e) {
-                                const int n = tfn[e];
-                                M1[n] += tfx[e] * Ax + tfy[e] * Ay;
-                                Mx[n] += tfx[e] * A;
-                                My[n] += tfy[e] * A;
-                                Q[n] += tfq[e] * G;
-                            }
-                            p += 2;
-                            continue;
+                            const cd A = T[2 * i] * g + T[2 * i + 2] * f,
+                                     G = T[2 * i + 1] * g + T[2 * i + 3] * f;
+                            a0 += A * W[q];
+                            ax += A * wx[q];
+                            ay += A * wy[q];
+                            q0 += G * W[q];
+                        }
+                        for (i64 e = spt[p]; e < spt[p + 1]; ++e) {
+                            const int n = sf[e];
+                            M1[n] += fx[e] * ax + fy[e] * ay;
+                            Mx[n] += fx[e] * a0;
+                            My[n] += fy[e] * a0;
+                            Q[n] += fq[e] * q0;
                         }
                     }
-                    const cd *T = tp[k];
-                    const double ir = 1.0 / dr[k], tk = top[k];
-                    const double sx = ps[3 * p], sy = ps[3 * p + 1];
-                    cd a0(0.0), ax(0.0), ay(0.0), q0(0.0);
-                    for (int q = 0; q < 3; ++q) {
-                        const double u = std::min(
-                            std::hypot(x[q] - sx, y[q] - sy) * ir, tk);
-                        const i64 i = (i64)u;
-                        const double f = u - (double)i, g = 1.0 - f;
-                        const cd A = T[2 * i] * g + T[2 * i + 2] * f,
-                                 G = T[2 * i + 1] * g + T[2 * i + 3] * f;
-                        a0 += A * W[q];
-                        ax += A * wx[q];
-                        ay += A * wy[q];
-                        q0 += G * W[q];
+                    for (i64 e = npt[o]; e < npt[o + 1]; ++e) {
+                        const int n = nf[e];
+                        M1[n] += n1[e];
+                        Mx[n] += nx[e];
+                        My[n] += ny[e];
+                        Mz[n] += nz[e];
+                        Q[n] += nq[e];
                     }
-                    for (i64 e = spt[p]; e < spt[p + 1]; ++e) {
-                        const int n = sf[e];
-                        M1[n] += fx[e] * ax + fy[e] * ay;
-                        Mx[n] += fx[e] * a0;
-                        My[n] += fy[e] * a0;
-                        Q[n] += fq[e] * q0;
+                    if (fp[o] >= 0) std::copy(Q, Q + N, F + fp[o] * N);
+                    for (i64 n = 0; n < N; ++n) {
+                        M1[n] += ocx * Fx[n] + ocy * Fy[n];
+                        Mx[n] += Fx[n];
+                        My[n] += Fy[n];
                     }
-                }
-                for (i64 e = npt[o]; e < npt[o + 1]; ++e) {
-                    const int n = nf[e];
-                    M1[n] += n1[e];
-                    Mx[n] += nx[e];
-                    My[n] += ny[e];
-                    Mz[n] += nz[e];
-                    Q[n] += nq[e];
-                }
-                if (fp[o] >= 0) std::copy(Q, Q + N, F + fp[o] * N);
-            }
-            const i64 h0 = hpt[o0], h1 = hpt[o1], cb = 64;
-#pragma omp parallel for schedule(dynamic, 1)
-            for (i64 c0 = 0; c0 < N; c0 += cb) {
-                const i64 c1 = std::min(N, c0 + cb);
-                i64 o = o0;
-                for (i64 h = h0; h < h1; ++h) {
-                    while (hpt[o + 1] <= h) ++o;
-                    const cd *M1 = &buf[(o - o0) * 5 * N], *Mx = M1 + N,
-                             *My = Mx + N, *Mz = My + N, *Q = Mz + N;
-                    const double a = al[h], *vh = v + 3 * h;
-                    cd *R = O + (i64)tg[h] * N;
-                    for (i64 n = c0; n < c1; ++n)
-                        R[n] += a * (jw * (M1[n] - vh[0] * Mx[n] -
-                                           vh[1] * My[n] - vh[2] * Mz[n]) +
-                                     2.0 * Q[n] * ijw);
+                    // alpha (jw (M1 - v . M) + 2 Q / jw), no complex products
+                    for (i64 h = hpt[o]; h < hpt[o + 1]; ++h) {
+                        const double a = al[h], *vh = v + 3 * h,
+                                     c2 = 2.0 / w;
+                        cd *R = O + (i64)tg[h] * N;
+                        for (i64 n = 0; n < N; ++n) {
+                            const cd D = M1[n] - vh[0] * Mx[n] -
+                                         vh[1] * My[n] - vh[2] * Mz[n];
+                            R[n] += a * cd(c2 * Q[n].imag() - w * D.imag(),
+                                           w * D.real() - c2 * Q[n].real());
+                        }
+                    }
                 }
             }
         }
@@ -2541,6 +2647,7 @@ PYBIND11_MODULE(_core, m) {
     m.def("fill_far_c64", &fill_far_t<cf>,
           "far-field entries into a complex64 Z");
     m.def("far_block", &far_block);
+    m.def("fold_far", &fold_far);
     m.def("matvec_far", &matvec_far);
     m.def("matvec_far_multi", &matvec_far_multi,
           "Y = Z_far X for several right-hand sides");
