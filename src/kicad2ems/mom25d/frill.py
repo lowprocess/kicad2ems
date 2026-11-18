@@ -242,9 +242,8 @@ def bessel_int(n, spec, kr, dk, rho, J=None):
     if J is None:  # the compiled core's sum, without the Bessel matrix
         from .via import bessel_sum
         out = bessel_sum(n, rho, kr, np.atleast_2d(spec) * dk[None, :])
-        if out is not None:
-            return out[0] if spec.ndim == 1 else out
-    J = (J or bessel_matrices(rho, kr, (n,)))[n]
+        return out[0] if spec.ndim == 1 else out
+    J = J[n]
     out = (np.atleast_2d(spec) * dk[None, :]) @ J.T
     return out[0] if spec.ndim == 1 else out
 
@@ -310,13 +309,10 @@ class FrillKernels:
             tm = np.array([-self.e1[s] * self.T(s[0], k) for s, k in keys])
             te = np.array(
                 [0.5 * self.h1[s] * self.T(s[0], k, 'h') * kr for s, k in keys])
-            # (the core's sums; else one set of Bessel matrices)
-            from .via import bessel_sum
-            J = (None if bessel_sum(0, rho[:1], kr[:1], np.zeros(
-                (1, 1))) is not None else bessel_matrices(rho, kr))
-            for key, p1, u0, u2 in zip(keys, bessel_int(1, tm, kr, dk, rho, J),
-                                       bessel_int(0, te, kr, dk, rho, J),
-                                       bessel_int(2, te, kr, dk, rho, J)):
+            # (the core's sums)
+            for key, p1, u0, u2 in zip(keys, bessel_int(1, tm, kr, dk, rho),
+                                       bessel_int(0, te, kr, dk, rho),
+                                       bessel_int(2, te, kr, dk, rho)):
                 self.psi[key] = Table1D(rho, p1, rho_max)
                 self.U[key] = Table1D(rho, np.stack([u0, u2], 1), rho_max)
         planes = {s[0] for s in every}

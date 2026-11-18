@@ -1,6 +1,7 @@
 """
 Stage-3 checks (fast): vias, off-plane integrals, mesher robustness, lumped
-elements, AAA, fast operator vs dense.
+elements, AAA, the compiled core against the NumPy references
+(dense_reference.py).
 """
 import numpy as np
 import pytest
@@ -14,7 +15,8 @@ from kicad2ems.emsdev.numerics.geo import gap_zones
 from kicad2ems.mom25d.geo import mesh_polygons, LinePort
 from kicad2ems.mom25d.sim import (Simulation, SeriesLumped, Via, ViaPort,
                                   line_char_xs)
-from kicad2ems.mom25d.afs import aaa
+from kicad2ems.emsdev.afs import aaa
+import dense_reference as dense
 
 
 def test_via_kernels_exact_in_air():
@@ -568,14 +570,12 @@ def test_afs_does_not_stop_on_a_model_that_ignores_new_samples(monkeypatch):
     nothing between iterations while it is still wrong (seen on a 10 dB coupler:
     stopped at 9 solves, -14 dB coupling instead of -11 dB). The sweep must also
     see the model predict each new sample before it stops."""
-    import kicad2ems.mom25d.afs as afs
-    # (the sweep is emsdev's, mom25d's its wrapper)
-    import kicad2ems.emsdev.afs as shared
-    real, first = shared.aaa, []
+    import kicad2ems.emsdev.afs as afs
+    real, first = afs.aaa, []
     def stale(z, F, **kw):  # fitted to the first samples, ever after
         first.append(first[0] if first else (z, F))
         return real(*first[-1], **kw)
-    monkeypatch.setattr(shared, 'aaa', stale)
+    monkeypatch.setattr(afs, 'aaa', stale)
     truth = lambda f: np.array([[0.3 + 0.2 * np.sin(f / 4e8)]], complex)
     seen = []
     _, _, fs, _, hist = afs.adaptive_sweep(lambda f: seen.append(f) or truth(f),
@@ -592,8 +592,9 @@ def test_afs_does_not_stop_on_a_model_that_ignores_new_samples(monkeypatch):
 
 
 def test_fast_operators_match_dense():
-    """Direct (centroid far field + exact near correction) and ACA/GMRES against
-    the dense reference on a two-port line between via ports."""
+    """The direct solver (centroid far field + exact near correction) and the
+    block low-rank one against the dense reference on a two-port line between
+    via ports."""
     from shapely.geometry import box, Point
     w, h, L = 0.35e-3, 0.2e-3, 10e-3
     st = LayerStack([Layer(h, 4.3, 0.02)])
@@ -604,20 +605,22 @@ def test_fast_operators_match_dense():
         Point(L / 2, 0).buffer(0.25e-3)
     ]
     out = {}
-    for solver in ('dense', 'direct', 'aca'):
+    for solver in ('dense', 'direct', 'blr'):
         sim = Simulation(
             st, {1: geo},
             [ViaPort(v1, 54.0), ViaPort(v2, 54.0)], dmax=0.3e-3, w_ref=w,
-            solver=solver, verbose=False)
-        out[solver] = sim.sparams(4e9)
+            solver='direct' if solver == 'dense' else solver, verbose=False)
+        out[solver] = (dense.sparams(sim, 4e9) if solver == 'dense' else
+                       sim.sparams(4e9))
     assert np.max(np.abs(out['direct'] - out['dense'])) < 0.01
-    assert np.max(np.abs(out['aca'] - out['direct'])) < 1e-3
+    assert np.max(np.abs(out['blr'] - out['direct'])) < 1e-3
 
 
 def test_a_wideband_stack_is_its_constant_stack_at_each_frequency():
     """A Djordjevic-Sarkar stack (Layer(fref=)) solved at f: the S of the
-    constant stack with that frequency's permittivity, on the dense path (its
-    static charge part rescaled per layer) and the direct one (two layers:
+    constant stack with that frequency's permittivity, on the dense reference
+    (its static charge part at f's permittivity) and the direct solver (two
+    layers:
     a via between them, the via kernels), and not the S at fref's
     permittivity."""
     from shapely.geometry import box, Point
@@ -634,8 +637,8 @@ def test_a_wideband_stack_is_its_constant_stack_at_each_frequency():
         sim = Simulation(LayerStack(layers), {1: geo1, 2: geo2},
                          [ViaPort(Via(-L / 2, 0, 1, 2, 0.1e-3)),
                           ViaPort(v1)], dmax=0.4e-3, dmax_layer={1: 0.6e-3},
-                         w_ref={2: w, 1: 1e-3}, solver=solver, verbose=False)
-        return sim.sparams(f)
+                         w_ref={2: w, 1: 1e-3}, solver='direct', verbose=False)
+        return dense.sparams(sim, f) if solver == 'dense' else sim.sparams(f)
 
     e1, e2 = (djordjevic_sarkar(4.4, 0.02, 1e9,
                                 f), djordjevic_sarkar(3.5, 0.004, 1e9, f))
@@ -656,9 +659,8 @@ def test_a_wideband_stack_is_its_constant_stack_at_each_frequency():
 
 
 def test_core_matches_numpy_and_solvers_agree(monkeypatch):
-    """Compiled core (if built) vs NumPy fallback, and direct/mixed/BLR
-    agreement."""
-    pytest.importorskip('kicad2ems.mom25d._core')
+    """The compiled core's far field against the NumPy reference, and
+    direct/mixed/BLR agreement."""
     from shapely.geometry import box, Point
     st = LayerStack([Layer(0.2e-3, 4.3, 0.02), Layer(0.2e-3, 4.3, 0.02)])
     w, L = 0.35e-3, 8e-3
@@ -675,11 +677,10 @@ def test_core_matches_numpy_and_solvers_agree(monkeypatch):
                                           precision=p, verbose=False)
     sim = mk('direct')
     fo = sim.fast
-    fo.setup(4e9, mode='aca')
+    fo.setup(4e9, mode='sparse')
     rows, cols = np.arange(0, sim.Ne, 7), np.arange(0, sim.Ne, 5)
     Bc = fo.entry(rows, cols)
-    fo.core = None
-    Bp = fo.entry(rows, cols)
+    Bp = dense.far_block(fo, rows, cols)
     assert np.abs(Bc - Bp).max() < 1e-12 * np.abs(Bp).max()
     S = {
         k: mk(*k).sparams(4e9)
@@ -812,12 +813,14 @@ def test_near_field_of_a_dipole_over_ground():
 
 
 def test_new_core_kernels_match_numpy():
-    """near_pairs, hankel_real (j0_sum), fan_q, scale_c64 and the via blocks'
-    radial_table_sum of the compiled core against their NumPy versions."""
-    core = pytest.importorskip('kicad2ems.mom25d._core')
+    """near_pairs, hankel_real (j0_sum), the Bessel kernels, fan_q, scale_c64
+    and radial_table_sum (the via blocks') of the compiled core against NumPy
+    and SciPy."""
+    from kicad2ems.mom25d import _core as core
     from shapely.geometry import box, Point
     from scipy.spatial import cKDTree
-    from kicad2ems.mom25d.via import j0_sum, j0_matrix
+    from scipy.special import jv
+    from kicad2ems.mom25d.via import j0_sum, jn, bessel_sum
     st = LayerStack([Layer(0.2e-3, 4.3, 0.02), Layer(0.2e-3, 4.3, 0.02)])
     w, L = 0.35e-3, 8e-3
     geo2 = [box(-L / 2, -w / 2, L / 2, w / 2), Point(L / 2, 0).buffer(0.25e-3)]
@@ -848,15 +851,16 @@ def test_new_core_kernels_match_numpy():
     kr = t + 1j * np.where(t < 500, 50 * np.sin(np.pi * t / 500), 0.0)
     rho = np.linspace(0, 5e-3, 41)
     W = np.random.default_rng(0).normal(size=(2, len(kr))) * (1 + 0.3j)
-    ref = (j0_matrix(rho, kr) @ W.T).T
-    assert np.abs(j0_sum(rho, kr, W) - ref).max() < 1e-12 * np.abs(ref).max()
+    for n in (0, 1, 2):
+        J = (jv(n, rho[:, None] * kr[None]) @ W.T).T
+        got = j0_sum(rho, kr, W) if n == 0 else bessel_sum(n, rho, kr, W)
+        assert np.abs(got - J).max() < 1e-11 * np.abs(J).max(), n
+        z = rho[:, None] * kr[None, :500:7]
+        assert np.abs(jn(n, z) - jv(n, z)).max() < 1e-11, n
     # the fan columns
     fo.setup(4e9, mode='sparse')
     assert len(sim.F)
-    Qc = fo._fan_columns()
-    keep_core, fo.core = fo.core, None
-    Qp = fo._fan_columns()
-    fo.core = keep_core
+    Qc, Qp = fo._fan_columns(), dense.fan_columns(fo)
     assert np.abs(Qc - Qp).max() < 1e-12 * np.abs(Qp).max()
     # Z <- D Z D and its complex64 copy
     Z = (np.random.default_rng(1).normal(size=(50, 50))
@@ -866,64 +870,32 @@ def test_new_core_kernels_match_numpy():
     Z64 = core.scale_c64(Z, d)
     assert (np.allclose(Z, Zr) and Z64.dtype == np.complex64
             and np.allclose(Z64, Zr, rtol=1e-6))
-    # the via blocks: the chains' kernel on the triangles in the core (a chain
-    # at a time in NumPy before), the same B and C
-    from kicad2ems.mom25d import fast
-    Qf = fo._fan_columns()
-    Bc, Cc = sim._via_blocks(4e9, Qf)
-    fast._core, keep = None, fast._core
-    try:
-        Bp, Cp = sim._via_blocks(4e9, Qf)
-    finally:
-        fast._core = keep
-    assert (np.abs(Bc - Bp).max() < 1e-12 * np.abs(Bp).max()
-            and np.abs(Cc - Cp).max() < 1e-12 * np.abs(Cp).max())
-
-
-def test_core_choice():
-    """core='auto' and 'compiled': the core's direct solver for a small board
-    too; use_core('python'): no compiled kernels, NumPy's dense solver; the
-    answers agree."""
-    pytest.importorskip('kicad2ems.mom25d._core')
-    from shapely.geometry import box, Point
-    from kicad2ems.mom25d import fast
-    w, h, L = 0.35e-3, 0.2e-3, 10e-3
-    st = LayerStack([Layer(h, 4.3, 0.02)])
-    geo = [
-        box(-L / 2, -w / 2, L / 2, w / 2),
-        Point(-L / 2, 0).buffer(0.25e-3),
-        Point(L / 2, 0).buffer(0.25e-3)
-    ]
-    mk = lambda core: Simulation(st, {1: geo}, [
-        ViaPort(Via(-L / 2, 0, 0, 1, 0.1e-3), 54.0),
-        ViaPort(Via(L / 2, 0, 0, 1, 0.1e-3), 54.0)
-    ], dmax=0.3e-3, w_ref=w, solver='auto', core=core, verbose=False)
-    auto, comp = mk('auto'), mk('compiled')
-    assert auto.solver == 'direct' and comp.solver == 'direct'
-    prev = fast.use_core('python')
-    try:
-        dense = mk('auto')
-        assert fast._core is None and dense.solver == 'dense'
-        assert np.abs(auto.sparams(4e9) - dense.sparams(4e9)).max() < 0.01
-    finally:
-        fast.set_core(prev)
-    assert fast._core is not None
-    with pytest.raises(ValueError):
-        fast.use_core('gpu')
+    # the via blocks' kernel: sum_q table(|P[t, q] - V[v]|) W[t, q], the table
+    # interpolated linearly
+    rng = np.random.default_rng(4)
+    px, py = rng.uniform(0, 2e-3, (2, 30, 6))
+    Wq, vx, vy = rng.uniform(0, 1, (30, 6)), *rng.uniform(0, 2e-3, (2, 5))
+    table = rng.normal(size=200) + 1j * rng.normal(size=200)
+    dr = 2e-5
+    u = np.minimum(np.hypot(px[..., None] - vx, py[..., None] - vy) / dr,
+                   len(table) - 1.000001)
+    i = u.astype(int)
+    want = ((table[i] * (1 - (u - i)) + table[i + 1] * (u - i))
+            * Wq[..., None]).sum(1)
+    got = core.radial_table_sum(px, py, Wq, vx, vy, table, dr)
+    assert np.abs(got - want).max() < 1e-12 * np.abs(want).max()
 
 
 def test_memory_plan_cpu_mixed():
     """Above MIXED_MIN_N, 'auto' is mixed precision on the CPU too (complex64 LU
-    + refinement); double below it and without the compiled core."""
+    + refinement); double below it."""
     from kicad2ems.mom25d.sim import memory_plan, MIXED_MIN_N
-    big = memory_plan(MIXED_MIN_N + 1000, has_core=True, avail=64e9, gpu=None,
+    big = memory_plan(MIXED_MIN_N + 1000, avail=64e9, gpu=None,
                       solver='direct')
     assert (big['precision'], big['path']) == ('mixed', 'cpu-mixed')
-    assert (memory_plan(MIXED_MIN_N - 500, has_core=True, avail=64e9, gpu=None,
+    assert (memory_plan(MIXED_MIN_N - 500, avail=64e9, gpu=None,
                         solver='direct')['precision'] == 'double')
-    assert (memory_plan(MIXED_MIN_N + 1000, has_core=False, avail=64e9,
-                        gpu=None, solver='direct')['precision'] == 'double')
-    assert (memory_plan(MIXED_MIN_N + 1000, has_core=True, avail=64e9, gpu=None,
+    assert (memory_plan(MIXED_MIN_N + 1000, avail=64e9, gpu=None,
                         precision='double',
                         solver='direct')['precision'] == 'double')
 
@@ -1063,7 +1035,7 @@ def _line_sims(m, bottom_open=True, flip=False, layers=None):
         st = LayerStack(layers)
         return Simulation(st, {st.N: strip}, [
             ViaPort(Via(x, 0, 0, st.N, 0.1e-3), 54.0) for x in (-L / 2, L / 2)
-        ], dmax=0.3e-3, w_ref=w, verbose=False)
+        ], dmax=0.3e-3, w_ref=w, precision='double', verbose=False)
     st = LayerStack(list(reversed(layers)) if flip else layers, bottom='open')
     plane = [box(-L / 2 - m, -m, L / 2 + m, m)]
     shapes = {0: strip, st.N: plane} if flip else {0: plane, st.N: strip}
@@ -1071,7 +1043,8 @@ def _line_sims(m, bottom_open=True, flip=False, layers=None):
         st, shapes,
         [ViaPort(Via(x, 0, 0, st.N, 0.1e-3), 54.0)
          for x in (-L / 2, L / 2)], dmax=0.3e-3,
-        dmax_layer={st.N if flip else 0: 0.3e-3}, w_ref=w, verbose=False)
+        dmax_layer={st.N if flip else 0: 0.3e-3}, w_ref=w, precision='double',
+        verbose=False)
 
 
 def test_a_meshed_ground_converges_to_the_infinite_one():
@@ -1082,7 +1055,7 @@ def test_a_meshed_ground_converges_to_the_infinite_one():
     err = []
     for m in (0.5e-3, 2e-3):
         S = _line_sims(m).sparams(2e9)
-        assert abs(S[0, 1] - S[1, 0]) < 1e-10
+        assert abs(S[0, 1] - S[1, 0]) < 1e-9  # (the core's sums: round-off)
         err.append(abs(S[1, 0] - ref[1, 0]))
     assert err[1] < 0.15 * err[0] and err[1] < 2e-3, err
     assert abs(S[0, 0] - ref[0, 0]) < 6e-3
@@ -1159,7 +1132,7 @@ def test_a_log_sweep_is_sampled_and_given_in_log_f():
     and gaps in log f and the model given at the frequencies asked for. It had
     been seeded and checked on a linear grid (one solve below 1 MHz) and
     interpolated linearly onto the log points: |dS| up to 1.8."""
-    import kicad2ems.mom25d.afs as afs
+    import kicad2ems.emsdev.afs as afs
     fc = 100e3
     truth = lambda f: np.array([[(1 - 1j * f / fc) / (1 + 1j * f / fc)]])
     freq = np.geomspace(10, 1e9, 201)
@@ -1212,23 +1185,3 @@ def test_the_openmp_cap_holds_in_every_thread():
     assert got[-2:] == ['3', '3']
 
 
-def test_an_unconverged_compressed_solve_is_no_answer(monkeypatch):
-    """ACA's GMRES that ends far from the answer: an error, as the block
-    low-rank solve's (it had been returned with a warning note, its currents
-    written as S-parameters)."""
-    from shapely.geometry import box, Point
-    import kicad2ems.mom25d.fast as F
-    w, h, L = 0.35e-3, 0.2e-3, 10e-3
-    st = LayerStack([Layer(h, 4.3, 0.02)])
-    v1, v2 = Via(-L / 2, 0, 0, 1, 0.1e-3), Via(L / 2, 0, 0, 1, 0.1e-3)
-    geo = [
-        box(-L / 2, -w / 2, L / 2, w / 2),
-        Point(-L / 2, 0).buffer(0.25e-3),
-        Point(L / 2, 0).buffer(0.25e-3)
-    ]
-    sim = Simulation(st, {1: geo},
-                     [ViaPort(v1, 54.0), ViaPort(v2, 54.0)], dmax=0.3e-3,
-                     w_ref=w, solver='aca', verbose=False)
-    monkeypatch.setattr(F, 'gmres', lambda A, b, **kw: (np.zeros_like(b), 1))
-    with pytest.raises(FloatingPointError, match='did not converge'):
-        sim.sparams(4e9)

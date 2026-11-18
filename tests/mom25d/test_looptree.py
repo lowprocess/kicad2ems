@@ -9,7 +9,7 @@ import pytest
 
 from kicad2ems.mom25d.multilayer import Layer, LayerStack
 from kicad2ems.mom25d.sim import Simulation, Via, ViaPort, Metal
-from kicad2ems.mom25d.looptree import LoopTree, transpose
+from kicad2ems.mom25d.looptree import LoopTree
 
 
 def _sim(precision='double', loop_tree='auto', metal=None, dmax=0.4e-3):
@@ -59,21 +59,14 @@ def test_the_loops_carry_no_charge_and_the_transforms_are_the_basis():
     Z = rng.standard_normal((N, N)) + 1j * rng.standard_normal((N, N))
     Z = Z + Z.T
     ref = K.T @ Z @ K
-    try:
-        import kicad2ems.mom25d._core as core
-    except ImportError:
-        core = None
-    for c in {None, core}:
-        X = Z.copy()
-        lt.to_ideal(X)
-        lt.cols(X, c)
-        lt.rows(X, c)
-        assert np.abs(X - ref).max() < 1e-12 * np.abs(ref).max(), c
+    X = Z.copy()
+    lt.to_ideal(X)
+    lt.cols(X)
+    lt.rows(X)
+    assert np.abs(X - ref).max() < 1e-12 * np.abs(ref).max()
     E = rng.standard_normal((N, 2)) + 0j
-    assert np.allclose(lt.rows(lt.rhs(E), core), K.T @ E, rtol=0,
+    assert np.allclose(lt.rows(lt.rhs(E)), K.T @ E, rtol=0,
                        atol=1e-12 * np.abs(K.T @ E).max())
-    A = rng.standard_normal((7, 7))
-    assert np.array_equal(transpose(A.copy(), block=3), A.T)
 
 
 def test_the_charge_block_is_the_tree_s_elastance():
@@ -86,16 +79,11 @@ def test_the_charge_block_is_the_tree_s_elastance():
     A = ((lt.charge_operator(sim)
           @ lt.from_ideal(lt.from_tree(np.eye(lt.N))))[:, lt.tree])
     Phi = A.T @ (Mq / a[:, None] / a[None, :]) @ A
-    try:
-        import kicad2ems.mom25d._core as core
-    except ImportError:
-        core = None
-    for c in {None, core}:
-        Z = np.zeros((lt.N, lt.N), complex)
-        lt.charge_into(Z, Mq, a, c)
-        assert (np.abs(Z[np.ix_(lt.tree, lt.tree)] - Phi).max()
-                < 1e-12 * np.abs(Phi).max()), c
-        assert not Z[lt.cot].any() and not Z[:, lt.cot].any()
+    Z = np.zeros((lt.N, lt.N), complex)
+    lt.charge_into(Z, Mq, a)
+    assert (np.abs(Z[np.ix_(lt.tree, lt.tree)] - Phi).max()
+            < 1e-12 * np.abs(Phi).max())
+    assert not Z[lt.cot].any() and not Z[:, lt.cot].any()
 
 
 def test_the_loop_tree_solve_is_the_rwg_basis_s_where_that_holds():

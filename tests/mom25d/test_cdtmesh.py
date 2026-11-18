@@ -6,11 +6,8 @@ import shapely
 from shapely.geometry import Point, box
 
 from kicad2ems.emsdev.numerics import cdtmesh
-from kicad2ems.mom25d import fast, geo
-
-pytestmark = pytest.mark.skipif(
-    (fast._built is None or not hasattr(fast._built, 'cdt_triangulate')),
-    reason="the compiled core without cdt_triangulate")
+import kicad2ems.mom25d
+from kicad2ems.mom25d import _core, geo
 
 
 def _areas(nodes, tris):
@@ -31,7 +28,7 @@ def _min_angles(nodes, tris):
 
 
 def test_core_keeps_points_and_segments():
-    core = fast._built
+    core = _core
     V = np.array(
         [[0, 0], [1, 0], [1, 1], [0, 1], [0.25, 0.5], [0.75, 0.5], [0.5, 0.2]],
         float)
@@ -68,7 +65,7 @@ def test_no_slivers_outside_a_straight_outline():
     V = np.vstack([[[0, 0], [10, 0]], top[::-1]])
     n = len(V)
     E = np.array([(k, (k + 1) % n) for k in range(n)], np.int32)
-    v, t = fast._built.cdt_triangulate(V, E, 1e-10)
+    v, t = _core.cdt_triangulate(V, E, 1e-10)
     a = _areas(v, t)
     assert (np.abs(a) > 1e-6).all() and abs(a.sum() - 10.0) < 1e-6
 
@@ -98,17 +95,8 @@ def test_mesh_polygons_meets_the_limits(coarsen):
                 (0.5 * dmax**2))
 
 
-def test_the_mesher_needs_the_core_not_the_kernels(monkeypatch):
-    """MOM25D_NO_CORE (use_core('python')) sets the kernels aside; the mesher
-    still triangulates with the core."""
-    prev = fast.use_core('python')
-    try:
-        nodes, tris, _ = geo.mesh_polygons(box(0, 0, 4e-3, 2e-3), 0.5e-3,
-                                           0.5e-3, 2)
-        assert len(tris) > 0
-    finally:
-        fast.set_core(prev)
-    monkeypatch.setattr(fast, '_built', None)
+def test_the_mesher_needs_the_core(monkeypatch):
+    monkeypatch.setattr(kicad2ems.mom25d, '_core', None)
     with pytest.raises(RuntimeError, match='compiled core'):
         geo.mesh_polygons(box(0, 0, 4e-3, 2e-3), 0.5e-3, 0.5e-3, 2)
 
@@ -129,7 +117,7 @@ def test_the_interior_is_equilateral_cells():
     T = cdtmesh.mesh(
         ring, segs, lambda C: np.full(len(C), 0.5 * dm**2), lambda P:
         (P[:, 0] > 0) & (P[:, 0] < W) & (P[:, 1] > 0) & (P[:, 1] < H),
-        fast._built)
+        _core)
     v, t = T['vertices'], T['triangles']
     a = _areas(v, t)
     assert (abs(a.sum() - W * H) < 1e-9 and T['info']['seed'] > 0.8 *
@@ -171,7 +159,7 @@ def test_core_is_constrained_delaunay(lattice):
         P = np.random.default_rng(1).random((400, 2)) * [6, 4]
     P = P[shapely.contains_xy(g.buffer(-0.02), P[:, 0], P[:, 1])]
     V = np.vstack(rings + [P])
-    v, t = fast._built.cdt_triangulate(V, segs, 1e-12)
+    v, t = _core.cdt_triangulate(V, segs, 1e-12)
     a = _areas(v, t)
     assert (a > 0).all() and len(v) == len(V)
     # (the holes are kept: geo drops them)
@@ -196,7 +184,7 @@ def test_core_splits_segments_at_points_on_them():
     V = np.array([[0, 0], [4, 0], [4, 2], [0, 2], [1, 1], [3, 1], [2, 1],
                   [2.5, 1 + 1e-13], [1.5, 1 + 1e-6]], float)
     E = np.array([[0, 1], [1, 2], [2, 3], [3, 0], [4, 5]], np.int32)
-    v, t = fast._built.cdt_triangulate(V, E, 1e-10)
+    v, t = _core.cdt_triangulate(V, E, 1e-10)
     edges = {
         tuple(sorted(e))
         for tri in t
@@ -207,7 +195,7 @@ def test_core_splits_segments_at_points_on_them():
             and len(v) == len(V))
     V = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], float)
     E = np.array([[0, 2], [1, 3], [0, 1], [1, 2], [2, 3], [3, 0]], np.int32)
-    v, t = fast._built.cdt_triangulate(V, E, 1e-10)
+    v, t = _core.cdt_triangulate(V, E, 1e-10)
     assert len(v) == 5 and np.allclose(v[4], [0.5, 0.5]) and len(t) == 4
 
 
@@ -217,7 +205,7 @@ def test_core_refines_to_the_angle_with_off_centres():
     constant: on wpthb's PDN layers 24-40 % fewer)."""
     g, rings, segs = _plate_with_holes()
     V = np.vstack(rings)
-    v, t = fast._built.cdt_triangulate(V, segs, 1e-12, 25.0, 0)
+    v, t = _core.cdt_triangulate(V, segs, 1e-12, 25.0, 0)
     keep = shapely.contains_xy(g, *v[t].mean(1).T)
     assert _min_angles(v, t[keep]).min() >= 25.0 - 1e-9
     assert abs(_areas(v, t[keep]).sum() - g.area) < 1e-9

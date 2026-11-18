@@ -1,9 +1,7 @@
 """
 The compiled block low-rank LU (core BLRFactor, fast._CompiledBLR): the
-preconditioner of solve_blr, against blr.py's and the direct solver.
+preconditioner of solve_blr, against the direct solver.
 """
-import types
-
 import numpy as np
 import pytest
 
@@ -32,23 +30,9 @@ def _sim(solver='blr', dmax=0.25e-3):
     return sim
 
 
-def _without_compiled_blr(sim):
-    core = sim.fast.core
-    sim.fast.core = types.SimpleNamespace(
-        **{
-            k: getattr(core, k)
-            for k in dir(core)
-            if not k.startswith('_') and k != 'BLRFactor'
-        })
-
-
 def test_the_compiled_blr_solves_as_the_direct_solver():
-    """The compiled block low-rank factor (its Python one retired, R-F3) gives
-    the direct solver's S; without it the run says what it needs rather than
-    falling back to a slow copy."""
-    core = pytest.importorskip('kicad2ems.mom25d._core')
-    if not hasattr(core, 'BLRFactor'):
-        pytest.skip('a core without BLRFactor')
+    """The compiled block low-rank factor gives the direct solver's S."""
+    pytest.importorskip('kicad2ems.mom25d._core')
     f = 4e9
     ref = _sim('direct').sparams(f)
     sim = _sim()
@@ -60,10 +44,6 @@ def test_the_compiled_blr_solves_as_the_direct_solver():
     st, N = sim.fast.blr.stats, _sim().Ne + _sim().Nv
     assert st['lowrank'] > 0 and st['singular'] == 0
     assert st['bytes'] < 8.0 * N * N  # less than a complex64 matrix
-    sim = _sim()
-    _without_compiled_blr(sim)
-    with pytest.raises(RuntimeError, match='compiled core'):
-        sim.sparams(f)
 
 
 def test_a_smaller_eta_compresses_more_tiles_to_the_same_answer():
@@ -72,9 +52,7 @@ def test_a_smaller_eta_compresses_more_tiles_to_the_same_answer():
     (Compressing the tiles beside the diagonal too, eta < 0, leaves no
     preconditioner on tiles of 128: GMRES did not converge in 500
     iterations.)"""
-    core = pytest.importorskip('kicad2ems.mom25d._core')
-    if not hasattr(core, 'BLRFactor'):
-        pytest.skip('a core without BLRFactor')
+    pytest.importorskip('kicad2ems.mom25d._core')
     f = 4e9
     ref = _sim('direct').sparams(f)
     low = {}
@@ -93,10 +71,8 @@ def test_the_factor_inverts_the_matrix_to_its_tolerance():
     """M Z ~ I: the compiled factor applied to Z x gives x back, as near as the
     compression and complex64 allow (this Z's condition number is ~2e6: 1e-2 at
     any tolerance below 1e-6)."""
-    core = pytest.importorskip('kicad2ems.mom25d._core')
-    if not hasattr(core, 'BLRFactor'):
-        pytest.skip('a core without BLRFactor')
-    from kicad2ems.mom25d.blr import cluster_tiles
+    pytest.importorskip('kicad2ems.mom25d._core')
+    from kicad2ems.mom25d.fast import cluster_tiles
     from kicad2ems.mom25d.fast import _CompiledBLR
     sim = _sim()
     fo = sim.fast
@@ -126,9 +102,7 @@ def test_a_factor_too_loose_to_precondition_is_made_again_tighter(monkeypatch):
     """A factor GMRES stalls with (fast.BLR_STALL) is factored again at a
     hundredth of the tolerance, kept for the frequencies after; the answer the
     direct solver's."""
-    core = pytest.importorskip('kicad2ems.mom25d._core')
-    if not hasattr(core, 'BLRFactor'):
-        pytest.skip('a core without BLRFactor')
+    pytest.importorskip('kicad2ems.mom25d._core')
     from kicad2ems.mom25d import fast
     monkeypatch.setattr(fast, 'BLR_STALL', (4, 1e-3))
     ref = _sim('direct').sparams(4e9)
@@ -147,9 +121,7 @@ def test_low_frequency_goes_to_the_loop_tree_basis_or_a_double_factor(
     loop/tree basis's dense solve, and where that has no room factors in double
     precision, compressed to a hundredth of (k h)^2. Both give the direct
     solver's answer."""
-    core = pytest.importorskip('kicad2ems.mom25d._core')
-    if not hasattr(core, 'BLRFactor128'):
-        pytest.skip('a core without BLRFactor128')
+    pytest.importorskip('kicad2ems.mom25d._core')
     from kicad2ems.mom25d import fast
     f = 2e6
     ref_sim = _sim('direct')
@@ -174,9 +146,7 @@ def test_low_frequency_goes_to_the_loop_tree_basis_or_a_double_factor(
 
 def test_an_unconverged_block_low_rank_solve_is_an_error_not_an_answer(
         monkeypatch):
-    core = pytest.importorskip('kicad2ems.mom25d._core')
-    if not hasattr(core, 'BLRFactor'):
-        pytest.skip('a core without BLRFactor')
+    pytest.importorskip('kicad2ems.mom25d._core')
     from kicad2ems.mom25d import fast
     def stalled(self, A, B, M, restart, maxiter, stall=None):
         self.iters = [30] * B.shape[1]

@@ -49,13 +49,15 @@ class LinePort:
 
 
 def mesh_polygons(*args, **kw):
-    """emsdev.numerics.geo.mesh_polygons on mom25d's compiled core, built or not
-    set aside (MOM25D_NO_CORE sets the kernels aside, not the mesher)."""
-    from . import fast
-    if fast._built is None or not hasattr(fast._built, 'cdt_triangulate'):
+    """emsdev.numerics.geo.mesh_polygons on mom25d's compiled core."""
+    try:
+        from . import _core
+    except ImportError:
+        _core = None
+    if _core is None or not hasattr(_core, 'cdt_triangulate'):
         raise RuntimeError(
             "mom25d meshes with its compiled core, which is not built (or is "
             "older than its mesher): python -m kicad2ems.mom25d.core.build "
             "(needs a C++17 compiler and pybind11)"
         )
-    return geo.mesh_polygons(*args, core=fast._built, **kw)
+    return geo.mesh_polygons(*args, core=_core, **kw)

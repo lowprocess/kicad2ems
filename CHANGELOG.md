@@ -348,6 +348,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   path; with gfdtd's and pcbqs's gone no solver uses CuPy, so the `gpu-cuda12`,
   `gpu-cuda13` and `gpu-rocm7` extras and the installer's CuPy question go too
   (it offers to remove a CuPy wheel left in the venv).
+  The NumPy kernels as solver paths: the dense solver (`solver='dense'`),
+  ACA / H-matrix (`fast.HMatrix`, `aca`), `--mom-core` (`fast.use_core`,
+  `MOM25D_NO_CORE`) and the kernels' NumPy fallbacks: the compiled core is
+  required, as the mesher already needed it (`auto` chose none of them with
+  the core built; ACA took more than 30 minutes a frequency where block
+  low-rank takes 22.5 s). The tests keep the NumPy references they check the
+  core against (`tests/mom25d/dense_reference.py`). The old names
+  `mom25d.afs` and `mom25d.blr` (emsdev's `afs`, `fast.cluster_tiles`).
 
 ## 2026-11-14 (0.3.0)
 

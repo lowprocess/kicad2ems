@@ -897,8 +897,8 @@ void charge_into(py::array_t<cd> Z, arr<cd> Mq, arr<int> tree, arr<int> u,
 }
 
 // -----------------------------------------------------------------------------
-// BLRFactor: a block low-rank LU (blr.py's, compiled;
-// fast.FastOperator.solve_blr). The equilibrated matrix cut into the tiles of a
+// BLRFactor: a block low-rank LU (fast.FastOperator.solve_blr's). The
+// equilibrated matrix cut into the tiles of a
 // geometric cluster tree, in elimination order; tiles between well-separated
 // clusters (`far`) assembled, compressed by adaptive cross approximation with
 // full pivoting and recompressed (QR, SVD), the others dense; a right-looking
@@ -2483,7 +2483,7 @@ PYBIND11_MODULE(_core, m) {
           "the loop/tree basis's charge block into Z[tree, tree]");
     py::class_<BLRFactorT<cf>>(m, "BLRFactor",
                                "block low-rank LU of the equilibrated matrix "
-                               "(blr.py's, compiled), complex64")
+                               "(fast.solve_blr's), complex64")
         .def(py::init<arr<int>, arr<int>, arr<uint8_t>, py::dict, py::dict,
                       double, arr<i64>, arr<int>, arr<cd>, arr<cd>, arr<cd>,
                       arr<double>, double, int>())

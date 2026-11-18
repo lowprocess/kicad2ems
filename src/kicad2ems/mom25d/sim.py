@@ -28,15 +28,13 @@ import shapely
 from kicad2ems.emsdev.memory import available as available_memory  # noqa: F401
 
 from .model import KNOWN_SPAN
-from kicad2ems.emsdev.numerics.base import (MU0, EPS0, RWG, qform, combine,
-                                            quad_pts, _BAR3, _W3, _BAR6, _W6)
+from kicad2ems.emsdev.numerics.base import (MU0, RWG, quad_pts, _BAR3, _W3,
+                                            _BAR6, _W6)
 from kicad2ems.emsdev.numerics.geo import to_geometry, is_manhattan_rects, ngon
-from .base import (singular_moments, gram_matrix, fit_gamma, fit_waves,
-                   moments7, quad_moments)
+from .base import fit_gamma, fit_waves
 from .multilayer import RunLog, GreenTableML, make_mesh_ml
 from .geo import LinePort, mesh_polygons
 from .via import ViaKernels
-from .sing import offplane_pairs, offplane_moments
 
 # a port's cut, a lumped element's line: its ends moved to the copper's edge
 # within this x its width (Simulation._snap)
@@ -54,10 +52,6 @@ def _ls(layer):
     return list(layer) if isinstance(layer, tuple) else [layer]
 
 
-def _sym(M):
-    return 0.5 * (M + M.T)
-
-
 def _zfun(Z):
     return Z if callable(Z) else (lambda f, Z=Z: complex(Z))
 
@@ -73,7 +67,7 @@ def rlc(R=0.0, L=0.0, C=None, parallel=False):
     return Z
 
 
-# above this, 'auto' precision is mixed whenever the compiled core is there
+# above this, 'auto' precision is mixed
 MIXED_MIN_N = 3500
 # above this many unknowns in the LU (after quads), mixed precision on the GPU
 # when there is one: 1.5-1.9x a solve from 1.4k to 3.4k unknowns against double
@@ -106,21 +100,19 @@ def gpu_info(b, n):
     return (b.name, b.mem_free(), b.vram_needed(n), b.fits(n))
 
 
-def memory_plan(n, has_core=True, avail=None, gpu=None, precision='auto',
-                solver='auto', n_lu=None, has_blr=None):
+def memory_plan(n, avail=None, gpu=None, precision='auto', solver='auto',
+                n_lu=None):
     """How the solver of n unknowns runs and the memory it needs: dict(solver,
     precision, path, host, gpu) (bytes). gpu: None, or (backend name, free
     bytes), or gpu_info's (name, free, the LU's bytes, fits): the backend's own
     estimate (the Vulkan LU factors in place: 8 N^2, not the 16 N^2 the 2-tuple
-    assumes). path: 'dense' (NumPy, small n), 'double' (LU on the CPU), 'hybrid'
-    (complex64 LU on the GPU, the double Z on the host for the refinement),
-    'gpu-lu' (complex64 Z on the host and
-    the GPU), 'cpu-mixed' (complex64 LU on the CPU), 'blr' / 'aca' (compressed,
-    no dense Z; the tiled L L^T on the GPU is retired, BLR taking its boards:
-    R-F3). n_lu: the unknowns the LU factors (fewer with quads; default n),
-    which the thresholds GPU_MIN_N and MIXED_MIN_N compare. has_blr:
-    whether the compiled core has the block low-rank LU (None: look), which
-    'auto' takes from BLR_MIN_N unknowns where the hybrid does not fit."""
+    assumes). path: 'double' (LU on the CPU), 'hybrid' (complex64 LU on the
+    GPU, the double Z on the host for the refinement), 'gpu-lu' (complex64 Z on
+    the host and the GPU), 'cpu-mixed' (complex64 LU on the CPU), 'blr'
+    (compressed, no dense Z). n_lu: the unknowns the LU factors (fewer with
+    quads; default n), which the thresholds GPU_MIN_N and MIXED_MIN_N compare.
+    'auto' takes the block low-rank LU from BLR_MIN_N unknowns where the hybrid
+    does not fit, and wherever the direct solver does not."""
     avail = available_memory() if avail is None else avail
     name, free = gpu[:2] if gpu else (None, 0.0)
     if gpu and len(gpu) >= 4:  # the backend's own: gpu_info(backend, n)
@@ -139,8 +131,6 @@ def memory_plan(n, has_core=True, avail=None, gpu=None, precision='auto',
         m = n_lu or n
         precision = ('mixed' if m > (GPU_MIN_N if gpu_fits else MIXED_MIN_N)
                      or 18.0 * n * n + 0.9e9 > 0.5 * avail else 'double')
-    if precision == 'mixed' and not has_core:
-        precision = 'double'
     hybrid = (precision == 'mixed' and gpu_fits
               and 24.0 * n * n + 0.9e9 <= 0.8 * avail
               and (n_lu or n) <= HYBRID_MAX_N)
@@ -153,31 +143,17 @@ def memory_plan(n, has_core=True, avail=None, gpu=None, precision='auto',
     else:
         path, host, dev = 'cpu-mixed', 10.0 * n * n + 0.9e9, 0.0
     fits = host <= 0.8 * avail
-    if has_blr is None and solver in ('auto', 'blr'):
-        from .fast import _core
-        has_blr = hasattr(_core, 'BLRFactor')
     if solver == 'auto':
-        # NumPy's dense solver only without the core: the core's direct solver
-        # is 3-8x faster on small boards too (rf_stubnotch coarsened, 2.3k
-        # unknowns: 25.4 s against 7.3 s a sweep; docs/mom.md#core)
-        solver = 'dense' if n <= 3500 and fits and not has_core else \
-            ('direct' if fits else ('blr' if has_core else 'aca'))
+        solver = 'direct' if fits else 'blr'
         # (quad cells: the direct solver's alone)
-        if (solver == 'direct' and has_blr
-                and path in ('gpu-lu', 'cpu-mixed')
+        if (solver == 'direct' and path in ('gpu-lu', 'cpu-mixed')
                 and n >= BLR_MIN_N and (n_lu is None or n_lu >= n)):
             solver = 'blr'
-    if solver == 'blr':  # the factor is the compiled core's: without it, ACA
-        solver = 'blr' if has_blr else 'aca'
-    if solver == 'dense':
-        path, host, dev = 'dense', 18.0 * n * n + 0.9e9, 0.0
-    elif solver == 'blr':
+    if solver == 'blr':
         # the compiled factor: measured 18-30 % of a complex64 matrix at 22-41k
         # unknowns, with the sparse near field: antenna_cp_patch's run peaked at
         # 5 GB
         path, host, dev = solver, 3.0 * n * n + 2e4 * n + 0.9e9, 0.0
-    elif solver == 'aca':
-        path, host, dev = solver, 2e4 * n + 0.9e9, 0.0
     return dict(solver=solver, precision=precision, path=path, host=host,
                 gpu=dev, fits=fits)
 
@@ -409,9 +385,9 @@ def _square_vias(geom, pts, sides=4):
 class Simulation:
     def __init__(self, stack, shapes, ports=(), vias=(), lumped=(), dmax=0.3e-3,
                  dmax_layer=None, w_ref=None, ncross=6, grade=1.0, near_fac=5.0,
-                 mesher='auto', metal=None, solver='dense', aca_tol=1e-4,
+                 mesher='auto', metal=None, solver='auto',
                  refine=1.0e-3, precision='auto', gpu='auto', verbose=True,
-                 title='', mesh_only=False, core='auto', quads=False,
+                 title='', mesh_only=False, quads=False,
                  quad_tol=35.0, zone=None, dmax_out=None, signal_vias='round',
                  stitching_vias='auto', signal=None, via_barrel=True,
                  coarsen=None, grow=0.5, structured='auto',
@@ -438,8 +414,6 @@ class Simulation:
         self.gpu = gpu
         # 'auto' | 'double' | 'mixed' (direct: complex64 Z + refinement)
         self.precision = precision
-        # 'compiled': the compiled core's direct solver for small boards too
-        self.core_mode = core
         # solver='blr' preconditioner settings: 1e-3 left antenna_cp_patch
         # (40.8k unknowns) unsolved (GMRES 500 iterations), 1e-5 solves it in 7;
         # eta 0.3 against 0.7: less memory, as fast (fast.solve_blr)
@@ -788,7 +762,7 @@ class Simulation:
         ext = np.vstack([r.nodes] + [sl.rwg.nodes for sl in self.slots])
         self.rho_max = 1.05 * np.hypot(*(ext.max(0) - ext.min(0))) + 1e-4
         self._slot_cache = {}
-        self._gram, self._xcache, self.qT = None, {}, None
+        self._gram, self.qT = None, None
         self._edge_sets()
         # port gaps, sample cuts and lumped elements keep their edges as
         # unknowns (quad cells)
@@ -832,7 +806,9 @@ class Simulation:
                 f"quads: {qi['quads']} quad cells ({qi['tris_merged']} of "
                 f"{qi['tris']} triangles), {qi['full']} -> {qi['reduced']} "
                 "unknowns")
-        if self.qT is not None and solver not in ('dense', 'direct', 'auto'):
+        if solver not in ('auto', 'direct', 'blr'):
+            raise ValueError(f"solver: auto, direct or blr, not {solver!r}")
+        if self.qT is not None and solver not in ('direct', 'auto'):
             self.log.note(f"quads: not with solver {solver} yet - ignored")
             self.qT = None
         self.tables, self.last = {}, None
@@ -845,15 +821,8 @@ class Simulation:
                     "BoardModel.characterize) - a wrong zc makes S "
                     "non-reciprocal when ports differ")
         n = r.Ne + self.Nv
-        # None without the build, or with MOM25D_NO_CORE set
-        from .fast import _core, cap_blas_threads
+        from .fast import cap_blas_threads, FastOperator
         cap_blas_threads()
-        has_core = _core is not None
-        if not has_core:
-            self.log.note(
-                "note: no compiled core (python -m "
-                "kicad2ems.mom25d.core.build, or MOM25D_NO_CORE is set): the "
-                "NumPy kernels are several times slower")
         # mixed above MIXED_MIN_N (memory_plan): the complex64 LU on the GPU
         # (5.7 s a solve against 14.9 s on the via transition, 13.5k unknowns,
         # RX 7800 XT) or on the CPU (about 1.3x faster than double). The
@@ -862,13 +831,13 @@ class Simulation:
         # frequencies up to MIXED_RETRY x it stay in double
         from .gpu import get_backend
         n_lu = self.qT.shape[1] if self.qT is not None else n
-        want_gpu = (has_core and gpu != 'off'
+        want_gpu = (gpu != 'off'
                     and (precision == 'mixed' or
                          (precision == 'auto' and n_lu > GPU_MIN_N)))
         b = get_backend(gpu) if want_gpu else None
         g = gpu_info(b, n_lu) if b is not None else None
         avail = available_memory()
-        plan = memory_plan(n, has_core, avail, g, precision, solver, n_lu=n_lu)
+        plan = memory_plan(n, avail, g, precision, solver, n_lu=n_lu)
         self.plan, self.precision, precision = (plan, plan['precision'],
                                                 plan['precision'])
         if solver in ('auto', 'direct'):
@@ -886,15 +855,8 @@ class Simulation:
                        else '') + f"), {avail / 1e9:.1f} GB available")
             if solver == 'auto':
                 solver = plan['solver']
-                # the core, not NumPy's
-                if (solver == 'dense' and self.core_mode == 'compiled'
-                        and has_core):
-                    plan = memory_plan(n, has_core, avail, g, precision,
-                                       'direct', n_lu=n_lu)
-                    self.precision, self.plan, solver = (plan['precision'],
-                                                         plan, plan['solver'])
             elif not plan['fits']:
-                solver = 'blr' if has_core else 'aca'
+                solver = 'blr'
                 self.log.note(
                     "WARNING: direct solver would need "
                     f"~{plan['host'] / 1e9:.1f} GB but only {avail / 1e9:.1f} "
@@ -903,54 +865,11 @@ class Simulation:
                     "reduce N."
                 )
             self.solver = solver
-            if self.qT is not None and solver not in ('dense', 'direct'):
+            if self.qT is not None and solver != 'direct':
                 self.log.note(f"quads: not with solver {solver} yet - ignored")
                 self.qT = None
             self.log.note(f"solver: {solver} (N = {n})")
-        if solver in ('aca', 'direct', 'blr'):
-            from .fast import FastOperator
-            self.fast = FastOperator(self, tol=aca_tol)
-            return
-
-        # ---- static singular parts ------------------------------------------
-        with self.log.timer('singular integrals (static, once)'):
-            M0, Mrr, Mr, Qs = (np.zeros((Nt, Nt)), np.zeros(
-                (Nt, Nt)), np.zeros((Nt, Nt, 2)), np.zeros((Nt, Nt), complex))
-            for k in self.layers:
-                idx = self.tri_idx[k]
-                m0, mr, mrr = singular_moments(
-                    SimpleNamespace(nodes=r.nodes, tris=r.tris[idx],
-                                    area=r.area[idx]))
-                ix = np.ix_(idx, idx)
-                M0[ix], Mrr[ix], Mr[ix] = _sym(m0), _sym(mrr), mr
-                Qs[ix] = M0[ix] / (2 * np.pi * EPS0 * stack.eps_sum(k))
-            self.SA = _sym(
-                MU0 / (4 * np.pi) * combine(r, Mrr, Mr[..., 0], Mr[..., 1], M0))
-            self.SQ, self.Qs_F = _sym(qform(r.D, Qs, r.D)), Qs[:, self.F].copy()
-            # a wideband stack: the static charge part scales as 1 / eps_sum of
-            # its layer, each layer's kept apart to rescale at each frequency
-            # (_static_q); the tables extract theirs at that frequency
-            self._SQk = {}
-            if stack.dispersive:
-                for k in self.layers:
-                    Qk = np.zeros((Nt, Nt), complex)
-                    ix = np.ix_(self.tri_idx[k], self.tri_idx[k])
-                    Qk[ix] = Qs[ix]
-                    self._SQk[k] = (_sym(qform(r.D, Qk,
-                                               r.D)), Qk[:, self.F].copy(),
-                                    stack.eps_sum(k))
-
-    def _static_q(self, f):
-        """(SQ, Qs_F): the static charge parts at f (a wideband stack's rescaled
-        to its permittivities there)."""
-        if not self._SQk:
-            return self.SQ, self.Qs_F
-        st = self.st.at(f)
-        SQ, QF = 0, 0
-        for k, (sq, qf, e0) in self._SQk.items():
-            s = e0 / st.eps_sum(k)
-            SQ, QF = SQ + s * sq, QF + s * qf
-        return SQ, QF
+        self.fast = FastOperator(self)
 
     @staticmethod
     def _guess_wref(g, lps):
@@ -1050,49 +969,6 @@ class Simulation:
                                                        image_sing=im)
         return self.tables
 
-    def impedance(self, f):
-        w = 2 * np.pi * f
-        r = self.rwg
-        Nt = len(r.tris)
-        A0, Axo, Ayo, Arr, Q0 = (np.zeros((Nt, Nt), complex) for _ in range(5))
-        for (a, b), gt in self.green_tables(f).items():
-            ia, ib = self.tri_idx[a], self.tri_idx[b]
-            with self.log.timer('smooth-kernel fill'):
-                a0, axo, ayo, axs, ays, arr, q0 = self._block(ia, ib, a, b, gt)
-            ix = np.ix_(ia, ib)
-            A0[ix], Axo[ix], Ayo[ix], Arr[ix], Q0[ix] = a0, axo, ayo, arr, q0
-            if a != b:
-                jx = np.ix_(ib, ia)
-                A0[jx], Axo[jx], Ayo[jx], Arr[jx], Q0[jx] = (a0.T, axs.T, ays.T,
-                                                             arr.T, q0.T)
-        N = self.Ne + self.Nv
-        Z = np.zeros((N, N), complex)
-        SQ, Qs_F = self._static_q(f)
-        with self.log.timer('assemble'):
-            Q0 = _sym(Q0)
-            Z[:self.Ne, :self.Ne] = (
-                1j * w * (self.SA + combine(r, _sym(Arr), Axo, Ayo, _sym(A0))) +
-                (SQ + qform(r.D, Q0, r.D)) / (1j * w))
-        if self.Nv:
-            with self.log.timer('via kernels', f"{self.Nv} chains"):
-                B, C = self._via_blocks(f, Q0[:, self.F] + Qs_F)
-            Z[:self.Ne,
-              self.Ne:], Z[self.Ne:, :self.Ne], Z[self.Ne:,
-                                                  self.Ne:] = (B, B.T, C)
-        if self.edge is not None:
-            Z += self.edge.matrix(self, f).toarray()
-        for el, (idx, sig) in zip(self.lumped, self.lumped_edges):
-            u = np.zeros(N); u[idx] = sig * r.l[idx]
-            Z += el.Z(f) * np.outer(u, u)
-        if self.metal is not None:
-            self._gram = gram_matrix(r) if self._gram is None else self._gram
-            # the Gram matrix couples edges of one layer only:
-            zs = self.metal.zs_edges(f, self.edge_layer)
-            # still symmetric
-            Z[:self.Ne, :self.Ne] += ((zs[:, None] if np.ndim(zs) else zs)
-                                      * self._gram)
-        return _sym(Z)
-
     # via pairs of one span pair above which R comes from a table
     VIA_TABLE_PAIRS = 64
     # triangles x chains of the via -> strip kernel's block (64 MB)
@@ -1180,30 +1056,19 @@ class Simulation:
         # smooth via -> strip kernel D(rho), Galerkin-tested with the RWG
         # divergence: in the compiled core the chains of a span a block at a
         # time (a chain and a layer at a time, NumPy's, had been 1.5 s of an 8 s
-        # solve with 888 chains), else as before
-        from .fast import _core
-        if _core is not None and hasattr(_core, 'radial_table_sum'):
-            per = max(1, self.VIA_CHUNK // max(len(r.tris), 1))
-            for span, ns in geo['by_span'].items():
-                for s in range(0, len(ns), per):
-                    sel = ns[s:s + per]
-                    c = np.zeros((len(r.tris), len(sel)), complex)
-                    for k in self.layers:
-                        idx, D = self.tri_idx[k], vk.D[(k, span)]
-                        c[idx] = _core.radial_table_sum(
-                            self.P6[idx, :, 0], self.P6[idx, :,
-                                                        1], self.W6[idx],
-                            geo['x'][sel], geo['y'][sel], D.v, D._dr)
-                    B[:, sel] += r.D.T @ c
-        else:
-            for n, (v, kb, kt) in enumerate(self.chains):
-                c = np.zeros(len(r.tris), complex)
+        # solve with 888 chains)
+        from . import _core
+        per = max(1, self.VIA_CHUNK // max(len(r.tris), 1))
+        for span, ns in geo['by_span'].items():
+            for s in range(0, len(ns), per):
+                sel = ns[s:s + per]
+                c = np.zeros((len(r.tris), len(sel)), complex)
                 for k in self.layers:
-                    idx = self.tri_idx[k]
-                    dist = np.hypot(self.P6[idx, :, 0] - v.x,
-                                    self.P6[idx, :, 1] - v.y)
-                    c[idx] = (vk.D[(k, (kb, kt))](dist) * self.W6[idx]).sum(1)
-                B[:, n] += r.D.T @ c
+                    idx, D = self.tri_idx[k], vk.D[(k, span)]
+                    c[idx] = _core.radial_table_sum(
+                        self.P6[idx, :, 0], self.P6[idx, :, 1], self.W6[idx],
+                        geo['x'][sel], geo['y'][sel], D.v, D._dr)
+                B[:, sel] += r.D.T @ c
         if self.sides is not None and len(self.chains):
             # the chains' smooth potential (D) on the sides' charges, as on
             # the strips' (else a fold would see the difference between its
@@ -1333,50 +1198,6 @@ class Simulation:
             Nc = len(self.chains)
             C[col0:, :Nc] = C[:Nc, col0:].T
 
-    def _block(self, ia, ib, a, b, gt):
-        r, st = self.rwg, self.st
-        ca, cb = r.cent[ia], r.cent[ib]
-        rho = np.sqrt(((ca[:, None, :] - cb[None, :, :]) ** 2).sum(-1))
-        GA, GQ = gt.AQ(rho)
-        xs = a != b and gt.cA != 0   # near-singular cross-layer part extracted
-        im = a == b and gt.dimg > 0  # nearest image of a thin layer extracted
-        if xs:
-            R3 = np.sqrt(rho ** 2 + gt.d ** 2)
-            GA, GQ = GA + gt.cA / R3, GQ + gt.cq / R3
-        # (the extracted image is integrated analytically for ALL pairs below,
-        # consistent with the
-        #  exact 1/R part: far from a source over ground they nearly cancel - a
-        #    dipole field)
-        wgt = r.area[ia][:, None] * r.area[ib][None, :]
-        out = moments7(GA * wgt, GQ * wgt, ca[:, None], cb[None])
-        Ls = abs(st.z[a] - st.z[b]) if a != b else 2 * min(
-            st.layers[a - 1].h, (st.layers[a].h if a < st.N else np.inf))
-        size = np.maximum(self.tri_size[ia][:, None],
-                          self.tri_size[ib][None, :])
-        p, q = np.nonzero(rho ** 2 + Ls ** 2 < (self.near_fac * size) ** 2)
-        for M, v in zip(
-                out,
-                quad_moments(
-                    *((self.P3, self.W3) if a == b else (self.P6, self.W6)),
-                    ia[p], ib[q], gt)):
-            M[p, q] = v
-        for flag, dd, cA, cq, allp in ((xs, gt.d, gt.cA, gt.cq, False),
-                                       (im, gt.dimg, gt.cAi, gt.cqi, True)):
-            if not flag:
-                continue
-            pp, qq = ((np.repeat(np.arange(len(ia)), len(ib)),
-                       np.tile(np.arange(len(ib)), len(ia))) if allp else
-                      (p, q))
-            # geometry only: cache across frequencies
-            if (a, b, dd) not in self._xcache:
-                self._xcache[(a, b,
-                              dd)] = offplane_pairs(r.nodes, r.tris, ia[pp],
-                                                    ib[qq], dd)
-            for M, v in zip(out,
-                            offplane_moments(cA, cq, self._xcache[(a, b, dd)])):
-                M[pp, qq] += v
-        return out
-
     # ---- excitation and port quantities -------------------------------------
     def excitation(self):
         E = np.zeros((self.Ne + self.Nv, len(self.ports)), complex)
@@ -1434,14 +1255,6 @@ class Simulation:
                 ws.append(k * sg * w)
         return np.concatenate(ns), np.concatenate(ws)
 
-    def solve(self, Z, E):
-        with self.log.timer('LU solve', f"N={Z.shape[0]}"):
-            # symmetric equilibration
-            d = 1.0 / np.sqrt(np.abs(np.diagonal(Z)) + 1e-300)
-            return (
-                d[:, None]
-                * np.linalg.solve(Z * d[:, None] * d[None, :], d[:, None] * E))
-
     def currents(self, f, E):
         """Basis currents for excitation columns E, with the configured solver.
         A result that isn't finite (the GPU solve once returned NaN on a
@@ -1468,19 +1281,10 @@ class Simulation:
             "return path")
 
     def _currents(self, f, E):
-        if self.solver == 'aca':
-            return self.fast.solve(f, E)
-        if self.solver == 'direct':
-            return self.fast.solve_direct(f, E, precision=self.precision)
         if self.solver == 'blr':
             return self.fast.solve_blr(f, E, tol=self.blr_tol,
                                        tile=self.blr_tile, eta=self.blr_eta)
-        if self.qT is not None:
-            T = self.qT
-            return (
-                T @ self.solve(np.asarray(T.T @ (T.T @ self.impedance(f).T).T),
-                               np.asarray(T.T @ E)))
-        return self.solve(self.impedance(f), E)
+        return self.fast.solve_direct(f, E, precision=self.precision)
 
     def sparams(self, f, keep=False):
         for p in self.ports:  # frequency-dependent reference impedance

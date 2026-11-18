@@ -226,31 +226,26 @@ def test_vulkan_backend_matches_cpu(clean, S_cpu):
 
 
 def test_memory_plan_takes_the_backends_own_estimate():
-    """A Vulkan LU factors in place (8 N^2): with gpu_info's 4-tuple the plan
-    puts 40k unknowns on a 16 GB GPU, where the 2-tuple's 16 N^2 assumption
-    sent it to the CPU."""
+    """A Vulkan LU factors in place (8 N^2): with gpu_info's 4-tuple the direct
+    solver puts 40k unknowns on a 16 GB GPU, where the 2-tuple's 16 N^2
+    assumption sent it to the CPU; 'auto' takes the block low-rank LU there."""
     from kicad2ems.mom25d.sim import memory_plan
     n = 40000
     need = 8.0 * n * n + 0.8e9
-    p = memory_plan(n, has_core=True, avail=30e9,
-                    gpu=('vulkan', 15.7e9, need, True), solver='auto',
-                    has_blr=False)
+    own = ('vulkan', 15.7e9, need, True)
+    p = memory_plan(n, avail=30e9, gpu=own, solver='direct')
     assert p['path'] == 'gpu-lu'
-    p = memory_plan(n, has_core=True, avail=8e9, gpu=('vulkan', 15.7e9),
-                    solver='auto', has_blr=False)
-    # no compiled BLR: the H-matrix (Python BLR retired)
-    assert p['solver'] == 'aca'
-    # the compiled block low-rank LU there instead, from sim.BLR_MIN_N unknowns;
-    # the hybrid where it holds Z
-    p = memory_plan(n, has_core=True, avail=30e9,
-                    gpu=('vulkan', 15.7e9, need, True), solver='auto',
-                    has_blr=True)
+    p = memory_plan(n, avail=30e9, gpu=('vulkan', 15.7e9), solver='direct')
+    assert p['path'] == 'cpu-mixed'
+    # the compiled block low-rank LU from sim.BLR_MIN_N unknowns; the hybrid
+    # where it holds Z
+    p = memory_plan(n, avail=30e9, gpu=own, solver='auto')
     assert p['solver'] == 'blr' and p['host'] < 8.0 * n * n
-    p = memory_plan(20000, has_core=True, avail=30e9, gpu=('vulkan', 15.7e9),
-                    solver='auto', has_blr=True)
+    p = memory_plan(n, avail=8e9, gpu=('vulkan', 15.7e9), solver='auto')
+    assert p['solver'] == 'blr'
+    p = memory_plan(20000, avail=30e9, gpu=('vulkan', 15.7e9), solver='auto')
     assert p['path'] == 'hybrid' and p['solver'] == 'direct'
-    p = memory_plan(15000, has_core=True, avail=30e9, gpu=None, solver='auto',
-                    has_blr=True)
+    p = memory_plan(15000, avail=30e9, gpu=None, solver='auto')
     # (below BLR_MIN_N)
     assert p['path'] == 'cpu-mixed' and p['solver'] == 'direct'
 

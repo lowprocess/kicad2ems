@@ -453,12 +453,11 @@ mom25d chooses how to solve from the memory available, and the log says which (`
 
 | Path | When | Memory for N unknowns |
 |---|---|---|
-| double precision on the CPU | up to 3,500 unknowns (or no compiled core), and it fits in half the free RAM | 18 N² bytes |
+| double precision on the CPU | up to 3,500 unknowns, and it fits in half the free RAM | 18 N² bytes |
 | mixed precision on the CPU | above 3,500 unknowns, no GPU: single-precision LU refined to double (about 1.3× faster); LUs kept across the sweep where they fit | 24 N² bytes, plus 8 N² for each LU kept; 10 N² where that doesn't fit |
 | GPU LU, hybrid | up to 25,000 unknowns: the single-precision matrix fits on the GPU, and its double-precision copy in RAM (the refinement's) | 24 N² bytes RAM, 8 N² bytes GPU |
 | GPU LU | above 25,000 unknowns, or where the hybrid's RAM doesn't fit: the refinement is matrix-free | 10 N² bytes RAM, 8 N² bytes GPU |
 | block low-rank (BLR), compiled | from 20,000 unknowns where the hybrid does not hold the matrix (any GPU path past it, or no GPU), and wherever nothing else fits | about 3 N² bytes at most: a fifth of a single-precision matrix |
-| compressed (ACA) | without the compiled core (or one without its block low-rank factor), nothing else fits | much less, but far slower on large boards |
 
 Past 25,000 unknowns the hybrid's double-precision matrix costs more in memory traffic than its cheaper refinement
 saves (`MOM25D_HYBRID_MAX_N` moves the limit): rf_siw (28.7k unknowns) takes 296 s on the GPU LU against 456 s
@@ -469,7 +468,9 @@ where one limits the process (a container, or `systemd-run --scope -p MemoryMax=
 
 Retired on 2026-11-15 (R-F3): the **tiled** GPU solver (half the symmetric matrix on a CuPy GPU; the block
 low-rank solver took its boards, rf_siw's sweep 272 s against its 520 s), the **HODLR** solver (never chosen
-automatically) and the Python block low-rank factor (reached only with an older core; ACA instead now).
+automatically) and the Python block low-rank factor. On 2026-11-18: the NumPy dense solver, the compressed
+ACA / H-matrix solver (more than 30 minutes a frequency where block low-rank takes 22.5 s) and `--mom-core`:
+the compiled core is required.
 
 <a id="reuse"></a>
 **Across a sweep** the matrix changes smoothly with frequency, so one frequency's LU preconditions the next ones:
@@ -561,18 +562,13 @@ Measured on every example, CPU and GPU: [benchmarks](benchmarks.md). A few of th
 <a id="core"></a>
 ## The compiled core
 
-The core (`core/mom25d_core.cpp` in mom25d, pybind11 and OpenMP) fills the matrix and its near-pair corrections,
-finds the near pairs, sums the Green's function tables' Sommerfeld integrals, builds the via fans' columns and
-prepares the GPU's complex64 matrix; NumPy versions of all of them remain as the fallback.
-
-| `mom_core` | Kernels |
-|---|---|
-| `auto` (default) | the core where it's built, for every board (NumPy's dense solver without it) |
-| `compiled` | the core for every board, small ones through its direct solver; stops if the core isn't built |
-| `python` | NumPy only: slower, for checking the core |
-
-`compiled` runs small boards three to seven times faster than `auto` (antenna_patch 5.3 s against 17.9 s,
-demo_lowpass 2.7 s against 19.0 s), with |S| within about 0.005 (the two split near and far interactions
+The core (`core/mom25d_core.cpp` in mom25d, pybind11 and OpenMP) meshes the copper, fills the matrix and its
+near-pair corrections, finds the near pairs, sums the Green's function tables' Sommerfeld integrals, builds the via
+fans' columns, factors the block low-rank LU and prepares the GPU's complex64 matrix. mom25d needs it (`python -m
+kicad2ems.mom25d.core.build`); its tests check the kernels against NumPy references
+(`tests/mom25d/dense_reference.py`: the dense solver it had before, every pair integrated in NumPy). Against that
+dense solver the core's direct solver ran small boards three to seven times faster (antenna_patch 5.3 s against
+17.9 s, demo_lowpass 2.7 s against 19.0 s), with |S| within about 0.005 (the two split near and far interactions
 differently) and the same resonances.
 
 ## Inside mom25d

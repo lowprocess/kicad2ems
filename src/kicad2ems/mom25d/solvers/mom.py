@@ -18,15 +18,14 @@ from kicad2ems.core import stop
 G = 'mom25d'
 # --solvers auto (docs/architecture.md#choosing-solvers): seconds per EM solve
 # on 24 cores, fitted on the examples run alone: T0 per pair of metal interfaces
-# (the layered-medium tables of each frequency), plus the dense fill (DENSE_N2
-# N^2, up to 3.5k unknowns) or the direct solver's LU (LU_N3 N^3), plus VIA2 per
-# pair of vias (the via-via kernels, from a table since: sma_launch's 181 vias
-# 2.5 s a solve, 26 s before; halved since 2026-11-14, the chains' kernel in the
-# compiled core, the fans' product sparse and the pairs' geometry made once: 317
-# vias 1.36 s for 3.43); a sweep takes about SOLVES solves (11..22 on the
-# examples). demo_transition: 12.1 s a solve measured, 12.4 s estimated.
-T0, DENSE_N2, LU_N3, VIA2, SOLVES, REF_CORES = (1.0, 1.6e-7, 3.7e-12, 3.5e-5,
-                                                16, 24)
+# (the layered-medium tables of each frequency), plus the direct solver's LU
+# (LU_N3 N^3), plus VIA2 per pair of vias (the via-via kernels, from a table
+# since: sma_launch's 181 vias 2.5 s a solve, 26 s before; halved since
+# 2026-11-14, the chains' kernel in the compiled core, the fans' product sparse
+# and the pairs' geometry made once: 317 vias 1.36 s for 3.43); a sweep takes
+# about SOLVES solves (11..22 on the examples). demo_transition: 12.1 s a solve
+# measured, 12.4 s estimated.
+T0, LU_N3, VIA2, SOLVES, REF_CORES = 1.0, 3.7e-12, 3.5e-5, 16, 24
 # with a GPU (RX 7800 XT, sma_launch, 16.1k unknowns): the fill, the complex64
 # LU and the refinement 6.3 s a solve (hybrid)
 LU_GPU_N3 = 1.5e-12
@@ -136,7 +135,7 @@ def reused(runlog):
 
 def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
           finish=None, log=print, progress=None, hold=None, on_step=None,
-          core='auto', keep_at=(), **mesh):
+          keep_at=(), **mesh):
     """S-parameters of the board m on `freq` (Hz) from mom25d, as kicad2ems
     reports them: (S (nf, n, n) in m.user_ports order with differential pairs as
     (d, c) modes, names, reference impedances, info dict). dmax in mm (planes
@@ -173,7 +172,7 @@ def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
                if metal.on else ""))
     kw.update(metal=metal, max_solves=max_solves,
               log=lambda t: log(f"  mom25d:{t}") if 'AFS' in t else None,
-              progress=progress, on_step=on_step, core=core, keep_at=keep_at)
+              progress=progress, on_step=on_step, keep_at=keep_at)
 
     def board(pairs):
         from kicad2ems.mom25d.api import solve_board
@@ -282,12 +281,11 @@ def save_mesh(run, sim, model, solver='mom25d'):
 
 
 HOW = {
-    'dense': 'dense, NumPy', 'double': 'direct LU in double on the CPU',
+    'double': 'direct LU in double on the CPU',
     'hybrid': 'complex64 LU on the GPU, double refinement on the host',
     'gpu-lu': 'complex64 LU on the GPU, matrix-free refinement',
     'cpu-mixed': 'complex64 LU on the CPU',
-    'blr': 'block low-rank LU (compiled), no dense matrix',
-    'aca': 'H-matrix and GMRES, no dense matrix'
+    'blr': 'block low-rank LU (compiled), no dense matrix'
 }
 
 
@@ -575,16 +573,6 @@ class MoM25D(Solver):
             str, conv=lambda v: _via_sides(v, ('auto', 'round', 'square')),
             name='stitching_vias', gui='MoM stitching vias', group=G,
             cli=dict(metavar='auto|round|square|N')),
-        Option(
-            'mom_core', 'auto',
-            "mom25d's kernels: auto (default: the compiled core where it is "
-            "built, NumPy's dense solver for boards up to 3,500 unknowns), "
-            "compiled (the core for every board: 4-8x faster on small ones, "
-            "|S| within about 0.005 of the dense solver's; stops if the core "
-            "is not built) or python (NumPy only: slower, for checking the "
-            "core)",
-            choices=('auto', 'compiled', 'python'), name='core',
-            gui='Core (compiled / python)', group=G),
         Option('mom_solves', 60,
                "most EM solves of the adaptive sweep (default {default})", int,
                name='solves', gui='Most EM solves of the sweep', group=G,
@@ -622,16 +610,6 @@ class MoM25D(Solver):
             gui='Near-field volume (mm above the top: from,to[,planes])',
             group=G, cli=dict(metavar='H0,H1[,N]')),
     ]
-
-    def validate(self, s):
-        if getattr(s, 'mom_core', 'auto') == 'compiled':
-            from kicad2ems.mom25d.fast import _built
-            if _built is None:
-                return (
-                    "mom_core = compiled, but mom25d's compiled core is not "
-                    "built (python -m kicad2ems.mom25d.core.build, or "
-                    "setup.sh): auto or python run on NumPy")
-        return None
 
     def resources(self):
         """The GPU mom25d's LU would use (MOM25D_GPU), or why there is none."""
@@ -847,20 +825,17 @@ class MoM25D(Solver):
                                                        SOLVES), len(bm.shapes))
         # this machine's memory now, mom25d's GPU
         from kicad2ems.mom25d.sim import memory_plan, gpu_info
-        from kicad2ems.mom25d.fast import _core
         from kicad2ems.mom25d.gpu import get_backend
-        g = get_backend('auto') if _core is not None else None
-        plan = memory_plan(n, _core is not None, None,
-                           (gpu_info(g, n) if g is not None else None))
+        g = get_backend('auto')
+        plan = memory_plan(n, None, (gpu_info(g, n) if g is not None else None))
         # the CPU LU scales with the cores, a GPU's not
         lu = LU_N3 * REF_CORES / (os.cpu_count() or 1)
         lu = dict(hybrid=LU_GPU_N3).get(plan['path'], lu)
         factor = (BLR_N2 * n**2 * BLR_CORES /
                   (os.cpu_count() or 1) if plan['path'] == 'blr' else
-                  (lu * n**3 if n > 3500 else 0))
-        per = ((T0 * layers * (layers + 1) / 2 + VIA2 * len(bm.vias)**2 +
-                (DENSE_N2 * n**2 if n <= 3500 else 0)) * REF_CORES /
-               (os.cpu_count() or 1) + factor)
+                  lu * n**3)
+        per = ((T0 * layers * (layers + 1) / 2 + VIA2 * len(bm.vias)**2)
+               * REF_CORES / (os.cpu_count() or 1) + factor)
         return dict(seconds=solves * per, gb=plan['host'] / 1e9,
                     gpu_gb=plan['gpu'] / 1e9 or None,
                     how=HOW.get(plan['path'], plan['path']),
@@ -928,7 +903,7 @@ class MoM25D(Solver):
                 run.m, run.freq, dmax=dmax, port=port, max_solves=s.mom_solves,
                 sigma=s.sigma, rough=getattr(s, 'rough', None),
                 finish=run_finish(run),
-                log=run.log, hold=self._held if finest else {}, core=s.mom_core,
+                log=run.log, hold=self._held if finest else {},
                 **_mesh_kw(s, run.m), keep_at=keep if finest else [],
                 progress=lambda k, n, f: (run.status(
                     'mom25d', dict(fraction=k / n, solves=k, f_ghz=f / 1e9)),

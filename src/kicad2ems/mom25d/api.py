@@ -34,15 +34,14 @@ class Result:
     ports: list
     unknowns: int                   # RWG edges + via chains
     triangles: int
-    solver: str     # 'dense', 'direct', 'blr', 'aca'
+    solver: str     # 'direct' or 'blr'
     precision: str  # 'double' or 'mixed'
     mesher: str     # what was asked for ('auto': mesh2d's triangulation)
     solves: int     # EM solves of the sweep
     solved: list    # the frequencies solved (Hz)
     seconds: float  # model, mesh, port characterisation and sweep
-    core: bool      # the compiled core was used
     notes: list = field(default_factory=list)
-    # the adaptive sweep's history (afs.adaptive_sweep), one dict a model
+    # the adaptive sweep's history (emsdev.afs.adaptive_sweep), one dict a model
     afs: list = field(default_factory=list)
     afs_tol: float = None                       # its tolerance (max |dS|)
     model: object = None            # the BoardModel
@@ -59,7 +58,7 @@ ZONE_OUT = 5.0
 def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
                 pairs=False, mesher='auto', metal=None, ground=None,
                 max_solves=60, afs_tol=5e-3, log=print, progress=None,
-                on_step=None, core='auto', quads=False, zone=None,
+                on_step=None, quads=False, zone=None,
                 signal_vias='round', stitching_vias='auto',
                 keep_at=(), quad_tol=35.0, coarsen=None, planes='pec',
                 stitching_pads='drop', wideband=None, cells=CELLS,
@@ -76,9 +75,7 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
     loss), or None (lossless). log: lines of progress (the adaptive sweep's);
     progress(solves, max_solves, f): after each EM solve. on_step(entry): after
     each model of the adaptive sweep (its change and prediction error,
-    afs.adaptive_sweep). core: 'auto' (the compiled core where built, NumPy's
-    dense solver without it), 'compiled' (the core for every size) or 'python'
-    (NumPy only), fast.use_core. quads: near-rectangular triangle pairs as quad
+    afs.adaptive_sweep). quads: near-rectangular triangle pairs as quad
     cells (True, or 'centre'), quad_tol: the largest deviation of their corners
     from 90 degrees. coarsen: cells grow from dmax at corners, vias and ports to
     coarsen x dmax away from them (geo.mesh_polygons; None: dmax everywhere).
@@ -91,28 +88,23 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
     (the edges' near terms corrected, mom25d.edge). wideband: None
     (constant er, tand) or the frequency (Hz) the stack's er and tand hold at,
     Djordjevic-Sarkar elsewhere."""
-    from . import fast
     from .geo import LinePort
     from .run import solve_band
     name = os.path.basename(board) if isinstance(board, str) else 'board'
     freq = np.asarray(freq, float)
     fmin, fmax = float(freq[0]), float(freq[-1])
-    t0, prev = time.time(), fast.use_core(core)
-    try:
-        model, sim = build_board(
-            board, fmin, fmax, dmax=dmax, plane_factor=plane_factor, port=port,
-            pairs=pairs, mesher=mesher, metal=metal, ground=ground, log=log,
-            core=core, quads=quads, zone=zone, signal_vias=signal_vias,
-            stitching_vias=stitching_vias, quad_tol=quad_tol,
-            coarsen=coarsen, planes=planes, stitching_pads=stitching_pads,
-            wideband=wideband, title=name, cells=cells, thickness=thickness)
-        f, S, info = solve_band(sim, fmin, fmax, points=len(freq),
-                                zref=model.port_z0, max_solves=max_solves,
-                                afs_tol=afs_tol, log=log, progress=progress,
-                                on_step=on_step, keep_at=keep_at, freq=freq)
-        core_used = fast._core is not None
-    finally:
-        fast.set_core(prev)
+    t0 = time.time()
+    model, sim = build_board(
+        board, fmin, fmax, dmax=dmax, plane_factor=plane_factor, port=port,
+        pairs=pairs, mesher=mesher, metal=metal, ground=ground, log=log,
+        quads=quads, zone=zone, signal_vias=signal_vias,
+        stitching_vias=stitching_vias, quad_tol=quad_tol, coarsen=coarsen,
+        planes=planes, stitching_pads=stitching_pads, wideband=wideband,
+        title=name, cells=cells, thickness=thickness)
+    f, S, info = solve_band(sim, fmin, fmax, points=len(freq),
+                            zref=model.port_z0, max_solves=max_solves,
+                            afs_tol=afs_tol, log=log, progress=progress,
+                            on_step=on_step, keep_at=keep_at, freq=freq)
     # the sweep's grid onto the requested one
     if len(f) != len(freq) or not np.allclose(f, freq):
         S = np.apply_along_axis(
@@ -128,14 +120,14 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
         triangles=int(len(sim.rwg.tris)), solver=sim.solver,
         precision=getattr(sim, 'precision',
                           'double'), mesher=mesher, solves=int(info['solves']),
-        solved=list(info['solved']), seconds=time.time() - t0, core=core_used,
+        solved=list(info['solved']), seconds=time.time() - t0,
         notes=list(model.notes) + list(sim.log.notes), model=model, sim=sim,
         afs=list(info.get('afs', [])), afs_tol=info.get('afs_tol'))
 
 
 def build_board(board, fmin, fmax, dmax=0.3e-3, plane_factor=3.0, port='auto',
                 pairs=False, mesher='auto', metal=None, ground=None, log=print,
-                core='auto', quads=False, zone=None, signal_vias='round',
+                quads=False, zone=None, signal_vias='round',
                 stitching_vias='auto', quad_tol=35.0, coarsen=None,
                 planes='pec', stitching_pads='drop', wideband=None, title=None,
                 mesh_only=False, characterize=True, cells=CELLS,
@@ -169,7 +161,7 @@ def build_board(board, fmin, fmax, dmax=0.3e-3, plane_factor=3.0, port='auto',
     sim = model.simulation(
         dmax=dmax, dmax_layer=layer_dmax, fmin=fmin, fmax=fmax, solver='auto',
         verbose=False, wave_down_to=fmin, mesher=mesher, title=title or 'board',
-        metal=metal, core=core, quads=quads, quad_tol=quad_tol, coarsen=coarsen,
+        metal=metal, quads=quads, quad_tol=quad_tol, coarsen=coarsen,
         signal_vias=signal_vias, stitching_vias=stitching_vias,
         mesh_only=mesh_only, characterize=characterize,
         **(dict(zone=zone, dmax_out=ZONE_OUT * dmax) if zone else {}))

@@ -49,11 +49,12 @@ def solve_band(sim, fmin, fmax, points=401, zref=50.0, linear=None,
                progress=None, on_step=None, keep_at=(), freq=None):
     """S-parameters of sim over fmin..fmax (Hz): returns (f, S (nf, n, n), info
     dict with solves, seconds, zref, the solved frequencies, and afs / afs_tol:
-    the adaptive sweep's history (afs.adaptive_sweep) and tolerance).
+    the adaptive sweep's history (emsdev.afs.adaptive_sweep) and tolerance).
     max_solves:
     cap of the adaptive sweep. keep_mid: one extra solve at mid-band keeping the
     currents (sim.last). progress(solves, at most, f): after each EM solve.
-    on_step(entry): after each model of the adaptive sweep (afs.adaptive_sweep).
+    on_step(entry): after each model of the adaptive sweep
+    (emsdev.afs.adaptive_sweep).
     keep_at: frequencies (Hz) the sweep solves among its samples and keeps the
     currents of, sim.kept {f: currents of the excitations} (a current dump's: no
     solve of its own). freq: the frequencies asked for (Hz): the adaptive
@@ -77,11 +78,12 @@ def solve_band(sim, fmin, fmax, points=401, zref=50.0, linear=None,
         fs = f = np.linspace(fmin, fmax, int(linear))
         S = np.array([solve(fi) for fi in f])
     else:
-        from .afs import adaptive_sweep
-        f, S, fs, _, hist = adaptive_sweep(solve, fmin, fmax, tol=afs_tol,
-                                           ngrid=points, max_points=max_solves,
-                                           log=log, on_step=on_step,
-                                           seed=sorted(keep_at), grid=freq)
+        from kicad2ems.emsdev.afs import adaptive_sweep
+        f, S, fs, _, hist = adaptive_sweep(
+            solve, fmin, fmax, tol=afs_tol, ngrid=points,
+            max_points=max_solves, log=log, on_step=on_step,
+            seed=sorted(keep_at), grid=freq,
+            hint='on the GPU: MOM25D_GPU=off solves on the CPU')
         if hist and not hist[-1].get('converged', True):
             sim.log.note(
                 f"WARNING adaptive sweep: stopped at its {max_solves} solves "

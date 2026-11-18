@@ -33,7 +33,7 @@ and the end charges are put back as fan-distributed charges through the ordinary
 G_q machinery.
 """
 import numpy as np
-from scipy.special import j0, jv, kv
+from scipy.special import kv
 from scipy.interpolate import CubicSpline
 
 from kicad2ems.emsdev.numerics.base import MU0, C0
@@ -62,33 +62,16 @@ def sommerfeld_contour(f, stack, rho_max, K=None, nq=8):
 
 def jn(n, z):
     """J_n(z) of complex z (n = 0, 1, 2): the compiled core's (series and
-    Hankel's expansion, within 5e-12 of scipy's jv and 13 times faster), else
-    scipy's."""
-    from .fast import _core
-    if _core is not None and hasattr(_core, 'bessel_jn_complex'):
-        return _core.bessel_jn_complex(int(n), np.asarray(z, complex))
-    return jv(n, z)
-
-
-def j0_matrix(rho, kr):
-    """J0(rho x kr): complex Bessel only on the lifted part of the contour, fast
-    real J0 elsewhere."""
-    rho = np.atleast_1d(rho)
-    real = np.abs(kr.imag) < 1e-300
-    J = np.empty((len(rho), len(kr)), complex)
-    J[:, real] = j0(rho[:, None] * kr.real[None, real])
-    if (~real).any():
-        J[:, ~real] = jn(0, rho[:, None] * kr[None, ~real])
-    return J
+    Hankel's expansion, within 5e-12 of scipy's jv and 13 times faster)."""
+    from . import _core
+    return _core.bessel_jn_complex(int(n), np.asarray(z, complex))
 
 
 def bessel_sum(n, rho, kr, W):
     """sum_k J_n(rho_i kr_k) W[s, k] (n = 0, 1, 2): (nspec, len(rho)), as
     j0_sum: the real part of the contour in the compiled core without the Bessel
-    matrix, the lifted part NumPy's. None where the core cannot."""
-    from .fast import _core
-    if _core is None or not hasattr(_core, 'bessel_real_sum'):
-        return None
+    matrix, the lifted part NumPy's."""
+    from . import _core
     rho, W = (np.atleast_1d(np.asarray(rho, float)),
               np.atleast_2d(np.asarray(W, complex)))
     real = np.abs(kr.imag) < 1e-300
@@ -103,12 +86,10 @@ def bessel_sum(n, rho, kr, W):
 def j0_sum(rho, kr, W):
     """sum_k J0(rho_i kr_k) W[s, k]: (nspec, len(rho)). The compiled core sums
     the real part of the contour without the Bessel matrix (OpenMP); the lifted
-    part, complex kr, is NumPy's (j0_matrix)."""
-    from .fast import _core
+    part, complex kr, is NumPy's (jn)."""
+    from . import _core
     rho, W = (np.atleast_1d(np.asarray(rho, float)),
               np.atleast_2d(np.asarray(W, complex)))
-    if _core is None or not hasattr(_core, 'hankel_real'):
-        return (j0_matrix(rho, kr) @ W.T).T
     real = np.abs(kr.imag) < 1e-300
     out = _core.hankel_real(rho, np.ascontiguousarray(kr.real[real]),
                             np.ascontiguousarray(W[:, real]))

@@ -265,7 +265,7 @@ class Sides:
         one (Nobs, N) pattern (ptr, functions)."""
         if self._near is not None:
             return self._near
-        core = _need_core()
+        from . import _core as core
         Vo, so, Po, Wo = self._obs_geometry(sim)
         Vs = self.src_V
         ss = np.linalg.norm(Vs - np.roll(Vs, 1, axis=1), axis=2).max(1)
@@ -436,7 +436,7 @@ class Sides:
         """(N, chains): the via chains' smooth potential (via.ViaKernels.D,
         its E_t = grad D on an interface) tested with each function's charge,
         as sim._via_blocks tests the strips' (3-point rule)."""
-        from .fast import _core
+        from . import _core
         Po, Wo = self.near(sim)[3:]
         out = np.zeros((self.N, len(sim.chains)), complex)
         Hd = sparse.csr_matrix((2 * self.h_alpha, (self.h_fn, self.h_obs)),
@@ -458,7 +458,7 @@ class Sides:
         triangle (their coupling: with sim.dF, / jw). The Green tables are
         sim.tables (sim.green_tables(f), as the strips' blocks); the sums in
         the compiled core (sides_blocks)."""
-        core = _need_core()
+        from . import _core as core
         r, st, w = sim.rwg, sim.st.at(f), 2 * np.pi * f
         (ptr, fn), dA, dq, Po, Wo = self.near(sim)
         Nobs, N = len(Po), self.N
@@ -517,14 +517,6 @@ class Sides:
         return self._hal
 
 
-def _need_core():
-    from .fast import _core
-    if _core is None or not hasattr(_core, 'sides_blocks'):
-        raise RuntimeError("thickness 'sides' needs mom25d's compiled core "
-                           "(python -m kicad2ems.mom25d.core.build)")
-    return _core
-
-
 def _pm(core, Vo, Vs, levels, scalar_only=False):
     """pcbqs.panels3d.pair_moments (outer_levels=levels), the core's."""
     bar, w = _rule(levels)
@@ -548,21 +540,9 @@ def _total(gt):
 
 
 def _rts(core, px, py, W, vx, vy, table, dr):
-    """sum_q table(|P[t, q] - V[v]|) W[t, q] (radial_table_sum: the compiled
-    core's, else NumPy's in chunks)."""
+    """sum_q table(|P[t, q] - V[v]|) W[t, q] (the compiled core's
+    radial_table_sum)."""
     px, py, W = (np.ascontiguousarray(a, float) for a in (px, py, W))
     vx, vy = np.ascontiguousarray(vx, float), np.ascontiguousarray(vy, float)
-    if core is not None and hasattr(core, 'radial_table_sum'):
-        return core.radial_table_sum(px, py, W, vx, vy,
-                                     np.ascontiguousarray(table, complex), dr)
-    out = np.zeros((len(px), len(vx)), complex)
-    top = len(table) - 1.000001
-    for c in range(0, len(px), 256):
-        s = slice(c, c + 256)
-        d = np.hypot(px[s][:, :, None] - vx, py[s][:, :, None] - vy)
-        u = np.minimum(d / dr, top)
-        i = u.astype(np.int64)
-        fr = u - i
-        out[s] = ((table[i] * (1 - fr) + table[i + 1] * fr)
-                  * W[s][:, :, None]).sum(1)
-    return out
+    return core.radial_table_sum(px, py, W, vx, vy,
+                                 np.ascontiguousarray(table, complex), dr)

@@ -6,7 +6,7 @@
 
 A 2.5D method-of-moments solver for circuit boards: copper as zero-thickness sheets on the interfaces of a
 layered dielectric over an infinite ground plane, vias as vertical wires, lumped parts as series elements.
-It takes a board file and gives its S-parameters, on the CPU (NumPy, or a compiled C++ / OpenMP core) with an
+It takes a board file and gives its S-parameters, on the CPU (a compiled C++ / OpenMP core) with an
 optional GPU LU (Vulkan through slangpy on any GPU with a Vulkan driver, run on AMD and NVIDIA cards and on
 Mesa's llvmpipe in CI).
 
@@ -36,7 +36,7 @@ On Windows the core builds with Visual Studio 2022 or its Build Tools, or MinGW-
 [emsdev](../emsdev/README.md)).
 
 The compiled core is needed: the mesher's triangulation is in it (`src/kicad2ems/emsdev/native/mesh2d.hpp`). The
-kernels keep NumPy fallbacks (`MOM25D_NO_CORE`); the mesher has none.
+kernels are in it too (NumPy references for them in its tests).
 
 `MOM25D_GPU=off` turns the GPU off (`auto`, the default: Vulkan where there is one); Vulkan needs only the
 GPU's driver.
@@ -93,12 +93,11 @@ f, S, info = solve_band(sim, 1e9, 6e9, points=101, zref=m.port_z0)
 | `geo.py` | wave ports in any direction; the mesher on mom25d's core (`kicad2ems.emsdev.numerics`'s `geo` and `cdtmesh`: offset rings along the copper edges; a hexagonal seed inside, smoothed; mesh2d in the core triangulates) |
 | `sing.py` | the off-plane 1/R integrals with the rule over the smaller triangle (emsdev.numerics.sing's) |
 | `quads.py` | quad cells |
-| `fast.py` | the matrix fill and the solvers |
+| `fast.py` | the matrix fill and the solvers (the block low-rank solver's tiling; its factor is compiled in `core/`) |
 | `looptree.py` | the loop/tree basis the direct solver takes at low frequency (pcbqs's) |
-| `gpu.py` | the GPU backends |
+| `gpu.py` | the GPU backends (Vulkan, and an emulated one for the tests) |
 | `gpu_vk.py` | the Vulkan backend: a hybrid LU (panels on the CPU, updates on the GPU) and its GPU solves |
-| `blr.py` | the block low-rank solver's tiling (its factor is compiled in `core/`: the large boards' path) |
-| `afs.py`, `run.py` | the adaptive frequency sweep (its fit is emsdev's `kicad2ems.emsdev.afs`, which pcbqs shares) |
+| `run.py` | the adaptive frequency sweep (emsdev's `kicad2ems.emsdev.afs`, which pcbqs shares) |
 | `farfield.py` | far and near fields from the currents |
 | `core/` | the compiled C++ kernels |
 | `solvers/` | kicad2ems's solver `mom25d` (listed in `kicad2ems.core.solvers.SOLVERS`; only kicad2ems imports it) |

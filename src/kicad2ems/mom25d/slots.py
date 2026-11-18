@@ -115,27 +115,6 @@ class Slot:
         return r
 
 
-def _sub_points(level):
-    """Points and weights (area fractions) of a triangle's 6-point rule on its
-    4^level subtriangles, (n, 3) bary."""
-    tri = [np.eye(3)]
-    for _ in range(level):
-        nxt = []
-        for t in tri:
-            m01, m12, m20 = (t[0] + t[1]) / 2, (t[1] + t[2]) / 2, (t[2]
-                                                                   + t[0]) / 2
-            nxt += [
-                np.array([t[0], m01, m20]),
-                np.array([m01, t[1], m12]),
-                np.array([m20, m12, t[2]]),
-                np.array([m01, m12, m20])
-            ]
-        tri = nxt
-    bar = np.vstack([_BAR6 @ t for t in tri])
-    w = np.concatenate([_W6 / len(tri)] * len(tri))
-    return bar, w
-
-
 class SlotKernels:
     """
     Per-frequency kernels of the openings `slots` (Slot) of a stack's PEC
@@ -294,35 +273,16 @@ def self_block(slots, table, w, near_fac=5.0, cache=None):
     return Y[np.ix_(o, o)]
 
 
-def _tm_te_moments(dx, dy, wgt, ru, P, U):
+def _tm_moments(dx, dy, wgt, ru, P):
     """The far / near pair moments at observation - source offsets (dx, dy) (any
-    shape, summed over the last axes by the caller), weights wgt, the source
-    points ru (x, y) (same shape) and the observation points ro: the TM
-    potential's (M1, M2, M3: int g_x, int g_y, int g_y x' - g_x y', g = P rho^)
-    and, with U, the TE tensor's pieces (T_xx, T_xy, T_yy) for _te_moments."""
+    shape, summed over the last axes by the caller), weights wgt and the source
+    points ru (x, y) (same shape): the TM potential's (M1, M2, M3: int g_x, int
+    g_y, int g_y x' - g_x y', g = P rho^)."""
     rho = np.hypot(dx, dy)
     inv = np.divide(1.0, rho, out=np.zeros_like(rho), where=rho > 0)
-    cs, sn = dx * inv, dy * inv
     p = P(rho) * wgt
-    gx, gy = p * cs, p * sn
-    tm = (gx, gy, gy * ru[0] - gx * ru[1])
-    if U is None:
-        return tm, None
-    u = U(rho)
-    c2, s2 = cs * cs - sn * sn, 2 * sn * cs
-    u0, u2 = u[..., 0] * wgt, u[..., 1] * wgt
-    return tm, (u0 + u2 * c2, u2 * s2, u0 - u2 * c2)
-
-
-def _te_moments(T, ro, ru):
-    """From the tensor pieces T = (Txx, Txy, Tyy) at pairs of points (ro
-    observation, ru source): T0 (xx, xy, yy), Ro = r . T (x, y), Ws = T . w' (w'
-    = z x r' = (-y', x')) and RW = r . T . w' (module coupling's moments)."""
-    txx, txy, tyy = T
-    wx, wy = -ru[1], ru[0]
-    rox, roy = ro[0] * txx + ro[1] * txy, ro[0] * txy + ro[1] * tyy
-    wsx, wsy = txx * wx + txy * wy, txy * wx + tyy * wy
-    return (txx, txy, tyy), (rox, roy), (wsx, wsy), ro[0] * wsx + ro[1] * wsy
+    gx, gy = p * dx * inv, p * dy * inv
+    return gx, gy, gy * ru[0] - gx * ru[1]
 
 
 # strip triangles x opening triangles a pass of coupling's moments (11 complex
@@ -332,68 +292,18 @@ CHUNK = 4_000_000
 
 def _moments(sim, idx, s, dz, P, U):
     """(M1, M2, M3, T0, Ro, Ws, RW) of the strip triangles idx against the
-    opening s's triangles (module doc, _te_moments): the compiled core's
-    slot_coupling where it is built, else the same in NumPy."""
-    from .fast import _core
+    opening s's triangles (module doc): the compiled core's slot_coupling."""
+    from . import _core
     r, rs = sim.rwg, s.rwg
-    if _core is not None and hasattr(_core, 'slot_coupling'):
-        m = _core.slot_coupling(
-            np.ascontiguousarray(r.nodes[r.tris[idx]], float),
-            r.area[idx], sim.tri_size[idx],
-            np.ascontiguousarray(rs.nodes[rs.tris], float), rs.area, s.size,
-            float(dz), np.ascontiguousarray(P.v, complex),
-            np.ascontiguousarray(U.v, complex), float(P._dr), float(NEAR),
-            int(SUB_MAX))
-        return (m[0], m[1], m[2], (m[3], m[4], m[5]), (m[6], m[7]),
-                (m[8], m[9]), m[10])
-    Vs = rs.nodes[rs.tris]
-    ct, cu = r.cent[idx], rs.cent
-    dx, dy = ct[:, 0, None] - cu[None, :, 0], ct[:, 1, None] - cu[None, :, 1]
-    wgt = r.area[idx][:, None] * rs.area[None, :]
-    ru = (cu[None, :, 0] + 0 * dx, cu[None, :, 1] + 0 * dy)
-    ro = (ct[:, 0, None] + 0 * dx, ct[:, 1, None] + 0 * dy)
-    (M1, M2, M3), T = _tm_te_moments(dx, dy, wgt, ru, P, U)
-    T0, Ro, Ws, RW = _te_moments(T, ro, ru)
-    size = np.maximum(sim.tri_size[idx][:, None], s.size[None, :])
-    pi_, qi_ = np.nonzero(dx**2 + dy**2 + dz**2 < (NEAR * (size + 0 * dx))**2)
-    if len(pi_):
-        # each near pair's rule from its own distance: subdivided to the scale
-        # of the closer of its distance and the height (the kernel's), grouped
-        # by (strip level, opening level)
-        dd = np.sqrt(dx[pi_, qi_] ** 2 + dy[pi_, qi_] ** 2)
-        st_, su_ = sim.tri_size[idx][pi_], s.size[qi_]
-        deff = np.maximum(dd - 0.5 * (st_ + su_), dz)
-        lev = lambda sz: np.clip(
-            np.ceil(
-                np.log2(np.maximum(sz, 1e-12) / np.maximum(0.5 * deff, 1e-12))),
-            0, SUB_MAX).astype(int)
-        Lt_, Lu_ = lev(st_), lev(su_)
-        for Lt, Lu in sorted(set(zip(Lt_.tolist(), Lu_.tolist()))):
-            g = np.flatnonzero((Lt_ == Lt) & (Lu_ == Lu))
-            gp, gq = pi_[g], qi_[g]
-            bt, wt = _sub_points(Lt)
-            bu, wu = _sub_points(Lu)
-            Pt = np.einsum('qk,pkc->pqc', bt, r.nodes[r.tris[idx[gp]]])
-            Pu = np.einsum('qk,pkc->pqc', bu, Vs[gq])
-            Wt = r.area[idx[gp]][:, None] * wt[None, :]
-            Wu = rs.area[gq][:, None] * wu[None, :]
-            chunk = max(1, 2_000_000 // (Pt.shape[1] * Pu.shape[1]))
-            for c0 in range(0, len(gp), chunk):
-                sl = slice(c0, c0 + chunk)
-                a, b = Pt[sl][:, :, None, :], Pu[sl][:, None, :, :]
-                ddx, ddy = a[..., 0] - b[..., 0], a[..., 1] - b[..., 1]
-                ww = Wt[sl][:, :, None] * Wu[sl][:, None, :]
-                rub = (b[..., 0] + 0 * ddx, b[..., 1] + 0 * ddy)
-                roa = (a[..., 0] + 0 * ddx, a[..., 1] + 0 * ddy)
-                (m1, m2, m3), t = _tm_te_moments(ddx, ddy, ww, rub, P, U)
-                t0, ro_, ws_, rw_ = _te_moments(t, roa, rub)
-                ii, jj = gp[sl], gq[sl]
-                for M, v in ((M1, m1), (M2, m2), (M3, m3), (RW, rw_)):
-                    M[ii, jj] = v.sum((1, 2))
-                for Ms, vs_ in ((T0, t0), (Ro, ro_), (Ws, ws_)):
-                    for M, v in zip(Ms, vs_):
-                        M[ii, jj] = v.sum((1, 2))
-    return M1, M2, M3, T0, Ro, Ws, RW
+    m = _core.slot_coupling(
+        np.ascontiguousarray(r.nodes[r.tris[idx]], float),
+        r.area[idx], sim.tri_size[idx],
+        np.ascontiguousarray(rs.nodes[rs.tris], float), rs.area, s.size,
+        float(dz), np.ascontiguousarray(P.v, complex),
+        np.ascontiguousarray(U.v, complex), float(P._dr), float(NEAR),
+        int(SUB_MAX))
+    return (m[0], m[1], m[2], (m[3], m[4], m[5]), (m[6], m[7]), (m[8], m[9]),
+            m[10])
 
 
 def _plane_potential(rho):
@@ -464,9 +374,8 @@ def coupling(sim, slots, kern, B, C, col0):
                       s.P6[None, :, :, 1] + 0 * dy)
                 R = kern.rem(s.k, span)
                 if np.any(R.v):
-                    (n1, n2, n3), _ = _tm_te_moments(dx, dy,
-                                                     s.W6[None] + 0 * dx, ru, R,
-                                                     None)
+                    n1, n2, n3 = _tm_moments(dx, dy, s.W6[None] + 0 * dx,
+                                             ru, R)
                     C[cs, cols] += vs(n1.sum(-1), n2.sum(-1), n3.sum(-1))
                 if s.k in span:
                     # its end on the plane: the opening's potential there, P_p =
@@ -476,9 +385,8 @@ def coupling(sim, slots, kern, B, C, col0):
                     # whose gradient its TE part cancels. With the fans' sign
                     # (dF: +1 at a chain's bottom, -1 at its top), the plane at
                     # its bottom: -Psi_p
-                    (n1, n2, n3), _ = _tm_te_moments(dx, dy,
-                                                     s.W6[None] + 0 * dx, ru,
-                                                     _plane_potential, None)
+                    n1, n2, n3 = _tm_moments(dx, dy, s.W6[None] + 0 * dx,
+                                             ru, _plane_potential)
                     sign = -1.0 if span[0] == s.k else 1.0
                     C[cs, cols] += sign * vs(n1.sum(-1), n2.sum(-1), n3.sum(-1))
         col += n

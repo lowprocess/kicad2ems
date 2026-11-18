@@ -82,7 +82,7 @@ def _canned_mom(m, freq, **kw):
     S[:, 1, 0] = S[:, 0, 1] = 0.9 * np.exp(-2j * np.pi * freq * 100e-12)
     S[:, 0, 0] = S[:, 1, 1] = 0.1
     info = dict(
-        seconds=1.5, solves=7, unknowns=1234, triangles=800, solver='dense',
+        seconds=1.5, solves=7, unknowns=1234, triangles=800, solver='direct',
         dmax_mm=0.3,
         ports=[dict(name=p.name, kind='lumped', zc=0.0)
                for p in m.ports], notes=['canned'])

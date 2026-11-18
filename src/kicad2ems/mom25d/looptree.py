@@ -211,30 +211,20 @@ class LoopTree:
             out[self.fan_edges] += self.F @ out[self.Ne:]
         return out * (self.dl[:, None] if out.ndim == 2 else self.dl)
 
-    def rows(self, X, core=None, block=2048):
+    def rows(self, X):
         """X <- K^T X in place (N x m, C order): a loop's row is its branch's
         plus the tree path's, from the prefix P[node] = P[parent] + sign
-        X[branch up] (the sum over the node's path to its root)."""
-        if core is not None and hasattr(core, 'tree_rows'):
-            core.tree_rows(X, *self._args)
-            return X
-        m = X.shape[1]
-        for c0 in range(0, m, block):
-            c1 = min(m, c0 + block)
-            P = np.zeros((self.Nt + 1, c1 - c0), X.dtype)
-            for nodes, parents, branches, sig in self.levels:
-                P[nodes] = P[parents] + sig[:, None] * X[branches, c0:c1]
-            X[self.cot, c0:c1] += P[self.cv] - P[self.cu]
+        X[branch up] (the sum over the node's path to its root); the compiled
+        core's."""
+        from . import _core
+        _core.tree_rows(X, *self._args)
         return X
 
-    def cols(self, X, core=None):
-        """X <- X K in place (square N x N without the core)."""
-        if core is not None and hasattr(core, 'tree_cols'):
-            core.tree_cols(X, *self._args)
-            return X
-        transpose(X)
-        self.rows(X)
-        return transpose(X)
+    def cols(self, X):
+        """X <- X K in place (the compiled core's)."""
+        from . import _core
+        _core.tree_cols(X, *self._args)
+        return X
 
     def from_tree(self, x):
         """K x (N or N x m): the branch currents of loop and tree amplitudes."""
@@ -253,25 +243,16 @@ class LoopTree:
         r = np.sqrt(1j * w)
         return np.where(self.is_tree, r, 1.0 / r)
 
-    def charge_into(self, Z, Mq, area, core=None, block=512):
+    def charge_into(self, Z, Mq, area):
         """Z[tree, tree] += A_T^T Gc A_T: the potentials of the tree branches'
         charges (+1 on bu, -1 on bv, none on the ground), Gc = Mq / (area area)
-        (Mq: the G_q moments between the triangles, Nt x Nt)."""
+        (Mq: the G_q moments between the triangles, Nt x Nt); the compiled
+        core's."""
+        from . import _core
         t, u, v = self.tree, self.bu[self.tree], self.bv[self.tree]
-        if core is not None and hasattr(core, 'charge_into'):
-            core.charge_into(Z, Mq, t.astype(np.int32), u.astype(np.int32),
-                             v.astype(np.int32),
-                             np.ascontiguousarray(area, float), int(self.G))
-            return Z
-        ia = np.r_[1.0 / area, 0.0]  # (the ground's row: none)
-        Mp = np.zeros((self.Nt + 1, self.Nt + 1), Mq.dtype)
-        Mp[:-1, :-1] = Mq
-        Mp *= ia[:, None]
-        Mp *= ia[None, :]
-        for a in range(0, len(t), block):
-            b = min(len(t), a + block)
-            R = Mp[u[a:b]] - Mp[v[a:b]]
-            Z[np.ix_(t[a:b], t)] += R[:, u] - R[:, v]
+        _core.charge_into(Z, Mq, t.astype(np.int32), u.astype(np.int32),
+                          v.astype(np.int32), np.ascontiguousarray(area, float),
+                          int(self.G))
         return Z
 
     def charge_operator(self, sim):
@@ -289,20 +270,6 @@ class LoopTree:
                 (dq.data,
                  (sim.F[dq.row], self.Ne + dq.col)), shape=(self.Nt, self.N)))
         return Q.tocsr()
-
-
-def transpose(A, block=1024):
-    """A <- A^T in place (square), by blocks."""
-    n = A.shape[0]
-    for i in range(0, n, block):
-        i1 = min(n, i + block)
-        A[i:i1, i:i1] = A[i:i1, i:i1].T.copy()
-        for j in range(i1, n, block):
-            j1 = min(n, j + block)
-            t = A[i:i1, j:j1].copy()
-            A[i:i1, j:j1] = A[j:j1, i:i1].T
-            A[j:j1, i:i1] = t.T
-    return A
 
 
 def _edges_of(r, a):

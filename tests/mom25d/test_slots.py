@@ -142,9 +142,9 @@ def test_babinet(er):
     shape = box(0, 0, 8 * mm, 1.0 * mm)
     st = lambda pec: LayerStack([Layer(1 * mm, er, 0.0)], top='open', top_er=er,
                                 bottom='open', bottom_er=er, pec=pec)
-    sim = Simulation(st(()), {1: [shape]}, dmax=0.5 * mm, solver='dense',
-                     verbose=False)
-    Z = sim.impedance(F)[:sim.Ne, :sim.Ne]
+    from dense_reference import impedance
+    sim = Simulation(st(()), {1: [shape]}, dmax=0.5 * mm, verbose=False)
+    Z = impedance(sim, F)[:sim.Ne, :sim.Ne]
     s = Slot(0, shape)
     r = s.rwg = sim.rwg                                  # the strip's own mesh
     s.P3, s.W3 = quad_pts(r, _BAR3), r.area[:, None] * _W3[None, :]
