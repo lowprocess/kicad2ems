@@ -179,8 +179,10 @@ the hole's own field, which is not in the current dumps, the near field or the f
 <a id="sweep"></a>
 **The adaptive sweep.** mom25d solves only some frequencies. It fits one rational model through all of S (AAA)
 and adds a solve where two successive models disagree most, until the model changes by less than the tolerance
-(5e-3 in |S|) and predicted the newest solve as closely, twice in a row, and then predicts one more solve in the
-middle of the widest gap between its samples; or after `--mom-solves` (60). The GUI's Run
+(5e-3 in |S|) and predicted the newest solve as closely, and then once more with a solve in the middle of the
+widest gap between its samples; or after `--mom-solves` (60). (Until 2026-11-18 it took two such agreements
+before the gap's solve: on the twelve boards' dense solves 218 solves against 206, each final model within 1.3e-3
+of the solves against 3.6e-3: a solve more a board for a model already confirmed.) The GUI's Run
 page plots the model change and the prediction error per solve; the run summary keeps them (`solved.mom25d.afs`).
 The model is fitted to 3e-4 of each entry's scale, not to rounding: a mixed-precision solve's S carries noise
 of 1e-5 to 1e-4, and a model fitted through it took a support at every sample and put poles between them. With

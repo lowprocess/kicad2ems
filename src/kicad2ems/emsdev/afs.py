@@ -120,8 +120,9 @@ def adaptive_sweep(solve, fmin, fmax, n0=5, tol=2e-3, max_points=40, ngrid=2001,
     on_step(entry): called with each entry as it is made. Converged when, twice
     in a row, the models from the last two iterations agree to `tol` (max |dS|)
     on the grid and the model predicted the newest sample to `tol` before it was
-    solved. (The model change alone can be zero while the model is still wrong:
-    a sparse fit that the new sample does not alter.) seed: frequencies (Hz)
+    solved, the second time a solve in the widest gap between the samples. (The
+    model change alone can be zero while the model is still wrong: a sparse fit
+    that the new sample does not alter.) seed: frequencies (Hz)
     solved among the first samples, besides the n0 spread over the band (those
     inside it). grid: the frequencies asked for (Hz), the model checked and
     returned there (else ngrid spread linearly); a grid in log f (a sweep of
@@ -180,11 +181,14 @@ def adaptive_sweep(solve, fmin, fmax, n0=5, tol=2e-3, max_points=40, ngrid=2001,
                 f"{grid[k] / 1e9:.3f} GHz, prediction error {pred_err:.1e}")
             ok = ok + 1 if dif[k] < tol and pred_err < tol else 0
             gap_ok = gap_ok and ok > 0
-            if ok >= 2 and not gap_ok and len(fs) < max_points:
-                # agreed: one more solve where the samples are furthest apart
-                # (two models can be wrong alike where neither was asked)
+            if ok >= 1 and not gap_ok and len(fs) < max_points:
+                # agreed: the next solve where the samples are furthest apart
+                # (two models can be wrong alike where neither was asked).
+                # (After two agreements at the largest change, as until
+                # 2026-11-18, a sweep took one more solve: 218 against 206 on
+                # 12 boards' dense solves, each model then within 3.6e-3)
                 fnew, gap_try = widest_gap(), True
-            elif ok >= 2 or len(fs) >= max_points:
+            elif ok >= 2 and gap_ok or len(fs) >= max_points:
                 hist[-1]['converged'] = ok >= 2
                 break
             else:
