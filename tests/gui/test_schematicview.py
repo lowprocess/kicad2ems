@@ -147,7 +147,7 @@ def test_cancelled_import_does_not_start_or_overwrite_invalid_json(
     progress = QSignalSpy(job.progress)
     job.cancel();job.start();assert job.proc is None and progress.count()==0
     tab.editor.setPlainText('{ unfinished')
-    tab.schematic.import_ready(dict(components=[]),{})
+    tab.schematic.import_ready(dict(components=[]))
     assert (tab.editor.toPlainText() == '{ unfinished'
             and 'Fix the model' in tab.schematic.note.text())
 
@@ -165,11 +165,7 @@ def test_kicad_process_import_and_cancellation(tab,tmp_path,monkeypatch):
     cli.write_text(f'#!{sys.executable}\n' + '''import sys,time
 from pathlib import Path
 target=Path(sys.argv[sys.argv.index('--output')+1])
-if 'netlist' in sys.argv:
-    target.write_text('<export><components/><nets/></export>')
-else:
-    (target/'sheet.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" \
-width="100" height="50"><circle cx="20" cy="20" r="10"/></svg>')
+target.write_text('<export><components/><nets/></export>')
 ''')
     cli.chmod(0o755)
     monkeypatch.setattr(schematicview.shutil, 'which', lambda _: str(cli))
@@ -178,22 +174,10 @@ width="100" height="50"><circle cx="20" cy="20" r="10"/></svg>')
     failed = QSignalSpy(job.failed)
     job.start()
     assert done.wait(5000) and failed.count()==0
-    document, sheets = done.at(0)
-    assert (document['path'] == str(source) and list(sheets) == ['sheet.svg'])
+    document, = done.at(0)
+    assert document['path'] == str(source)
     assert (not Path(job.temp.name).exists()
             and source.read_text() == 'original untouched')
-    tab.schematic.set_sheets(sheets)
-    assert (len(tab.schematic.source_scene.items()) == 1)
-    tab.set_model(tab.values()) # unchanged source keeps loaded sheets
-    assert tab.schematic._sheets==sheets
-    cfg=tab.values();cfg['schematic']={'source':document};tab.set_model(cfg)
-    assert tab.schematic._sheets=={}
-    tab.schematic.set_sheets(sheets)
-    assert (tab.schematic.commit(lambda c: c.pop('schematic'))
-            and tab.schematic._sheets == {})
-    tab.schematic.undo()
-    assert (tab.schematic.config['schematic']['source'] == document
-            and tab.schematic._sheets == {})
     cli.write_text(f'#!{sys.executable}\nimport time\ntime.sleep(30)\n')
     job = KiCadJob(source, tab)
     done = QSignalSpy(job.completed)

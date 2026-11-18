@@ -1,4 +1,4 @@
-"""Editable simulation schematic and read-only KiCad source views."""
+"""Editable simulation schematic, and importing KiCad parts into it."""
 import copy
 import hashlib
 import json
@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QScrollArea, QGraphicsView, QGraphicsScene,
                                QGraphicsObject, QGraphicsItem, QDialog,
                                QDialogButtonBox, QTableWidget, QTableWidgetItem,
-                               QHeaderView, QFileDialog, QStackedWidget, QMenu)
+                               QHeaderView, QFileDialog, QMenu)
 
 
 def _api():
@@ -50,7 +50,7 @@ def _natural(text):
 
 
 class KiCadJob(QObject):
-    completed=Signal(dict,object)
+    completed=Signal(dict)
     failed=Signal(str)
     progress=Signal(str)
 
@@ -59,7 +59,6 @@ class KiCadJob(QObject):
         self.path = Path(path).expanduser().resolve()
         self.temp = tempfile.TemporaryDirectory(prefix='pcbqs-gui-')
         self.proc = None
-        self.stage = 'netlist'
         self.document = None
         self.cancelled = False
 
@@ -71,7 +70,7 @@ class KiCadJob(QObject):
                 self.failed.emit(str(exc))
                 self.cleanup()
                 return
-            self.completed.emit(self.document,{});self.cleanup();return
+            self.completed.emit(self.document);self.cleanup();return
         exe=shutil.which('kicad-cli')
         if (not exe):
             self.failed.emit(
@@ -95,8 +94,7 @@ class KiCadJob(QObject):
         self.timer.setInterval(120000)
         self.timer.timeout.connect(self._timeout)
         self.timer.start()
-        self.progress.emit('Reading KiCad connectivity…' if self.stage ==
-                           'netlist' else 'Rendering read-only KiCad sheets…')
+        self.progress.emit('Reading KiCad connectivity…')
         self.proc.start(self.exe,args)
 
     def _error(self,error):
@@ -115,44 +113,20 @@ class KiCadJob(QObject):
         log = bytes(self.proc.readAllStandardOutput()).decode(errors='replace')
         self.proc.deleteLater()
         self.proc = None
-        if self.stage=='netlist':
-            try:
-                if code:
-                    raise ValueError('KiCad netlist export failed: '
-                                     + log.strip())
-                self.document = _api().read_netlist(
-                    Path(self.temp.name) / 'netlist.xml')
-                self.document.update(
-                    path=str(self.path), kind='kicad_sch',
-                    sha256=hashlib.sha256(self.path.read_bytes()).hexdigest())
-            except (OSError, ValueError) as exc:
-                self.failed.emit(str(exc))
-                self.cleanup()
-                return
-            self.stage='svg';folder=Path(self.temp.name)/'sheets';folder.mkdir()
-            self._launch([
-                'sch', 'export', 'svg', '--output',
-                str(folder),
-                str(self.path)
-            ])
-        else:
-            try:
-                sheets = ({
-                    p.name: p.read_bytes()
-                    for p in sorted((Path(self.temp.name)
-                                     / 'sheets').glob('*.svg'))
-                } if not code else {})
-            except OSError as exc:
-                sheets = {}
-                self.progress.emit(
-                    'Connectivity imported; could not read source sheets: '
-                    + str(exc))
+        try:
             if code:
-                self.progress.emit(
-                    'Connectivity imported; KiCad sheet rendering was '
-                    'unavailable: '
-                    + log.strip())
-            self.completed.emit(self.document,sheets);self.cleanup()
+                raise ValueError('KiCad netlist export failed: '
+                                 + log.strip())
+            self.document = _api().read_netlist(
+                Path(self.temp.name) / 'netlist.xml')
+            self.document.update(
+                path=str(self.path), kind='kicad_sch',
+                sha256=hashlib.sha256(self.path.read_bytes()).hexdigest())
+        except (OSError, ValueError) as exc:
+            self.failed.emit(str(exc))
+        else:
+            self.completed.emit(self.document)
+        self.cleanup()
 
     def cancel(self):
         self.cancelled=True
@@ -1194,19 +1168,11 @@ class SchematicEditor(QWidget):
         self.model_provider = None
         self.job = None
         self.fields = {}
-        self._sheets = {}
-        self._rendered_source = None
         self._loading = False
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         bar = QHBoxLayout()
         root.addLayout(bar)
-        self.mode = QComboBox()
-        self.mode.addItems([
-            'Simulation schematic', 'KiCad source sheets',
-            'KiCad component data'
-        ])
-        bar.addWidget(self.mode)
         for text, slot in [('Import KiCad…', self.import_file),
                            ('Add part…', self.add_part),
                            ('Remove', self.remove_part),
@@ -1226,9 +1192,6 @@ class SchematicEditor(QWidget):
         self.find.setPlaceholderText('Find ref / net')
         self.find.returnPressed.connect(self.find_ref)
         bar.addWidget(self.find, 1)
-        self.stack = QStackedWidget()
-        root.addWidget(self.stack, 1)
-        self.mode.currentIndexChanged.connect(self.stack.setCurrentIndex)
         self.graph = QSplitter(Qt.Horizontal)
         self.view = ZoomView()
         self.scene = CircuitScene(self)
@@ -1242,41 +1205,7 @@ class SchematicEditor(QWidget):
         self.inspector.setMinimumWidth(250)
         self.graph.addWidget(self.inspector)
         self.graph.setSizes([1100, 300])
-        self.stack.addWidget(self.graph)
-        source = QWidget()
-        sl = QVBoxLayout(source)
-        row = QHBoxLayout()
-        self.sheet = QComboBox()
-        self.sheet.currentTextChanged.connect(self.show_sheet)
-        row.addWidget(self.sheet, 1)
-        load = QPushButton('Load source sheets…')
-        load.clicked.connect(self.load_source)
-        row.addWidget(load)
-        sl.addLayout(row)
-        self.source_view = ZoomView()
-        self.source_scene = QGraphicsScene(self)
-        self.source_view.setScene(self.source_scene)
-        sl.addWidget(self.source_view)
-        self.stack.addWidget(source)
-        data = QWidget()
-        dl = QVBoxLayout(data)
-        self.source_table = QTableWidget()
-        self.source_table.setColumnCount(5)
-        self.source_table.setHorizontalHeaderLabels(
-            ['Ref', 'Value', 'Kind', 'Pins → nets', 'Simulation'])
-        self.source_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.source_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.source_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeToContents)
-        self.source_table.horizontalHeader().setSectionResizeMode(
-            3, QHeaderView.Stretch)
-        self.source_table.itemSelectionChanged.connect(self.source_details)
-        self.source_table.cellDoubleClicked.connect(self.edit_source_part)
-        dl.addWidget(self.source_table, 2)
-        self.source_info = QPlainTextEdit()
-        self.source_info.setReadOnly(True)
-        dl.addWidget(self.source_info, 1)
-        self.stack.addWidget(data)
+        root.addWidget(self.graph, 1)
         self.note = QLabel(
             'Select a component to edit its model, parasitics and connections. '
             'Drag to arrange; wheel to zoom.'
@@ -1326,17 +1255,12 @@ class SchematicEditor(QWidget):
     def rebuild(self):
         self._loading=True
         try:
-            source=self.config.get('schematic',{}).get('source')
-            if (source != self._rendered_source):
-                self.set_sheets({})
-                self._rendered_source = copy.deepcopy(source)
             # (a model being drawn, checked as its edit was)
             self.check(self.config, self.config)
             self.scene.load(
                 records(self.config),
                 self.config.get('schematic', {}).get('positions', {}),
                 self.config.get('schematic', {}).get('rotations', {}))
-            self.refresh_source()
             if (self.selected_key in self.scene.devices):
                 self.scene.devices[self.selected_key].setSelected(True)
             self.select(self.selected_key if self.selected_key in
@@ -1422,13 +1346,13 @@ class SchematicEditor(QWidget):
         self.commit(change,'Arranged schematic');self.fit()
 
     def fit(self):
-        (self.source_view if self.mode.currentIndex()==1 else self.view).fit()
+        self.view.fit()
 
     def find_ref(self):
         text=self.find.text().strip().lower()
         key = next((key for key, item in self.scene.devices.items()
                     if item.record['ref'].lower() == text), None)
-        if key:self.mode.setCurrentIndex(0);self.scene.focus(key);return
+        if key:self.scene.focus(key);return
         nets = [
             n for item in self.scene.devices.values()
             for n in item.record['nets'] if text in n.lower()
@@ -1649,7 +1573,7 @@ class SchematicEditor(QWidget):
         )
         if path:self.import_path(path)
 
-    def import_path(self,path,view_only=False):
+    def import_path(self,path):
         try:self.base_model()
         except (ValueError, KeyError) as exc:
             self.message('Fix the model JSON before importing: ' + str(exc))
@@ -1660,26 +1584,15 @@ class SchematicEditor(QWidget):
             except (ValueError, RuntimeError, OSError, ImportError) as exc:
                 self.message('Could not read the board: ' + str(exc))
                 return
-            return self.import_ready(document,{},view_only)
+            return self.import_ready(document)
         if self.job:self.job.cancel();self.job.deleteLater()
         self.job = KiCadJob(path, self)
         self.job.progress.connect(self.message)
         self.job.failed.connect(self.message)
-        self.job.completed.connect(
-            lambda doc, sheets: self.import_ready(doc, sheets, view_only))
+        self.job.completed.connect(self.import_ready)
         QTimer.singleShot(0, self.job.start)
 
-    def import_ready(self,document,sheets,view_only=False):
-        if view_only:
-            self.set_sheets(sheets);self.mode.setCurrentIndex(1)
-            if (document.get('sha256')
-                    != self.config.get('schematic', {}).get('source',
-                                                            {}).get('sha256')):
-                self.message(
-                    'Source file changed; re-import to review connectivity and '
-                    'values.'
-                )
-            return
+    def import_ready(self,document):
         try:
             current=self.base_model();self.check(current)
         except (ValueError, KeyError, TypeError, ImportError) as exc:
@@ -1694,12 +1607,9 @@ class SchematicEditor(QWidget):
             c.clear()
             c.update(imported)
 
-        if self.commit(
-                change,
-                f'Imported {len(refs)} selected components; source has '
-                f'{len(document["components"])} components'
-        ):
-            self.set_sheets(sheets)
+        self.commit(
+            change, f'Imported {len(refs)} selected components; source has '
+            f'{len(document["components"])} components')
 
     def review(self,document,current):
         """The parts to import and whether to move the existing ones: the review
@@ -1707,87 +1617,6 @@ class SchematicEditor(QWidget):
         dialog=ImportReview(document,current,self)
         if dialog.exec()!=QDialog.Accepted:return None
         return dialog.selected_refs(),dialog.connections.isChecked()
-
-    def set_sheets(self,sheets):
-        self._sheets = sheets
-        self.sheet.blockSignals(True)
-        self.sheet.clear()
-        self.sheet.addItems(list(sheets))
-        self.sheet.blockSignals(False)
-        if sheets:self.show_sheet(next(iter(sheets)))
-        else:self.source_scene.clear()
-
-    def show_sheet(self,name):
-        if name not in self._sheets:return
-        try:
-            from PySide6.QtSvg import QSvgRenderer
-            from PySide6.QtSvgWidgets import QGraphicsSvgItem
-        except ImportError:
-            self.message(
-                'Qt SVG support is needed for source sheets; simulation '
-                'editing is available. Install the matching PySide6-Addons '
-                'package.'
-            )
-            return
-        self.source_scene.clear()
-        item = QGraphicsSvgItem()
-        item.renderer_ref = QSvgRenderer(self._sheets[name])
-        if (not item.renderer_ref.isValid()):
-            self.message('Could not render this KiCad source sheet')
-            return
-        item.setSharedRenderer(item.renderer_ref)
-        self.source_scene.addItem(item)
-        self.source_view.fit()
-
-    def load_source(self):
-        source = self.config.get('schematic', {}).get('source', {})
-        path = source.get('path', '')
-        if (not path.endswith('.kicad_sch') or not Path(path).is_file()):
-            path, _ = QFileDialog.getOpenFileName(
-                self, 'Read-only KiCad sheet', '',
-                'KiCad schematic (*.kicad_sch)')
-        if path:self.import_path(path,view_only=True)
-
-    def refresh_source(self):
-        self.source_components = self.config.get('schematic', {}).get(
-            'source', {}).get('components', [])
-        self.source_table.setRowCount(len(self.source_components))
-        configured = {
-            p['ref']
-            for p in [
-                *self.config.get('parts', []), *self.config.get(
-                    'components', []), *self.config.get('switches', [])
-            ]
-        }
-        for row,c in enumerate(self.source_components):
-            for col, value in enumerate([
-                    c['ref'], c['value'], c['kind'],
-                    ', '.join(p['number'] + ' → ' + (p['net'] or 'unconnected')
-                              for p in c['pins']),
-                    ('Configured' if c['ref'] in configured
-                     else 'Not in simulation')
-            ]):
-                item = QTableWidgetItem(value)
-                item.setToolTip(value)
-                self.source_table.setItem(row, col, item)
-
-    def source_details(self):
-        row=self.source_table.currentRow()
-        if (0 <= row < len(self.source_components)):
-            self.source_info.setPlainText(
-                json.dumps(self.source_components[row], indent=2))
-
-    def edit_source_part(self,row,*_):
-        ref = (self.source_components[row]['ref'])
-        key = next((key for key, item in self.scene.devices.items()
-                    if item.record['ref'] == ref), None)
-        if key:self.mode.setCurrentIndex(0);self.scene.focus(key)
-        else:
-            self.message(
-                ref +
-                ' is not in the simulation; use Import KiCad to select '
-                'supported passives.'
-            )
 
     def cancel_import(self):
         if self.job:self.job.cancel()

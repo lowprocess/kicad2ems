@@ -319,6 +319,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   given, so a switching loss is a device's, not the drive ramp's; pcbqs's CHANGELOG has the figures.
 
 ### Removed
+- **The GUI's copies of KiCad (2026-11-18, wave 3).** The Circuit page's
+  *KiCad source sheets* and *KiCad component data* views (KiCad shows both);
+  importing a schematic reads its netlist only.
 - **gfdtd's `GFDTD_VK_BLOCK` and `GFDTD_VK_IDX`.** Tuning variables nothing
   set or documented: the Vulkan kernels' workgroup is 64 and their index
   `int` (2026-11-18). The documented settings that no test had set now have
