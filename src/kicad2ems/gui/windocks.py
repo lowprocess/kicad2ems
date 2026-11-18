@@ -286,9 +286,12 @@ class WindowDocks:
         if floating:
             from PySide6.QtWidgets import QApplication
             QApplication.processEvents()
+        # the workspace first: put back after the window's docks, at the size
+        # they had left it, Qt crashed laying it out (offscreen, its pages'
+        # widths near the window's)
         if (built is None or built[2] != self._wide()
-                or not (self.restoreState(built[0], STATE_VERSION)
-                        and self.work.restoreState(built[1], STATE_VERSION))):
+                or not (self.work.restoreState(built[1], STATE_VERSION)
+                        and self.restoreState(built[0], STATE_VERSION))):
             # (or a window of another width than it was built with)
             self._place_docks()
             self._built_layout = (self.saveState(STATE_VERSION),
