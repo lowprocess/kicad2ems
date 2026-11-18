@@ -12,7 +12,7 @@
 board    = "sma_launch.kicad_pcb"
 pos      = "sma_launch-all.pos"
 nets     = ["REF_SMA_N", "GND"]
-no_mask  = true
+mask     = false
 fmin     = 1.0          # GHz
 fmax     = 6.0
 points   = 401

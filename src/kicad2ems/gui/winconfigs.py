@@ -125,7 +125,7 @@ class WindowConfigs:
         base = os.path.dirname(os.path.abspath(path)) if path else os.getcwd()
         if path:
             try:
-                tables = analyses.read_config(path)[1]
+                tables = analyses.read_config(path)
                 study = read_config(path, strict=False)
                 # the analyses a config gives several tables
                 # ([[analysis.<name>]]: a run each): those after the first
@@ -236,7 +236,7 @@ class WindowConfigs:
         S-parameters alone with nothing else set writes neither."""
         from kicad2ems.core import study
         from kicad2ems.core.study import Study
-        from .runner import write_analyses
+        from kicad2ems.core.runs import update_toml
         base = os.path.dirname(os.path.abspath(path))
         tables = dict(getattr(self, 'extra_analyses', {}))
         for key, page in self.pages.items():
@@ -264,8 +264,7 @@ class WindowConfigs:
                                for t in rest]
                     ]
                 tables[key] = tab
-        # [study] says which run: no [analysis] run
-        write_analyses(path, None, tables)
+        update_toml(path, tables={'analysis': tables})
         st = self.study.study()
         extra = getattr(self, 'extra_study', None)
         # what this window could not show: kept

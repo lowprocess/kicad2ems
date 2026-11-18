@@ -174,40 +174,17 @@ def _rel(path, base):
                                    + os.pardir) else rel.replace(os.sep, '/'))
 
 
-def _value_end(lines, i, start):
-    """Index after the last line of a value that starts at lines[i][start:]
-    (multi-line arrays)."""
-    depth, j, text = 0, i, lines[i][start:]
-    while True:
-        in_str = None
-        for ch in text:
-            if in_str:
-                if ch == in_str:
-                    in_str = None
-            elif ch in '"\'':
-                in_str = ch
-            elif ch == '#':
-                break
-            elif ch == '[':
-                depth += 1
-            elif ch == ']':
-                depth -= 1
-        if depth <= 0 or j + 1 >= len(lines):
-            return j + 1
-        j += 1
-        text = lines[j]
-
-
 def save_config(path, values, template=None):
     """Write the GUI's settings to a TOML config at `path`.
 
     Paths are written relative to the file's folder. With `template` (the config
     that was loaded), its text is kept: comments, order and tables stay, each
-    known key gets its new value in place (keeping a trailing comment), keys
-    whose field was cleared are removed and new keys are added above the first
-    table. Without a template, only the settings that differ from the defaults
-    are written."""
-    from kicad2ems.core.config import Settings, PATH_KEYS
+    setting gets its new value where it is written (keeping a trailing
+    comment), settings whose field was cleared are removed and new ones are
+    added above the first table. Without a template, only the settings that
+    differ from the defaults are written."""
+    from kicad2ems.core.config import Settings, PATH_KEYS, setting_keys
+    from kicad2ems.core.runs import load_toml, update_toml
     base = os.path.dirname(os.path.abspath(path))
     vals = {}
     for k, v in solvers_from_form(values).items():
@@ -215,165 +192,25 @@ def save_config(path, values, template=None):
             continue
         if k in PATH_KEYS and isinstance(v, str) and v:
             v = _rel(os.path.abspath(v), base)
-        if isinstance(v, tuple):
-            v = list(v)
-        vals[k] = v
+        vals[k] = list(v) if isinstance(v, tuple) else v
     empty = lambda v: v is None or v == '' or v == []
-    defaults = Settings()
-    if template is None or not os.path.exists(template):
-        lines = [
-            "# kicad2ems run configuration (written by the GUI); paths are "
-            "relative to this file"
-        ]
-        for k, v in vals.items():
-            if empty(v) or (k != 'out' and getattr(defaults, k, object()) == v):
-                continue
-            if k == 'mask':
-                lines.append(f"no_mask = {toml_value(not v)}")
-            else:
-                lines.append(f"{k} = {toml_value(v)}")
-        text = "\n".join(lines) + "\n"
-    else:
-        import re
-        src = open(template, encoding='utf-8').read().splitlines()
-        out, seen, i, first_table, table = [], set(), 0, None, {}
-        key_re = re.compile(r'^(\s*)([A-Za-z0-9_-]+)(\s*=\s*)')
-        while i < len(src):
-            line = src[i]
-            # ([[...]]: an array's table too)
-            head = re.match(r'^\s*\[\[?\s*([^\[\]]+?)\s*\]', line)
-            if head:
-                first_table = len(out) if first_table is None else first_table
-                table = _table_keys(head.group(1))
-            m = key_re.match(line)
-            if not m or table is None:  # not a key, or another tool's table
-                out.append(line)
-                i += 1
-                continue
-            raw = m.group(2)
-            k = raw.replace('-', '_')
-            j = _value_end(src, i, m.end())
-            k_val = table.get(k) if table else ('mask' if k == 'no_mask' else k)
-            if k_val is None:  # not a setting of that solver: untouched
-                out.extend(src[i:j])
-                i = j
-                continue
-            # the field was cleared: drop the line
-            if k_val not in vals and k_val in MANAGED:
-                seen.add(k_val)
-                i = j
-                continue
-            if k_val not in vals:  # a key the GUI does not know: untouched
-                out.extend(src[i:j])
-                i = j
-                continue
-            seen.add(k_val)
-            v = vals[k_val]
-            col, c = _comment(src[j - 1])
-            if empty(v):
-                i = j
-                continue
-            newv = toml_value(not v) if k == 'no_mask' else toml_value(v)
-            new = f"{m.group(1)}{raw}{m.group(3)}{newv}"
-            if c:  # the comment stays in its column
-                new = (f"{new:<{col if j - 1 == i else 0}}" +
-                       ('' if len(new) < col and j - 1 == i else '  ') + c)
-            out.append(new)
-            i = j
-        extra = []
-        for k, v in vals.items():
-            if k in seen or empty(v) or getattr(defaults, k, object()) == v:
-                continue
-            extra.append(f"no_mask = {toml_value(not v)}" if k ==
-                         'mask' else f"{k} = {toml_value(v)}")
-        if extra:
-            at = first_table if first_table is not None else len(out)
-            while at > 0 and not out[at - 1].strip():
-                at -= 1
-            out[at:at] = extra
-        text = "\n".join(out) + "\n"
-    tmp = path + '.tmp'
-    with open(tmp, 'w', encoding='utf-8') as fh:
-        fh.write(text)
-    os.replace(tmp, path)
-
-
-def write_analyses(path, run, tables):
-    """The [analysis] part of the config at `path` written anew
-    (kicad2ems.core.analyses.read_config reads it): run, the analyses its study
-    runs (None: not said), and each analysis's table {key: value}, or its
-    tables, a list of them (a run each: a board's rails), written as an array
-    ([[analysis.<name>]]). The [analysis] tables there before are replaced, the
-    rest of the file is kept; none to write and none there: the file as it
-    is."""
-    import re
-    with open(path, encoding='utf-8') as fh:
-        lines = fh.read().splitlines()
-    out, skip, had = [], False, False
-    for line in lines:
-        head = re.match(r'^\s*\[\[?\s*([^\[\]]+?)\s*\]', line)
-        if head:
-            name = head.group(1).strip()
-            skip = name == 'analysis' or name.startswith('analysis.')
-            had = had or skip
-        if not skip:
-            out.append(line)
-    sets = {}
-    for name, tab in (tables or {}).items():
-        many = [
-            t for t in (tab if isinstance(tab, (list, tuple)) else [tab]) if t
-        ]
-        if many:
-            sets[name] = many
-    if run is None and not sets and not had:
-        return
-    while out and not out[-1].strip():
-        out.pop()
-    if run is not None or sets:
-        out += ['', '[analysis]']
-        if run is not None:
-            out.append(f"run = {toml_value(list(run))}")
-        for name, many in sets.items():
-            for tab in many:
-                out += ['', (f"[[analysis.{name}]]" if len(many) > 1
-                             else f"[analysis.{name}]")]
-                out += [f"{k} = {toml_value(v)}" for k, v in tab.items()]
-    with open(path, 'w', encoding='utf-8') as fh:
-        fh.write('\n'.join(out) + '\n')
-
-
-def _table_keys(name):
-    """How save_config reads the keys of a TOML table: {} for one read like the
-    top level ([openems]), {short name: setting} for a solver's [solver.<name>],
-    None for another tool's."""
-    from kicad2ems.core.solvers import get
-    name = name.strip().strip('"')
-    if name.lower() == 'openems':
-        return {}
-    if name.lower().startswith('solver.'):
-        try:
-            sv = get(name.split('.', 1)[1].strip('"'))
-        except ValueError:
-            return None
-        return ({o.short: o.key
-                 for o in sv.options} | {o.key: o.key
-                                         for o in sv.options})
-    return None
-
-
-def _comment(text):
-    """(column, '# ...') of the trailing comment of a TOML line (outside
-    strings), or (0, '')."""
-    in_str = None
-    for n, ch in enumerate(text):
-        if in_str:
-            if ch == in_str:
-                in_str = None
-        elif ch in '"\'':
-            in_str = ch
-        elif ch == '#':
-            return n, text[n:]
-    return 0, ''
+    defaults, edits, seen = Settings(), {}, set()
+    has = template is not None and os.path.exists(template)
+    for table, raw, k, _ in setting_keys(load_toml(template) if has else {}):
+        if raw is None:  # a table of its own ([vary]): kept
+            seen.add(k)
+        elif k in vals or k in MANAGED:  # else a key the GUI does not know
+            seen.add(k)
+            v = vals.get(k)
+            edits[table, raw] = (None if empty(v) else
+                                 not v if raw == 'no_mask' else v)
+    for k, v in vals.items():
+        if not (k in seen or empty(v) or
+                (k != 'out' and getattr(defaults, k, object()) == v)):
+            edits['', k] = v
+    update_toml(path, edits, source=template if has else None, head=[
+        "# kicad2ems run configuration (written by the GUI); paths are "
+        "relative to this file"])
 
 
 def extra_values(path):

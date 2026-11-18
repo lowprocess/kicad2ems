@@ -45,7 +45,12 @@ import sys
 import time
 from dataclasses import dataclass, field
 
-from .runs import load_toml, toml_value
+from .runs import load_toml, update_toml
+
+__all__ = ['Study', 'RF', 'study_tree', 'questions', 'engines', 'provided',
+           'dump_options', 'default_fields', 'runs_for', 'mark', 'marked',
+           'check_lines', 'load_config', 'read_config', 'write_config', 'plan',
+           'engine_named', 'compare', 'latest_results', 'rf_needs', 'main']
 
 GROUPS = ('RF', 'Signal integrity', 'Power', 'Thermal', 'Other')
 # in a run's folder: the engine that made it and what was asked of it
@@ -474,85 +479,114 @@ def _names(v):
     ]
 
 
+def load_config(path):
+    """A config's tables in the one form the study and the analyses read, its
+    older forms turned into it:
+
+        [analysis.<name>]       a list of one ([[analysis.<name>]]: several);
+                                names in lower case, keys with underscores
+        [analysis] run = [...]  (before the questions, and no [study]): the
+                                [study] it means: run = the questions (rf:
+                                S-parameters; an analysis: those it answers,
+                                by it), said = "analysis"
+        an analysis's check     (the crosstalk's, before its variants were
+                                engines), for a question [study] names no
+                                engine for: that variant (crosstalk_gfdtd)
+
+    [study] then holds run (the questions, in lower case) and said ("study";
+    "analysis": the older form), [study.<q>] as written; none: None."""
+    from .options import strlist
+    cfg = load_toml(path)
+    old = cfg.get('analysis')
+    old = old if isinstance(old, dict) else {}
+    sets = cfg['analysis'] = {}
+    for name, tabs in old.items():
+        tabs = [tabs] if isinstance(tabs, dict) else tabs
+        if (isinstance(tabs, list) and tabs
+                and all(isinstance(t, dict) for t in tabs)):
+            sets[name.lower()] = [{k.replace('-', '_'): v
+                                   for k, v in t.items()} for t in tabs]
+    st = cfg.get('study')
+    if isinstance(st, dict):
+        tabs = {str(k).lower(): v for k, v in st.items() if isinstance(v, dict)}
+        st = dict(tabs, said='study', run=_names(st['run'])
+                  if st.get('run') is not None else list(tabs))
+    elif old.get('run') is not None:
+        from .analyses import registry
+        reg, st = registry(), {'run': [], 'said': 'analysis'}
+        for name in [x.lower() for x in strlist(old['run']) or []]:
+            qs = (['sparams'] if name == RF else
+                  provided(reg[name]) if name in reg else [name])
+            for q in qs:
+                e = ([] if name == RF else [name] if name not in reg else
+                     (_variant(q, sets, run=name) or [name])[:1])
+                have = st.setdefault(q, {'engine': []})['engine']
+                st['run'] += [q] if q not in st['run'] else []
+                have += [x for x in e if x not in have]
+    else:
+        st = None
+    for q in st['run'] if st else ():
+        tab = st.get(q)
+        if not isinstance(tab, dict) or not any(
+                x not in ('', 'auto') for x in _names(tab.get('engine', []))):
+            v = _variant(q, sets)
+            if v:
+                st[q] = dict(tab or {}, engine=v)
+    cfg['study'] = st
+    return cfg
+
+
 def read_config(path, strict=True):
-    """The study a TOML config asks (Study). Its [study] tables say; without
-    them, [analysis] run as before the questions ("rf": S-parameters; an
-    analysis: the questions it answers, by it); with neither, S-parameters.
-    strict False (a front end, which shows what it cannot run greyed): a
-    question nobody knows and an engine nobody lists are kept as written
-    instead of a ValueError."""
-    table = load_toml(path).get('study')
-    if isinstance(table, dict):
-        known, es = questions(), engines()
-        tabs = {
-            str(k).lower(): v
-            for k, v in table.items()
-            if isinstance(v, dict)
-        }
-        run = (_names(table['run'])
-               if table.get('run') is not None else list(tabs))
-        asked, fields = {}, {}
-        for q in run:
-            if q not in known and strict:
-                raise ValueError(
-                    f"[study] run: no question {q!r}: one of {', '.join(known)}"
-                )
-            tab = tabs.get(q, {})
-            # ('engines' for 'engine' had run the default
-            odd = sorted(set(tab) - {'engine', 'fields'})
-            # engine without a word)
-            if odd and strict:
-                raise ValueError(
-                    f"[study.{q}]: {', '.join(odd)}: not a key of a question "
-                    "(engine, fields)"
-                )
-            names = []
-            for text in _names(tab.get('engine', [])):
-                try:
-                    name = engine_named(q, text, es)
-                except ValueError:
-                    if strict:
-                        raise
-                    name = text
-                if name and name not in names:
-                    names.append(name)
-            asked[q] = names or _variant(q, path, es)
-            if 'fields' in tab:
-                fields[q] = bool(tab['fields'])
-        return Study(asked, fields, 'study')
-    from .analyses import read_config as read_analyses, registry
-    run, _ = read_analyses(path)
-    if run is None:
+    """The study a TOML config asks (Study): its [study] tables (load_config:
+    or what an older form means); with none, S-parameters. strict False (a
+    front end, which shows what it cannot run greyed): a question nobody knows
+    and an engine nobody lists are kept as written instead of a
+    ValueError."""
+    table = load_config(path).get('study')
+    if table is None:
         return Study({'sparams': []})
-    asked, reg = {}, registry()
-    for name in run:
-        if name == RF:
-            asked.setdefault('sparams', [])
-        elif name in reg:
-            for q in provided(reg[name]):
-                e = (_variant(q, path, run=name) or [name])[0]
-                if e not in asked.setdefault(q, []):
-                    asked[q].append(e)
-        elif strict:
-            raise ValueError(f"[analysis] run: no analysis {name!r}: one of "
-                             f"{', '.join([RF, *reg])}")
-        else:
-            asked.setdefault(name, [name])
-    return Study(asked, {}, 'analysis')
+    known, es = questions(), engines()
+    asked, fields = {}, {}
+    for q in table['run']:
+        if q not in known and strict:
+            if table['said'] == 'analysis':
+                from .analyses import registry
+                raise ValueError(f"[analysis] run: no analysis {q!r}: one of "
+                                 f"{', '.join([RF, *registry()])}")
+            raise ValueError(
+                f"[study] run: no question {q!r}: one of {', '.join(known)}")
+        tab = table.get(q, {})
+        # ('engines' for 'engine' had run the default
+        odd = sorted(set(tab) - {'engine', 'fields'})
+        # engine without a word)
+        if odd and strict:
+            raise ValueError(
+                f"[study.{q}]: {', '.join(odd)}: not a key of a question "
+                "(engine, fields)"
+            )
+        names = []
+        for text in _names(tab.get('engine', [])):
+            try:
+                name = engine_named(q, text, es)
+            except ValueError:
+                if strict:
+                    raise
+                name = text
+            if name and name not in names:
+                names.append(name)
+        asked[q] = names
+        if 'fields' in tab:
+            fields[q] = bool(tab['fields'])
+    return Study(asked, fields, table['said'])
 
 
-def _variant(q, path, es=None, run=None):
-    """[the variant engine] that a config's analysis table asks for by the
-    settings it fixes (a crosstalk table's check = "gfdtd", written before the
-    variants were engines: crosstalk_gfdtd), else []. run: of that analysis
-    only."""
-    from .analyses import read_config as read_analyses
-    try:
-        tabs = read_analyses(path)[1]
-    except (OSError, ValueError):
-        return []
+def _variant(q, sets, es=None, run=None):
+    """[the variant engine] that a config's analysis tables (load_config's)
+    ask for by the settings it fixes (a crosstalk table's check = "gfdtd",
+    written before the variants were engines: crosstalk_gfdtd), else []. run:
+    of that analysis only."""
     for e in (es or engines()).values():
-        tab = (tabs.get(e.run) if e.kind == 'analysis'
+        tab = (sets.get(e.run, [None])[0] if e.kind == 'analysis'
                and run in (None, e.run) else None)
         if (tab is not None and q in e.provides and any(e.sets.values())
                 and all(str(tab.get(k) or '') == str(v)
@@ -565,30 +599,15 @@ def write_config(path, study):
     """The [study] tables of the config at `path` written anew from a Study
     (None: taken out); the rest of the file is kept. An engine is written by its
     registry name."""
-    import re
-    with open(path, encoding='utf-8') as fh:
-        lines = fh.read().splitlines()
-    out, skip = [], False
-    for line in lines:
-        head = re.match(r'^\s*\[\s*([^\]]+?)\s*\]', line)
-        if head:
-            name = head.group(1).strip()
-            skip = name == 'study' or name.startswith('study.')
-        if not skip:
-            out.append(line)
-    while out and not out[-1].strip():
-        out.pop()
+    tab = {}
     if study is not None:
-        out += ['', '[study]', f"run = {toml_value(list(study.asked))}"]
+        tab = {'run': list(study.asked)}
         for q, names in study.asked.items():
-            value = names[0] if len(names) == 1 else list(names)
-            tab = (([f"engine = {toml_value(value)}"] if names else [])
-                   + ([f"fields = {toml_value(bool(study.fields[q]))}"]
-                      if q in study.fields else []))
-            if tab:
-                out += ['', f"[study.{q}]"] + tab
-    with open(path, 'w', encoding='utf-8') as fh:
-        fh.write('\n'.join(out) + '\n')
+            tab[q] = ({'engine': names[0] if len(names) == 1 else list(names)}
+                      if names else {})
+            if q in study.fields:
+                tab[q]['fields'] = bool(study.fields[q])
+    update_toml(path, tables={'study': tab})
 
 
 def plan(study):

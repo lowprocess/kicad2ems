@@ -112,7 +112,7 @@ def toml_text(design, board_name, points=401):
         f'board   = "{board_name}"   # paths are relative to this file',
         'ground  = "B.Cu"',
         'nets    = ["RF", "GND"]',
-        'no_mask = true',
+        'mask    = false',
         *([
             f'sigma   = {design.sub.sigma:.4g}   # S/m: conductor loss '
             '(mom25d, the line model)'

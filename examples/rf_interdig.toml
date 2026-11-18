@@ -7,7 +7,7 @@
 board   = "rf_interdig.kicad_pcb"   # paths are relative to this file
 pos     = "rf_interdig-all.pos"
 nets    = ["RF", "GND"]
-no_mask = true
+mask = false
 fmin    = 1.0           # GHz
 fmax    = 8.0
 points  = 401

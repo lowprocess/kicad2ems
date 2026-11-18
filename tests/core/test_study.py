@@ -612,8 +612,7 @@ volts = 3.3
         pdn=[dict(rail='+5V', volts=5),
              dict(rail='+3V3', volts=3.3)]))
     # the first, as before
-    assert (analyses.read_config(cfg) == (None,
-                                          dict(pdn=dict(rail='+5V', volts=5))))
+    assert analyses.read_config(cfg) == dict(pdn=dict(rail='+5V', volts=5))
     assert main(['study', cfg, '--list']) == 0
     assert (capsys.readouterr().out.splitlines() == [
         '  Rail drop: fake (fake.pdn), 2 runs: +5V, +3V3'

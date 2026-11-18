@@ -6,7 +6,7 @@ pos     = "demo_transition-top.pos"
 nets    = ["RF", "GND"]
 # solid ground plane (the demo board has only via pads on B.Cu)
 ground  = "B.Cu"
-no_mask = true
+mask = false
 fmin    = 1.0           # GHz
 fmax    = 8.0
 points  = 401

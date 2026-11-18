@@ -1,13 +1,13 @@
 """A study's analyses in its config: the [analysis] tables written
-(runner.write_analyses), a config opened in the window (the analyses it runs
+(runs.update_toml), a config opened in the window (the analyses it runs
 ticked, their settings in their panels, the others' cleared) and saved back."""
 import os
 
 import pytest
 
-from kicad2ems.gui import runner
 from kicad2ems.core import analyses
 from kicad2ems.core.config import build_settings
+from kicad2ems.core.runs import update_toml
 from waiting import wait_until
 
 
@@ -17,32 +17,26 @@ def test_the_tables_are_written_and_replaced(tmp_path):
         '# a board\nboard = "b.kicad_pcb"   # here\nfmin = '
         '1.0\n\n[solver.mom25d]\ndmax = 0.4\n'
     )
-    # nothing to say, none there: untouched
-    runner.write_analyses(str(cfg), None, {})
+    write = lambda tables: update_toml(str(cfg), tables={'analysis': tables})
+    write({})  # nothing to say, none there: untouched
     assert '[analysis' not in cfg.read_text()
-    runner.write_analyses(
-        str(cfg), ['pdn', 'rf'],
-        dict(
-            pdn=dict(rail='+3V3', volts=5.0, load=['U1=2', 'U2=1'],
-                     no_pdn=True), thermal={}))
+    write(dict(pdn=dict(rail='+3V3', volts=5.0, load=['U1=2', 'U2=1'],
+                        no_pdn=True), thermal={}))
     text = cfg.read_text()
     assert (text.startswith('# a board\nboard = "b.kicad_pcb"   # here\n')
             and '[solver.mom25d]\ndmax = 0.4' in text)
     assert text.endswith(
-        '[analysis]\nrun = ["pdn", "rf"]\n\n[analysis.pdn]\nrail = '
+        '\n\n[analysis.pdn]\nrail = '
         '"+3V3"\nvolts = 5.0\nload = ["U1=2", "U2=1"]\nno_pdn = true\n')
-    assert (analyses.read_config(str(cfg)) == ([
-        'pdn', 'rf'
-    ], dict(
-        pdn=dict(rail='+3V3', volts=5.0, load=['U1=2', 'U2=1'], no_pdn=True))))
+    assert (analyses.read_config(str(cfg)) == dict(
+        pdn=dict(rail='+3V3', volts=5.0, load=['U1=2', 'U2=1'], no_pdn=True)))
     assert (build_settings({}, str(cfg)).notes == []
             and build_settings({}, str(cfg)).mom_dmax == 0.4)
     # replaced, not added to
-    runner.write_analyses(str(cfg), ['rf'], dict(mqs=dict(converter='U7')))
-    assert (analyses.read_config(str(cfg))
-            == (['rf'], dict(mqs=dict(converter='U7')))
-            and cfg.read_text().count('[analysis]') == 1)
-    runner.write_analyses(str(cfg), None, {})  # none any more: the tables gone
+    write(dict(mqs=dict(converter='U7')))
+    assert (analyses.read_config(str(cfg)) == dict(mqs=dict(converter='U7'))
+            and cfg.read_text().count('[analysis') == 1)
+    write({})  # none any more: the tables gone
     assert ('[analysis' not in cfg.read_text()
             and 'dmax = 0.4' in cfg.read_text())
     # an analysis's several tables (a board's rails): an array, replaced as one
@@ -51,17 +45,15 @@ def test_the_tables_are_written_and_replaced(tmp_path):
         dict(rail='+5V', volts=5.0),
         dict(rail='+3V3', volts=3.3, load=['U1=1'])
     ]
-    runner.write_analyses(
-        str(cfg), None, dict(pdn=rails, mqs=[dict(converter='U7')],
-                             thermal=[{}]))
+    write(dict(pdn=rails, mqs=[dict(converter='U7')], thermal=[{}]))
     assert cfg.read_text().endswith(
-        '[analysis]\n\n[[analysis.pdn]]\nrail = "+5V"\nvolts = '
+        '\n\n[[analysis.pdn]]\nrail = "+5V"\nvolts = '
         '5.0\n\n[[analysis.pdn]]\nrail = "+3V3"\nvolts = 3.3\nload = '
         '["U1=1"]\n\n[analysis.mqs]\nconverter = "U7"\n'
     )
     assert (analyses.read_sets(str(cfg)) == dict(pdn=rails,
                                                  mqs=[dict(converter='U7')]))
-    runner.write_analyses(str(cfg), None, dict(pdn=rails[:1]))
+    write(dict(pdn=rails[:1]))
     assert (cfg.read_text().count('analysis.pdn') == 1
             and '[[' not in cfg.read_text() and 'dmax = 0.4' in cfg.read_text())
 
@@ -115,9 +107,9 @@ def test_a_config_opens_as_a_study_and_saves_back(window, tmp_path):
     assert w.study.ticked() == ['pdn', 'mqs', 'thermal']
     assert w.setup.save() and not w.setup.dirty
     from kicad2ems.core import study
-    run, tables = analyses.read_config(str(cfg))
+    tables = analyses.read_config(str(cfg))
     # [study] says what runs now; not installed: kept
-    assert run is None and tables['cfd'] == dict(fans=2)
+    assert tables['cfd'] == dict(fans=2)
     # the rail tool answered both its questions
     st = study.read_config(str(cfg))
     # the analyses the config named: kept by name

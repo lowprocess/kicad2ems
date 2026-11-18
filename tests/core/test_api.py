@@ -27,6 +27,7 @@ PUBLIC = [
     'kicad2ems.core.lines.builder', 'kicad2ems.core.lines.reference',
     'kicad2ems.core.overlay', 'kicad2ems.core.lines.sections',
     'kicad2ems.core.lines.calc', 'kicad2ems.core.runs',
+    'kicad2ems.core.config', 'kicad2ems.core.study',
     'kicad2ems.core.formats', 'kicad2ems.core.touchstone',
     'kicad2ems.emsdev.cpu', 'kicad2ems.examples'
 ]

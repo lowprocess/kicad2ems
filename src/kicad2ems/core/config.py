@@ -19,7 +19,7 @@ comma-separated strings:
     nets = ["RF", "GND"]
     fmin = 1.0
     fmax = 6.0
-    no_mask = true
+    mask = false
     solvers = ["openems", "mom25d"] # default: auto (Settings.solver_plan)
     [solver.openems]
     excite = ["P1"]
@@ -27,7 +27,8 @@ comma-separated strings:
     [solver.mom25d]
     dmax = 0.4
 
-An [openems] table (the older form) is read like the top level, with a note.
+The older forms, an [openems] table (read like the top level, with a note) and
+no_mask, are read where the settings are found: setting_keys.
 Paths in the file (board, pos, compare, out, events, qucsator) are relative to
 the file's folder; a path that only exists relative to the working directory
 (older configs written for the repository root) is still used, with a note.
@@ -40,6 +41,10 @@ from dataclasses import field
 from .options import Option, strlist, items, floats, floatlist, boolean
 from .runs import load_toml, tomllib
 from . import solvers as _solvers_pkg
+
+__all__ = ['ConfigError', 'CORE', 'OPTIONS', 'PATH_KEYS', 'Settings',
+           'all_options', 'build_settings', 'default_out', 'read_toml',
+           'setting_keys']
 
 
 class ConfigError(ValueError):
@@ -541,29 +546,33 @@ def resolve_path(value, base, key, notes):
     return here
 
 
-def _table_items(cfg, notes, ignored):
-    """(key, value) of a config: the top level, an [openems] table (the older
-    form, read like the top level) and the [solver.<name>] tables (each solver's
-    options by short name or key)."""
+def setting_keys(cfg, ignored=None, notes=None):
+    """(table, key as written, option key, value) of each setting a config's
+    tables hold: the top level's, [solver.<name>]'s (a solver's options by
+    short name or key), [vary] (key None: the table) and, in the older forms,
+    an [openems] table's (read like the top level) and no_mask (mask = not
+    it). How a config is read, and how the GUI finds what to edit. ignored,
+    notes (lists): the keys that are not settings, and what was read in an
+    older form, added to them."""
     from .solvers import get
-    out = []
+    ignored = [] if ignored is None else ignored
+    old = lambda t, k, v: ((t, k, 'mask', not boolean(v)) if k == 'no_mask'
+                           else (t, k, k.replace('-', '_'), v))
     for t, v in cfg.items():
         if not isinstance(v, dict):
-            out.append((t.replace('-', '_'), v))
+            yield old('', t, v)
         elif t.lower() == 'openems':  # [openems], [OpenEMS]
-            notes.append(
-                f"[{t}]: read like the top level (the older form); openEMS's "
-                "own settings now go under [solver.openems]")
-            out += [(k.replace('-', '_'), x)
-                    for k, x in v.items()
-                    if not isinstance(x, dict)]
+            if notes is not None:
+                notes.append(
+                    f"[{t}]: read like the top level (the older form); "
+                    "openEMS's own settings now go under [solver.openems]")
+            yield from (old(t, k, x) for k, x in v.items()
+                        if not isinstance(x, dict))
         elif t.lower() == 'vary':  # [vary] key = [v1, v2]: --vary key=v1,v2
-            out.append(('vary', [
+            yield t, None, 'vary', [
                 f"{k.replace('-', '_')}=" + ','.join(
-                    str(x)
-                    for x in (vals if isinstance(vals, list) else [vals]))
-                for k, vals in v.items()
-            ]))
+                    str(x) for x in (xs if isinstance(xs, list) else [xs]))
+                for k, xs in v.items()]
         elif t.lower() == 'solver':
             for name, tab in v.items():
                 try:
@@ -574,23 +583,14 @@ def _table_items(cfg, notes, ignored):
                 if not isinstance(tab, dict):
                     ignored.append(f"solver.{name}")
                     continue
-                by_name = ({o.short: o.key
-                            for o in sv.options}
-                           | {o.key: o.key
-                              for o in sv.options})
+                by_name = ({o.short: o.key for o in sv.options}
+                           | {o.key: o.key for o in sv.options})
                 for k, x in tab.items():
-                    k = k.replace('-', '_')
-                    if k in by_name:
-                        out.append((by_name[k], x))
+                    if k.replace('-', '_') in by_name:
+                        yield (f"solver.{name}", k,
+                               by_name[k.replace('-', '_')], x)
                     else:
-                        ignored.append(f"solver.{name}.{k}")
-        # (a misspelt [solver.x] had been taken silently)
-        elif t.lower() not in TABLES:
-            notes.append(
-                f"[{t}] is not a table kicad2ems reads "
-                f"({', '.join(f'[{x}]' for x in sorted(TABLES))}, "
-                "[solver.<name>]): ignored")
-    return out
+                        ignored.append(f"solver.{name}.{k.replace('-', '_')}")
 
 
 # the tables a config of the stack holds
@@ -606,9 +606,15 @@ def read_toml(path):
         raise ConfigError(f"{path}: {e}") from None
     base = os.path.dirname(os.path.abspath(path))
     values, ignored, notes = {}, [], []
-    for k, v in _table_items(cfg, notes, ignored):
-        if k == 'no_mask':
-            k, v = 'mask', not boolean(v)
+    items = [(k, v) for *_, k, v in setting_keys(cfg, ignored, notes)]
+    for t, v in cfg.items():
+        if isinstance(v, dict) and t.lower() not in TABLES:
+            # (a misspelt [solver.x] had been taken silently)
+            notes.append(
+                f"[{t}] is not a table kicad2ems reads "
+                f"({', '.join(f'[{x}]' for x in sorted(TABLES))}, "
+                "[solver.<name>]): ignored")
+    for k, v in items:
         if k not in OPTIONS:
             ignored.append(k)
             continue

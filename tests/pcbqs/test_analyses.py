@@ -277,9 +277,11 @@ def test_the_examples_are_configs_beside_their_models(tmp_path):
     cfg = examples.prepare_example('circuit_buck', str(tmp_path))
     assert (cfg == str(tmp_path / 'circuit_buck.toml')
             and (tmp_path / '04_buck.kicad_pcb').is_file())
-    run, tables = analyses.read_config(cfg)
-    assert (run == ['circuit', 'thermal']
-            and tables['circuit']['model'] == str(tmp_path / '04_buck.json'))
+    from kicad2ems.core import study
+    assert (study.read_config(cfg).asked == dict(circuit=['circuit'],
+                                                 thermal=['thermal'])
+            and analyses.read_config(cfg)['circuit']['model']
+            == str(tmp_path / '04_buck.json'))
     s = build_settings({}, cfg)
     assert s.board == str(tmp_path / '04_buck.kicad_pcb') and s.notes == []
     assert analyses.analysis_of(str(tmp_path)) is None

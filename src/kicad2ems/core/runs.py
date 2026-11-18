@@ -17,12 +17,13 @@ here.
                            # where a front end's runs go: a folder each under
                            # the output folder
     write_toml(path, settings); toml_value(v); load_toml(path)
+    update_toml(path, keys, tables)  # a config edited, its comments kept
 """
-import datetime, glob, json, os, sys
+import datetime, glob, json, os, re, sys
 
 __all__ = ['toml_value', 'write_toml', 'load_toml', 'Run', 'read_summary',
            'EventTail', 'stop_runs', 'board_name', 'run_dir', 'preview_dir',
-           'tool_dir', 'tool_preview_dir', 'find_results']
+           'tool_dir', 'tool_preview_dir', 'find_results', 'update_toml']
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -60,6 +61,132 @@ def load_toml(path):
     ValueError)."""
     with open(path, 'rb') as fh:
         return tomllib.load(fh)
+
+_HEAD = re.compile(r'^\s*\[\[?\s*([^\[\]]+?)\s*\]')
+_KEY = re.compile(r'^(\s*)([A-Za-z0-9_-]+)(\s*=\s*)')
+
+
+def _scan(text, start=0, depth=None):
+    """Index of the comment of a TOML line (outside strings), or -1; with
+    depth, that plus the line's open minus closed brackets."""
+    quote = None
+    for n, ch in enumerate(text[start:], start):
+        if quote:
+            quote = None if ch == quote else quote
+        elif ch in '"\'':
+            quote = ch
+        elif ch == '#':
+            return n if depth is None else depth
+        elif depth is not None:
+            depth += (ch == '[') - (ch == ']')
+    return -1 if depth is None else depth
+
+
+def _is_tables(v):
+    return isinstance(v, dict) or (isinstance(v, list) and bool(v) and all(
+        isinstance(x, dict) for x in v))
+
+
+def _table_text(name, tab, head=None):
+    """[name] with tab's values, then its sub-tables: a dict [name.key], a list
+    of them [[name.key]] (a list of one: [name.key]); empty ones left out."""
+    plain = [f"{k} = {toml_value(v)}" for k, v in tab.items()
+             if not _is_tables(v)]
+    out = [head or f"[{name}]", *plain, ''] if plain or head else []
+    for k, v in tab.items():
+        many = [t for t in (v if isinstance(v, list) else [v])
+                if _is_tables(v) and t]
+        for t in many:
+            sub = f"{name}.{k}"
+            out += _table_text(sub, t, f"[[{sub}]]" if len(many) > 1 else None)
+    return out
+
+
+def update_toml(path, keys=None, tables=None, source=None, head=()):
+    """Write the TOML file at `path` from the text of `source` (default: the
+    file itself; neither there: the comment lines `head`), keeping its comments,
+    order and every line not named here:
+
+        keys    {(table, key): value}: the key's value set in place, its
+                trailing comment kept; None: its line removed. A new key goes
+                after the last one of its table ('': the top level, above the
+                first table), or into a new table at the end.
+        tables  {name: {key: value | {table} | [{table}, ...]}}: [name] and
+                every [name.*] and [[name.*]] replaced by these, where the
+                first of them was (else at the end); {}: taken out.
+
+    Not written when nothing changes."""
+    src = source if source and os.path.exists(source) else path
+    text = (open(src, encoding='utf-8').read() if os.path.exists(src) else
+            '\n'.join(head))
+    lines, keys = text.splitlines(), dict(keys or {})
+    tables = dict(tables or {})
+    out, table, skip, ends, at, i = [], '', None, {'': None}, {}, 0
+    while i < len(lines):
+        line, h = lines[i], _HEAD.match(lines[i])
+        if h:
+            table = h.group(1).replace('"', '').replace(' ', '')
+            ends[''] = len(out) if ends[''] is None else ends['']
+            skip = next((n for n in tables
+                         if table == n or table.startswith(n + '.')), None)
+            if skip:
+                at.setdefault(skip, len(out))
+            else:
+                out.append(line)
+                ends[table] = len(out)
+            i += 1
+            continue
+        m = _KEY.match(line)  # (a skipped table's too: its arrays' lines)
+        j, depth = i + 1, _scan(line, m.end(), 0) if m else 0
+        while depth > 0 and j < len(lines):
+            depth, j = _scan(lines[j], 0, depth), j + 1
+        if skip:
+            pass
+        elif m and (table, m.group(2)) in keys:
+            v = keys.pop((table, m.group(2)))
+            if v is not None:
+                new = f"{m.group(1)}{m.group(2)}{m.group(3)}{toml_value(v)}"
+                c, one = _scan(lines[j - 1]), j == i + 1
+                if c >= 0:  # the comment stays in its column
+                    new = (f"{new:<{c if one else 0}}"
+                           + ('' if len(new) < c and one else '  ')
+                           + lines[j - 1][c:])
+                out.append(new)
+        else:
+            out.extend(lines[i:j])
+        if m and not skip:
+            ends[table] = len(out)
+        i = j
+    top = len(out) if ends[''] is None else ends['']
+    adds = {}  # {(index in out, a top-level key's): lines}
+    for (t, k), v in keys.items():
+        if v is not None and t in ends:
+            adds.setdefault((ends[t] if t else top, not t), []).append(
+                f"{k} = {toml_value(v)}")
+        elif v is not None:
+            tables.setdefault(t, {})[k] = v
+    for name, tab in tables.items():
+        block = _table_text(name, tab)
+        if name in at or block:
+            adds.setdefault((at.get(name, len(out) + 1), False), []).extend(
+                block)
+    for (n, key_at_top), new in sorted(adds.items(), reverse=True,
+                                       key=lambda a: (a[0][0], not a[0][1])):
+        if n > len(out):  # the end
+            while out and not out[-1].strip():
+                out.pop()
+            out += ([''] if out else []) + new
+            continue
+        while key_at_top and n > 0 and not out[n - 1].strip():
+            n -= 1  # after the last top-level key, not the gap
+        out[n:n] = new
+    new_text = '\n'.join(out).rstrip('\n') + '\n'
+    if new_text == text and src == path:
+        return
+    tmp = path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as fh:
+        fh.write(new_text)
+    os.replace(tmp, path)
 
 
 class Run:

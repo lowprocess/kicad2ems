@@ -138,8 +138,6 @@ them.
 import importlib
 import os
 
-from .options import strlist
-from .runs import load_toml
 
 __all__ = ['RF', 'KINDS', 'Analysis', 'registry', 'analysis_of', 'read_config',
            'read_sets']
@@ -333,59 +331,11 @@ def analysis_of(folder):
     return None
 
 
-def _tables(path):
-    """(run, {name: [{option key: value}, ...]}) of a config's [analysis] part:
-    every table of each analysis, in the order written (one table: a list of
-    one)."""
-    table = load_toml(path).get('analysis')
-    if not isinstance(table, dict):
-        return None, {}
-    base = os.path.dirname(os.path.abspath(path))
-    run = table.get('run')
-    if run is not None:
-        run = [x.lower() for x in strlist(run) or []]
-    out, reg = {}, registry()
-    for name, tabs in table.items():
-        tabs = [tabs] if isinstance(tabs, dict) else tabs
-        if (not isinstance(tabs, list) or not tabs
-                or not all(isinstance(t, dict) for t in tabs)):
-            continue
-        sets = []
-        for tab in tabs:
-            vals = {k.replace('-', '_'): v for k, v in tab.items()}
-            for k in getattr(reg.get(name.lower()), 'paths', ()):
-                v = vals.get(k)
-                if (isinstance(v, str) and v
-                        and not os.path.isabs(os.path.expanduser(v))):
-                    vals[k] = os.path.normpath(
-                        os.path.join(base, os.path.expanduser(v)))
-            sets.append(vals)
-        out[name.lower()] = sets
-    return run, out
-
-
-def read_config(path):
-    """The analyses' part of a TOML config: (run, {name: {option key: value}}).
-
-        [analysis]
-        run = ["circuit", "thermal"]  # the analyses a study of this config runs
-                                      # ("rf": S-parameters)
-        [analysis.circuit]
-        model = "buck.json"           # its options, by key; a path
-                                      # (Analysis.paths) relative to the file
-
-    run: None when the config does not say. A table of an analysis the registry
-    does not list is kept as it is (so a front end can write it back); its paths
-    are not known, and stay as written. An analysis given several tables
-    (read_sets): its first."""
-    run, sets = _tables(path)
-    return run, {name: tabs[0] for name, tabs in sets.items()}
-
-
 def read_sets(path):
     """Every table of each analysis of a config: {name: [{option key: value},
-    ...]}. An analysis may be given several, each a run of its own in a study (a
-    board's rails, one after the other), as an array of tables:
+    ...]}, in the order written. An analysis may be given several, each a run
+    of its own in a study (a board's rails, one after the other), as an array
+    of tables:
 
         [[analysis.pdn]]
         rail = "+5V"
@@ -394,9 +344,33 @@ def read_sets(path):
         rail = "+3V3"
         volts = 3.3
 
-    One table ([analysis.pdn]) is a list of one. Paths as read_config gives
-    them."""
-    return _tables(path)[1]
+    One table ([analysis.pdn]) is a list of one. Its options by key; a path
+    (Analysis.paths) relative to the file. A table of an analysis the registry
+    does not list is kept as it is (so a front end can write it back); its
+    paths are not known, and stay as written."""
+    from .study import load_config
+    base, reg = os.path.dirname(os.path.abspath(path)), registry()
+    out = load_config(path)['analysis']
+    for name, sets in out.items():
+        for vals in sets:
+            for k in getattr(reg.get(name), 'paths', ()):
+                v = vals.get(k)
+                if (isinstance(v, str) and v
+                        and not os.path.isabs(os.path.expanduser(v))):
+                    vals[k] = os.path.normpath(
+                        os.path.join(base, os.path.expanduser(v)))
+    return out
+
+
+def read_config(path):
+    """The analyses' tables of a TOML config, {name: {option key: value}} (an
+    analysis given several, read_sets: its first):
+
+        [analysis.circuit]
+        model = "buck.json"           # its options, by key; a path
+                                      # (Analysis.paths) relative to the file
+    """
+    return {name: tabs[0] for name, tabs in read_sets(path).items()}
 
 
 def check_lines():

@@ -131,8 +131,10 @@ frequency it is solving, and solvers that haven't started are skipped. Press Sto
 
 The *File* menu has New, Open, recent files, the examples, Save and Save as; the title shows `*` while there are
 unsaved changes. Saving over an existing config **keeps the file as it was**: comments, key order, tables and keys
-the GUI doesn't know all stay, and only the changed values are rewritten. Each run writes `gui_run.toml` into its
-folder, so `kicad2ems <folder>/gui_run.toml` repeats it from a terminal.
+the GUI doesn't know all stay, and only the changed values are rewritten (one writer, `runs.update_toml`, edits
+keys in place and replaces the `[study]` and `[analysis]` tables). Of the [older forms](usage.md#older-forms),
+`[analysis] run` is saved as `[study]`; `no_mask` and an `[openems]` table's keys are edited where they are.
+Each run writes `gui_run.toml` into its folder, so `kicad2ems <folder>/gui_run.toml` repeats it from a terminal.
 
 *Edit → Undo* and *Redo* step back and forth through the changes to the settings: a tick or a choice is one step,
 a field's typing one step once it pauses. The menu names what the step changes (*Undo fmax*). In a field being

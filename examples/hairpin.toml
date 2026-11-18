@@ -7,7 +7,7 @@
 # Reference result: examples/reference/hairpin_openems.s2p (use with --compare)
 board   = "hairpin.kicad_pcb"
 pos     = "hairpin-top.pos"
-no_mask = true
+mask = false
 fmin    = 2.8           # GHz
 fmax    = 3.9
 points  = 551

@@ -141,8 +141,8 @@ def test_a_circuit_example_runs_to_its_temperatures(window, tmp_path):
     assert 'Points' in [t for t, _ in r.reportview._tables]
     assert w.setup.save()  # the study, saved: what it asks, its model
     from kicad2ems.core import study
-    run, tables = analyses.read_config(w.setup.path)
-    assert (run is None and tables['circuit']
+    tables = analyses.read_config(w.setup.path)
+    assert (tables['circuit']
             == dict(model=str(folder / '01_rc_filter.json')))
     assert list(study.read_config(w.setup.path).asked) == ['circuit', 'thermal']
 

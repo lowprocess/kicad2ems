@@ -211,8 +211,17 @@ load = ["U1=0.8", "U4=0.2"]
 `kicad2ems study board.toml --list` then reads `Rail drop, Rail impedance: Power integrity (kicad2ems.pcbqs.pdn), 2 runs:
 +5V, +3V3`. An analysis that starts from another's result takes the last of them.
 
-A config without `[study]` is read as before: `[analysis] run = [...]` names analyses (`"rf"`: S-parameters),
-and with neither the study is S-parameters alone, which `kicad2ems board.toml` runs just the same.
+A config without `[study]` is S-parameters alone, which `kicad2ems board.toml` runs just the same.
+
+<a id="older-forms"></a>Older configs are read as they were meant, by one migration as the file is loaded
+(`study.load_config`, `config.setting_keys`), so the rest of kicad2ems sees only the current form:
+
+| Older form | Read as |
+|---|---|
+| `[analysis] run = [...]`, no `[study]` | `[study] run` = the questions they answer (`"rf"`: S-parameters), each by that analysis |
+| an analysis table's `check = "gfdtd"` (crosstalk), no engine named for it | that variant engine (`crosstalk_gfdtd`) |
+| `[openems]` (any case) | its keys at the top level, with a note |
+| `no_mask = true` | `mask = false` |
 
 <a id="options"></a>
 ## Options

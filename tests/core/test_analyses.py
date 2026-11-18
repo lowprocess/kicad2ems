@@ -76,8 +76,10 @@ def test_a_config_s_analysis_tables(fakes, tmp_path):
         'board = "b.kicad_pcb"\n[analysis]\nrun = ["Heat", '
         '"rf"]\n[analysis.heat]\nlosses = "l.json"\nfilm = '
         '12\n[analysis.other]\nmodel-file = "m.json"\n')
-    run, tables = analyses.read_config(str(cfg))
-    assert run == ['heat', 'rf']
+    tables = analyses.read_config(str(cfg))
+    # (the older [analysis] run: the study's, study.load_config)
+    from kicad2ems.core import study
+    assert study.read_config(str(cfg)).asked['sparams'] == []
     # a path: beside the config
     assert tables['heat'] == dict(losses=str(tmp_path / 'l.json'), film=12)
     # not installed: kept as written
@@ -85,7 +87,7 @@ def test_a_config_s_analysis_tables(fakes, tmp_path):
     # kicad2ems itself: another tool's tables
     assert build_settings({}, str(cfg)).notes == []
     cfg.write_text('board = "b.kicad_pcb"\n')
-    assert (analyses.read_config(str(cfg)) == (None, {})
+    assert (analyses.read_config(str(cfg)) == {}
             and analyses.read_sets(str(cfg)) == {})
     # several tables of one analysis: each with its paths; read_config
     # gives the first
@@ -98,7 +100,7 @@ def test_a_config_s_analysis_tables(fakes, tmp_path):
             dict(losses=str(tmp_path / 'b.json'), film=3)
         ], other=[dict(x=1)], odd=[{}]))
     assert (analyses.read_config(
-        str(cfg))[1]['heat'] == dict(losses=str(tmp_path / 'a.json')))
+        str(cfg))['heat'] == dict(losses=str(tmp_path / 'a.json')))
 
 
 def test_an_analysis_ships_examples(fakes, tmp_path):
@@ -149,9 +151,8 @@ def test_an_analysis_ships_examples(fakes, tmp_path):
     ex.prepare_example('heat_warm', str(dest))
     assert ((dest / '01_warm.kicad_pcb').read_text() == 'edited'
             and (dest / '01_warm.json').read_text() == '{"Q1": 1}')
-    run, tables = analyses.read_config(cfg)
-    assert (run is None
-            and tables['heat']['losses'] == str(dest / '01_warm.json'))
+    assert (analyses.read_config(cfg)['heat']['losses']
+            == str(dest / '01_warm.json'))
     assert (ex.prepare_example('heat_bare',
                                str(dest)) == str(dest / 'heat_bare.toml'))
 
