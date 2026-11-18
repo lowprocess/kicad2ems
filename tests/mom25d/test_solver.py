@@ -563,6 +563,26 @@ def test_batched_gmres_reaches_its_tolerance_on_a_complex_system():
     assert it == [4, 4] and len(calls) == 4 and np.isfinite(X).all()
     assert (gmres_batched(lambda V: A @ V, B, M=lambda R: bad @ R, rtol=1e-8,
                           restart=30, maxiter=1)[1] == [30, 30])
+    # out: the end's residual, from the products made (none more); reach: a
+    # preconditioner too weak for its iterations is given up at the third,
+    # one that gets there is left alone
+    true = lambda X: (np.linalg.norm(A @ X - B, axis=0)
+                      / np.linalg.norm(B, axis=0))
+    for M, kw in ((good, {}), (None, {}), (bad, dict(stall=(4, 0.1)))):
+        calls, got = [], {}
+        X, it = gmres_batched(
+            lambda V: calls.append(1) or A @ V, B, rtol=1e-8, restart=12,
+            M=None if M is None else (lambda R: M @ R), maxiter=1, out=got,
+            **kw)
+        assert len(calls) == max(it) and np.allclose(got['rel'], true(X),
+                                                     rtol=1e-6, atol=1e-13)
+    X, it = gmres_batched(lambda V: A @ V, B, rtol=1e-8, restart=8,
+                          maxiter=1, reach=(8, 3e-4), out=got)  # (no M)
+    assert it == [3, 3] and got['rel'].max() > 1e-3
+    X, it = gmres_batched(lambda V: A @ V, B, M=lambda R: good @ R,
+                          rtol=1e-8, restart=8, maxiter=1, reach=(8, 3e-4),
+                          out=got)
+    assert max(it) <= 4 and got['rel'].max() < 1e-7
 
 
 def test_afs_does_not_stop_on_a_model_that_ignores_new_samples(monkeypatch):
@@ -861,14 +881,15 @@ def test_new_core_kernels_match_numpy():
     assert len(sim.F)
     Qc, Qp = fo._fan_columns(), dense.fan_columns(fo)
     assert np.abs(Qc - Qp).max() < 1e-12 * np.abs(Qp).max()
-    # Z <- D Z D and its complex64 copy
+    # D Z D as a complex64 copy, and in place
     Z = (np.random.default_rng(1).normal(size=(50, 50))
          + 1j * np.random.default_rng(2).normal(size=(50, 50)))
     d = np.random.default_rng(3).uniform(0.5, 2, 50)
-    Zr = Z * d[:, None] * d[None, :]
-    Z64 = core.scale_c64(Z, d)
-    assert (np.allclose(Z, Zr) and Z64.dtype == np.complex64
+    Zr, Z0 = Z * d[:, None] * d[None, :], Z.copy()
+    Z64 = core.scale_c64(Z, d, False)  # (the copy alone: fast._c64)
+    assert (np.array_equal(Z, Z0) and Z64.dtype == np.complex64
             and np.allclose(Z64, Zr, rtol=1e-6))
+    assert np.array_equal(core.scale_c64(Z, d), Z64) and np.allclose(Z, Zr)
     # the via blocks' kernel: sum_q table(|P[t, q] - V[v]|) W[t, q], the table
     # interpolated linearly
     rng = np.random.default_rng(4)

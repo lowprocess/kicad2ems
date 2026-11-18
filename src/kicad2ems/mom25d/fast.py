@@ -178,6 +178,11 @@ FRESH_STALL = (4, 0.1)
 # GMRES iterations a kept LU may take (FastOperator._reused): the cap, from
 # the cost of a fresh solve, is clamped to this range
 REUSE_ITER = (8, 60)
+# ... and it is given up as soon as, at the rate so far, its residual would
+# still be this x the accepted one after them (rf_ebg, 17.3k unknowns, a
+# product of its double Z 0.3 s: a kept LU that ended its 8 iterations at
+# 0.28 was 3 s for nothing, and 5 of 15 did)
+REUSE_SLACK = 3.0
 # the block low-rank factor is given up when the residual is above 1e-2 after
 # 30 GMRES iterations (a good one takes 3-16), and factored again at a
 # hundredth of the tolerance
@@ -221,6 +226,23 @@ def _equilibrate(Z, dsc=None):
     return dsc
 
 
+def _border(Z, B, C):
+    """Z's border from the vias', holes' and sides' blocks: Z[:Ne, Ne:] = B,
+    Z[Ne:, :Ne] = B^T, Z[Ne:, Ne:] = C, a block of rows at a time on the
+    fast cores (B^T whole strides through B a column at a time: with the
+    sides' 2,176 columns at 10.1k edges 0.2 s of a 3.5 s solve)."""
+    Ne = B.shape[0]
+
+    def copy(a, b):
+        if a < Ne:
+            Z[a:min(b, Ne), Ne:] = B[a:min(b, Ne)]
+        if b > Ne:
+            a = max(a, Ne)
+            Z[a:b, :Ne] = B[:, a - Ne:b - Ne].T
+            Z[a:b, Ne:] = C[a - Ne:b - Ne]
+    _row_blocks(Z, copy)
+
+
 def _loop_transform(Z, W):
     """Z <- T^T Z T in place, T = I + W (W: nonzero in some columns V, on rows
     outside V): Z's columns V, then its rows V; the compiled core's
@@ -234,15 +256,11 @@ def _loop_transform(Z, W):
     return _core.loop_transform(Z, V.astype(np.int64), idx, cw)
 
 
-def _c64(Z):
-    """Z's complex64 copy (the single-precision LU's input), row blocks in
-    parallel: 0.34 s -> 0.14 s at 16k."""
-    out = np.empty(Z.shape, np.complex64)
-
-    def copy(a, b):
-        out[a:b] = Z[a:b]
-    _row_blocks(Z, copy)
-    return out
+def _c64(Z, dsc):
+    """Z equilibrated by dsc as a complex64 copy (the single-precision LU's
+    input; scaled in double, then rounded), Z as it was: one pass in the
+    compiled core."""
+    return _core.scale_c64(Z, np.ascontiguousarray(dsc, float), False)
 
 
 def _lu(Z):
@@ -553,18 +571,19 @@ class FastOperator:
             return (S.tocsr() + sim.edge.matrix(sim, f)).tocsr()
         return S.tocsr()
 
-    def _refine(self, A, B, M, restart, maxiter, stall=None, timed=True):
+    def _refine(self, A, B, M, restart, maxiter, stall=None, timed=True,
+                reach=None):
         """Batched GMRES on A Y = B preconditioned with M, to mixed_tol: (Y,
-        converged, largest relative residual). Not converged includes a
-        breakdown (NaN). stall: gmres_batched's, for a fresh factorisation
-        (FRESH_STALL). timed: the seconds an iteration took kept (_t_iter: what
-        caps a kept LU's iterations)."""
-        t = time.time()
+        converged, largest relative residual: B - A Y from the products GMRES
+        made, no product of its own). Not converged includes a breakdown
+        (NaN). stall: gmres_batched's, for a fresh factorisation
+        (FRESH_STALL); reach: its, for a kept one. timed: the seconds an
+        iteration took kept (_t_iter: what caps a kept LU's iterations)."""
+        t, got = time.time(), {}
         Y, self.iters = gmres_batched(A, B, M=M, rtol=self.mixed_tol,
                                       restart=restart, maxiter=maxiter,
-                                      stall=stall)
-        rel = (np.linalg.norm(B - A(Y), axis=0)
-               / np.maximum(np.linalg.norm(B, axis=0), 1e-300))
+                                      stall=stall, reach=reach, out=got)
+        rel = got['rel']
         if timed:
             self.st.t_iter = ((time.time() - t)
                             / max(1, max(self.iters, default=1)))
@@ -608,18 +627,22 @@ class FastOperator:
         Z, B, up, A = (self._lt_system(f, E, Sx) if plan.basis == 'loop/tree'
                        else self._rwg_system(f, E, Sx, plan))
         dsc = 1.0 / np.sqrt(np.abs(np.diagonal(Z)).astype(float) + 1e-300)
-        _equilibrate(Z, dsc)
-        B = dsc[:, None] * B
+        d = dsc[:, None]
+        B = d * B
         if plan.rung == 'cpu-c128':
+            _equilibrate(Z, dsc)
             with sim.log.timer('LU factor', f"N={len(dsc)}"):
                 lu = _lu(Z)
             del Z
             with sim.log.timer('LU solve'):
-                return up(dsc[:, None] * _lu_solve(lu, B))
+                return up(d * _lu_solve(lu, B))
         box = [Z]  # (the ladder frees it)
         del Z
         if plan.dense:
-            A = lambda V: box[0] @ V
+            # the double Z as filled, equilibrated in its products and in
+            # its complex64 copy (_c64): scaled in place it was two passes
+            # over it, 0.19 s of a 3.5 s solve at 12.3k unknowns
+            A = lambda V: d * (box[0] @ (d * V))
             k = st.nearest(f, plan.loops, gpu=not plan.gpu_factor)
             if k is not None:
                 # Z^-1 ~ D0 Z0s^-1 D0: Zs^-1 ~ (D0 / D) Z0s^-1 (D0 / D)
@@ -631,8 +654,9 @@ class FastOperator:
             # one saves; a matrix-free one's: the fill too)
             t0 = time.time()
         else:
+            _equilibrate(box[0], dsc)
             Am = A
-            A = lambda V: dsc[:, None] * Am(dsc[:, None] * V)
+            A = lambda V: d * Am(d * V)
         Y = self._ladder(f, plan, box, A, B, dsc, t0)
         if Y is None:  # matrix-free: Z is gone; f's plan is double now
             return self.solve(f, E)
@@ -718,7 +742,7 @@ class FastOperator:
             self._vias(f)
         self._ready = None
         if Nv:
-            Z[:Ne, Ne:], Z[Ne:, :Ne], Z[Ne:, Ne:] = self.B, self.B.T, self.C
+            _border(Z, self.B, self.C)
         if Sx.nnz:
             Sc = Sx.tocoo()
             np.add.at(Z, (Sc.row, Sc.col), Sc.data.astype(dt))
@@ -753,11 +777,12 @@ class FastOperator:
         return (((lambda X: X), (lambda X: X)) if T is None else
                 ((lambda X: T @ X), (lambda X: np.asarray(T.T @ X))))
 
-    def _factor(self, plan, Z):
-        """plan's fresh complex64 LU of Z (equilibrated): on the GPU where it
-        asks (the host's where that raises), downloaded for gpu_factor."""
+    def _factor(self, plan, Z, dsc):
+        """plan's fresh complex64 LU of Z equilibrated by dsc (a complex64 Z
+        is so already): on the GPU where it asks (the host's where that
+        raises), downloaded for gpu_factor."""
         sim, n = self.sim, len(Z)
-        c64 = lambda: Z if Z.dtype == np.complex64 else _c64(Z)
+        c64 = lambda: Z if Z.dtype == np.complex64 else _c64(Z, dsc)
         if plan.on_gpu:
             gpu = self._backend()
             while (not gpu.fits(n)
@@ -787,7 +812,7 @@ class FastOperator:
         gone). Each failure is the rung's up to RETRY x f. Y, equilibrated;
         the LU kept where it converged."""
         sim, st, timed = self.sim, self.st, True
-        M = self._factor(plan, box[0])
+        M = self._factor(plan, box[0], dsc)
         if not plan.dense:
             box.clear()  # (in the LU, or uploaded)
         while True:
@@ -826,6 +851,7 @@ class FastOperator:
         if not box:
             return None
         Z, M = box.pop(), None  # (M's memory: the double LU's)
+        _equilibrate(Z, dsc)
         with sim.log.timer('LU factor', f"N={len(dsc)}"):
             return _lu_solve(_lu(Z), B)
 
@@ -839,7 +865,9 @@ class FastOperator:
         with sim.log.timer(
                 'refinement (GMRES, reused factorisation)',
                 f"the one of {k.f / 1e9:.4g} GHz, at most {cap} iterations"):
-            Y, ok, rel = self._refine(A, B, M, cap, 1)
+            Y, ok, rel = self._refine(
+                A, B, M, cap, 1,
+                reach=(cap, REUSE_SLACK * 100 * self.mixed_tol))
         d = abs(np.log(f / k.f))
         if ok and max(self.iters) <= cap // 2:
             st.reach = max(st.reach, 1.25 * d)  # try further from f0
@@ -851,8 +879,8 @@ class FastOperator:
             return Y
         sim.log.note(
             f"the LU of {k.f / 1e9:.4g} GHz did not precondition "
-            f"{f / 1e9:.4g} GHz in {cap} iterations (residual {rel:.1e}) - a "
-            "new one")
+            f"{f / 1e9:.4g} GHz in {max(self.iters)} of at most {cap} "
+            f"iterations (residual {rel:.1e}) - a new one")
         return None
 
     def _reuse(self, f, E, Sx):
@@ -1167,7 +1195,7 @@ def _one_blas_thread():
 
 
 def gmres_batched(A, B, M=None, x0=None, rtol=1e-6, restart=30, maxiter=10,
-                  stall=None):
+                  stall=None, reach=None, out=None):
     """
     Right-preconditioned restarted GMRES for k independent systems A x_j = b_j
     run in lockstep, so every operator / preconditioner call is one batched (N x
@@ -1175,7 +1203,12 @@ def gmres_batched(A, B, M=None, x0=None, rtol=1e-6, restart=30, maxiter=10,
     out. Returns (X, iterations per column). stall: (iterations, residual): give
     up when a column's relative residual is still above that after so many
     iterations (a preconditioner that is no inverse: a fresh factorisation takes
-    two or three iterations, a broken one all of them).
+    two or three iterations, a broken one all of them). reach: (iterations,
+    residual): give up, from the third iteration, when at the rate so far a
+    column would still be above that residual after so many (a kept
+    factorisation too far from its frequency). out: a dict that receives
+    'rel', each column's relative residual |b - A x| / |b| at the end, from
+    the products made (b - sum y_j A z_j: exact, and no product more).
     """
     B = np.asarray(B, complex)
     N, k = B.shape
@@ -1184,9 +1217,11 @@ def gmres_batched(A, B, M=None, x0=None, rtol=1e-6, restart=30, maxiter=10,
     bn = np.linalg.norm(B, axis=0)
     bn[bn == 0] = 1.0
     iters, act = np.zeros(k, int), np.arange(k)
+    rel = np.zeros(k)
     for _ in range(maxiter):
         R = B[:, act] - (A(X[:, act]) if np.any(X[:, act]) else 0)
         beta = np.linalg.norm(R, axis=0)
+        rel[act] = beta / bn[act]
         done = beta <= rtol * bn[act]
         act, R, beta = act[~done], R[:, ~done], beta[~done]
         if not len(act):
@@ -1194,6 +1229,7 @@ def gmres_batched(A, B, M=None, x0=None, rtol=1e-6, restart=30, maxiter=10,
         ka = len(act)
         V, Z = (np.zeros((restart + 1, N, ka),
                          complex), np.zeros((restart, N, ka), complex))
+        AZ = [None] * restart  # A z_j, as made (the end's residual's)
         H, g = (np.zeros((restart + 1, restart, ka),
                          complex), np.zeros((restart + 1, ka), complex))
         cs, sn = (np.zeros((restart, ka),
@@ -1202,7 +1238,7 @@ def gmres_batched(A, B, M=None, x0=None, rtol=1e-6, restart=30, maxiter=10,
         live, last, stalled = np.ones(ka, bool), np.full(ka, restart - 1), False
         for j in range(restart):
             Z[j] = M(V[j])
-            Wv = A(Z[j])
+            Wv = AZ[j] = A(Z[j])
             for i in range(j + 1):  # modified Gram-Schmidt
                 H[i, j] = hij = np.einsum('nk,nk->k', V[i].conj(), Wv)
                 Wv = Wv - V[i] * hij
@@ -1227,8 +1263,11 @@ def gmres_batched(A, B, M=None, x0=None, rtol=1e-6, restart=30, maxiter=10,
             live &= ~conv
             if not live.any():
                 break
-            if (stall is not None and j + 1 >= stall[0] and
-                (np.abs(g[j + 1])[live] > stall[1] * bn[act][live]).any()):
+            res = np.abs(g[j + 1])[live] / bn[act][live]
+            if ((stall is not None and j + 1 >= stall[0]
+                 and (res > stall[1]).any())
+                    or (reach is not None and j + 1 >= 3 and
+                        (res ** (reach[0] / (j + 1.0)) > reach[1]).any())):
                 last[live], stalled = j, True
                 break
         for c in range(ka):  # update each column
@@ -1236,6 +1275,11 @@ def gmres_batched(A, B, M=None, x0=None, rtol=1e-6, restart=30, maxiter=10,
             y = (np.linalg.solve(np.triu(H[:m, :m,
                                            c]), g[:m, c]) if m else np.zeros(0))
             X[:, act[c]] += Z[:m, :, c].T @ y
+            for i in range(m):
+                R[:, c] -= AZ[i][:, c] * y[i]
+        rel[act] = np.linalg.norm(R, axis=0) / bn[act]
         if stalled:
             break  # no restart either
+    if out is not None:
+        out['rel'] = rel
     return X, iters.tolist()

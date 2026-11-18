@@ -29,7 +29,7 @@
 //                   against the sheet's edges and each other)
 //   slot_coupling : an opening's TM potential and TE field moments against a
 //                   layer's strip triangles (slots.py)
-//   scale_c64     : Z <- D Z D (equilibration) and its complex64 copy, one pass
+//   scale_c64     : D Z D (equilibration) as a complex64 copy, one pass
 //                   (the GPU LU's input)
 //   loop_transform: T^T Z T for T = I + W, W in a few columns (the sides'
 //                   loops, sides.Sides.loops)
@@ -2412,11 +2412,11 @@ void loop_transform(py::array_t<cd, py::array::c_style> Z, arr<i64> V,
 }
 
 // -----------------------------------------------------------------------------
-// Z <- diag(d) Z diag(d) in place, and its complex64 copy (one pass over the
-// matrix, row-parallel)
+// diag(d) Z diag(d) as a complex64 copy, and in place where asked (one pass
+// over the matrix, row-parallel)
 // -----------------------------------------------------------------------------
 py::array_t<cf> scale_c64(py::array_t<cd, py::array::c_style> Z,
-                          arr<double> d) {
+                          arr<double> d, bool inplace) {
     auto b = Z.request();
     const size_t n = b.shape[0], m = b.shape[1];
     if ((size_t)d.shape(0) != n || n != m)
@@ -2430,10 +2430,14 @@ py::array_t<cf> scale_c64(py::array_t<cd, py::array::c_style> Z,
 #pragma omp parallel for schedule(static)
         for (i64 i = 0; i < (i64)n; ++i) {
             cd *zr = z + (size_t)i * m; cf *orow = o + (size_t)i * m;
-            for (size_t j = 0; j < m; ++j) {
-                zr[j] *= dd[i] * dd[j];
-                orow[j] = cf(zr[j]);
-            }
+            if (inplace)
+                for (size_t j = 0; j < m; ++j) {
+                    zr[j] *= dd[i] * dd[j];
+                    orow[j] = cf(zr[j]);
+                }
+            else
+                for (size_t j = 0; j < m; ++j)
+                    orow[j] = cf(zr[j] * (dd[i] * dd[j]));
         }
     }
     return out;
@@ -2590,7 +2594,8 @@ PYBIND11_MODULE(_core, m) {
     m.def("loop_transform", &loop_transform,
           "Z <- T^T Z T in place, T = I + W in a few columns");
     m.def("scale_c64", &scale_c64,
-          "Z <- D Z D in place, and its complex64 copy");
+          "D Z D as a complex64 copy; in place too (Z <- D Z D) where asked",
+          py::arg("Z"), py::arg("d"), py::arg("inplace") = true);
     m.def("fan_q", &fan_q,
           "G_q moments between every triangle and the fan triangles");
     m.def("project", &project_t<cd>,

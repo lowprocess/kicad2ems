@@ -939,13 +939,17 @@ class Simulation:
         if len(self.F) and charges:
             # (dF: a chain's few fan triangles a column; as a dense product it
             # was 1.4 s of 317 vias' 3.4 s)
-            dF = geo['dF']
-            # (Nt, Nv) potential of fan charges
+            # (the chains' columns: the holes', openings' and sides' have
+            # no fan; as (Nt, Nv) blocks the sides' columns were 0.2 s of
+            # rf_bends' 2.8 s solve, all zeros)
+            Nc = len(self.chains)
+            dF = geo['dF'][:, :Nc]
+            # (Nt, Nc) potential of fan charges
             T = np.asarray((dF.T @ QF.T).T)
-            B += (r.D.T @ T) / (1j * w)
-            C += (dF.T @ T[self.F]) / (1j * w)
+            B[:, :Nc] += (r.D.T @ T) / (1j * w)
+            C[:Nc, :Nc] += (dF.T @ T[self.F]) / (1j * w)
             if V is not None:
-                Bv += (V[0].T @ T) / (1j * w)
+                Bv[:, :Nc] += (V[0].T @ T) / (1j * w)
         if self.sides is not None and charges:
             # the sides' functions (mom25d.sides): with the strips', each
             # other's and the via chains' fan charges
