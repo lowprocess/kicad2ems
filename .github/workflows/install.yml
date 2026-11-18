@@ -1,8 +1,8 @@
 # The installer, install.py, end to end on Linux: install every default into a
 # checkout's .venv, run an example on mom25d's compiled core, update, uninstall.
-# Its own workflow (R-C11): it had been a job of windows.yml, which is set aside
-# for now, so the one Linux check of the installer went unseen (that is how
-# A21 got through).
+# Its own workflow (R-C11): it had been a job of the Windows workflow, which was
+# set aside (and is removed), so the one Linux check of the installer went
+# unseen (that is how A21 got through).
 name: install
 
 on:

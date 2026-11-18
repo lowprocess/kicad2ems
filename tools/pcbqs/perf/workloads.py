@@ -14,11 +14,11 @@ snakeviz). One case per process: the peak memory is the process's. Cases:
     sparams_faces   the same on the copper's two faces (--thickness): the
                     largest dense solve
     capmatrix       the capacitance matrix of two traces on FR4
-                    (validation/cap_fastercap.py)
+                    (validation/pcbqs/cap_fastercap.py)
     mqs             a converter's near field (KiCad's CM5 demo, U702)
     pdn_cm5         a rail's drop and impedance (CM5, +5V)
     pdn_wpthb       the same on the 24 V bridge (--wpthb)
-    thermal         the bridge's temperature, grid and mesh
+    thermal         the bridge's temperature
     ports1, ports2  the bridge's copper ports for the circuit tool, one sheet
                     and two faces
     circuit_copper  a synchronous buck on its board's copper (ngspice)
@@ -42,22 +42,15 @@ import time
 import numpy as np
 
 HERE = pathlib.Path(__file__).resolve().parent
-REPO = HERE.parents[1]
+REPO = HERE.parents[2]
 CASES = ('sparams_rl', 'sparams_charge', 'sparams_faces', 'capmatrix', 'mqs',
          'pdn_cm5', 'pdn_wpthb', 'thermal', 'ports1', 'ports2',
          'circuit_copper')
 
 
 def demo_board():
-    """mom25d's demo board (its tests' JSON), beside this checkout or installed
-    with mom25d's sources."""
-    for p in (REPO.parent / 'mom25d/tests/boards/demo.json',):
-        if p.exists():
-            return json.loads(p.read_text())
-    raise SystemExit(
-        'the sparams cases need mom25d checked out beside pcbqs (its '
-        'tests/boards/demo.json)'
-    )
+    """mom25d's demo board (its tests' JSON)."""
+    return json.loads((REPO / 'tests/mom25d/boards/demo.json').read_text())
 
 
 def work(case, a, out):
@@ -103,16 +96,16 @@ def work(case, a, out):
             a.wpthb, *[
                 x for q in ('Q1', 'Q2', 'Q3', 'Q4')
                 for x in ('--loss', f'{q}=0.4')
-            ], '--loss', 'L3=0.6', '--method', 'both', '--out', out
+            ], '--loss', 'L3=0.6', '--out', out
         ])
     if case == 'capmatrix':
-        sys.path.insert(0, str(REPO / 'validation'))
+        sys.path.insert(0, str(REPO / 'validation' / 'pcbqs'))
         import cap_fastercap as V
         return V.pcbqs_c(V.CASES['traces_fr4'](), 0.25, edge_rings=6,
                          edge_width=0.15)
     if case == 'circuit_copper':
         from kicad2ems.pcbqs.circuit.engine import run
-        ex = REPO / 'src/pcbqs/circuit/examples'
+        ex = REPO / 'src/kicad2ems/pcbqs/circuit/examples'
         model = json.loads((ex / '05_buck_synchronous.json').read_text())
         model['board']['file'] = str(ex / '05_buck_synchronous.kicad_pcb')
         return run(model, out, log=quiet, copper=True)

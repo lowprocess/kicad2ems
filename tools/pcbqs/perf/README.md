@@ -1,9 +1,8 @@
 # Performance trials
 
-Scripts from the 2026-11-10 performance investigation, kept as they were run. They are measurement scaffolding,
-not part of the package: most monkeypatch pcbqs internals and hard-code the board paths (`~/Desktop/wpthb` and
-KiCad's CM5 demo). Some patch functions that have since changed, so expect to adjust them before reuse. Run from
-this directory, one at a time, with the kicad2ems venv's python and `OMP_NUM_THREADS=8`.
+Scripts from the 2026-11-10 performance investigation. They are measurement scaffolding, not part of the
+package, and hard-code the board paths (`~/Desktop/wpthb` and KiCad's CM5 demo). Run from this directory, one at
+a time, with the kicad2ems venv's python and `OMP_NUM_THREADS=8`.
 
 Maintained entry points:
 
@@ -12,15 +11,11 @@ Maintained entry points:
 | `../benchmark_ports.py SHEETS [auto\|direct\|iterative\|dense] [auto\|graph\|faces]` | Copper-port extraction for the wpthb bridge (`data/wpthb_bridge.json`'s board section): time, peak memory, GMRES iterations per frequency, one JSON line. `--save`/`--compare` check one route against another. |
 | `workloads.py CASE` | cProfile of one workload of a tool (S-parameters three ways, the capacitance matrix, the near field, two rails, the temperature, the copper ports, a circuit on copper): wall time, peak memory, and the functions with the most time of their own. What it found on 2026-11-13 is below. |
 
-One-off trials (the port and preconditioner trials of the same investigation, `prof.py`, `ports.py`, `twolevel*.py`
-and `circuit_timing.sh`, ran on the full-bridge tool, which is no longer; the git history has them):
-
-| Script | What it showed |
-|---|---|
-| `cli_prof.py mqs\|pdn` | cProfile of the near-field and PDN command lines. The PDN's time was all in the ground mesh. |
-| `dcmesh.py` | Per-layer mesh sizes in the PDN: 4.4 million triangles around two vias drilled into one another. |
-| `dcfix.py [fix]` | The PDN with one of those vias removed: the case for `pdn.mesh.overlapping_vias`. |
-| `dcsolve.py [mmd] [default]` | Sparse orderings for the DC solve. Not worth changing once the mesh is sane. |
+The one-off trials of the same investigation are in the git history: the port and preconditioner trials
+(`prof.py`, `ports.py`, `twolevel*.py`, `circuit_timing.sh`, run on the full-bridge tool, which is no longer), and
+`cli_prof.py` (the PDN's time was all in the ground mesh), `dcmesh.py` (4.4 million triangles around two vias
+drilled into one another), `dcfix.py` (the case for `pdn.mesh.overlapping_vias`) and `dcsolve.py` (sparse
+orderings for the DC solve: not worth changing once the mesh is sane).
 
 `results/` (not tracked) holds logs and saved port matrices from these runs.
 
