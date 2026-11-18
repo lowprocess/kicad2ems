@@ -55,14 +55,9 @@ remain supported. Another static-fill backend is registered with
 - [Validation and limits](quasistatic-validation.md)
 - [Migration](migration.md)
 - [Copied-code provenance](PROVENANCE.json)
-- [PEEC and skin-effect test PCB](../../examples/pcbqs/peec-skin/README.md): two coupons,
-  model comparisons, independent references and a reproducible KiCad layout.
-- [Experimental PEEC PDN comparison](../../examples/pcbqs/pdn-peec-trial/README.md):
-  loaded rails, independent DC/AC references, and mesh sensitivity.
 - [Jetson AGX Thor PDN check](../../examples/pcbqs/jetson-pdn/REPORT.md): a real-board DC
   cross-check, cavity limitations, and a bounded local PEEC/skin comparison.
-- [PEEC memory reduction](../../examples/pcbqs/peec-memory/REPORT.md) and the
-  [experimental compressed backend](peec-memory.md): graded meshes,
+- [Experimental compressed backend](peec-memory.md): graded meshes,
   hierarchical current/charge operators and iterative solving.
 
 The numerics pcbqs shares with mom25d (RWG functions, the mesher, the off-plane integrals,

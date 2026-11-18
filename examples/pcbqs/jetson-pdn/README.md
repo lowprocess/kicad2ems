@@ -30,7 +30,6 @@ python examples/jetson-pdn/scripts/dc_check.py
 python examples/jetson-pdn/scripts/survey.py
 python examples/jetson-pdn/scripts/survey_remaining.py
 python examples/jetson-pdn/scripts/connection_checks.py
-python examples/jetson-pdn/scripts/peec_feasibility.py
 python examples/jetson-pdn/scripts/local_topology.py
 python examples/jetson-pdn/scripts/local_peec.py
 python examples/jetson-pdn/scripts/local_crop_check.py

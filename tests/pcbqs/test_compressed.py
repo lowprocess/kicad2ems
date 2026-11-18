@@ -166,36 +166,6 @@ def test_batched_layer_images_match_dense_with_tiny_chunks(near):
     assert pairs.info['image_interactions']>0
 
 
-def test_benchmark_checkpoints_reuse_kernels_and_invalidate_options(tmp_path):
-    import importlib.util
-    from pathlib import Path
-    spec = importlib.util.spec_from_file_location(
-        'operator_cache',
-        Path(__file__).resolve().parents[2]
-        / 'examples/pcbqs/peec-memory/operator_cache.py')
-    cache=importlib.util.module_from_spec(spec);spec.loader.exec_module(cache)
-    a=make('hierarchical',layered=True,closed=True)
-    assert not cache.checkpoint(a,'inductance',tmp_path,a._assemble)['hit']
-    assert (not cache.checkpoint(a, 'potential', tmp_path,
-                                 a._ensure_potential)['hit'])
-    b=make('hierarchical',layered=True,closed=True)
-    def fail():raise AssertionError('cached kernels rebuilt')
-    assert cache.checkpoint(b,'inductance',tmp_path,fail)['hit']
-    assert cache.checkpoint(b,'potential',tmp_path,fail)['hit']
-    kernel=b._potential.kernel
-    panels=np.arange(min(10,kernel.shape[0]))
-    columns=np.eye(kernel.shape[0])[:,panels]
-    np.testing.assert_allclose(cache.sampled_block(kernel, panels, panels),
-                               (kernel @ columns)[panels], rtol=1e-14)
-    np.testing.assert_allclose(
-        b.solve([1e5]).z['I'],
-        a.solve([1e5]).z['I'], rtol=1e-12)
-    b.solver_tol=1e-9
-    assert cache.fingerprint(a,'potential')==cache.fingerprint(b,'potential')
-    b._compression_options=dict(b._compression_options,tol=1e-4)
-    assert cache.fingerprint(a,'potential')!=cache.fingerprint(b,'potential')
-
-
 @pytest.mark.parametrize('dtype',[float,complex])
 def test_native_hmatrix_product_matches_python_and_is_thread_independent(
         dtype, monkeypatch):

@@ -1,24 +1,22 @@
 # Experimental compressed PEEC
 
-The default solver remains dense. The Python API now offers an experimental
-hierarchical backend for `MQS(..., capacitance=True)` and the PDN trial adapter:
+The default solver remains dense. The Python API offers an experimental
+hierarchical backend for `MQS(..., capacitance=True)`:
 
 ```python
-from pcbqs.pdn.peec_trial import PEECPDN
+from kicad2ems.pcbqs.mqs import MQS
 
-trial = PEECPDN(legacy_rail_pdn, dmax=1.25, contact_spacing=.1,
-                coarsen=4, grow=.5,
-                matrix_backend='hierarchical',
-                compression_tol=1e-6, compression_leaf=64,
-                solver_tol=1e-8, solver_maxiter=2000)
-z = trial.z([1e5, 1e6, 30e6])
-model = trial._model(False)  # experimental adapter's loaded model
-print(model.fill_info, model.solve_info)
+q = MQS(board, nets, terminals=terms, dmax=1.25, capacitance=True,
+        dielectric='stack', coarsen=4, grow=.5,
+        matrix_backend='hierarchical',
+        compression_tol=1e-6, compression_leaf=64,
+        solver_tol=1e-8, solver_maxiter=2000)
+print(q.fill_info, q.solve_info)
 ```
 
 Mesh dimensions are mm. `coarsen` caps bulk spacing at a multiple of `dmax`;
 `grow` controls its growth with distance from geometric features. `fine` /
-`dmax_fine` in MQS or `contact_spacing` in PEECPDN protect local detail.
+`dmax_fine` protect local detail.
 `edge_rings=1` disables inward rings; larger counts add them using `edge_width`
 as the reference width. `edge_zone`, a Shapely region, restricts those rings.
 These controls preserve the imported outlines, pad constraints and via fans.
@@ -154,17 +152,5 @@ mesh and dielectric-image tolerances. Check port impedance, resonance shifts,
 continuity, reciprocity and passivity against dense small-board references;
 a block tolerance or small linear residual alone is not a physical error bound.
 
-Reproduce the separate-process benchmark (same meshes for both backends):
-
-```sh
-PYTHONPATH=src OPENBLAS_NUM_THREADS=1 python tools/pcbqs/benchmark_peec_memory.py
-```
-
-See [the investigation](../../examples/pcbqs/peec-memory/REPORT.md), accompanying JSON
-and scripts for measurements. The production PDN CLI still uses its existing
-backend; the new path is opt-in through MQS/PEECPDN.
-
-The [batching and checkpoint follow-up](../../examples/pcbqs/peec-memory/OPTIMIZATION.md)
-describes faster on-demand entry evaluation and resuming the Jetson benchmark
-without rebuilding completed operators. Checkpoints belong to the benchmark
-workflow; the API does not implicitly write caches.
+The production PDN CLI still uses its existing backend; the compressed path
+is opt-in through MQS.

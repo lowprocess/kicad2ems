@@ -6,15 +6,9 @@ and the 2.2 uH inductor. Source revision and board provenance are documented
 in [the input-loop benchmark](../cm5-u702.md); the exported JSON hash and
 all numerical settings are in [summary.json](summary.json).
 
-Reproduce from an exported CM5 board JSON:
-
-```sh
-OPENBLAS_NUM_THREADS=2 python tools/pcbqs/cm5_converter_fields.py CM5_MINIMA_3_board.json --out cm5-fields
-```
-
-The script also exports complex currents/fields, all-layer maps, phase
-animations, a PDF report and standard kicad2ems field dumps. Re-render a
-saved run with `--out cm5-fields --render-only`.
+The figures came from a one-off script, since removed;
+`python -m kicad2ems.pcbqs.mqs CM5_MINIMA_3_board.json --converter U702
+--out cm5-fields` computes the same loops and near fields.
 
 ## Excitation and interpretation
 
