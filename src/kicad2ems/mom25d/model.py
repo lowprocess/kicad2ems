@@ -35,6 +35,14 @@ KNOWN_SPAN = 0.1
 # -52 dB at 1 GHz and FEXT -34 dB at 6 GHz, against -31.7 and -17.5 dB with
 # lumped ports (Palace: -31.0 and -17.2 dB)
 COUPLED_REACH = 8.0
+# wave ports with thickness 'sides' (sim: the plates run on through the feed's
+# cuts, its gap across them; the line characterisations with the sides): off,
+# the copper as sheets with wave ports. Above 2 GHz they follow the lumped
+# ports' shift on the 7 wave-port boards (RMS 0.004-0.03 apart); below it on
+# short feeds the sides' charge along a feed is noisy at some cell shapes
+# (demo_transition's P1 at 1 GHz: the cuts' current +-4 %, 0.08 % as sheets),
+# and the fit amplifies it (|S11| up to 1.8; rf_diffvia's pair 0.17 off)
+WAVE_SIDES = False
 
 
 def _cross(g, p, d, half):
@@ -318,6 +326,9 @@ class PlanarModel:
             for k, W in planes.items()
         }
         cache = {}
+        # thick copper's sides on the lines too (mom25d.sides): the ports'
+        # Zc and gamma those of the board's copper
+        sides = (getattr(self, 'sides', None) or None) if WAVE_SIDES else None
         for p in ports:
             if isinstance(p, DiffPort):
                 a, b = p.pos, p.neg
@@ -341,10 +352,13 @@ class PlanarModel:
                     args = dict(layer=a.layer, w=0.5 * (a.w + b.w), gap=gap,
                                 fs=fs, planes=sorted(planes.items()), dmax=dmax,
                                 length=length)
+                    if sides:
+                        args['sides'] = sides
                     cache[key], kept = cached(
                         'pair', self.stack, args, lambda: line_char_pair(
                             self.stack, a.layer, 0.5 * (a.w + b.w), gap, fs,
-                            planes=planes, dmax=dmax, length=length))
+                            planes=planes, dmax=dmax, length=length,
+                            sides=sides))
                 ge, ze, go, zo = cache[key]
                 zd, zcm = 2 * zo.real, ze.real / 2
                 p.zd_fn, p.zc_fn = _smooth(fs, zd), _smooth(fs, zcm)
@@ -377,10 +391,13 @@ class PlanarModel:
                 args = dict(layer=p.layer, w=p.w, fs=fs,
                             planes=sorted(planes.items()), coplanar=cop,
                             dmax=dmax, length=length_for(p.w))
+                if sides:
+                    args['sides'] = sides
                 (g, z), kept = cached(
                     'xs', self.stack, args, lambda: line_char_xs(
                         self.stack, p.layer, p.w, fs, planes=planes,
-                        coplanar=cop, dmax=dmax, length=length_for(p.w)))
+                        coplanar=cop, dmax=dmax, length=length_for(p.w),
+                        sides=sides))
                 cache[key] = (z.real, g)
                 # slower than light: a failed fit
                 if np.any(np.abs(g.imag) < 0.95 * 2 * np.pi * fs / C0):
@@ -430,7 +447,7 @@ class PlanarModel:
         # thick copper (mom25d.sides, mom25d.edge); not with wave ports: their
         # S moves 3-7 x what gfdtd's solid copper moves it (rf_diffvia's
         # pairs: 0.24 with sides, 0.32 with edge, gfdtd 0.043; lumped ports
-        # 0.046 and 0.065)
+        # 0.046 and 0.065); with WAVE_SIDES the sides' wave ports
         thick = {k: v for k in ('sides', 'edge')
                  for v in [getattr(self, k, None)] if v}
         if thick:
@@ -438,7 +455,7 @@ class PlanarModel:
             from .geo import LinePort
             wave = [p.name for p in ports
                     if isinstance(p, (LinePort, DiffPort))]
-            if wave:
+            if wave and not WAVE_SIDES:
                 self.notes.append(
                     f"thickness: no {' or '.join(thick)} with wave ports "
                     f"({', '.join(wave)}; not modelled), the copper as "

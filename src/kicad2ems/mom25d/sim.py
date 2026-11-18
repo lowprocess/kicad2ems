@@ -38,6 +38,9 @@ from .geo import LinePort, mesh_polygons
 from .via import ViaKernels
 from .sing import offplane_pairs, offplane_moments
 
+# a port's cut, a lumped element's line: its ends moved to the copper's edge
+# within this x its width (Simulation._snap)
+SNAP = 0.02
 # rad: a wave port's cuts must span this much to fit gamma (a port without a
 # characterised one)
 FIT_SPAN = 0.4
@@ -598,6 +601,11 @@ class Simulation:
                     add(p.lp, [0.0])
         for el in self.lumped:
             add(el.lp, [0.0])
+        # each line's ends on the copper's edge where that is within SNAP of
+        # them (a board's feed 0.2 um wider than its port: a sliver between
+        # the cut's end and the edge, where a side crossed the cut)
+        self._segs = {(id(lp), x, k): self._snap(geoms[k], lp, x)
+                      for k in self.layers for lp, x in lines[k]}
 
         # ---- mesh -----------------------------------------------------------
         with self.log.timer('mesh'):
@@ -627,7 +635,7 @@ class Simulation:
                     vids = []
                 else:
                     wr = wr or self._guess_wref(geoms[k], lp_here)
-                    seg = [lp.line(s) for lp, s in lines[k]]
+                    seg = [self._segs[(id(lp), s, k)] for lp, s in lines[k]]
                     struct = bool(quads) if structured == 'auto' else structured
 
                     def vpt(v):
@@ -724,10 +732,16 @@ class Simulation:
         self.sides = None
         if sides:
             from .sides import Sides
-            # (no current along a side across a port's gap, its sample cuts
-            # or a lumped element: the sheet's edges there carry it all)
-            self.sides = Sides(self, **sides, cuts={
-                k: [lp.line(x) for lp, x in lines[k]] for k in self.layers})
+            # (no current along a side across a lumped port's gap or a lumped
+            # element: the sheet's edges there carry it all)
+            # (a wave port's gap is across them too: excitation)
+            wave = {id(q) for p in self.ports if isinstance(p, LinePort)
+                    for q in [p] + ([p.lp_n] if isinstance(p, ModePort)
+                                    else [])}
+            self.sides = Sides(self, **sides, gaps={
+                k: [self._segs[(id(lp), x, k)] for lp, x in lines[k]
+                    if x == 0.0 and id(lp) not in wave]
+                for k in self.layers})
             self.log.note(self.sides.notes(sides.get('s_max')))
             if not len(self.sides):
                 self.sides = None
@@ -998,14 +1012,35 @@ class Simulation:
         ])
 
     # ---- edges on lines -----------------------------------------------------
+    @staticmethod
+    def _snap(geom, lp, s):
+        """lp.line(s), each end moved to the copper's edge within SNAP x w."""
+        a, b = lp.line(s)
+        c, h = 0.5 * (a + b), 0.5 * lp.w
+        ln = shapely.LineString([c - lp.t * h * (1 + SNAP),
+                                 c + lp.t * h * (1 + SNAP)])
+        cut = ln.intersection(geom)
+        parts = [g for g in getattr(cut, 'geoms', [cut])
+                 if g.geom_type == 'LineString' and not g.is_empty]
+        on = [g for g in parts if g.distance(shapely.Point(c)) < 1e-12]
+        if not on:
+            return a, b
+        u = (np.asarray(on[0].coords) - c) @ lp.t
+        lo, hi = u.min(), u.max()
+        lo = lo if lo > -h * (1 + SNAP) + 1e-12 else -h
+        hi = hi if hi < h * (1 + SNAP) - 1e-12 else h
+        if not (abs(lo + h) <= SNAP * h and abs(hi - h) <= SNAP * h):
+            return a, b
+        return c + lp.t * lo, c + lp.t * hi
+
     def _line_edges(self, lp, s, tol=1e-8):
         r = self.rwg
         e0, e1 = (r.ends[:, 0] - (lp.c + lp.d * s), r.ends[:, 1] -
                   (lp.c + lp.d * s))
         on = ((np.abs(e0 @ lp.d) < tol) & (np.abs(e1 @ lp.d) < tol)
               & np.isin(self.edge_layer, _ls(lp.layer)))
-        on &= ((np.abs(e0 @ lp.t) <= lp.w / 2 + tol) &
-               (np.abs(e1 @ lp.t) <= lp.w / 2 + tol))
+        hw = lp.w / 2 * (1 + SNAP) + tol  # (_snap's ends)
+        on &= (np.abs(e0 @ lp.t) <= hw) & (np.abs(e1 @ lp.t) <= hw)
         idx = np.nonzero(on)[0]
         return idx, np.sign(r.nrm[idx] @ lp.d)
 
@@ -1396,6 +1431,14 @@ class Simulation:
             else:
                 idx, sig = self.gap[j]
                 E[idx, j] = sig * self.rwg.l[idx]
+                if self.sides is not None and isinstance(p, LinePort):
+                    # a wave port's gap across the sides too (they run on
+                    # through it: broken there, the current moved from the
+                    # sheet onto them over the feed, rf_interdig's cuts' share
+                    # -0.2 .. 0.6 at 3 GHz, and the line's Zc took the break's
+                    # +0.2j ohm)
+                    n, w = self._side_line(j, 0.0, 1.0)
+                    np.add.at(E[:, j], n, w)
         return E
 
     def port_current(self, I, j):
@@ -1406,8 +1449,35 @@ class Simulation:
         return ((sig * self.rwg.l[idx])[:, None] * I[idx]).sum(0)
 
     def cut_current(self, I, i):
-        return np.array([((sig * self.rwg.l[idx])[:, None] * I[idx]).sum(0)
-                         for idx, sig in self.cuts[i]])
+        out = np.array([((sig * self.rwg.l[idx])[:, None] * I[idx]).sum(0)
+                        for idx, sig in self.cuts[i]])
+        if self.sides is not None:
+            # and the sides' share (the vertical edges on the cuts)
+            out += np.array([(w[:, None] * I[n]).sum(0)
+                             for n, w in self._side_cuts(i)])
+        return out
+
+    def _side_cuts(self, i):
+        """Port i's sample cuts' side functions: [(rows in I, weights)]."""
+        sc = self.__dict__.setdefault('_sc', {})
+        if i not in sc:
+            k = 0.5 if isinstance(self.ports[i], ModePort) else 1.0
+            sc[i] = [self._side_line(i, x, k) for x in self.samples[i]]
+        return sc[i]
+
+    def _side_line(self, i, x, k):
+        """(rows in I, weights): the sides' current across wave port i's line
+        at x along its feed (with a ModePort's negative line), k x."""
+        p, sd = self.ports[i], self.sides
+        c0 = self.Ne + self.Nv - len(sd)
+        ns, ws = [], []
+        for lp, sg in [(p, 1.0)] + ([(p.lp_n, p.sign_n)]
+                                    if isinstance(p, ModePort) else []):
+            for kk in _ls(lp.layer):
+                n, w = sd.across(self, kk, self._segs[(id(lp), x, kk)], lp.d)
+                ns.append(c0 + n)
+                ws.append(k * sg * w)
+        return np.concatenate(ns), np.concatenate(ws)
 
     def solve(self, Z, E):
         with self.log.timer('LU solve', f"N={Z.shape[0]}"):
@@ -1607,14 +1677,15 @@ def _line_fit(sim, IR, IL, step):
 
 def line_char_xs(stack, layer, w, freqs, planes=None, coplanar=None,
                  via_pitch=1e-3, via_r=0.15e-3, length=16e-3, dmax=0.4e-3,
-                 ncross=4, verbose=False):
+                 ncross=4, verbose=False, sides=None):
     """
     Zc and gamma of a strip of width w on `layer` with extra reference metal:
     planes = {interface:
     width} adds a centred wide strip on that interface (e.g. a meshed GND plane
     above or below); coplanar = [(y0, y1), ...] adds same-layer ground strips
     (grounded CPW), stitched to ground by a via row every via_pitch near their
-    inner edge. Centre-fed long line, travelling-wave fit.
+    inner edge. Centre-fed long line, travelling-wave fit. sides: the
+    Simulation's (thick copper's sides).
     """
     L2, margin = length / 2, 2e-3
     shapes = {
@@ -1642,7 +1713,8 @@ def line_char_xs(stack, layer, w, freqs, planes=None, coplanar=None,
            for k, W in (planes or {}).items() if k != layer}
     }
     sim = Simulation(stack, shapes, ports, vias=vias, dmax=dmax, w_ref=wr,
-                     ncross=ncross, verbose=verbose, refine=0, solver='auto')
+                     ncross=ncross, verbose=verbose, refine=0, solver='auto',
+                     sides=sides)
     out = []
     for f in freqs:
         I = sim.currents(f, sim.excitation()[:, [0]])
@@ -1652,12 +1724,13 @@ def line_char_xs(stack, layer, w, freqs, planes=None, coplanar=None,
 
 
 def line_char_pair(stack, layer, w, gap, freqs, planes=None, length=16e-3,
-                   dmax=0.4e-3, ncross=4, verbose=False):
+                   dmax=0.4e-3, ncross=4, verbose=False, sides=None):
     """
     Even/odd modes of a symmetric edge-coupled pair (strip width w, edge gap
     `gap`) on `layer`, with optional reference metal (planes = {interface:
     width}). Returns (gamma_e, Z_even, gamma_o, Z_odd); the DiffPort reference
-    impedances are Z_diff = 2 Z_odd and Z_comm = Z_even / 2.
+    impedances are Z_diff = 2 Z_odd and Z_comm = Z_even / 2. sides: as
+    line_char_xs.
     """
     L2, margin = length / 2, 2e-3
     yc = (w + gap) / 2
@@ -1674,7 +1747,7 @@ def line_char_pair(stack, layer, w, gap, freqs, planes=None, length=16e-3,
     ]  # (+,R) (+,L) (-,R) (-,L)
     wr = {layer: w, **{k: min(W, 2e-3) for k, W in (planes or {}).items()}}
     sim = Simulation(stack, shapes, ps, dmax=dmax, w_ref=wr, ncross=ncross,
-                     verbose=verbose, refine=0, solver='auto')
+                     verbose=verbose, refine=0, solver='auto', sides=sides)
     out = []
     for f in freqs:
         E = sim.excitation()

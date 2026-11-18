@@ -477,6 +477,38 @@ def test_thickness_sides_stand_the_copper_edges_up():
     assert 0.93 < z < 0.98 and 0.95 < e < 0.99
 
 
+def test_thickness_sides_with_wave_ports(monkeypatch):
+    """Wave ports with the sides (model.WAVE_SIDES): the plates run on through
+    a feed's sample cuts and its gap (excited across them too), a cut's
+    current is the sheet's and the plates' (a third of it on the 0.38 mm
+    line), and the line characterisation has the sides: the thru line's Zc
+    falls as thick copper's (-4.4 % de-embedded with via ports; -5.6 %) and
+    the line stays matched."""
+    from kicad2ems.mom25d import model
+    from kicad2ems.mom25d.api import build_board, solve_board
+    monkeypatch.setattr(model, 'WAVE_SIDES', True)
+    data = board('thru')
+    f = np.array([3e9, 6e9])
+    zc, S = {}, {}
+    for th in ('off', 'sides'):
+        _, sim = build_board(data, f[0], f[-1], port='wave', thickness=th,
+                             log=quiet)
+        zc[th] = sim.ports[0].zc
+        S[th] = solve_board(data, f, port='wave', thickness=th,
+                            log=quiet).S
+    assert sim.sides is not None
+    assert all(len(n) == 10 for n, _ in sim._side_cuts(0))
+    I = sim.currents(f[0], sim.excitation())
+    sheet = np.array([((s * sim.rwg.l[i])[:, None] * I[i]).sum(0)
+                      for i, s in sim.cuts[0]])[:, 0]
+    share = (1 - sheet / sim.cut_current(I, 0)[:, 0]).real
+    assert np.all((0.2 < share) & (share < 0.45))
+    assert 0.93 < zc['sides'] / zc['off'] < 0.97
+    assert np.abs(S['sides'][:, 0, 0]).max() < 0.05
+    sim.sparams(f[0])
+    assert sim.last['resid'].max() < 1e-2  # (sheets: 4e-3)
+
+
 def test_thickness_edge_corrects_the_edge_near_terms():
     """thickness='edge' (mom25d.edge): no unknowns added, the edge triangles'
     near pairs corrected; on the 30 mm microstrip Z0 and eeff fall as thick

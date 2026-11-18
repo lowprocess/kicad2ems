@@ -46,7 +46,7 @@ class Sides:
     copper thickness (m)}, up: {interface: True (the plate above the sheet) |
     False (below)}, s_max (m) or None (every boundary edge)."""
 
-    def __init__(self, sim, t, up, s_max=None, cuts=None):
+    def __init__(self, sim, t, up, s_max=None, gaps=None):
         r, lt = sim.rwg, sim.tri_layer
         tris, nodes = r.tris, r.nodes
         e = tris[:, [0, 1, 1, 2, 2, 0]].reshape(-1, 2)
@@ -88,22 +88,65 @@ class Sides:
                                     for k in self.k])
         self.L, self.np_ = L, len(bd)
         self.layers = sorted({int(k) for k in self.k})
-        # the boundary nodes on a cut line (a port's gap or sample cut, a
-        # lumped element): the sides break there (the element's current, the
-        # port's, is the sheet's edges'; a side through a combline's loading
-        # capacitors shorted them, its passband 2.4 -> 6.4 GHz)
+        # the boundary nodes on a gap line (a port's gap, a lumped element):
+        # the sides break there (the element's current, the port's, is the
+        # sheet's edges'; a side through a combline's loading capacitors
+        # shorted them, its passband 2.4 -> 6.4 GHz). Through a wave port's
+        # sample cuts they run on (across: their share of the cut's current;
+        # broken there, a fit's reference line had its Zc 50.9 -> 53.2 ohm)
         self.cut_node = set()
-        for k, segs in (cuts or {}).items():
-            on = np.flatnonzero(self.k == k)
-            if not len(on) or not segs:
-                continue
-            ln = shapely.unary_union([shapely.LineString(sg) for sg in segs])
-            p = sim.rwg.nodes[self.ib[on]]
-            d = shapely.distance(shapely.points(p), ln)
-            self.cut_node.update(self.ib[on][d < 1e-9].tolist())
+        for k, segs in (gaps or {}).items():
+            self.cut_node.update(self._on(sim, k, segs).tolist())
         if self.np_:
             self._functions(sim, po)
         self._near = self._hal = None
+
+    def _on(self, sim, k, segs):
+        """The plates' end nodes (ib) on interface k on the segments."""
+        on = np.flatnonzero(self.k == k)
+        if not len(on) or not segs:
+            return np.zeros(0, int)
+        ln = shapely.unary_union([shapely.LineString(sg) for sg in segs])
+        d = shapely.distance(shapely.points(sim.rwg.nodes[self.ib[on]]), ln)
+        return self.ib[on][d < 1e-9]
+
+    def across(self, sim, k, seg, d, tol=0.02):
+        """(functions, weights): the current along the sides across the cut
+        line seg on interface k, in the direction d (its normal): through the
+        vertical section of each plate the line crosses (at its end node, or
+        inside it where the cut's end node is not the copper's edge: on boards
+        a sliver inside, 0.25 um, the plate's run across), within tol x the
+        cut's length of its ends. A half alpha (r - v) through a straight
+        section: alpha l ((r_mid - v) . n), n the section's normal in the
+        plate."""
+        nd = sim.rwg.nodes
+        s0, s1 = np.asarray(seg[0], float), np.asarray(seg[1], float)
+        c, w = 0.5 * (s0 + s1), np.hypot(*(s1 - s0))
+        tt = (s1 - s0) / w
+        sa, sb = (nd[self.ia] - c) @ d, (nd[self.ib] - c) @ d
+        eps = 1e-9 * w
+        sa, sb = np.where(abs(sa) < eps, 0, sa), np.where(abs(sb) < eps, 0, sb)
+        # crossed at u in (0, 1]: an end node on the line once
+        x = (self.k == k) & (sa != 0) & (sa * sb <= 0)
+        u = np.where(x, sa / np.where(x, sa - sb, 1.0), 0.0)
+        pt = nd[self.ia] + u[:, None] * (nd[self.ib] - nd[self.ia])
+        x &= abs((pt - c) @ tt) <= (0.5 + tol) * w
+        fn, wt = [], []
+        for i in np.flatnonzero(x):
+            tv = (nd[self.ib[i]] - nd[self.ia[i]]) / self.L[i]
+            if abs(tv @ d) < 0.3:
+                continue
+            n = np.r_[np.sign(tv @ d) * tv, 0.0]
+            ui, t, h = u[i], self.t[i], self.h[i]
+            # the section in the triangles A (0 .. u t) and B (u t .. t)
+            for tri, ln, zm in ((2 * i, ui * t, 0.5 * ui * h),
+                                (2 * i + 1, (1 - ui) * t,
+                                 0.5 * (1 + ui) * h)):
+                for j in self._pt_halves.get(tri, ()):
+                    fn.append(self.h_fn[j])
+                    wt.append(self.h_alpha[j] * ln
+                              * ((np.r_[pt[i], zm] - self.h_v[j]) @ n))
+        return np.array(fn, int), np.array(wt, float)
 
     def __len__(self):
         return self.N
@@ -152,6 +195,9 @@ class Sides:
         self.h_fn = np.array([x[0] for x in H], int)
         kind = np.array([x[1] for x in H], int)
         tri = np.array([x[2] for x in H], int)
+        self._pt_halves = {}  # plate triangle: its halves
+        for j in np.flatnonzero(kind == 1):
+            self._pt_halves.setdefault(int(tri[j]), []).append(j)
         self.h_alpha = np.array([x[3] for x in H], float)
         self.h_v = np.array([x[4] for x in H], float)
         Nt = len(r.tris)
