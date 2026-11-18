@@ -76,7 +76,6 @@ gfdtd = "kicad2ems.gfdtd.fdtd:main"
 dfsynth = "kicad2ems.dfsynth.cli:main"
 kicad2ems-fem-dc = "kicad2ems.fem.elmer.dc:main"
 kicad2ems-fem-cap = "kicad2ems.fem.palace.cap:main"
-kicad2ems-fem-cap-elmer = "kicad2ems.fem.elmer.cap:main"
 kicad2ems-fem-thermal = "kicad2ems.fem.elmer.thermal:main"
 kicad2ems-fem-mag = "kicad2ems.fem.elmer.mag:main"
 

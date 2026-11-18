@@ -14,7 +14,7 @@ from kicad2ems.core import analyses as registry_module, study
 from kicad2ems.fem import analyses as A
 from kicad2ems.fem.elmer import run as elmer
 
-ALL = (A.ElmerDC, A.ElmerThermal, A.ElmerCap, A.PalaceCap, A.ElmerMag,
+ALL = (A.ElmerDC, A.ElmerThermal, A.PalaceCap, A.ElmerMag,
        A.PalaceLoop, A.PalacePDN)
 # every analysis kicad2ems lists (`registered` swaps the list for ALL's)
 LISTED = registry_module.ANALYSES
@@ -32,16 +32,15 @@ def registered(monkeypatch):
 def test_they_register_as_engines_of_questions_others_answer_too(registered):
     assert (list(registered) == [
         'elmer_dc', 'palace_loop', 'palace_pdn', 'elmer_mag', 'elmer_thermal',
-        'elmer_cap', 'palace_cap'
+        'palace_cap'
     ])
     es = study.engines()
     assert ([es[n].provides for n in registered] == [('dc', ), ('nearfield', ),
                                                      ('pdn', ), ('coils', ),
                                                      ('thermal', ),
-                                                     ('capacitance', ),
                                                      ('capacitance', )])
     assert ([es[n].label for n in registered] == [
-        'Elmer', 'Palace', 'Palace', 'Elmer', 'Elmer', 'Elmer', 'Palace'
+        'Elmer', 'Palace', 'Palace', 'Elmer', 'Elmer', 'Palace'
     ])
     rows = {
         r['question'].name: r
@@ -49,7 +48,7 @@ def test_they_register_as_engines_of_questions_others_answer_too(registered):
         for r in g['questions']
     }
     assert ([e.name for e in rows['capacitance']['engines']
-             ] == ['elmer_cap', 'palace_cap'])
+             ] == ['palace_cap'])
     assert ({s for s in LISTED if s.startswith('kicad2ems.fem.')}
             == {f"kicad2ems.fem.analyses:{c.__name__}" for c in ALL})
 
@@ -57,7 +56,7 @@ def test_they_register_as_engines_of_questions_others_answer_too(registered):
 def test_the_settings_are_the_tools_own_options():
     dc = {o['key']: o for o in A.ElmerDC().options()}
     assert (list(dc)
-            == ['net', 'source', 'load', 'h', 'h_fine', 'plating', 'mesh']
+            == ['net', 'source', 'load', 'h', 'plating']
             and 'out' not in dc)
     assert (dc['net']['kind'] == 'list' and dc['net']['required']
             and dc['h']['default'] == 0.25 and dc['h']['kind'] == 'float')
@@ -87,11 +86,11 @@ def test_the_commands(tmp_path):
     dc = A.ElmerDC()
     line = dc.command(
         dict(net='VHB', source='L3', load='Q1=0.67, Q2=0.67', h=0.25,
-             h_fine='0.1'), board, 'out')
+             plating='0.03'), board, 'out')
     assert (line == [
         sys.executable, '-m', 'kicad2ems.fem.elmer.dc', board, '--out', 'out',
         '--net', 'VHB', '--source', 'L3', '--load', 'Q1=0.67', '--load',
-        'Q2=0.67', '--h-fine', '0.1'
+        'Q2=0.67', '--plating', '0.03'
     ])
     assert (dc.tag(dict(net=['VHB', 'VIN'])) == 'VHB'
             and dc.status('fem dc: meshing') == 'meshing'
@@ -100,7 +99,7 @@ def test_the_commands(tmp_path):
         dc.command(dict(net='VHB'), board, 'out')
     with pytest.raises(ValueError, match='choose a board first'):
         dc.command(dict(net='VHB', source='L3', load='Q1=1'), '', 'out')
-    cap = A.ElmerCap()
+    cap = A.PalaceCap()
     assert (cap.command(dict(net='A\nB+C', thick=True, order=2), board,
                         'o')[6:] == ['--net', 'A', '--net', 'B+C', '--thick'])
     assert cap.tag(dict(net='A, B+C')) == 'A-B+C'
@@ -135,7 +134,7 @@ def test_reports_and_whose_result_a_folder_is(tmp_path, registered):
                  V=dict(Q1=-0.0021,
                         Q2=-0.0034), drop_mV=dict(Q1=2.1,
                                                   Q2=3.4), loss_W=0.0037,
-                 tets=12345, vias=4, seconds=dict(mesh=1.5, solve=2.0))))
+                 wedges=12345, vias=4, seconds=dict(mesh=1.5, solve=2.0))))
     assert registry_module.analysis_of(str(d)) == ('elmer_dc', False)
     rep = A.ElmerDC().report(str(d))
     assert (rep['title'] == 'VHB: DC drop from L3'
@@ -192,7 +191,7 @@ def test_reports_and_whose_result_a_folder_is(tmp_path, registered):
              for f in A.PalaceCap().figures(str(c))] == [('C A', 2.0),
                                                          ('C B', 3.0),
                                                          ('C A,B', 1.5)])
-    assert A.ElmerCap().report(str(tmp_path)) is None
+    assert A.PalaceCap().report(str(tmp_path)) is None
 
 
 @pytest.mark.skipif(not elmer.found()[0], reason='Elmer not installed')
@@ -221,7 +220,7 @@ def test_a_drop_run_through_its_command(tmp_path, registered):
     a = registered['elmer_dc']
     line = a.command(
         a.for_questions(
-            dict(net='N', source='S', load='L=1', h=0.5, h_fine=0.25),
+            dict(net='N', source='S', load='L=1', h=0.5),
             ('dc', )), str(path), str(out))
     study.mark(str(out), 'elmer_dc', ('dc',))
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(p for p in sys.path if p))

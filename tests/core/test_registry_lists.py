@@ -65,8 +65,7 @@ def test_every_solver_and_analysis_listed_loads(listed):
     ]
     assert [a['name'] for a in listed['analyses']] == [
         'crosstalk', 'pdn', 'elmer_dc', 'mqs', 'palace_loop', 'palace_pdn',
-        'circuit', 'elmer_mag', 'thermal', 'elmer_thermal', 'elmer_cap',
-        'palace_cap'
+        'circuit', 'elmer_mag', 'thermal', 'elmer_thermal', 'palace_cap'
     ]
     for rows in (listed['solvers'], listed['analyses']):  # by order, then name
         assert rows == sorted(rows, key=lambda r: (r['order'], r['name']))

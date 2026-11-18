@@ -330,9 +330,8 @@ def report(r):
     return '\n'.join(lines)
 
 
-def parser(prog='kicad2ems-fem-cap', doc=__doc__, palace=True):
-    """The tool's options; Elmer's tool's (elmer/cap.py: palace=False) are the
-    same but for --np."""
+def parser(prog='kicad2ems-fem-cap', doc=__doc__):
+    """The tool's options."""
     import argparse
     ap = argparse.ArgumentParser(prog=prog, description=doc.split('\n\n')[0])
     ap.add_argument('board',
@@ -353,11 +352,9 @@ def parser(prog='kicad2ems-fem-cap', doc=__doc__, palace=True):
                     help="the air box's faces (default open)")
     ap.add_argument(
         '--order', type=int, default=2,
-        help=("Palace's" if palace else "the") + " element order (default 2)")
-    if palace:
-        ap.add_argument(
-            '--np', type=int, default=0,
-            help="Palace's MPI processes (default 0: one per fast core)")
+        help="Palace's element order (default 2)")
+    ap.add_argument('--np', type=int, default=0,
+                    help="Palace's MPI processes (default 0: one per fast core)")
     return ap
 
 

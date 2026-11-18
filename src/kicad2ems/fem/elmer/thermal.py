@@ -44,8 +44,8 @@ from shapely.geometry import box
 
 from ..geometry import load_board, pads_of, part_copper
 from . import run as elmer
-from .layered import BARREL, BARREL_E, BOARD, COPPER, COPPER_E, layered_mesh
-from .model import SIGMA_CU
+from .layered import (BARREL, BARREL_E, BOARD, COPPER, COPPER_E, SIGMA_CU,
+                      layered_mesh)
 
 K_CU = 385.0                    # W/m/K
 RHO_CU, C_CU = 8960.0, 385.0    # kg/m3, J/kg/K: 3.45e6 J/m3/K, pcbqs's RHO_C_CU

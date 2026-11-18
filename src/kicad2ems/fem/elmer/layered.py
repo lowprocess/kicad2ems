@@ -26,6 +26,7 @@ from shapely.ops import unary_union
 
 from ..geometry import copper_of, layers as layer_names, slab
 
+SIGMA_CU = 5.8e7
 COPPER_E, BARREL_E, COPPER, BARREL, BOARD = 1, 2, 3, 4, 5
 EXPOSED, TERM0 = 1, 10
 

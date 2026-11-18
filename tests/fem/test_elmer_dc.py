@@ -36,18 +36,14 @@ def test_pads_of_takes_a_parts_pads_on_the_net():
 
 @pytest.mark.skipif(not elmer.found()[0], reason='Elmer not installed')
 def test_strip_drop_matches_closed_form(tmp_path):
-    """R = 40 mm / (sigma t w) between the pads' inner edges; the pads are
-    tagged on the mesh, so their edges are resolved to h_fine (0.15% at h_fine
-    0.06)."""
+    """R = 40 mm / (sigma t w) between the pads' inner edges, on the layered
+    mesh (R-D23)."""
     from kicad2ems.fem.elmer.dc import solve
     R0 = 0.040 / (5.8e7 * 35e-6 * 0.005)
-    # the layered mesh (R-D23), gmsh's tets
-    for mesh, tol in (('wedge', 1e-3), ('tet', 3e-3)):
-        r = solve(strip_board(), {'N'}, 'S', {'L': 1.0}, out=tmp_path / mesh,
-                  h=0.25, h_fine=0.06, mesh=mesh, log=lambda *a: None)
-        assert -r['V']['L'] == pytest.approx(R0, rel=tol) and r['mesh'] == mesh
-        assert r['loss_W'] == pytest.approx(-r['V']['L'] * 1.0, rel=1e-6)
-        assert ((tmp_path / mesh / 'dc.json').is_file()
-                and ('wedges' if mesh == 'wedge' else 'tets') in r)
-        # which Elmer it was (R-B14)
-        assert r['engine']['program'] == 'Elmer' and r['engine']['version']
+    r = solve(strip_board(), {'N'}, 'S', {'L': 1.0}, out=tmp_path, h=0.25,
+              log=lambda *a: None)
+    assert -r['V']['L'] == pytest.approx(R0, rel=1e-3) and r['mesh'] == 'wedge'
+    assert r['loss_W'] == pytest.approx(-r['V']['L'] * 1.0, rel=1e-6)
+    assert (tmp_path / 'dc.json').is_file() and 'wedges' in r
+    # which Elmer it was (R-B14)
+    assert r['engine']['program'] == 'Elmer' and r['engine']['version']

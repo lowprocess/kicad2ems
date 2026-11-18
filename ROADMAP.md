@@ -489,8 +489,7 @@ The roadmap had no FDTD section; the review's, in order (R-A12, B17, B18, E3, D4
    most 10 µm), and its `estimate()` builds the mesh and scales it by the examples' runs (demo_lowpass at the
    default feature: 16 min and 13.5 GB estimated, 30 min and 19.3 GB as run). Left: the Elmer builder's
    fragmenting, a gap per edge. `elmer_dc` is on the layered wedges since 2026-11-15 (R-D23: wpthb VHB in 0.8 s and 120 MB, within
-   0.2 % of 1.1 M tetrahedra's drop; `--mesh tet` keeps them, and their `tag_terminals` rewriting the mesh file
-   in Python). *Decided*: `mag` keeps its n(n+1)/2 energy solves (three for a coil pair, where flux linkage
+   0.2 % of 1.1 M tetrahedra's drop; `--mesh tet` was removed in 2026-11). *Decided*: `mag` keeps its n(n+1)/2 energy solves (three for a coil pair, where flux linkage
    would take two and each coil's flux integral).
    Elmer's timeout is not caught, Palace's non-convergence not read, the versions not recorded, the MPI ranks fixed
    at 8.

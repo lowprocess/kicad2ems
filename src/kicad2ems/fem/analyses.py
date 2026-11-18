@@ -8,9 +8,7 @@ lay the answers side by side.
                    kicad2ems.fem.elmer.dc)
     elmer_thermal  the board's temperature          (python -m
                    kicad2ems.fem.elmer.thermal)
-    elmer_cap      the capacitance between nets     (python -m
-                   kicad2ems.fem.elmer.cap)
-    palace_cap     the same, by Palace              (python -m
+    palace_cap     the capacitance between nets     (python -m
                    kicad2ems.fem.palace.cap)
     elmer_mag      wound coils beside ferrite       (python -m
                    kicad2ems.fem.elmer.mag): its own question, no board
@@ -41,7 +39,7 @@ GROUPS = dict(coil='Coils and plates', plate='Coils and plates',
               heat_from='Heat', htc='Air and board', ambient='Air and board',
               k_board='Air and board', far='Air and board',
               margin='Air and board', region='Air and board', h='Mesh',
-              h_fine='Mesh', hmax='Mesh', plating='Mesh', mesh='Mesh',
+              hmax='Mesh', plating='Mesh',
               thick='Mesh', order='Solver', np='Solver')
 
 
@@ -197,10 +195,8 @@ class ElmerDC(_Fem):
             ], notes=[
                 "The net's own copper and vias in 3D; series parts and the "
                 "ground return are not in it."
-            ], footer="Elmer, " +
-            (f"{r['tets']:,} tetrahedra"
-             if 'tets' in r else f"{r.get('wedges', 0):,} wedges (layered)")
-            + f", {_seconds(r):.1f} s")
+            ], footer=(f"Elmer, {r.get('wedges', 0):,} wedges (layered), "
+                       f"{_seconds(r):.1f} s"))
 
     def summary(self, folder):
         r = self._read(folder)
@@ -382,14 +378,6 @@ class _Cap(_Fem):
                 f"the air box's faces {r.get('far', 'open')}."
             ], footer=
             f"{self.engine}, {r['tets']:,} tetrahedra, {_seconds(r):.1f} s")
-
-
-class ElmerCap(_Cap):
-    name, label, engine = 'elmer_cap', 'Capacitance (Elmer)', 'Elmer'
-    tool = module = 'kicad2ems.fem.elmer.cap'
-    about = ("the capacitance matrix of nets' copper in the board's "
-             "dielectrics, by Elmer's electrostatics")
-    order = 60
 
 
 class PalaceCap(_Cap):

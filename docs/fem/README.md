@@ -15,7 +15,6 @@ gmsh meshing. Neither program is a Python dependency; each is found when it runs
 | [Elmer](https://www.elmerfem.org) (CSC) | DC IR drop of a net's copper, 3D | `python -m kicad2ems.fem.elmer.dc` (`elmer/`) |
 | Elmer, heat | The board's steady temperature: parts' heat, a rail's own, a circuit run's | `python -m kicad2ems.fem.elmer.thermal` |
 | Elmer, magnetostatic | Wound coils beside ferrite: inductance and coupling (the study's *Coils and ferrite*) | `python -m kicad2ems.fem.elmer.mag` |
-| Elmer, electrostatic | Capacitance between nets: Palace's model, a second solver | `python -m kicad2ems.fem.elmer.cap` |
 
 All are **experimental**. Each is a second opinion on a faster solver of the tool, by a different method:
 
@@ -23,7 +22,7 @@ All are **experimental**. Each is a second opinion on a faster solver of the too
 |---|---|---|
 | S-parameters of a routed board, with its lumped parts | mom25d, the line model, FDTD | Palace, driven |
 | Antenna: match, gain, efficiency, patterns | gfdtd, openEMS, mom25d | Palace, driven, with its far field |
-| Capacitance between nets (pcbqs's PEEC charge) | pcbqs | Palace, electrostatic: the finite FR-4 and the copper's thickness; Elmer on the same model |
+| Capacitance between nets (pcbqs's PEEC charge) | pcbqs | Palace, electrostatic: the finite FR-4 and the copper's thickness |
 | DC IR drop of a rail | pcbqs.pdn | Elmer |
 | The power circuit's losses (pcbqs's ngspice run) | none | Elmer: the temperature they give the board |
 | A wireless-power coil pair's L and k (the power circuit's coil model) | none: a datasheet figure | Elmer: the coils with their ferrite |
@@ -42,7 +41,7 @@ beside the faster ones:
 |---|---|---|
 | a rail's DC drop | `elmer_dc` | kicad2ems.pcbqs.pdn |
 | the board's temperature | `elmer_thermal` | kicad2ems.pcbqs.thermal |
-| capacitance between nets | `elmer_cap`, `palace_cap` | |
+| capacitance between nets | `palace_cap` | |
 | coils and ferrite (their inductances and coupling) | `elmer_mag` | |
 
 A front end builds each one's settings from the tool's own command-line options,
@@ -66,10 +65,10 @@ python -m kicad2ems.fem.elmer.dc board.kicad_pcb --net VHB --source L3 --load Q1
   and the return are pcbqs.pdn's job, and this checks their copper in 3D.
 - **Output:** `<out>/dc.json` (each load's voltage and drop, the copper's loss, the mesh) and Elmer's case in
   `<out>/elmer`.
-- **Mesh:** the layered mesh the thermal tool solves on (`--mesh wedge`, the default): the board's triangles,
-  cropped to the net's copper and 1 mm round it, swept through the stack as wedges, the net's copper and via
-  barrels its bodies; `--h` (default 0.25 mm) the triangles' size. `--mesh tet` meshes the copper in 3D with gmsh
-  instead (`--h-fine`, 0.05 mm, at vias and pad edges). Refine until the drop stops moving.
+- **Mesh:** the layered mesh the thermal tool solves on: the board's triangles, cropped to the net's copper and
+  1 mm round it, swept through the stack as wedges, the net's copper and via barrels its bodies; `--h` (default
+  0.25 mm) the triangles' size. Refine until the drop stops moving. (gmsh's tetrahedra of the copper, `--mesh
+  tet`, were removed in 2026-11: 1.1 M of them took 3.5 GB for the same drop.)
 
 Against pcbqs's 2D DC solve this agreed within 0.2% on the wpthb VHB rail and 1.5% on Jetson +1V15
 (pcbqs/validation). wpthb VHB, L3 to the two high-side FETs, at h 0.1 / 0.02 mm (1.1 M tetrahedra): Q1 0.3835 mV,
@@ -79,7 +78,7 @@ Elmer is found as `K2E_ELMER` (the folder with `ElmerSolver` and `ElmerGrid`), t
 recorded (`elmer` in `kicad2ems-site.toml`), or on `PATH`; a serial build with OpenMP is enough for every tool
 here. kicad2ems's `install.py` finds one, takes a folder you give (`--elmer PATH`) or builds one from source
 (`--elmer build`, kicad2ems's `tools/build_elmer.sh`: a few minutes). The mesh is solved with Elmer's direct solver (Umfpack), because the
-iterative ones diverged on thin copper. A million tetrahedra take about 3.5 GB (`--mesh tet`).
+iterative ones diverged on thin copper.
 
 ## Palace: S-parameters
 
@@ -390,11 +389,10 @@ winding's curve over frequency, one frequency's value would stand for all of it)
 | The same at µr 200, and at 0.5 mm thick | 6.65 and 6.71 µH at 120 mm (−1.6%, −1.0%): the plate carries less flux |
 | The example above; and with an 0.8 mm, µr 800 plate over the receiver too | 6.45 and 6.80 µH, k 0.567 (in air 3.74, 5.77, 0.474); 8.23 and 12.86 µH, k 0.657; 74 and 114 s |
 
-## Capacitance: Palace, and Elmer on the same model
+## Capacitance: Palace
 
 ```sh
 python -m kicad2ems.fem.palace.cap board.kicad_pcb --net SW --net VIN --net GND --out cap_sw
-python -m kicad2ems.fem.elmer.cap  board.kicad_pcb --net SW --net VIN --net GND --out cap_sw_elmer
 ```
 
 - **Model:** the dielectric slabs inside the board outline (finite, as built), air around them, each `--net` a
@@ -407,8 +405,8 @@ python -m kicad2ems.fem.elmer.cap  board.kicad_pcb --net SW --net VIN --net GND 
 - **Mesh:** `--h` at the copper edges, where the charge peaks; the answer falls towards the true one as `--h`
   does. Refine until it stops moving.
 
-The two programs share the model and the mesh generator, so they check each other's solve and output reading,
-not the mesh. A 0.3 mm trace 20 mm long, 0.2 mm above a 10 mm wide ground, shield 12 mm away, h 0.2 mm
+Elmer solved the same model (a second program, removed in 2026-11), which checked Palace's solve and output
+reading, not the mesh. A 0.3 mm trace 20 mm long, 0.2 mm above a 10 mm wide ground, shield 12 mm away, h 0.2 mm
 (76,000 tetrahedra, 2 to 5 s each):
 
 | Case | Palace, pF | Elmer, pF | |
