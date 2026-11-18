@@ -266,7 +266,8 @@ that does not need N² memory. In this order:
 5. **The numerics shared with pcbqs** (R-F4): one copy since 2026-11-16, `kicad2ems.emsdev.numerics` (the RWG
    functions, the mesher with pcbqs's minimum-angle option, the off-plane integrals, Biot-Savart), mesh2d in
    `emsdev/native`. Left to port: mom25d's singular rule over the smaller triangle into pcbqs (`mom25d.sing` wraps
-   the shared `offplane_pairs` with it), with pcbqs's compiled static, compressed and layered kernels (they integrate over p too; ported in Python alone, fourteen of pcbqs's tests held them apart).
+   the shared `offplane_pairs` with it), with pcbqs's compiled static, compressed and layered kernels (they
+   integrate over p too; ported in Python alone, fourteen of pcbqs's tests held them apart).
 6. **mixed's band fit at its cap, unconverged, says nothing.** On `rf_bends` (14 ports after four cuts) the
    adaptive sweep stops at its 60 solves with its models still apart and the curve between the solved frequencies
    wrong (0.507 from openEMS on the Solver Matrix of 2026-11-15, as on 2026-11-06); mom25d's own runs warn nowhere

@@ -27,9 +27,10 @@ pip install '.[core]'               # pybind11, then build the CPU core (g++ wit
 python -m kicad2ems.gfdtd.core.build          # src/gfdtd/_core*.so; GFDTD_ARCH=-march=x86-64-v3 for a portable build
 ```
 
-Vulkan needs only the GPU's driver (Vulkan 1.2 with buffer device addresses and float32 atomic adds: any desktop
-GPU of the last several years). Without the core the CPU runs on numpy, some 15 times slower. Each run picks its
-backend (`backend='auto'`: a Vulkan GPU, else the core, else numpy); `GFDTD_BACKEND=vulkan|core|numpy` overrides it, `EMSDEV_VULKAN_DEVICE=1` picks the second Vulkan GPU.
+Vulkan needs only the GPU's driver (Vulkan 1.2 with buffer device addresses and float32 atomic adds: any desktop GPU
+of the last several years). Without the core the CPU runs on numpy, some 15 times slower. Each run picks its backend
+(`backend='auto'`: a Vulkan GPU, else the core, else numpy); `GFDTD_BACKEND=vulkan|core|numpy` overrides it,
+`EMSDEV_VULKAN_DEVICE=1` picks the second Vulkan GPU.
 
 ## CSXCAD and openEMS compatibility
 
@@ -164,21 +165,21 @@ from three line arrays; vv and vi's per-edge factor come from a table through on
 branches) are folded into the E update, their currents stored only where there are poles. The table is exact to
 2^-20.
 
-- **Vulkan** (`src/gfdtd/kernels_vk.py`, slangpy): kernels in Slang around `fdtd_core.h`, compiled to SPIR-V when
-  a run starts (cached by slangpy); one thread per node, float32. A timestep is three launches: `step_h` (H, its
-  PML terms, the Mur copies), `step_e` (E with the Debye poles and PML terms) and `step_post` (the excitation,
-  lumped branches and Mur update, whose edges must be disjoint). With PML, a trial at setup picks the PML inside
-  those kernels or in launches of their own. Excitations run in threads, as many at once as fit in the GPU's
-  cache (`concurrent_runs`: up to 1.2 M cells in all; `--jobs` or `GFDTD_CONCURRENT_CELLS` set it). Each kernel
-  reaches the model through one struct of buffer device addresses; 32-bit indices, 64 threads a workgroup; the
-  launches are recorded into command buffers of 96 launches the GPU runs while the host records the next. The energy is summed in double per
-  workgroup on the GPU and the partial sums on the host. Runs in threads get a Vulkan device each. Several GPUs
-  (kicad2ems's `--gfdtd-gpus all` or `0,1`, `vulkan_gpus()`): the excitations go out to a process a GPU
-  (`EMSDEV_VULKAN_DEVICE` in each), each taking the next as it comes free. Not threads: two threads driving an
-  RX 7800 XT and a GTX 980 Ti each ran at a fifth of its speed (the host records every launch, one interpreter
-  lock between them); as processes each runs at its own, 9,300 and 1,970 MC/s on a 1.1 M-cell board, the
-  S-parameters within 8e-7 of one GPU's. The default stays one GPU: a second one 4.7× slower finishes its one
-  excitation of four after the first has done the other three (30 s against 26).
+- **Vulkan** (`src/gfdtd/kernels_vk.py`, slangpy): kernels in Slang around `fdtd_core.h`, compiled to SPIR-V when a
+  run starts (cached by slangpy); one thread per node, float32. A timestep is three launches: `step_h` (H, its PML
+  terms, the Mur copies), `step_e` (E with the Debye poles and PML terms) and `step_post` (the excitation, lumped
+  branches and Mur update, whose edges must be disjoint). With PML, a trial at setup picks the PML inside those
+  kernels or in launches of their own. Excitations run in threads, as many at once as fit in the GPU's cache
+  (`concurrent_runs`: up to 1.2 M cells in all; `--jobs` or `GFDTD_CONCURRENT_CELLS` set it). Each kernel reaches
+  the model through one struct of buffer device addresses; 32-bit indices, 64 threads a workgroup; the launches are
+  recorded into command buffers of 96 launches the GPU runs while the host records the next. The energy is summed in
+  double per workgroup on the GPU and the partial sums on the host. Runs in threads get a Vulkan device each.
+  Several GPUs (kicad2ems's `--gfdtd-gpus all` or `0,1`, `vulkan_gpus()`): the excitations go out to a process a GPU
+  (`EMSDEV_VULKAN_DEVICE` in each), each taking the next as it comes free. Not threads: two threads driving an RX
+  7800 XT and a GTX 980 Ti each ran at a fifth of its speed (the host records every launch, one interpreter lock
+  between them); as processes each runs at its own, 9,300 and 1,970 MC/s on a 1.1 M-cell board, the S-parameters
+  within 8e-7 of one GPU's. The default stays one GPU: a second one 4.7× slower finishes its one excitation of four
+  after the first has done the other three (30 s against 26).
 - **core** (`src/gfdtd/core/gfdtd_core.cpp`, pybind11 and OpenMP): rows along z with the boundary tests outside the
   loops, so the compiler vectorises them, and denormals flushed to zero. It runs one thread per physical core of
   the fastest kind (8 on an i7-13700K): every barrier waits for the slowest thread, and with the desktop busy, 24

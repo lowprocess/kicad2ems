@@ -638,7 +638,8 @@ def _suggest(key):
 
 def build_settings(cli=None, config=None):
     """Settings from the defaults, a TOML file (path or None) and command-line
-    values (a dict holding only the options that were typed). Raises ConfigError for anything that cannot be used."""
+    values (a dict holding only the options that were typed). Raises
+    ConfigError for anything that cannot be used."""
     cli = dict(cli or {})
     values, notes = {}, []
     if config:

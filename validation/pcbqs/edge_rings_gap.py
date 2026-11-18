@@ -2,7 +2,8 @@
 thickness: pcbqs's capacitance with graded edge rings against FasterCap's stored
 answer (results/fastercap). The CHANGELOG's edge-ring figures (R-C10).
 
-    python validation/pcbqs/edge_rings_gap.py [traces_air|microstrip_air|plates] \\
+    python validation/pcbqs/edge_rings_gap.py \\
+        [traces_air|microstrip_air|plates] \\
         [dmax:edge_rings=6,edge_width=0.5 ...]
 """
 import sys

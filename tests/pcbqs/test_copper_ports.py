@@ -1,11 +1,11 @@
 """The circuit decks' parts and the copper's ports, as the circuit engine uses
-them: a winding's parasitics (pcbqs.power_spice), the copper's port extraction, its R-L
-and Foster fits and their passivity, the ngspice deck's passives, copper, Foster
-sections and switch models in actual transients, the adaptive Fourier series of
-a port's current, cancelling runs, the solver's options, a gate pulse across the
-period's start, and the compressed backends' ports. (From
-tests/test_power_circuit.py, which went with the full-bridge tool on 2026-11-14:
-what did not depend on it.)"""
+them: a winding's parasitics (pcbqs.power_spice), the copper's port
+extraction, its R-L and Foster fits and their passivity, the ngspice deck's
+passives, copper, Foster sections and switch models in actual transients, the
+adaptive Fourier series of a port's current, cancelling runs, the solver's
+options, a gate pulse across the period's start, and the compressed backends'
+ports. (From tests/test_power_circuit.py, which went with the full-bridge tool
+on 2026-11-14: what did not depend on it.)"""
 import shutil
 import numpy as np
 import pytest

@@ -316,9 +316,10 @@ class MQS:
         # +200% R at 100 MHz with a plane 0.1 mm away, while the uncorrected
         # faces are within ~10% everywhere tested). The external field sets how
         # the current divides: the proximity effect a single sheet's slab cannot
-        # give (C14, validation/pcbqs/mqs_fasthenry.py). thickness_sheets: default two
-        # face sheets with conductor_loss='slab' (validated against FastHenry
-        # for inductance and FasterCap for capacitance, validation/README.md;
+        # give (C14, validation/pcbqs/mqs_fasthenry.py). thickness_sheets:
+        # default two face sheets with conductor_loss='slab' (validated against
+        # FastHenry for inductance and FasterCap for capacitance,
+        # validation/pcbqs/README.md;
         # with capacitance a node's two faces share its charge,
         # peec.node_potential), else one sheet conductor_faces is the one-sheet
         # slab's (its current on one face or both): with conductor_faces=1 the

@@ -22,7 +22,7 @@ kicad2ems.core.api.solver.
     solver      FDTD, the solvers' common class, and their shared settings
     openems     the solver 'openems' (alias fdtd) on openEMS's engine: its
                 import check, openems_venv, --converge
-    gfdtd       the solver 'gfdtd' on gfdtd's engine (GPU via Vulkan, its compiled
-                CPU core, or numpy)
+    gfdtd       the solver 'gfdtd' on gfdtd's engine (GPU via Vulkan, its
+                compiled CPU core, or numpy)
 """
 __version__ = '0.3.0'

@@ -120,7 +120,8 @@ def test_preview_never_fills_or_solves_and_exports_real_layer_heights(
     path=tmp_path/'board.json';path.write_text(json.dumps(b))
     a = parser().parse_args([
         str(path), '--preview', '--out',
-        str(tmp_path / 'preview'), '--fsw', '0', '--fill-backend', 'unregistered'
+        str(tmp_path / 'preview'), '--fsw', '0', '--fill-backend',
+        'unregistered'
     ])
     result=run(a)
     assert result['preview'] and 'fill' not in result

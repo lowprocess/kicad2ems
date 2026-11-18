@@ -218,7 +218,7 @@ the plane case is current on the copper's edges and side walls, which the faces
 don't carry. It doubles the unknowns, so use the compressed backend. With
 `dielectric='stack'` the faces sit on their layer's interfaces (`from_board_thick`).
 With capacitance a node's charge sits on the face that faces the other conductor
-(`peec.node_potential`), validated against FasterCap (validation/README.md).
+(`peec.node_potential`), validated against FasterCap (validation/pcbqs/README.md).
 
 ### Compressed backend without capacitance
 

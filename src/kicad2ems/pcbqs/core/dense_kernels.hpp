@@ -1,6 +1,6 @@
 // Dense systems filled in one pass: what the frequency loops did in numpy, a
-// temporary of the whole matrix per operation. Each row is one thread's; nothing is
-// summed across threads, so results do not depend on their number.
+// temporary of the whole matrix per operation. Each row is one thread's;
+// nothing is summed across threads, so results do not depend on their number.
 // pcbqs/kernels.py has the numpy twins, which the tests hold these to.
 #include <complex>
 #include <limits>

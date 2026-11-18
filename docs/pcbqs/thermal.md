@@ -16,13 +16,12 @@ In kicad2ems-gui it is the **Thermal** analysis
 options table, and with no losses typed it takes the latest circuit run's, on
 that run's board.
 
-It writes `thermal.json` (each part's temperature, each layer's hottest and mean, heat in and out, the board and
-the circuit case they came from),
-`thermal.npz` (the maps) and `thermal.png`. The maps also go where kicad2ems's viewer reads a run's (`thermal/viewer.py`):
-`thermal_board.json` and, under `thermal/exc_board/`, each layer's temperature as a field dump in °C (NaN off the
-board), so the Viewer turns, cuts and probes them in 2D and
-3D on a colour scale from the board's coolest point to its hottest. The report (`reports.thermal_report`: the
-parts' and the layers' tables) is on its Report and Tables pages.
+It writes `thermal.json` (each part's temperature, each layer's hottest and mean, heat in and out, the board and the
+circuit case they came from), `thermal.npz` (the maps) and `thermal.png`. The maps also go where kicad2ems's viewer
+reads a run's (`thermal/viewer.py`): `thermal_board.json` and, under `thermal/exc_board/`, each layer's temperature
+as a field dump in °C (NaN off the board), so the Viewer turns, cuts and probes them in 2D and 3D on a colour scale
+from the board's coolest point to its hottest. The report (`reports.thermal_report`: the parts' and the layers'
+tables) is on its Report and Tables pages.
 
 ## The model
 
@@ -107,9 +106,10 @@ of the copper: the number of unknowns depends on the board's area and layer coun
 
 ## What the trial found
 
-The trial had a second solver to check the grid, a **mesh** (pcbqs's triangle mesher, linear elements, one mesh
-of the outline carrying every layer's copper outlines); it was removed in 2026-11. Both against the exact solution for a heated disc on a two-layer plate (the sum and the difference of the two
-layers each obey a screened Poisson equation; 1 W over 10 mm, 15 K rise at the centre):
+The trial had a second solver to check the grid, a **mesh** (pcbqs's triangle mesher, linear elements, one mesh of
+the outline carrying every layer's copper outlines); it was removed in 2026-11. Both against the exact solution for
+a heated disc on a two-layer plate (the sum and the difference of the two layers each obey a screened Poisson
+equation; 1 W over 10 mm, 15 K rise at the centre):
 
 | | size | unknowns | worst error | time |
 |---|---|---|---|---|

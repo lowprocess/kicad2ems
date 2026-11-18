@@ -83,7 +83,8 @@ class Network:
         pts = [(v['x'], v['y'], v['r']) for v in self.vias]
         # quality: a minimum angle, so the cells grow out from each via's ring
         # instead of reaching from it to far vertices in slivers (which
-        # underestimated every via junction's spreading: validation/pcbqs/dc_elmer.py)
+        # underestimated every via junction's spreading:
+        # validation/pcbqs/dc_elmer.py)
         self.mesh_info = {}
         self.sheets = net_sheets(
             board, self.nets, pts, dmax=dmax, regions=regions, fine=fzone,

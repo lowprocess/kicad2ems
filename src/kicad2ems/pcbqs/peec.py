@@ -146,9 +146,10 @@ def node_potential(model):
     over each node's copies.
 
     With face sheets a node's charge is free to move between its copies (both
-    faces): they are one conductor at one potential. So for node charges q, the copies hold Pc^-1 Bn v with Bn^T Pc^-1 Bn v = q, i.e.
-    node-level P_eff = (Bn^T Pc^-1 Bn)^-1 and copy charges D q, D = Pc^-1 Bn
-    P_eff. Without face sheets: (model._potential, None)."""
+    faces): they are one conductor at one potential. So for node charges q,
+    the copies hold Pc^-1 Bn v with Bn^T Pc^-1 Bn v = q, i.e. node-level
+    P_eff = (Bn^T Pc^-1 Bn)^-1 and copy charges D q, D = Pc^-1 Bn P_eff.
+    Without face sheets: (model._potential, None)."""
     Bn = charge_nodes(model)
     Pc = model._ensure_potential()
     if Bn is None:

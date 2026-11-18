@@ -8,8 +8,9 @@ and its dump files in the run folder.
     Engine(op, backend='auto').run(path, nr_ts, end_crit)
 
 Backends: vulkan (the GPU through Vulkan and slangpy: any Vulkan GPU) and core
-(the compiled CPU core, gfdtd._core: OpenMP) run the compressed operator (operator.compress: material
-codes and line arrays in place of the coefficient arrays) through the same
+(the compiled CPU core, gfdtd._core: OpenMP) run the compressed operator
+(operator.compress: material codes and line arrays in place of the coefficient
+arrays) through the same
 update code (core/fdtd_core.h); numpy runs the dense coefficient arrays, slowly:
 the reference.
 
@@ -552,8 +553,8 @@ class _Compressed:
 
 def _pml_layout(pml, shape, key):
     """The one-launch PML kernels' slab table, a row per slab (start, m, axis,
-    s0, n, offset of b / c: kernels_vk.SLAB), and the PML-free interior (lines [lo,
-    hi) per axis), for the E slabs (key 'e0') or the H ones ('h0')."""
+    s0, n, offset of b / c: kernels_vk.SLAB), and the PML-free interior (lines
+    [lo, hi) per axis), for the E slabs (key 'e0') or the H ones ('h0')."""
     desc, st, bo = [], 0, 0
     lo, hi = [0, 0, 0], list(shape)
     for sl in pml:
@@ -630,8 +631,9 @@ class _Dev:
 class VulkanBackend(_Compressed, NumpyBackend):
     """The GPU through Vulkan (slangpy: Slang kernels, kernels_vk.py) on the
     compressed operator: any Vulkan GPU. Its steps (fused / split / separate:
-    _choose_mode) are recorded into command buffers that are submitted every SUBMIT
-    launches and at each host read, so the host records while the GPU runs."""
+    _choose_mode) are recorded into command buffers that are submitted every
+    SUBMIT launches and at each host read, so the host records while the GPU
+    runs."""
     name = 'vulkan'
     # threads a workgroup: 64 ran 1-4 % faster than 128 / 256 on an RX 7800 XT
     BLOCK = 64

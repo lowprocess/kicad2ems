@@ -353,8 +353,9 @@ def parser(prog='kicad2ems-fem-cap', doc=__doc__):
     ap.add_argument(
         '--order', type=int, default=2,
         help="Palace's element order (default 2)")
-    ap.add_argument('--np', type=int, default=0,
-                    help="Palace's MPI processes (default 0: one per fast core)")
+    ap.add_argument(
+        '--np', type=int, default=0,
+        help="Palace's MPI processes (default 0: one per fast core)")
     return ap
 
 

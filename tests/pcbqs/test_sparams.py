@@ -149,7 +149,7 @@ def test_the_copper_s_thickness_brings_the_skin_effect(thru_rl):
             and plain['info']['triangles'] == 2 * thru_rl['info']['triangles'])
     # with the skin effect the current crowds at the trace's edges too: graded
     # cells there (EDGE_RINGS), and a resistance at 100 MHz a tenth and more
-    # above plain cells' (FastHenry: validation/README.md)
+    # above plain cells' (FastHenry: validation/pcbqs/README.md)
     assert (r['info']['edge_rings'] == SP.EDGE_RINGS
             and plain['info']['triangles'] < r['info']['triangles'] <
             1.6 * plain['info']['triangles'])
