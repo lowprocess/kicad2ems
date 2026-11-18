@@ -356,6 +356,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   low-rank takes 22.5 s). The tests keep the NumPy references they check the
   core against (`tests/mom25d/dense_reference.py`). The old names
   `mom25d.afs` and `mom25d.blr` (emsdev's `afs`, `fast.cluster_tiles`).
+  `--mom-signal-vias` (square or N-sided signal vias: 0.03-0.05 off at 5-8
+  GHz, nothing saved; signal vias are round, `--mom-stitching-vias` stays).
 
 ## 2026-11-14 (0.3.0)
 

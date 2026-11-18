@@ -388,8 +388,8 @@ class Simulation:
                  mesher='auto', metal=None, solver='auto',
                  refine=1.0e-3, precision='auto', gpu='auto', verbose=True,
                  title='', mesh_only=False, quads=False,
-                 quad_tol=35.0, zone=None, dmax_out=None, signal_vias='round',
-                 stitching_vias='auto', signal=None, via_barrel=True,
+                 quad_tol=35.0, zone=None, dmax_out=None,
+                 stitching_vias='auto', signal=None,
                  coarsen=None, grow=0.5, structured='auto',
                  gap_rings=(1 / 4, 1 / 8,
                             1 / 16), frills=(), slots=(), dmax_slot=None,
@@ -483,34 +483,27 @@ class Simulation:
             # under it
             geoms = {k: _simplify_outside(g, zone) for k, g in geoms.items()}
         # how each via is meshed: 'round' (its pad and antipad as drawn, an
-        # octagon of the via radius) or n sides ('square' = 4): pad and antipad
-        # as n-gons, the barrel an n-gon of the via radius (via_barrel) or a
-        # single vertex; stitching 'auto': square outside the zone
-        signal_vias, stitching_vias = (m if m in ('round', 'auto') else
-                                       4 if m == 'square' else int(m)
-                                       for m in (signal_vias, stitching_vias))
-        if (not (signal_vias != 'auto'
-                 and all(m in ('round', 'auto') or m >= 3
-                         for m in (signal_vias, stitching_vias)))):
+        # octagon of the via radius) or, a stitching via, n sides ('square' =
+        # 4): pad and antipad as n-gons, the barrel a single vertex (an n-gon
+        # on a structured mesh); 'auto': square outside the zone. Signal vias
+        # and those of hand-built models are round
+        m = stitching_vias
+        stitching_vias = m if m in ('round', 'auto') else (
+            4 if m == 'square' else int(m))
+        if stitching_vias not in ('round', 'auto') and stitching_vias < 3:
             raise ValueError(
-                "a via is 'round', 'square' or n >= 3 sides (stitching vias "
-                "also 'auto')"
-            )
+                "a stitching via is 'auto', 'round', 'square' or n >= 3 sides")
 
         def via_mode(v):
-            # None: port vias, vias of hand-built models
-            kind = getattr(v, 'kind', None)
-            if kind == 'stitching' and stitching_vias == 'auto':
+            if getattr(v, 'kind', None) != 'stitching':
+                return 'round'
+            if stitching_vias == 'auto':
                 return (4 if zone is not None
                         and not zone.contains(shapely.Point(v.x, v.y)) else
                         'round')
-            return {'signal': signal_vias,
-                    'stitching': stitching_vias}.get(kind, 'round')
+            return stitching_vias
 
-        self.via_mode, self.via_barrel = ({
-            id(v): via_mode(v)
-            for v in self.vias
-        }, via_barrel)
+        self.via_mode = {id(v): via_mode(v) for v in self.vias}
         for n in sorted({m for m in self.via_mode.values() if m != 'round'}):
             vs = [v for v in self.vias if self.via_mode[id(v)] == n]
             geoms = {
@@ -605,19 +598,13 @@ class Simulation:
                         m = self.via_mode[id(v)]
                         if m == 'round':
                             return (v.x, v.y, v.a if v.ring else 0.0)
-                        # an n-sided via: its barrel as an n-gon (signal vias,
-                        # via_barrel; square ones on a structured mesh, which
-                        # aligns its grid with them: geo._run_grid) or a single
-                        # vertex
-                        stitch = (struct and m == 4
-                                  and getattr(v, 'kind', None) == 'stitching')
-                        # may snap to a grid cell (its fan: that cell)
-                        if stitch and v.ring:
+                        # an n-sided (stitching) via: its barrel a single
+                        # vertex, or a square on a structured mesh, which aligns
+                        # its grid with it (geo._run_grid) and may snap it to a
+                        # grid cell (its fan: that cell)
+                        if struct and m == 4 and v.ring:
                             return (v.x, v.y, v.a, 4, True)
-                        barrel = (v.ring
-                                  and (getattr(v, 'kind', None) == 'signal'
-                                       and via_barrel or struct and m == 4))
-                        return (v.x, v.y, v.a, m) if barrel else (v.x, v.y, 0.0)
+                        return (v.x, v.y, 0.0)
                     vpts, fine = [vpt(v) for _, v in vias_here], None
                     if refine and dm > 1.2 * dmax:
                         # resolve return currents under/over metal on nearby

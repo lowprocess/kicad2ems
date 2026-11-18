@@ -103,8 +103,8 @@ def _metal(m, sigma, rough=None, finish=None):
 
 
 def _via_sides(v, words):
-    """--mom-signal-vias / --mom-stitching-vias: one of `words`, or a number of
-    sides of at least 3."""
+    """--mom-stitching-vias: one of `words`, or a number of sides of at least
+    3."""
     v = str(v).strip().lower()
     if v in words or (v.isdigit() and int(v) >= 3):
         return v
@@ -210,7 +210,7 @@ def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
 
 
 def _board_kw(m, dmax, port, quads=False, quad_tol=35.0, coarsen=None,
-              zone=None, signal_vias='round', stitching_vias='auto',
+              zone=None, stitching_vias='auto',
               stack='ground', planes='pec', stitching_pads='drop',
               wideband=None, cells=30.0, thickness='sides'):
     """(pairs, mom25d.api's board and mesh options) of solve()'s settings: what
@@ -221,8 +221,7 @@ def _board_kw(m, dmax, port, quads=False, quad_tol=35.0, coarsen=None,
             dict(dmax=dmax * 1e-3, port=kind, quads=quads, quad_tol=quad_tol,
                  coarsen=coarsen, zone=zone, cells=cells, planes=planes,
                  stitching_pads=stitching_pads, wideband=wideband,
-                 thickness=thickness, signal_vias=signal_vias,
-                 stitching_vias=stitching_vias,
+                 thickness=thickness, stitching_vias=stitching_vias,
                  **(dict(ground='none') if stack == 'whole' else {})))
 
 
@@ -310,7 +309,6 @@ def _mesh_kw(s, m=None):
               quad_tol=s.mom_quad_tol, coarsen=s.mom_coarsen or None,
               cells=getattr(s, 'mom_cells', 30.0),
               zone=('auto' if s.mom_zone == 'on' else None),
-              signal_vias=s.mom_signal_vias,
               stitching_vias=s.mom_stitching_vias)
     return kw if m is None else dict(kw, stack=_stack(s, m), **_model_kw(s))
 
@@ -556,15 +554,6 @@ class MoM25D(Solver):
             choices=('off', 'grow', 'sides', 'grow+sides', 'edge'),
             name='thickness',
             gui='MoM copper thickness', group=G),
-        Option(
-            'mom_signal_vias', 'round',
-            "how vias on signal nets are meshed: round (default: pads and "
-            "antipads as drawn, an octagon of the via radius), square, or a "
-            "number of sides N >= 3 (pads, antipads and the barrel as N-gons; "
-            "fewer unknowns, docs/mom.md#vias)", str,
-            name='signal_vias',
-            conv=lambda v: _via_sides(v, ('round', 'square')),
-            gui='MoM signal vias', group=G, cli=dict(metavar='round|square|N')),
         Option(
             'mom_stitching_vias', 'auto',
             "how vias on ground nets (stitching, fences, edge walls) are "

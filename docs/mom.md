@@ -373,11 +373,10 @@ mesh (`tools/zone_study.py`, `tools/quad_configs_study.py` in mom25d).
   unknowns at about the same error (0.015–0.018 at 2–8 GHz). At 8 GHz the differential via loses about 0.02, where its transition excites
   the space between the ground planes.
 <a id="vias"></a>
-- **Via meshing** (`--mom-signal-vias`, `--mom-stitching-vias`: `round`, `square` or N sides). Eight sides or more
-  match round vias within the mesh's own scatter (0.01), and save next to nothing: keep `round`. Square signal vias
-  cost 0.03–0.05 at 5–8 GHz where the via is the structure (the pad and antipad set its capacitance); square
-  stitching vias are close (the GCPW's fence: 0.006 at 8 GHz instead of 0.002). `auto` stitching vias are square
-  outside `--mom-zone`, else round.
+- **Via meshing** (`--mom-stitching-vias`: `auto`, `round`, `square` or N sides). Square stitching vias are close
+  (the GCPW's fence: 0.006 at 8 GHz instead of 0.002); `auto` ones are square outside `--mom-zone`, else round.
+  Signal vias are round: square ones cost 0.03–0.05 at 5–8 GHz where the via is the structure (the pad and antipad
+  set its capacitance), and eight sides or more saved next to nothing (`--mom-signal-vias`, removed 2026-11-18).
 
 <a id="quads"></a>
 ### Quad cells (experimental)

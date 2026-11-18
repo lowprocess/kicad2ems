@@ -59,7 +59,7 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
                 pairs=False, mesher='auto', metal=None, ground=None,
                 max_solves=60, afs_tol=5e-3, log=print, progress=None,
                 on_step=None, quads=False, zone=None,
-                signal_vias='round', stitching_vias='auto',
+                stitching_vias='auto',
                 keep_at=(), quad_tol=35.0, coarsen=None, planes='pec',
                 stitching_pads='drop', wideband=None, cells=CELLS,
                 thickness='sides'):
@@ -97,8 +97,8 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
     model, sim = build_board(
         board, fmin, fmax, dmax=dmax, plane_factor=plane_factor, port=port,
         pairs=pairs, mesher=mesher, metal=metal, ground=ground, log=log,
-        quads=quads, zone=zone, signal_vias=signal_vias,
-        stitching_vias=stitching_vias, quad_tol=quad_tol, coarsen=coarsen,
+        quads=quads, zone=zone, stitching_vias=stitching_vias,
+        quad_tol=quad_tol, coarsen=coarsen,
         planes=planes, stitching_pads=stitching_pads, wideband=wideband,
         title=name, cells=cells, thickness=thickness)
     f, S, info = solve_band(sim, fmin, fmax, points=len(freq),
@@ -127,11 +127,10 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
 
 def build_board(board, fmin, fmax, dmax=0.3e-3, plane_factor=3.0, port='auto',
                 pairs=False, mesher='auto', metal=None, ground=None, log=print,
-                quads=False, zone=None, signal_vias='round',
-                stitching_vias='auto', quad_tol=35.0, coarsen=None,
-                planes='pec', stitching_pads='drop', wideband=None, title=None,
-                mesh_only=False, characterize=True, cells=CELLS,
-                thickness='sides'):
+                quads=False, zone=None, stitching_vias='auto', quad_tol=35.0,
+                coarsen=None, planes='pec', stitching_pads='drop',
+                wideband=None, title=None, mesh_only=False, characterize=True,
+                cells=CELLS, thickness='sides'):
     """(BoardModel, Simulation) of a board as solve_board builds them, with its
     options (solve_board's). mesh_only: stop once the mesh and its unknowns are
     known (a preview of the mesh solve_board would solve on; the quad cells are
@@ -162,8 +161,8 @@ def build_board(board, fmin, fmax, dmax=0.3e-3, plane_factor=3.0, port='auto',
         dmax=dmax, dmax_layer=layer_dmax, fmin=fmin, fmax=fmax, solver='auto',
         verbose=False, wave_down_to=fmin, mesher=mesher, title=title or 'board',
         metal=metal, quads=quads, quad_tol=quad_tol, coarsen=coarsen,
-        signal_vias=signal_vias, stitching_vias=stitching_vias,
-        mesh_only=mesh_only, characterize=characterize,
+        stitching_vias=stitching_vias, mesh_only=mesh_only,
+        characterize=characterize,
         **(dict(zone=zone, dmax_out=ZONE_OUT * dmax) if zone else {}))
     return model, sim
 

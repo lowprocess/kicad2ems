@@ -648,7 +648,7 @@ class BoardModel(PlanarModel):
                 v['x'], v['y'], v['z0'], v['z1'], v['r'],
                 f"{v.get('net', '')}@({v['x']:.2f},{-v['y']:.2f})")
             if via:
-                # Simulation(signal_vias=, stitching_vias=): how each is meshed
+                # Simulation(stitching_vias=): how each is meshed
                 if gnets:
                     part = any(
                         g.distance(Point(v['x'], v['y'])) < PART_VIA
