@@ -327,7 +327,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `app.LOWER`/`BESIDE` and `traces.port_names` (`runtab`, `windocks`,
   `core.touchstone`). The two plots (S-parameters, an analysis's curves)
   share their buttons and marker table (`gui/markers.py`); the curves'
-  table is as tall as its rows, as the S-parameters' was.
+  table is as tall as its rows, as the S-parameters' was. The Circuit
+  page's *Choose PCB…* (its settings' Board field has a …); *Save model…*
+  writes as the study's save does (the board relative when beside it).
 - **gfdtd's `GFDTD_VK_BLOCK` and `GFDTD_VK_IDX`.** Tuning variables nothing
   set or documented: the Vulkan kernels' workgroup is 64 and their index
   `int` (2026-11-18). The documented settings that no test had set now have

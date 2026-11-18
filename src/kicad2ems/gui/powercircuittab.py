@@ -113,9 +113,9 @@ class PowerCircuitTab(QWidget):
         self.matching_note.setWordWrap(True)
         root.addWidget(self.matching_note)
         row=QHBoxLayout();root.addLayout(row);self.top_row=row
+        # (its board: the settings' Board field and its …)
         for text, slot in [('Load model…', self.load_model),
-                           ('Save model…', self.save_model),
-                           ('Choose PCB…', self.choose_board)]:
+                           ('Save model…', self.save_model)]:
             b=QPushButton(text);b.clicked.connect(slot);row.addWidget(b)
         self.split=QSplitter(Qt.Horizontal);root.addWidget(self.split,1)
         self.editor = QPlainTextEdit()
@@ -464,12 +464,7 @@ class PowerCircuitTab(QWidget):
         except (ValueError,KeyError) as e:self.status.setText(str(e));return
         p, _ = QFileDialog.getSaveFileName(self, 'Save circuit model',
                                            'model.json', 'JSON (*.json)')
-        if p:Path(p).write_text(json.dumps(c,indent=2))
-
-    def choose_board(self):
-        p, _ = QFileDialog.getOpenFileName(self, 'PCB layout', '',
-                                           'PCB (*.kicad_pcb *.json)')
-        if p:self.board.setText(p)
+        if p:self.write_model(p,c)
 
     # ---- a study's config: [analysis.circuit] ----
     def load_settings(self,tab,keep_model=False):
