@@ -48,7 +48,10 @@ there the coupling is the side walls facing each other across the gap, which a s
 
 `--mom-thickness sides` (the default) stands every copper edge up as a plate the copper's thickness high (up
 into the layer above; the board's lowest copper down, as gfdtd's thick copper grows), two triangles with RWG
-functions in 3D: the fold from the sheet, the diagonal, and the edge shared with the next plate. A side so
+functions in 3D: the fold from the sheet and the edge shared with the next plate. The diagonal between a plate's
+two triangles follows from them: a plate is a cell of one charge density, as a [quad cell](#quads) of the sheet
+(its diagonal's own freedom is the charge's slope up 35 µm of copper, which a plate one cell high does not
+resolve). A side so
 carries charge (in the medium beside the copper: the air over a microstrip) and current along the trace. Both
 matter: thick copper lowers a microstrip's effective permittivity because its inductance falls more than its
 capacitance rises (a 30 mm line, w 0.38 mm on 0.2 mm FR4: the plates took eeff 2.8 % and Z0 4.4 % down,
@@ -59,12 +62,17 @@ solid copper the median RMS of the 17 boards went from 0.065 to 0.037 (`grow` 0.
 facing copper across a narrow gap did little (median 0.049 within 0.4 or 0.8 mm, 0.065 within 0.2 mm): the
 sides matter on every edge. Both together (`grow+sides`, removed 2026-11-18) gained nothing (median 0.040,
 mean 0.050 against `sides`' 0.037 and 0.051). The
-cost: three unknowns a plate (+30-45 % on these boards, +26 % on sma_launch) and their blocks (in the compiled
-core): 1.7-2 times the solve time (sma_launch 314 s against 165 s, hairpin 11.9 s against 6.8). A plate's
+cost: two unknowns a plate (+20-30 % on these boards, +17 % on sma_launch; three with the diagonals, until
+2026-11-18: without them the 17 boards' S moved by an RMS of 0.0002-0.006, the median against solid copper
+0.0360 → 0.0359, the mean 0.0506 → 0.0506) and their blocks (in the compiled core: pairs of triangles more than
+five sizes apart take one point each, as the strips' far field, not 3 × 3: S within 1e-4): 41 solves of
+sma_launch 179 s against 217 s with the diagonals and 3 × 3 points everywhere, hairpin 10.1 s against 11.1,
+rf_diffvia 31 s against 38. A plate's
 functions are charge-dominated (its triangles 35 µm high), so their loops were lost to the complex64 LU of mixed
 precision (rf_meander at 0.5 GHz: cond 1.4e9 against the sheets' 3.5e7); in mixed precision the verticals are
-taken as loops (each with its folds, the next plate's diagonal and the sheet's edges round its node: no charge
-left; T^T Z T exactly, S to the GMRES tolerance), and the GPU's complex64 factor no longer fails: sma_launch's
+taken as loops (each with its folds and the sheet's edges round its node: no charge
+left; T^T Z T exactly, S to the GMRES tolerance; with [quad cells](#quads) too), and the GPU's complex64 factor
+no longer fails: sma_launch's
 41 solves 245-257 s against 319-341 s (222 GMRES iterations over the sweep against 698, GPU fallbacks to the CPU's
 triangular solves 0 against 6), rf_diffvia 36 s against 43 (12 fallbacks to 0), demo_transition 22 against 25,
 rf_interdig 17 against 21; with a double LU (below 3000 unknowns with a GPU, 3500 without: hairpin, rf_meander,

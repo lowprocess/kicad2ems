@@ -187,6 +187,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   predict one more solve in the middle of its widest gap. Against 201 solves across each band, twelve boards'
   sweeps took 221 solves where they had taken 351, every model within 1.3e-3 of the solves between its samples
   (docs/mom.md#sweep). pcbqs's S-parameters use the same sweep.
+- **mom25d's sides with quad cells: their loops.** With `--mom-quads` the plates' verticals were not taken as
+  loops (the complex64 LU a weaker preconditioner in mixed precision); they are, among the quad cells' unknowns.
 - **mom25d's sides with wave ports (`WAVE_SIDES` on).** A fold's half on the sheet is an RWG half there, but
   it met the sheet's triangles, the vias and the holes through the plates' own rules (3 × 3 points) where the
   sheet's edges have the strips' (centroids, their near pairs): a loop of a vertical with its folds and the

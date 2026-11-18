@@ -740,7 +740,9 @@ class FastOperator:
             # need them)
             with sim.log.timer('side loops', f"{len(sim.sides.vert)} loops"):
                 _loop_transform(Z, W)
-            up, down = (lambda X: X + W @ X), (lambda X: X + W.T @ X)
+            up0, down0 = up, down
+            up = lambda X: up0(X + W @ X)
+            down = lambda X: (lambda Y: Y + W.T @ Y)(down0(X))
         return Z, down(E), up, (
             lambda V: down(self.matvec_exact(up(V), Sx)))
 
@@ -895,9 +897,20 @@ class FastOperator:
         """sides.Sides.loops' W of the simulation's sides, once; None
         without verticals."""
         if not hasattr(self, '_sloops'):
-            s = getattr(self.sim, 'sides', None)
-            self._sloops = (s.loops(self.sim) if s is not None
-                            and len(s.vert) else None)
+            sim = self.sim
+            s = getattr(sim, 'sides', None)
+            W = s.loops(sim) if s is not None and len(s.vert) else None
+            if W is not None and sim.qT is not None:
+                # among the quad cells' unknowns (a loop through a quad's
+                # diagonal stays a vertical: quads 'all')
+                keep = sim.quad_info['keep']
+                gone = np.ones(sim.Ne + sim.Nv)
+                gone[keep] = 0.0
+                W = W.tocsc()
+                W = W @ sparse.diags((W.T @ gone == 0).astype(float))
+                W = W.tocsr()[keep][:, keep].tocsc()
+                W.eliminate_zeros()
+            self._sloops = W
         return self._sloops
 
     # ---- the loop/tree basis (looptree.py): low frequency -------------------

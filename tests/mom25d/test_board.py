@@ -452,8 +452,9 @@ def test_thickness_grow_moves_the_copper_edges_out():
 
 def test_thickness_sides_stand_the_copper_edges_up():
     """thickness='sides' (mom25d.sides): every boundary edge of the copper is a
-    plate the copper's thickness high, three functions each round a closed
-    outline (the fold, the diagonal, the edge shared with the next plate). On a
+    plate the copper's thickness high, two functions each round a closed
+    outline (the fold, the edge shared with the next plate; its diagonal
+    follows from them: a cell of one charge density). On a
     30 mm microstrip (w 0.38 mm on 0.2 mm, er 4.3, t 35 um) eeff and Z0 fall as
     thick copper's do (Hammerstad-Jensen for the 0.4 / 0.21 mm line: -3.5 % and
     -4.4 %; the plates' 2026-11-17: -2.8 %, -4.4 %)."""
@@ -462,7 +463,7 @@ def test_thickness_sides_stand_the_copper_edges_up():
     _, sim = build_board(data, 1e9, 2e9, port='via', thickness='sides',
                          mesh_only=True, log=quiet)
     sd = sim.sides
-    assert sd.np_ > 100 and len(sd) == 3 * sd.np_
+    assert sd.np_ > 100 and len(sd) == 2 * sd.np_
     assert sd.L.sum() == pytest.approx(sim.geoms[1].length, rel=1e-6)
     f = np.array([1e9, 2e9])
     out = {}
@@ -498,7 +499,8 @@ def test_thickness_sides_with_wave_ports(monkeypatch):
         S[th] = solve_board(data, f, port='wave', thickness=th,
                             log=quiet).S
     assert sim.sides is not None
-    assert all(len(n) == 10 for n, _ in sim._side_cuts(0))
+    # (two plates a cut, nine halves each: the cells' functions' on them)
+    assert all(len(n) == 18 for n, _ in sim._side_cuts(0))
     I = sim.currents(f[0], sim.excitation())
     sheet = np.array([((s * sim.rwg.l[i])[:, None] * I[i]).sum(0)
                       for i, s in sim.cuts[0]])[:, 0]
@@ -544,20 +546,64 @@ def test_thickness_sides_blocks_regression():
     the folds' sheet halves in the strips' operator: Sides.strip_part): the
     thru line's S at 1 and 3 GHz to rounding (|dS| 2e-4 when the folds' sheet
     halves moved to the strips' rules, S11 and S22 then 7e-8 apart, 3e-6
-    before)."""
+    before; 3.1e-4 when the plates became cells, 3.7e-5 with the far pairs'
+    one point)."""
     from kicad2ems.mom25d.api import solve_board
     ref = np.array([
-        [[-0.023482091967815 - 0.011128197159887j,
-          0.428026941142430 - 0.903389193955950j],
-         [0.428026941137913 - 0.903389193946418j,
-          -0.023482158873540 - 0.011128055948500j]],
-        [[-0.007379381256187 - 0.029386020596133j,
-          -0.969795180555634 + 0.241762990990947j],
-         [-0.969795180463472 + 0.241762990967979j,
-          -0.007382924299807 - 0.029385137370043j]]])
+        [[-0.023419026931206 - 0.011101619618805j,
+          0.428131744765157 - 0.903341494770705j],
+         [0.428131744760677 - 0.903341494761251j,
+          -0.023419093575523 - 0.011101479000908j]],
+        [[-0.007360752204506 - 0.029354780507208j,
+          -0.969880444941582 + 0.241425036966921j],
+         [-0.969880444850060 + 0.241425036944147j,
+          -0.007364246566856 - 0.029353910714720j]]])
     S = solve_board(board('thru'), np.array([1e9, 3e9]), port='via',
-                    thickness='sides', log=quiet).S
+                    thickness='sides', coarsen=None, log=quiet).S
     assert np.abs(S - ref).max() < 1e-9
+
+
+def test_thickness_sides_far_pairs_take_one_point(monkeypatch):
+    """Plate pairs further apart than sides.FAR sizes take one point each in
+    the compiled core (sides_blocks), not 3 x 3, as the strips' far field:
+    the blocks within 1e-3 of their largest entries, the low-pass's S within
+    2e-4 (hairpin 1e-5, rf_combline 9e-5; at 3 sizes rf_combline 1.8e-3)."""
+    from kicad2ems.mom25d import sides
+    from kicad2ems.mom25d.api import build_board
+    out = {}
+    for far in (0.0, sides.FAR):
+        monkeypatch.setattr(sides, 'FAR', far)
+        _, sim = build_board(board('lowpass'), 0.3e9, 1e9, port='via',
+                             thickness='sides', log=quiet)
+        S = sim.sparams(0.8e9)
+        sim.fast.setup(0.8e9)
+        out[far] = (S, *sim.sides.blocks(sim, 0.8e9)[:2])
+    (S0, B0, C0), (S1, B1, C1) = out.values()
+    assert 0 < np.abs(B1 - B0).max() < 1e-3 * np.abs(B0).max()
+    assert 0 < np.abs(C1 - C0).max() < 1e-3 * np.abs(C0).max()
+    assert np.abs(S1 - S0).max() < 2e-4
+
+
+def test_thickness_sides_loops_with_quad_cells():
+    """The sides' loops among the quad cells' unknowns (fast._side_loops):
+    with quads 'on' no quad touches the outline, so every vertical is a
+    loop there too (they were left out with quads: the complex64 LU a
+    weaker preconditioner); the mixed-precision currents are the double
+    ones."""
+    from kicad2ems.mom25d.api import build_board
+    _, sim = build_board(board('lowpass'), 0.3e9, 1e9, port='via',
+                         thickness='sides', quads=True, quad_tol=60.0,
+                         log=quiet)
+    assert sim.qT is not None and sim.qT.shape[1] < sim.qT.shape[0]
+    W = sim.fast._side_loops()
+    assert W.shape == (sim.qT.shape[1],) * 2
+    assert np.count_nonzero(np.diff(W.indptr)) == len(sim.sides.vert)
+    E = sim.excitation()
+    I0 = sim.currents(0.5e9, E)
+    sim.precision = 'mixed'
+    I1 = sim.currents(0.5e9, E)
+    assert 'side loops' in sim.log.totals()
+    assert np.abs(I1 - I0).max() < 1e-4 * np.abs(I0).max()
 
 
 def test_thickness_sides_loops_condition_the_matrix(monkeypatch):
@@ -588,7 +634,10 @@ def test_thickness_sides_loops_condition_the_matrix(monkeypatch):
                                      c0 + sd.h_fn])), (Nt + len(apt), N))
     T = sparse.identity(N, format='csc') + W
     assert abs(Q @ T[:, V]).max() < 1e-12 * sd.t.max()
-    assert abs(Q[:, V]).max() == pytest.approx(sd.t.max())
+    # the plates are cells: every function's charge the same on a plate's two
+    # triangles (no diagonal of its own), a vertical's t / 2 on each
+    assert abs(Q[Nt::2] - Q[Nt + 1::2]).max() < 1e-12 * sd.t.max()
+    assert abs(Q[:, V]).max() == pytest.approx(sd.t.max() / 2)
     got = {}
     real = fast._loop_transform
 

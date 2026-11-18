@@ -14,15 +14,17 @@ Every boundary edge of a layer's mesh that faces copper of the same layer within
 s_max (None: every boundary edge) stands up as a plate the copper's thickness t
 high, into the layer the copper grows into (fdtd.thick: up; the board's lowest
 copper down). A plate is two triangles, (a0, b0, b1) and (a0, b1, a1) (0 on the
-sheet, 1 at its top), and carries RWG functions in 3D: the fold (the sheet's
-boundary triangle to the plate), the diagonal, and the vertical edge shared with
-the next plate along the boundary (the current along the side). In mixed
-precision the solver takes the verticals as loops (Sides.loops), which keeps
-the complex64 LU a good preconditioner.
+sheet, 1 at its top), with RWG functions in 3D, and one cell: its charge the
+same on both. Its functions: the fold (the sheet's boundary triangle to the
+plate) and the vertical edge shared with the next plate along the boundary
+(the current along the side), each with its share of the diagonal's current
+(Sides._functions). In mixed precision the solver takes the verticals as
+loops (Sides.loops), which keeps the complex64 LU a good preconditioner.
 
 Their blocks: the MPIE's two parts with the layered tables at the horizontal
-distance on 3 x 3 points (the far rule; a vertical current's own smooth part
-left out), and for the pairs near each other (same layer) the static parts in
+distance on 3 x 3 points, one point each for triangles more than FAR sizes
+apart (a vertical current's own smooth part left out), and for the pairs near
+each other (same layer) the static parts in
 3D exactly (pcbqs.panels3d's analytic source integral) in place of the rule's:
 mu0 / (4 pi R) for the vector potential, for the charge 1 / (2 pi eps0 eps_sum
 R) where one of the two is on the interface, (1 / (4 pi eps0 eps1)) (1/R + G/R')
@@ -41,6 +43,10 @@ from kicad2ems.pcbqs.panels3d import _rule
 
 # near pairs: centroids closer than this x the larger triangle's size
 NEAR = 4.0
+# pairs further apart than this x the larger triangle's size: one point each
+# (as the strips' far field, sim near_fac), not 3 x 3: S within 1e-4 (hairpin
+# 1e-5, rf_combline 9e-5; at 3 sizes rf_combline 1.8e-3). 0: 3 x 3 everywhere
+FAR = 5.0
 
 
 class Sides:
@@ -174,31 +180,41 @@ class Sides:
         self.pt_layer = np.repeat(self.k, 2)
         apt = 0.5 * self.L * self.t  # each PT's area
         nxt = {int(i): j for j, i in enumerate(self.ia)}
-        # halves: (function, kind 0 sheet / 1 PT, triangle, alpha, v (3D))
-        H, vert, fold = [], [], []
-        nf = 0
-        for i in range(P):
-            T, A_, B_ = int(self.T[i]), 2 * i, 2 * i + 1
-            AT = abs(r.area[T])
-            fold.append(nf)
-            H += [(nf, 0, T, self.L[i] / (2 * AT), np.r_[po[i], 0.0]),
-                  (nf, 1, A_, -self.L[i] / (2 * apt[i]), b1[i])]
-            ld = np.hypot(self.L[i], self.t[i])
-            H += [(nf + 1, 1, A_, ld / (2 * apt[i]), b0[i]),
-                  (nf + 1, 1, B_, -ld / (2 * apt[i]), a1[i])]
-            nf += 2
+        # halves: (function, kind 0 sheet / 1 PT, triangle, alpha, v (3D)).
+        # A plate is a cell of one charge density, as a quad cell of the
+        # sheet (mom25d.quads): the current across its diagonal, d = (L f -
+        # t v_out - t v_in) / (2 ld), makes the charge of its two triangles
+        # equal, so the fold f and the verticals v carry the diagonal's
+        # halves (dg) and it is no unknown. (Its own freedom is the charge's
+        # slope up the copper's thickness, which a plate one cell high does
+        # not resolve: with it, three functions a plate, the 17 boards' S
+        # differed by an RMS of 0.0002-0.006, the median against solid
+        # copper 0.0360 against 0.0359.)
+        ld = np.hypot(self.L, self.t)
+        dg = lambda fn, q, c: [
+            (fn, 1, 2 * q, c * ld[q] / (2 * apt[q]), b0[q]),
+            (fn, 1, 2 * q + 1, -c * ld[q] / (2 * apt[q]), a1[q])]
+        H, vert = [], []
+        for i in range(P):  # the folds: functions 0 .. P - 1
+            T = int(self.T[i])
+            H += [(i, 0, T, self.L[i] / (2 * abs(r.area[T])),
+                   np.r_[po[i], 0.0]),
+                  (i, 1, 2 * i, -self.L[i] / (2 * apt[i]), b1[i]),
+                  *dg(i, i, self.L[i] / (2 * ld[i]))]
+        for i in range(P):  # the verticals, plate i to the next, j
             j = nxt.get(int(self.ib[i]))
-            if int(self.ib[i]) in self.cut_node:
-                j = None
-            if j is not None and j != i:
-                H += [(nf, 1, A_, self.t[i] / (2 * apt[i]), a0[i]),
-                      (nf, 1, 2 * j + 1, -self.t[j] / (2 * apt[j]), b1[j])]
-                vert.append((nf, i, j))
-                nf += 1
-        self.N = nf
-        # plate i's fold (function fold[i]; its diagonal fold[i] + 1), the
-        # verticals (function, plate, next plate)
-        self.fold = np.array(fold, int)
+            if int(self.ib[i]) in self.cut_node or j is None or j == i:
+                continue
+            n = P + len(vert)
+            H += [(n, 1, 2 * i, self.t[i] / (2 * apt[i]), a0[i]),
+                  (n, 1, 2 * j + 1, -self.t[j] / (2 * apt[j]), b1[j]),
+                  *dg(n, i, -self.t[i] / (2 * ld[i])),
+                  *dg(n, j, -self.t[j] / (2 * ld[j]))]
+            vert.append((n, i, j))
+        self.N = P + len(vert)
+        # plate i's fold: function fold[i]; the verticals (function, plate,
+        # next plate)
+        self.fold = np.arange(P)
         # a fold's half on the sheet: an RWG half on T (alpha, the free vertex
         # po) at T's boundary edge
         self.po, self.f_alpha = po, self.L / (2 * np.abs(r.area[self.T]))
@@ -263,7 +279,7 @@ class Sides:
     def near(self, sim):
         """Geometry only, once: the static corrections of the near pairs at the
         observers' level, (dM1, dMx, dMy, dMz) for the vector potential
-        (x mu0 / 4 pi) and per layer (X1, X2, X3) for the charge (x the
+        (mu0 / 4 pi in) and per layer (X1, X2, X3) for the charge (x the
         layer's cq, 1 / (4 pi eps0 eps1), G / (4 pi eps0 eps1)): the values of
         one (Nobs, N) pattern (ptr, functions)."""
         if self._near is not None:
@@ -350,8 +366,9 @@ class Sides:
                              return_inverse=True)
         mk = lambda x: np.bincount(inv, x, len(key))
         ptr = np.searchsorted(key // self.N, np.arange(len(Vo) + 1))
-        dA = (mk(e1 - r1), mk(e0[:, 0] - r0[:, 0]), mk(e0[:, 1] - r0[:, 1]),
-              mk(e0[:, 2]))
+        cA = MU0 / (4 * np.pi)
+        dA = (cA * mk(e1 - r1), cA * mk(e0[:, 0] - r0[:, 0]),
+              cA * mk(e0[:, 1] - r0[:, 1]), cA * mk(e0[:, 2]))
         div = 2 * al
         pp = both[pr]
         lay = self.src_layer[s[pr]]
@@ -369,9 +386,9 @@ class Sides:
     def loops(self, sim):
         """W (N x N, sparse; nonzero in the verticals' columns only, on the
         other unknowns' rows): T = I + W makes each vertical a loop (its
-        charge on its plate taken off by the plate's fold, on the next plate's
-        triangle by that one's diagonal and fold, the folds' charge on the
-        sheet carried by the sheet's edges around their node). A plate's own
+        charge on its plate and on the next taken off by their folds, the
+        folds' charge on the sheet carried by the sheet's edges around their
+        node). A plate's own
         functions are charge-dominated (its triangles t high), their loops
         lost below that in the equilibrated matrix: rf_meander at 0.5 GHz had
         cond 1.4e9 (sheets 3.5e7) and took 84 complex64-LU-preconditioned
@@ -390,15 +407,13 @@ class Sides:
                 if v in need:
                     fan.setdefault(v, []).append(t)
         ri, ci, vv = [], [], []
-        ld = np.hypot(self.L, self.t)
         for n, i, j in self.vert.tolist():
             t = self.t[i]
             col = c0 + n
-            # the charge integrals (2 alpha x area): a vertical t on A_i, -t
-            # on B_j; a diagonal ld on A, -ld on B; a fold L on its sheet
-            # triangle, -L on A
-            add = [(c0 + self.fold[j] + 1, -t / ld[j]),
-                   (c0 + self.fold[j], -t / self.L[j]),
+            # the charge integrals (2 alpha x area): a vertical t on plate
+            # i, -t on plate j; a fold L on its sheet triangle, -L on its
+            # plate
+            add = [(c0 + self.fold[j], -t / self.L[j]),
                    (c0 + self.fold[i], t / self.L[i])]
             Ti, Tj = int(self.T[i]), int(self.T[j])
             if Ti != Tj:  # t from Ti to Tj through the triangles at the node
@@ -460,7 +475,6 @@ class Sides:
         r, st, w = sim.rwg, sim.st.at(f), 2 * np.pi * f
         (ptr, fn), dA, dq, Po, Wo = self.near(sim)
         Nobs, N = len(Po), self.N
-        cA = MU0 / (4 * np.pi)
         # the charge corrections at f: the layers' coefficients
         nQ = np.zeros(len(fn), complex)
         for k, (x1, x2, x3) in dq.items():
@@ -490,14 +504,20 @@ class Sides:
         chunk = int(np.clip(2 ** 28 // (80 * N), 64, 2048))
         out, QF = core.sides_blocks(
             Po, Wo, olay, self.sp, slay, lt, tabs, np.array(drs), sptr, sfn,
-            sfx, sfy, sdq, ptr, fn, cA * dA[0], cA * dA[1], cA * dA[2],
-            cA * dA[3], nQ, hptr, tgt, al, v, fpos, r.Ne + N, N, len(sim.F),
-            w, chunk, self.Nt, 3 * self.nT)
-        S, fd = self.strip_part(sim), self.fold
-        out[:r.Ne, fd] += S[:r.Ne]
-        out[r.Ne + fd[:, None], fd] += S[r.Ne:]
-        Cw = out[r.Ne:]
-        return out[:r.Ne], 0.5 * (Cw + Cw.T), QF
+            sfx, sfy, sdq, ptr, fn, *dA, nQ, hptr, tgt, al, v, fpos,
+            r.Ne + N, N, len(sim.F), w, chunk, self.Nt, 3 * self.nT, FAR)
+        S, P = self.strip_part(sim), self.np_
+        out[:r.Ne, :P] += S[:r.Ne]  # (the folds: the first P functions)
+        out[r.Ne:r.Ne + P, :P] += S[r.Ne:]
+        Cw, Cs = out[r.Ne:], np.empty((N, N), complex)
+
+        def sym(a, b):  # (a block of rows: its columns' runs stay in cache)
+            Cs[a:b] = Cw[:, a:b].T
+            Cs[a:b] += Cw[a:b]
+            Cs[a:b] *= 0.5
+        from .fast import _row_blocks
+        _row_blocks(Cs, sym)
+        return out[:r.Ne], Cs, QF
 
     # ---- the folds' halves on the sheet as RWG halves -----------------------
     # A fold's half on its sheet triangle T and an edge's half on a triangle

@@ -1849,6 +1849,9 @@ py::object pair_moments3d(arr<double> Vo, arr<double> Vs, arr<double> bar,
 // to out (Nrow, N); an observer with fpos >= 0 copies its Q into QF[fpos].
 // The observers o < skip_o leave out the source points p < skip_p (the sheet's
 // triangles both: the strips' operator has those pairs, Sides.strip_part).
+// far > 0: a pair whose centres are further apart than far x the larger
+// triangle's size takes one point each (the centroids, the triangle's
+// functions summed over its points), as the strips' far field.
 // Observers a chunk at a time (the rows of M: 5 N complex each), each chunk
 // observer-parallel, its scatter column-parallel (no two threads on an entry).
 // -----------------------------------------------------------------------------
@@ -1861,7 +1864,7 @@ py::tuple sides_blocks(arr<double> Po, arr<double> Wo, arr<int> olay,
                        arr<double> dz, arr<cd> dq, arr<i64> hptr,
                        arr<int> htgt, arr<double> hal, arr<double> hv,
                        arr<int> fpos, i64 Nrow, i64 N, i64 nF, double w,
-                       i64 chunk, i64 skip_o, i64 skip_p) {
+                       i64 chunk, i64 skip_o, i64 skip_p, double far) {
     const i64 No = Po.shape(0), Ns = sp.shape(0), nl = lt.shape(0),
               nt = (i64)tabs.size();
     if (Wo.shape(0) != No || olay.shape(0) != No || slay.shape(0) != Ns ||
@@ -1897,6 +1900,42 @@ py::tuple sides_blocks(arr<double> Po, arr<double> Wo, arr<int> olay,
     const cd jw(0.0, w), ijw = 1.0 / jw;
     chunk = std::max<i64>(1, std::min(chunk, No));
     std::vector<cd> buf(chunk * 5 * N);
+    // the far rule's sources: each triangle's centre and size (twice its
+    // points' spread), and its functions with their three points summed
+    // (linear: the centroid rule's)
+    std::vector<double> scx(Ns), scy(Ns), ssz(Ns), tfx, tfy, tfq;
+    std::vector<i64> tpt(Ns + 1, 0);
+    std::vector<int> tfn;
+    auto spread = [](const double *P) {
+        double m = 0.0;
+        for (int a = 0; a < 3; ++a)
+            for (int b = a + 1; b < 3; ++b)
+                m = std::max(m, std::hypot(P[3 * a] - P[3 * b],
+                                           P[3 * a + 1] - P[3 * b + 1]));
+        return 2.0 * m;
+    };
+    if (far > 0.0)
+        for (i64 t = 0; t < Ns; ++t) {
+            const double *P = ps + 9 * t;
+            scx[t] = (P[0] + P[3] + P[6]) / 3.0;
+            scy[t] = (P[1] + P[4] + P[7]) / 3.0;
+            ssz[t] = spread(P);
+            const i64 at = (i64)tfn.size();
+            for (i64 e = spt[3 * t]; e < spt[3 * t + 3]; ++e) {
+                i64 k = at;
+                while (k < (i64)tfn.size() && tfn[k] != sf[e]) ++k;
+                if (k == (i64)tfn.size()) {
+                    tfn.push_back(sf[e]);
+                    tfx.push_back(0.0);
+                    tfy.push_back(0.0);
+                    tfq.push_back(0.0);
+                }
+                tfx[k] += fx[e];
+                tfy[k] += fy[e];
+                tfq[k] += fq[e];
+            }
+            tpt[t + 1] = (i64)tfn.size();
+        }
     {
         py::gil_scoped_release nogil;
         for (i64 o0 = 0; o0 < No; o0 += chunk) {
@@ -1912,10 +1951,39 @@ py::tuple sides_blocks(arr<double> Po, arr<double> Wo, arr<int> olay,
                              y[3] = {P[1], P[4], P[7]};
                 const double wx[3] = {W[0] * x[0], W[1] * x[1], W[2] * x[2]},
                              wy[3] = {W[0] * y[0], W[1] * y[1], W[2] * y[2]};
+                const double ocx = (x[0] + x[1] + x[2]) / 3.0,
+                             ocy = (y[0] + y[1] + y[2]) / 3.0,
+                             osz = far > 0.0 ? spread(P) : 0.0,
+                             Wt = W[0] + W[1] + W[2];
                 for (i64 p = o < skip_o ? skip_p : 0; p < 3 * Ns; ++p) {
                     if (spt[p] == spt[p + 1]) continue;
                     const int k = L[ol[o] * nl + sl[p / 3]];
                     if (k < 0) continue;
+                    if (far > 0.0 && p % 3 == 0) {
+                        // a pair further apart than far x the larger of the
+                        // two: one point each (as the strips' far field)
+                        const i64 t = p / 3;
+                        const double d = std::hypot(ocx - scx[t], ocy - scy[t]);
+                        if (d > far * std::max(osz, ssz[t])) {
+                            const double u = std::min(d / dr[k], top[k]);
+                            const i64 i = (i64)u;
+                            const double f = u - (double)i, g = 1.0 - f;
+                            const cd *T = tp[k];
+                            const cd A = (T[2 * i] * g + T[2 * i + 2] * f) * Wt,
+                                     G = (T[2 * i + 1] * g + T[2 * i + 3] * f) *
+                                         Wt;
+                            const cd Ax = A * ocx, Ay = A * ocy;
+                            for (i64 e = tpt[t]; e < tpt[t + 1]; ++e) {
+                                const int n = tfn[e];
+                                M1[n] += tfx[e] * Ax + tfy[e] * Ay;
+                                Mx[n] += tfx[e] * A;
+                                My[n] += tfy[e] * A;
+                                Q[n] += tfq[e] * G;
+                            }
+                            p += 2;
+                            continue;
+                        }
+                    }
                     const cd *T = tp[k];
                     const double ir = 1.0 / dr[k], tk = top[k];
                     const double sx = ps[3 * p], sy = ps[3 * p + 1];

@@ -129,7 +129,7 @@ def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
     m = n if lt else nq
     fits = gpu is not None and gpu_fits(gpu[1](m), gpu[0])
     if precision == 'double' or near('cpu-c64'):
-        loops = sides and not lt and nq == n and precision == 'mixed'
+        loops = sides and not lt and precision == 'mixed'
         return SolvePlan(basis, 'cpu-c128', loops=loops, why=why)
     host = 24.0 * n * n if lt else dense_bytes(n, nq)
     hybrid = fits and (lt or (host + SPARE <= 0.8 * avail
@@ -145,7 +145,7 @@ def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
     rung = 'vulkan-c64' if fits and (hybrid or not dense) else 'cpu-c64'
     gf = rung == 'vulkan-c64' and near('vulkan-c64')
     return SolvePlan(basis, 'cpu-c64' if gf else rung, dense, gf, keep,
-                     sides and not lt and nq == n and dense, why)
+                     sides and not lt and dense, why)
 
 
 def memory_plan(n, avail=None, gpu=None, precision='auto', solver='auto',

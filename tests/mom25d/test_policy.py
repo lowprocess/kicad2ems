@@ -56,7 +56,7 @@ CASES = [
     # the sides' loops where a complex64 LU preconditions a double Z
     (dict(sides=True), dict(loops=True, dense=True)),
     (dict(sides=True, avail=4e9), dict(loops=False, dense=False)),
-    (dict(sides=True, nq=8000), dict(loops=False)),
+    (dict(sides=True, nq=8000), dict(loops=True)),  # (with quads too)
     (dict(sides=True, precision='double'), dict(loops=False)),
     (dict(sides=True, f=1.2e9, history={C64: 1e9}),
      dict(rung='cpu-c128', loops=True)),
