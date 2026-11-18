@@ -1,7 +1,7 @@
 """
 mom25d.gpu_vk - the complex64 LU on a Vulkan GPU (slangpy): mom25d.gpu's backend
-interface where CuPy has no GPU (AMD on Windows: no ROCm CuPy there). Vulkan has
-no LAPACK, so the factorisation is the hybrid one of MAGMA's getrf:
+on AMD, Intel and NVIDIA, Linux and Windows. Vulkan has no LAPACK, so the
+factorisation is the hybrid one of MAGMA's getrf:
 
   the CPU factors each panel (N - k0 rows, NB columns) with LAPACK's cgetrf
   (partial pivoting, the same pivots and layout as scipy's lu_factor), and
@@ -14,8 +14,8 @@ With look-ahead: the GPU updates the next panel's columns first and that panel
 goes to the CPU while the GPU runs the rest of the trailing update, so the CPU's
 panel and the GPU's update overlap.
 
-The matrix is A = Z^T, column-major (Z's rows are its columns, as the CuPy
-backend factors it): column c in buffer c >> sh at (c & mask) * N, the buffers
+The matrix is A = Z^T, column-major (Z's rows are its columns, as LAPACK
+factors it): column c in buffer c >> sh at (c & mask) * N, the buffers
 at most MAX_BUFFER bytes each (Vulkan drivers cap one buffer at 2-4 GB; 16 GB of
 matrix is several). The triangular solves of solve() run on the GPU too: blocked
 substitution, the diagonal blocks' inverses from the factorisation, the
@@ -556,13 +556,13 @@ class VulkanBackend:
             h = self._hosts[name] = HostBuffer(self.dev, max(int(nbytes), 16))
         return h
 
-    def _upload(self, A, Z, chunk=1 << 28, c_start=0):
+    def _upload(self, A, Z, chunk=1 << 28):
         """Z (host complex64, C-ordered: its rows are A's columns) into A:
         column blocks of 256 MB through two mapped host buffers, the copy kernel
         reading each across the bus while the host fills the other. 16 GB/s on
         an RX 7800 XT, where buffer.copy_from_numpy (the buffers filled whole)
         ran at 6.5: 0.6 s -> 0.25 s of each LU at 22k unknowns."""
-        N, ncols = A.rows, Z.shape[0]  # Z's rows: A's columns c_start..
+        N, ncols = A.rows, Z.shape[0]  # Z's rows: A's columns
         cols = max(1, min(ncols, chunk // (8 * N)))
         hs = [self._host(f'up{i}', 8 * N * cols) for i in (0, 1)]
         subs = [None, None]
@@ -573,7 +573,7 @@ class VulkanBackend:
                 self.dev.wait_for_submit(subs[i])
             hs[i].view(np.complex64, N * cc).reshape(cc, N)[...] = Z[c0:c0 + cc]
             self._copy(self._flatdesc(hs[i].address, N),
-                       A.desc(0, c_start + c0), N, cc)
+                       A.desc(0, c0), N, cc)
             subs[i] = self._submit()
         for x in subs:
             if x is not None:
@@ -590,21 +590,6 @@ class VulkanBackend:
         t0 = time.perf_counter()
         A = _Mat(self, Z.shape[0], Z.shape[0])
         self._upload(A, Z)
-        self._factor(A, t0)
-
-    def factor_rows(self, N, rows, block=2048):
-        """factor() of the N x N Z whose rows rows(r0, r1) gives (host,
-        complex64-able, C-ordered), block rows at a time: Z is never whole on
-        the host (it goes up as it is filled), so the host needs a block where
-        factor()'s caller needs 8 N^2 bytes (antenna_cp_patch's 40.8k unknowns:
-        13.3 GB)."""
-        self.release()
-        t0 = time.perf_counter()
-        A = _Mat(self, N, N)
-        for r0 in range(0, N, block):
-            self._upload(A,
-                         np.asarray(rows(r0, min(N, r0 + block)), np.complex64),
-                         c_start=r0)
         self._factor(A, t0)
 
     def _factor(self, A, t0):

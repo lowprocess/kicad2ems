@@ -8,7 +8,7 @@ A 2.5D method-of-moments solver for circuit boards: copper as zero-thickness she
 layered dielectric over an infinite ground plane, vias as vertical wires, lumped parts as series elements.
 It takes a board file and gives its S-parameters, on the CPU (NumPy, or a compiled C++ / OpenMP core) with an
 optional GPU LU (Vulkan through slangpy on any GPU with a Vulkan driver, run on AMD and NVIDIA cards and on
-Mesa's llvmpipe in CI; or CuPy on NVIDIA CUDA or AMD ROCm).
+Mesa's llvmpipe in CI).
 
 <p align="center">
   <img src="https://github.com/lowprocess/kicad2ems/raw/main/docs/img/readme/stub_current.gif" width="60%"
@@ -30,18 +30,16 @@ pip install .                       # numpy, scipy, shapely, emsdev (the GPU and
 pip install '.[core]'               # pybind11, then build the compiled core (g++ with OpenMP; Windows: MSVC or MinGW):
 python -m kicad2ems.mom25d.core.build         # mom25d/_core*.so (.pyd on Windows): the mesher, and kernels ~5x faster
 pip install '.[gpu-vulkan]'         # the GPU LU through Vulkan: slangpy (any GPU)
-pip install '.[gpu-cuda12]'         # optional: the CuPy wheel for your stack (gpu-cuda12, gpu-cuda13, gpu-rocm7)
 ```
 
 On Windows the core builds with Visual Studio 2022 or its Build Tools, or MinGW-w64's g++ (see
-[emsdev](../emsdev/README.md)); CuPy has no ROCm wheel there.
+[emsdev](../emsdev/README.md)).
 
 The compiled core is needed: the mesher's triangulation is in it (`src/kicad2ems/emsdev/native/mesh2d.hpp`). The
 kernels keep NumPy fallbacks (`MOM25D_NO_CORE`); the mesher has none.
 
-`MOM25D_GPU=off` turns the GPU off; `MOM25D_GPU=vulkan|cupy` picks a backend (`auto` tries Vulkan first, and CuPy
-first only where it runs on CUDA). Consumer AMD cards outside ROCm's support list may need
-`HSA_OVERRIDE_GFX_VERSION=11.0.0` (RDNA3) or `10.3.0` (RDNA2) for CuPy; Vulkan needs only the GPU's driver.
+`MOM25D_GPU=off` turns the GPU off (`auto`, the default: Vulkan where there is one); Vulkan needs only the
+GPU's driver.
 
 The compiled core's threads (the matrix fill, OpenMP) and the LU's BLAS run on the fastest physical cores only: a
 hybrid CPU's E-cores and hyperthreads held them back (an i7-13700K's fill took 1.5-3.1 s a frequency on 24 threads,

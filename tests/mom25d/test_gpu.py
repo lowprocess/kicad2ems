@@ -1,9 +1,9 @@
-"""GPU LU path: every backend's code runs end to end against NumPy stand-ins for
-the exact CuPy calls it makes, and must reproduce the CPU mixed-precision
+"""GPU LU path: the solver's GPU code runs end to end on the emulated backend
+(NumPy behind the backend interface) and must reproduce the CPU mixed-precision
 solver. The Vulkan backend runs on the real GPU where there is one (slangpy and
 a Vulkan driver). (Real hardware: run tools/mom25d/gpu_selfcheck.py on the GPU
 machine.)"""
-import sys, types
+import sys
 import numpy as np
 import pytest
 import scipy.linalg as sla
@@ -14,54 +14,13 @@ import kicad2ems.mom25d.gpu as mom25d_gpu
 pytest.importorskip('kicad2ems.mom25d._core')
 
 
-# ---- NumPy stand-ins with the semantics of the real libraries ---------------
-def fake_cupy(mem=8e9):
-    cp = types.ModuleType('cupy')
-    pool = types.SimpleNamespace(free_all_blocks=lambda: None)
-    cp.get_default_memory_pool = lambda: pool
-    cp.array = lambda a, order='K': np.array(a, order=order)
-    cp.asarray = np.asarray
-    cp.asnumpy = np.asarray
-
-    class Device:
-        id = 0
-        mem_info = (mem, 16e9)
-
-        def synchronize(self):
-            pass
-
-    rt = types.SimpleNamespace(
-        getDeviceCount=lambda: 1, is_hip=True,
-        getDeviceProperties=lambda i: {'name': b'Fake Radeon'})
-    cp.cuda = types.SimpleNamespace(runtime=rt, Device=Device)
-    calls = {'inplace': None}
-
-    def lu_factor(a, overwrite_a=False, check_finite=True):
-        lu, piv = sla.lu_factor(a, overwrite_a=overwrite_a, check_finite=False)
-        calls['inplace'] = np.shares_memory(lu, a)
-        return lu, piv
-    cla = types.ModuleType('cupyx.scipy.linalg')
-    cla.lu_factor = lu_factor
-    cla.lu_solve = lambda lp, b, trans=0, check_finite=True: sla.lu_solve(
-        lp, b, trans=trans, check_finite=False)
-    cupyx = types.ModuleType('cupyx'); scipy_ = types.ModuleType('cupyx.scipy')
-    cupyx.scipy = scipy_; scipy_.linalg = cla
-    return ({
-        'cupy': cp, 'cupyx': cupyx, 'cupyx.scipy': scipy_,
-        'cupyx.scipy.linalg': cla
-    }, calls)
-
-
 def test_gpu_solves_that_stall_are_done_on_the_cpu(clean, S_cpu):
     """The GPU's triangular solves losing a good factor's accuracy (ROCm's
     complex64 trsm on an ill-conditioned factor, gpu.py): the factor is
     downloaded and solved on the CPU, no double-precision LU; near that
     frequency straight away, the GPU still factoring."""
-    mods, _ = fake_cupy()
-    for k, v in mods.items():
-        clean.setitem(sys.modules, k, v)
-    sim = make_sim('cupy')
-    gpu = mom25d_gpu.get_backend('cupy')
+    sim = make_sim('emulate')
+    gpu = mom25d_gpu.get_backend('emulate')
     clean.setattr(type(gpu), 'solve',
                   lambda self, R: np.asarray(R, complex) * 1e-3)
     S = sim.sparams(4e9)
@@ -117,31 +76,18 @@ def clean(monkeypatch):
     mom25d_gpu._cache.clear()
 
 
-@pytest.mark.parametrize('backend', ['cupy', 'emulate'])
-def test_gpu_backends_match_cpu(clean, S_cpu, backend):
-    calls = {}
-    if backend == 'cupy':
-        mods, calls = fake_cupy()
-    else:
-        mods = {}
-    for k, v in mods.items():
-        clean.setitem(sys.modules, k, v)
-    sim = make_sim(backend)
+def test_the_gpu_path_matches_cpu(clean, S_cpu):
+    sim = make_sim('emulate')
     S = sim.sparams(4e9)
     assert any(r[0] == 'LU factor (GPU)'
                for r in sim.log.records), "GPU path not taken"
     # both refined to rtol 1e-6: they agree to round-off of that order
     assert np.abs(S - S_cpu).max() < 1e-6
-    if backend == 'cupy':
-        assert (calls['inplace']
-                ), "CuPy LU must factor the uploaded matrix in place"
 
 
 def test_gpu_too_small_falls_back_to_cpu(clean, S_cpu):
-    mods, _ = fake_cupy(mem=1e6)                        # 1 MB free
-    for k, v in mods.items():
-        clean.setitem(sys.modules, k, v)
-    sim = make_sim('cupy')
+    mom25d_gpu._cache['emulate'] = mom25d_gpu.EmulatedBackend(mem=1e6)
+    sim = make_sim('emulate')
     S = sim.sparams(4e9)
     assert not any(r[0] == 'LU factor (GPU)' for r in sim.log.records)
     # the CPU's path: refined to rtol 1e-6, from a Z whose near field is summed
@@ -150,8 +96,7 @@ def test_gpu_too_small_falls_back_to_cpu(clean, S_cpu):
 
 
 def test_auto_without_gpu_is_silent_cpu(clean, S_cpu):
-    clean.setitem(sys.modules, 'cupy', None)            # import fails
-    clean.setitem(sys.modules, 'slangpy', None)
+    clean.setitem(sys.modules, 'slangpy', None)         # import fails
     assert mom25d_gpu.get_backend('auto') is None
     S = make_sim('auto').sparams(4e9)
     assert np.abs(S - S_cpu).max() < 1e-6
@@ -163,11 +108,8 @@ def test_gpu_refinement_that_stalls_falls_back_to_double_nearby(clean, S_cpu):
     in double, and so is everything up to 1.25 x it; above that the GPU is tried
     again (it fails at the low end of a band, and a sweep that gave up for good
     ran on the CPU)."""
-    mods, _ = fake_cupy()
-    for k, v in mods.items():
-        clean.setitem(sys.modules, k, v)
-    sim = make_sim('cupy')
-    gpu = mom25d_gpu.get_backend('cupy')
+    sim = make_sim('emulate')
+    gpu = mom25d_gpu.get_backend('emulate')
     # a useless preconditioner, on the GPU and the CPU
     clean.setattr(type(gpu), 'download', bad_factor(1e3))
     clean.setattr(type(gpu), 'solve',
@@ -188,11 +130,8 @@ def test_gpu_refinement_that_breaks_down_falls_back_to_double(clean, S_cpu):
     """A GMRES breakdown (a NaN residual, as the complex64 LU gave at 0.1 GHz on
     a dfsynth low-pass) is a failure too: NaN compares false against the
     tolerance, and once slipped through as the result."""
-    mods, _ = fake_cupy()
-    for k, v in mods.items():
-        clean.setitem(sys.modules, k, v)
-    sim = make_sim('cupy')
-    gpu = mom25d_gpu.get_backend('cupy')
+    sim = make_sim('emulate')
+    gpu = mom25d_gpu.get_backend('emulate')
     clean.setattr(type(gpu), 'download', bad_factor(np.nan))
     clean.setattr(type(gpu), 'solve',
                   lambda self, R: np.full(np.shape(R), np.nan, complex))
@@ -286,37 +225,13 @@ def test_vulkan_backend_matches_cpu(clean, S_cpu):
     assert np.abs(S - S_cpu).max() < 1e-6
 
 
-@vulkan
-def test_vulkan_streamed_fill_matches_cpu(clean, S_cpu):
-    """stream on: Z's rows filled straight into the GPU's factor (no host Z),
-    the refinement matrix-free: the S-parameters of the CPU's dense solve, and
-    the kept factor reused at the next frequency."""
-    sim = make_sim('vulkan')
-    sim.stream = 'on'
-    S = sim.sparams(4e9)
-    assert any(r[0] == 'fill + LU factor (GPU, streamed)'
-               for r in sim.log.records), "streamed path not taken"
-    assert np.abs(S - S_cpu).max() < 1e-6
-    sim.sparams(4.1e9)
-    # 4.1 GHz: reused
-    assert (sum(r[0] == 'fill + LU factor (GPU, streamed)'
-                for r in sim.log.records) == 1)
-    assert any('reused LU' in n for n in sim.log.notes)
-
-
 def test_memory_plan_takes_the_backends_own_estimate():
     """A Vulkan LU factors in place (8 N^2): with gpu_info's 4-tuple the plan
-    puts 40k unknowns on a 16 GB GPU, the host holding no Z where it is short of
-    one (gpu-stream), where the 2-tuple's 16 N^2 assumption sent it to the
-    CPU."""
+    puts 40k unknowns on a 16 GB GPU, where the 2-tuple's 16 N^2 assumption
+    sent it to the CPU."""
     from kicad2ems.mom25d.sim import memory_plan
     n = 40000
     need = 8.0 * n * n + 0.8e9
-    p = memory_plan(n, has_core=True, avail=8e9,
-                    gpu=('vulkan', 15.7e9, need, True), solver='auto',
-                    has_blr=False)
-    assert (p['path'] == 'gpu-stream' and p['solver'] == 'direct'
-            and p['host'] < 6e9)
     p = memory_plan(n, has_core=True, avail=30e9,
                     gpu=('vulkan', 15.7e9, need, True), solver='auto',
                     has_blr=False)

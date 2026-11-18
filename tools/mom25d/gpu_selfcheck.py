@@ -1,6 +1,6 @@
 """
 GPU self-check for mom25d:  python tools/mom25d/gpu_selfcheck.py [--backend
-vulkan|cupy] [--n 8192]
+vulkan|emulate] [--n 8192]
 
 1. reports the detected GPU / backend and free VRAM
 2. complex64 LU + solve on the GPU vs SciPy on the CPU (accuracy and speed)
@@ -26,17 +26,13 @@ gpu = mom25d_gpu.get_backend(a.backend)
 if gpu is None:
     print(
         "\nNo usable GPU backend (" + "; ".join(mom25d_gpu.get_backend.why)
-        + "). Install one of:\n  slangpy (Vulkan, any GPU; AMD on Windows): "
-          "pip install slangpy\n  CuPy for ROCm:     see "
-          "https://docs.cupy.dev/en/stable/install.html (AMD ROCm "
-          "section)\nand check that the GPU is visible (rocminfo / rocm-smi). "
-          "Consumer RDNA3 cards other than the\n7900 series may need "
-          "HSA_OVERRIDE_GFX_VERSION=11.0.0 (RDNA2: 10.3.0).")
+        + "). Install slangpy (Vulkan, any GPU): "
+          "pip install slangpy, and check that the GPU's Vulkan driver is "
+          "installed (vulkaninfo).")
     sys.exit(1)
 
 free = gpu.mem_free()
-nmax = int(
-    np.sqrt(max(0.0, 0.9 * free - 0.4e9) / ((1 if gpu.inplace else 2) * 8.0)))
+nmax = int(np.sqrt(max(0.0, 0.9 * free - 0.4e9) / 8.0))
 print(
     f"largest model for the GPU LU with this much free VRAM: ~{nmax:,} unknowns"
 )

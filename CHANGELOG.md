@@ -342,7 +342,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **mom25d's retired paths (2026-11-18, wave 2).** The mixed solver
   (`--solvers mixed`, `--mixed-cut`: with long runs cheap in mom25d its cuts
   saved little). Line basis functions (`--mom-lines`, experimental: worse than
-  quad cells).
+  quad cells). The GPU's streamed fill (the rows filled straight into the
+  Vulkan factor: antenna_cp_patch 46 s and 5.8 GB a solve, block low-rank 22.5
+  s and 2.4 GB). mom25d's CuPy backend (`MOM25D_GPU=cupy`): Vulkan is the GPU
+  path; with gfdtd's and pcbqs's gone no solver uses CuPy, so the `gpu-cuda12`,
+  `gpu-cuda13` and `gpu-rocm7` extras and the installer's CuPy question go too
+  (it offers to remove a CuPy wheel left in the venv).
 
 ## 2026-11-14 (0.3.0)
 

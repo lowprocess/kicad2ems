@@ -11,8 +11,6 @@ kernels) and asks here which device they would run on.
     gpu.devices()        every device of every library that has one: [Device]
     gpu.probe()          (devices, why): why lists what failed, one reason per
                          library
-    gpu.auto_order()     the order a solver's 'auto' tries them in: CuPy first
-                         on CUDA, else Vulkan first
 """
 import os
 from dataclasses import dataclass, field
@@ -136,22 +134,6 @@ def probe(libraries=LIBRARIES):
             except Unavailable:
                 pass
     return out, why
-
-
-def auto_order():
-    """The libraries a solver's 'auto' tries, best first. Vulkan is the primary
-    GPU API: one small wheel (slangpy) on AMD, Intel and NVIDIA, Windows and
-    Linux, where CuPy needs a CUDA or ROCm stack matched to its wheel (and has
-    no ROCm build for Windows). On an RX 7800 XT mom25d's Vulkan LU beat
-    rocSOLVER and gfdtd's kernels matched ROCm's, so CuPy on ROCm comes after
-    Vulkan. CuPy on CUDA (NVIDIA: cuBLAS / cuSOLVER) stays first until Vulkan
-    has been measured against it there."""
-    try:
-        if not cupy_device().hip:
-            return ('cupy', 'vulkan')
-    except Unavailable:
-        pass
-    return ('vulkan', 'cupy')
 
 
 def devices(libraries=LIBRARIES):

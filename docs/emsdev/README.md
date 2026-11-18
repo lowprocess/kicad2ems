@@ -19,7 +19,6 @@ from emsdev import gpu, cpu, memory
 gpu.probe()                       # ([Device], why): every device CuPy and Vulkan see, and why one had none
 gpu.cupy_device()                 # CuPy's current device, or raises gpu.Unavailable
 gpu.vulkan_device(need=('float64',))   # the best Vulkan GPU (EMSDEV_VULKAN_DEVICE picks another), with those features
-gpu.auto_order()                  # ('vulkan', 'cupy'), or ('cupy', 'vulkan') where CuPy runs on CUDA
 gpu.preference('auto', 'MOM25D_GPU')   # 'off' | 'auto' | a backend: a setting with the environment's override
 cpu.core_threads()                # one per fast physical core (no hyper-threads, no efficiency cores)
 memory.available()                # bytes, capped by a cgroup limit

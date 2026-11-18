@@ -132,7 +132,7 @@ packages): its form is made from the option tables and the solver registry, and
 it starts each run as a `kicad2ems` process (`runs.py`), so it needs nothing of
 a solver's.
 
-openEMS, CSXCAD, scikit-rf, gmsh, CuPy, slangpy and the other optional packages
+openEMS, CSXCAD, scikit-rf, gmsh, slangpy and the other optional packages
 are imported **inside the functions that need them**. A solver or an analysis
 imports nothing heavy at module level, because the registry loads every one to
 build the settings; the tests rely on it (`test_registry_lists.py` loads the

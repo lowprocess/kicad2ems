@@ -441,21 +441,13 @@ On rf_gcpw it merges more (61 % of the triangles instead of 42 % with the fast s
 ## GPU
 
 mom25d can factor its matrix on a GPU in single precision and refine the answer to full precision on the CPU.
-slangpy runs it on a GPU with a Vulkan driver (run on an AMD RX 7800 XT and an NVIDIA GTX 980 Ti, and on Mesa's
-llvmpipe in CI); a CuPy package is optional:
-
-| GPU | Package |
-|---|---|
-| any with Vulkan, in principle (AMD, Intel, NVIDIA; Windows and Linux); run on an AMD RX 7800 XT under Linux only so far (`tools/gpu_selfcheck.py` checks another) | `pip install slangpy` (the `gpu-vulkan` extra) |
-| NVIDIA, CUDA 12 / 13 (optional) | `pip install cupy-cuda12x` / `cupy-cuda13x` |
-| AMD, ROCm 7, Linux (optional) | `pip install cupy-rocm-7-0` |
-
-`auto` tries Vulkan first, and CuPy first only on CUDA; `MOM25D_GPU=cupy`, `vulkan` or `off` chooses. Vulkan has no
-LAPACK, so its LU is mom25d's own (`gpu_vk.py`): the CPU factors each 256-column panel with LAPACK while the GPU
-updates the rest, the two overlapping. On an RX 7800 XT it factors 16,384 unknowns in 1.64 s, against 2.11 s for
-CuPy's rocSOLVER on the same card, with LAPACK's pivots and accuracy. `kicad2ems --check` and the GUI's Solvers
-window show the GPU mom25d will use. Consumer AMD cards outside ROCm's list may need `HSA_OVERRIDE_GFX_VERSION=11.0.0`
-(RDNA3) or `10.3.0` (RDNA2) for CuPy.
+slangpy (`pip install slangpy`, the `gpu-vulkan` extra) runs it on any GPU with a Vulkan driver (AMD, Intel,
+NVIDIA; Windows and Linux): run on an AMD RX 7800 XT and an NVIDIA GTX 980 Ti, and on Mesa's llvmpipe in CI
+(`tools/mom25d/gpu_selfcheck.py` checks another). `MOM25D_GPU=vulkan` or `off` chooses (`auto`: Vulkan where there
+is one). Vulkan has no LAPACK, so its LU is mom25d's own (`gpu_vk.py`): the CPU factors each 256-column panel with
+LAPACK while the GPU updates the rest, the two overlapping. On an RX 7800 XT it factors 16,384 unknowns in 1.64 s,
+against 2.11 s for CuPy's rocSOLVER on the same card (the CuPy backend, retired on 2026-11-18), with LAPACK's pivots
+and accuracy. `kicad2ems --check` and the GUI's Solvers window show the GPU mom25d will use.
 
 mom25d chooses how to solve from the memory available, and the log says which (`memory: direct solver needs ...`):
 
@@ -465,17 +457,14 @@ mom25d chooses how to solve from the memory available, and the log says which (`
 | mixed precision on the CPU | above 3,500 unknowns, no GPU: single-precision LU refined to double (about 1.3× faster); LUs kept across the sweep where they fit | 24 N² bytes, plus 8 N² for each LU kept; 10 N² where that doesn't fit |
 | GPU LU, hybrid | up to 25,000 unknowns: the single-precision matrix fits on the GPU, and its double-precision copy in RAM (the refinement's) | 24 N² bytes RAM, 8 N² bytes GPU |
 | GPU LU | above 25,000 unknowns, or where the hybrid's RAM doesn't fit: the refinement is matrix-free | 10 N² bytes RAM, 8 N² bytes GPU |
-| GPU LU, streamed | Vulkan, and RAM short even of that: the matrix is filled straight into the GPU a block of rows at a time | about 1 GB RAM, 8 N² bytes GPU |
 | block low-rank (BLR), compiled | from 20,000 unknowns where the hybrid does not hold the matrix (any GPU path past it, or no GPU), and wherever nothing else fits | about 3 N² bytes at most: a fifth of a single-precision matrix |
 | compressed (ACA) | without the compiled core (or one without its block low-rank factor), nothing else fits | much less, but far slower on large boards |
 
 Past 25,000 unknowns the hybrid's double-precision matrix costs more in memory traffic than its cheaper refinement
 saves (`MOM25D_HYBRID_MAX_N` moves the limit): rf_siw (28.7k unknowns) takes 296 s on the GPU LU against 456 s
 hybrid, antenna_vivaldi (21.9k) 148 s hybrid against 171 s. The GPU takes an LU up to its own estimate of the memory it needs (the matrix and its work arrays) with 0.5 GB or 3 %
-to spare: on a 16 GB card about 41,000 unknowns. antenna_cp_patch's 40,827 factor there in 19 s. The streamed path
-is about 1.3× slower a solve than the GPU LU (its fill can't use the matrix's symmetry), but it solves that board
-in 5.8 GB of RAM, where the compressed solvers took more than 30 minutes a frequency (the compiled
-[block low-rank solver](#blr) now takes 22.5 s, in 2.4 GB). The free memory is a cgroup's
+to spare: on a 16 GB card about 41,000 unknowns. antenna_cp_patch's 40,827 factor there in 19 s; the compiled
+[block low-rank solver](#blr) takes 22.5 s a solve, in 2.4 GB. The free memory is a cgroup's
 where one limits the process (a container, or `systemd-run --scope -p MemoryMax=`).
 
 Retired on 2026-11-15 (R-F3): the **tiled** GPU solver (half the symmetric matrix on a CuPy GPU; the block

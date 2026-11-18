@@ -38,7 +38,7 @@ It then offers, each optional:
 - the compiled cores of mom25d (about five times faster) and gfdtd (about fifteen times, on the CPU). They need a
   C++ compiler: g++ on Linux and macOS; on Windows Visual Studio 2022 or its Build Tools, or MinGW-w64's g++
   (`EMSDEV_COMPILER=msvc` or `gcc` chooses);
-- the GPU: slangpy (Vulkan, any GPU), and optionally the CuPy wheel for a detected CUDA 12, CUDA 13 or ROCm 7 (Linux);
+- the GPU: slangpy (Vulkan, any GPU);
 - openEMS: one the Python already has; one in another venv of the same Python version, linked in
   (`--openems /opt/openems/venv/bin/python`); on Linux and macOS a build by `tools/build_openems.sh`; on Windows
   the unpacked release (`--openems C:\opt\openEMS`); or none;
@@ -71,7 +71,7 @@ pip install '.[all]'            # or all of the above
 python -m kicad2ems.mom25d.core.build     # mom25d's compiled core: needed, it holds the mesher
 python -m kicad2ems.pcbqs.core.build      # pcbqs's compiled core: needed, it holds the mesher
 python -m kicad2ems.gfdtd.core.build      # optional: gfdtd's compiled CPU core
-pip install '.[gpu-vulkan]'     # optional: the GPU through Vulkan (slangpy); or a CuPy wheel such as cupy-cuda12x
+pip install '.[gpu-vulkan]'     # optional: the GPU through Vulkan (slangpy)
 ```
 
 mom25d and pcbqs mesh in their compiled cores (the constrained Delaunay triangulation of

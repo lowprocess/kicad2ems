@@ -49,15 +49,9 @@ fem = ["gmsh>=4.11"]
 core = ["pybind11>=2.10", "setuptools>=61; sys_platform == 'win32'"]
 # the KiCad plugin's IPC client (kicad2ems.ipc)
 plugin = ["kicad-python>=0.5"]
-# the GPU: slangpy (gpu-vulkan), the default on any GPU, or the CuPy wheel built
-# for your GPU stack (they conflict: install one). The CUDA wheels need the
-# NVIDIA driver; the ROCm wheel the ROCm 7 runtime
-gpu-cuda12 = ["cupy-cuda12x>=14"]   # NVIDIA, CUDA 12.x driver
-gpu-cuda13 = ["cupy-cuda13x>=14"]   # NVIDIA, CUDA 13.x driver
-gpu-rocm7 = ["cupy-rocm-7-0>=14"]   # AMD, ROCm 7.0
-# any GPU with a Vulkan driver, Windows or Linux
+# the GPU: any with a Vulkan driver, Windows or Linux
 gpu-vulkan = ["slangpy>=0.43"]
-# everything but a GPU wheel (one of the gpu-* extras)
+# everything but the GPU wheel
 all = ["kicad2ems[fast,gui,fem,core]"]
 test = ["pytest>=7", "pytest-xdist>=3", "scikit-rf>=1.0"]
 # openEMS and CSXCAD are not on PyPI: install them from your distribution or

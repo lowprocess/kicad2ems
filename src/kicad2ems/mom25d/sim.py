@@ -114,8 +114,7 @@ def memory_plan(n, has_core=True, avail=None, gpu=None, precision='auto',
     estimate (the Vulkan LU factors in place: 8 N^2, not the 16 N^2 the 2-tuple
     assumes). path: 'dense' (NumPy, small n), 'double' (LU on the CPU), 'hybrid'
     (complex64 LU on the GPU, the double Z on the host for the refinement),
-    'gpu-stream' (the Vulkan GPU's complex64 LU filled by row blocks, no Z on
-    the host, the refinement matrix-free), 'gpu-lu' (complex64 Z on the host and
+    'gpu-lu' (complex64 Z on the host and
     the GPU), 'cpu-mixed' (complex64 LU on the CPU), 'blr' / 'aca' (compressed,
     no dense Z; the tiled L L^T on the GPU is retired, BLR taking its boards:
     R-F3). n_lu: the unknowns the LU factors (fewer with quads; default n),
@@ -128,7 +127,7 @@ def memory_plan(n, has_core=True, avail=None, gpu=None, precision='auto',
         gpu_lu, gpu_fits = float(gpu[2]), bool(gpu[3])
     else:
         # gpu._Backend.vram_needed
-        gpu_lu = (1 if name in ('cupy', 'emulate') else 2) * 8.0 * n * n + 0.4e9
+        gpu_lu = (1 if name == 'emulate' else 2) * 8.0 * n * n + 0.4e9
         gpu_fits = name is not None and gpu_lu <= 0.9 * free
     if precision == 'auto':
         # mixed where double does not fit, and above MIXED_MIN_N (GPU_MIN_N with
@@ -149,12 +148,6 @@ def memory_plan(n, has_core=True, avail=None, gpu=None, precision='auto',
         path, host, dev = 'double', 18.0 * n * n + 0.9e9, 0.0
     elif hybrid:
         path, host, dev = 'hybrid', 24.0 * n * n + 0.9e9, gpu_lu
-    elif gpu_fits and name == 'vulkan' and 10.0 * n * n + 0.9e9 > 0.8 * avail:
-        # fast.FastOperator._solve_streamed: Z's rows filled into the GPU's
-        # factor, two blocks on the host and the sparse exact near field (about
-        # blr's)
-        path, host, dev = ('gpu-stream', 2 * 16.0 * n * 2048 + 2e4 * n + 0.9e9,
-                           gpu_lu)
     elif gpu_fits:
         path, host, dev = 'gpu-lu', 10.0 * n * n + 0.9e9, gpu_lu
     else:
@@ -171,7 +164,7 @@ def memory_plan(n, has_core=True, avail=None, gpu=None, precision='auto',
             ('direct' if fits else ('blr' if has_core else 'aca'))
         # (quad cells: the direct solver's alone)
         if (solver == 'direct' and has_blr
-                and path in ('gpu-lu', 'gpu-stream', 'cpu-mixed')
+                and path in ('gpu-lu', 'cpu-mixed')
                 and n >= BLR_MIN_N and (n_lu is None or n_lu >= n)):
             solver = 'blr'
     if solver == 'blr':  # the factor is the compiled core's: without it, ACA
@@ -441,7 +434,7 @@ class Simulation:
         # 'auto': with quads
         self.st, self.title, self.metal, self.solver, self.log = (
             stack, title, metal, solver, RunLog(verbose))
-        # 'auto' | 'vulkan' | 'cupy' | 'off' (mixed direct solver LU)
+        # 'auto' | 'vulkan' | 'emulate' | 'off' (mixed direct solver LU)
         self.gpu = gpu
         # 'auto' | 'double' | 'mixed' (direct: complex64 Z + refinement)
         self.precision = precision
@@ -459,9 +452,6 @@ class Simulation:
         # (looptree.py) at low frequency
         # (auto: below fast.LOOP_TREE_BELOW
         # of (k h)^2)
-        # 'auto' | 'on' | 'off': the Vulkan GPU's LU filled by row blocks, no
-        # host Z (auto: where the host cannot hold a complex64 Z)
-        self.stream = 'auto'
         self.dmax, self.ncross, self.grade, self.near_fac = (dmax, ncross,
                                                              grade, near_fac)
         self.user_ports = list(ports)

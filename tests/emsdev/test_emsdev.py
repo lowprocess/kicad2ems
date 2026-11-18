@@ -124,15 +124,6 @@ def test_vulkan_loader():
         assert a.free() is None or a.free() >= 0
 
 
-def test_auto_order(no_gpu):
-    """Vulkan first, except where CuPy runs on CUDA (NVIDIA)."""
-    assert gpu.auto_order() == ('vulkan', 'cupy')
-    no_gpu.setitem(sys.modules, 'cupy', fake_cupy(hip=True))
-    assert gpu.auto_order() == ('vulkan', 'cupy')
-    no_gpu.setitem(sys.modules, 'cupy', fake_cupy(hip=False))
-    assert gpu.auto_order() == ('cupy', 'vulkan')
-
-
 def test_cupy_without_devices(no_gpu):
     no_gpu.setitem(sys.modules, 'cupy', fake_cupy(n=0))
     with pytest.raises(gpu.Unavailable, match='no GPU device'):
