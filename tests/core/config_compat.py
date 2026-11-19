@@ -85,8 +85,20 @@ def saved(path):
     return copy
 
 
+def _qucs_installed():
+    """The line model as on a machine with qucsator (resolve_lines: qucs), as
+    data/config_compat.json was written: without it the line model resolves
+    to scikit-rf, and a config's meaning would follow the machine (CI has no
+    qucsator)."""
+    from kicad2ems.core.solvers import registry
+    q = registry().get('qucs')
+    if q is not None:
+        q.check = lambda s=None: (True, 'qucsator (as recorded)')
+
+
 def main():
     os.chdir(ROOT)
+    _qucs_installed()
     out = {}
     for p in configs():
         p_abs = os.path.join(ROOT, p)
