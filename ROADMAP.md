@@ -55,17 +55,29 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
 
 1. **Differential pairs as pairs.** Crosstalk between pairs in their differential and common modes (mixed-mode
    S of the pairs' four ends), a pair's own skew and mode conversion; the proposals then name pairs, not legs.
-2. **The time grid** (R-E16), before items 3 and 4 build on it. The edge response comes from 401 points at
+2. **A board's coupling, a layer pair at a time (the user's, 2026-11-19).** Many nets at once, named by patterns
+   (`DQ*`, `DQS*_[PN]`, `A[0-9]*`: a DDR bus, its byte lanes), each signal layer solved with its reference planes
+   alone: mom25d, its solid planes PEC (a layer between two planes is a stripline region of its own), a lumped
+   port at each net's two ends. Out of it: each victim's NEXT and FEXT from its worst aggressors and their sum (the
+   question's figures, step 3 of docs/si.md, over a matrix), the worst pairs and the stretches that make them, a
+   map of the coupling on the plan, and a byte lane against another. What it needs first: the ports' count (a
+   64-bit bus's lanes are ~90 nets, 180 ports: the solves are many right-hand sides of one factor, but the S
+   matrix and the report must stay readable: a victim's top aggressors, not the whole matrix), the nets' ends on
+   a layer when a net changes layer (its stretch on this layer, ended at its vias), and what crosses between
+   layer pairs (vias, a reference plane's gap) said as not modelled. The line model can answer the same per
+   layer for a first look (it couples only within a layer's coupled sections); mom25d is what sees the whole
+   layer's fields.
+3. **The time grid** (R-E16), before items 4 and 5 build on it. The edge response comes from 401 points at
    fmax/400 steps, linearly interpolated: a 5 % coupler reads 3.3 % at 1 m and 25 ps. Its step from the longest
    trace's delay, H interpolated with the delay taken out, fmax 2-3 times 1/rise, S11 to DC (for TDR).
-3. **Drivers and receivers.** A source impedance and a receiver's load in place of `z0` at every end (an
+4. **Drivers and receivers.** A source impedance and a receiver's load in place of `z0` at every end (an
    unterminated receiver doubles what arrives; NEXT reflected at the driver arrives at the far end), and an eye
    for a bit pattern (the edge response is there: superposed).
-4. **A trace's own quality:** its impedance along its length (the line model has it: *Trace impedances*), the
+5. **A trace's own quality:** its impedance along its length (the line model has it: *Trace impedances*), the
    reflections of its discontinuities for the edge (TDR from S11), its loss at the data rate.
-5. **The coupled stretches drawn on the plan**, coloured by their share (the traces are picked on the board
+6. **The coupled stretches drawn on the plan**, coloured by their share (the traces are picked on the board
    already).
-6. **Broadside pairs** on adjacent layers: the groups are of one layer, so such a pair is not coupled at all (it
+7. **Broadside pairs** on adjacent layers: the groups are of one layer, so such a pair is not coupled at all (it
    is listed as not modelled, and the limit not judged).
 
 ## The window
