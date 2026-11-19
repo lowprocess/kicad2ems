@@ -193,6 +193,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **mom25d's mixed precision accepted a refinement that had stalled (2026-11-19).** GMRES on the complex64 LU was
+  taken as converged at up to 100 times its tolerance (1e-4 against 1e-6): GMRES stops at the tolerance when it
+  reaches it, so that slack only ever accepted a refinement that ran out of iterations, whose error is the matrix's
+  condition times its residual. On the lowpass with the sides' loops and quad cells at 0.5 GHz (its complex64 LU
+  borderline; the fill's OpenMP sums moving it from run to run) it stalled at 2e-6 to 9e-5 in some runs and the
+  currents came out 1 to 73 % off, said nowhere: CI's `test_thickness_sides_loops_with_quad_cells` failed about one
+  run in eight. Converged now means at the tolerance; short of it the solve falls back to double precision as it
+  already did above 1e-4 (no fallback, and no change in time, on demo_lowpass, rf_coupler, hairpin, antenna_patch).
 - **mom25d's block low-rank solver failed on every board with thick copper's sides.** The factor's cluster tree
   had no place for the sides' functions, so it had fewer rows than the matrix (`BLRFactor.solve: R must have N
   rows`): with no GPU past 20,000 unknowns, or with too little memory for the direct solver (rf_ebg, sma_launch's

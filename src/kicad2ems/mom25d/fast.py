@@ -664,7 +664,7 @@ class FastOperator:
     def _refine(self, A, B, M, restart, maxiter, stall=None, timed=True,
                 reach=None):
         """Batched GMRES on A Y = B preconditioned with M, to mixed_tol: (Y,
-        converged, largest relative residual: B - A Y from the products GMRES
+        converged (every column at mixed_tol), largest relative residual: B - A Y from the products GMRES
         made, no product of its own). Not converged includes a breakdown
         (NaN). stall: gmres_batched's, for a fresh factorisation
         (FRESH_STALL); reach: its, for a kept one. timed: the seconds an
@@ -677,7 +677,13 @@ class FastOperator:
         if timed:
             self.st.t_iter = ((time.time() - t)
                             / max(1, max(self.iters, default=1)))
-        return Y, bool((rel <= 100 * self.mixed_tol).all()), rel.max()
+        # converged at the tolerance itself: GMRES stops there when it gets
+        # there, so anything above is a refinement that ran out of iterations,
+        # and its error is the matrix's condition times that residual (with
+        # 100 x mixed_tol accepted, the lowpass with the sides' loops and quad
+        # cells at 0.5 GHz, its complex64 LU borderline, stalled at 2e-6 to
+        # 9e-5 in some runs: currents 1 to 73 % off, said nowhere)
+        return Y, bool((rel <= self.mixed_tol).all()), rel.max()
 
     def solve(self, f, E):
         """The currents at f for excitation columns E, as policy.choose plans:
