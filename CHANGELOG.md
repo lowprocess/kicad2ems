@@ -260,6 +260,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **mom25d fills the via and side blocks at some of a sweep's frequencies (2026-11-19).** The rows and columns of
+  the vias and of thick copper's sides were filled at every frequency: 22-38 % of the run on four of the five largest
+  Solver Matrix boards. Every entry of them is smooth in f once its 1/(jω) and the permittivity are taken out, so a
+  sweep keeps the blocks it fills (its first seven frequencies', then those the others cannot be had from) and takes
+  the rest as the polynomial through the seven nearest kept ones, where that agrees with the one through six to 1e-6;
+  the Green tables of such a frequency are the same polynomial through the kept ones' tables, so the strips' block and
+  the via blocks stay one kernel's. The sides' part and the via chains' are judged apart (the chains' kernels are the
+  rougher: where theirs cannot be had it is filled, the sides' still taken). The sweep solves its band's two ends
+  first, and a linear sweep seven frequencies across its band. The far field's fill makes each triangle's kernel row
+  once, not once for each of its edges (a fresh matrix filled: rf_ebg 0.73 → 0.43 s, sma_launch 0.57 → 0.22 s). The 45
+  Solver Matrix boards, each after the other on the code before and on this: 8.9 → 8.2 min (rf_ebg 111 → 100 s, 15 of
+  its 39 frequencies filled; rf_diffvia 15.3 → 12.6 s), their RMS against openEMS as it was (median 0.0632, mean
+  0.0987, no board more than 0.0004 from before); the 17 boards' linear solves and the wave ports' within 1e-5 and
+  7e-4 RMS of before; S within 8e-5 of every block filled at the same frequencies. `MOM25D_INTERP=off` fills every
+  frequency (docs/mom.md#blocks).
 - **mom25d's sides cost less a frequency, the sweep a solve less a board (2026-11-18).** The plates' blocks in
   the compiled core with the observers in colours (each observer's sums at once into its rows, not through a
   chunk's buffer) and the folds' far block a triangle at a time: a frequency's blocks rf_bends 0.29 → 0.085 s,

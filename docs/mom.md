@@ -557,6 +557,34 @@ factors anew only where that would cost more than a fresh LU; the answer is refi
 about 1e-6). On demo_transition (13.5k unknowns, 17 solves) three LUs served the whole sweep on the CPU: 84 s
 against 176 s. The log says which solves reused one; in mom25d's Python API, `sim.reuse = 'off'` turns it off.
 
+<a id="blocks"></a>
+**The via and side blocks between the frequencies filled.** The rows and columns of the vias and of thick copper's
+sides (the edges against them, and they against each other) cost as much to fill as the strips' own matrix, or more
+(on the SMA launch, 15.1k unknowns of which 2.8k are theirs, 1.9 s of the 5 s a frequency took before the sides'
+blocks were made faster), and every entry of them is smooth in the frequency once its 1/(jω) and the dielectric's
+permittivity are taken out: the layered kernels' integrals of the charge and of the current, which turn with the phase
+across the board. So mom25d keeps the blocks a sweep fills (the first in double precision, the others as their single-
+precision difference from it; 16 at most, in no more than a double matrix's bytes, and only while the memory the
+solver's own plan asks for stays free), and a frequency between them takes the polynomial in f through the 7 nearest,
+where that one and the one through 6 agree to 1e-6 (the refinement's tolerance) on a sample of rows; else its blocks
+are filled and kept as well. Such a frequency's Green tables are the same polynomial through the kept frequencies'
+tables, so the strips' own block, which is filled at every frequency, and the via blocks are one kernel's (a loop of
+current sees no charge only then), and its tables need no Sommerfeld integrals. The sides' part and the via chains'
+part are judged apart: the chains' kernels are rougher over frequency (their own tables: antenna_array4x4_phased's 16
+chains 3e-5 off between seven frequencies of a 20 % band where its sides are 5e-9 off), so where the chains' part
+cannot be had it is filled at that frequency and the sides' part still taken. The elements in vias and the barrels'
+loss, which need not be smooth, are added at each frequency.
+
+A sweep's first seven frequencies fill theirs (the band's two ends, the adaptive sweep's three between and the first
+two it picks, at the response's sharpest features: through five frequencies from 1 to 8 GHz, blocks within 1e-8 of the
+filled ones still moved rf_interdig's 3.2 GHz resonance by 3 ppm, S by 3e-4 on its flank); of the rest most
+interpolate: rf_ebg's 39 solves fill 15 and take 24, rf_interdig's 19 fill 7, an antenna run's 15 fill 8, a filter's
+10 fill 7. S moves by 1e-5 or less on most boards and 8e-5 at most (rf_siw at the top of its band, rf_diffvia at one
+frequency; ten boards, the SMA launch and rf_ebg among them) against every block filled at the same frequencies. A
+linear sweep (`linear=` in the Python API) solves seven frequencies across its band first, for the same reason. Below
+(k h)² = 1e-5, where a loop's inductance is that small beside its charge terms, every frequency is filled.
+`MOM25D_INTERP=off` (in the API, `sim.interp = 'off'`) fills every frequency; the run's log says how many were filled.
+
 Where the GPU's single-precision triangular solves stall at the bottom of a band (the matrix worst conditioned),
 mom25d solves with the GPU's factor on the CPU instead; only where the factor itself is too weak is a frequency
 solved in double precision on the CPU. Below a few hundred MHz the [loop/tree basis](#loop-tree) keeps that from

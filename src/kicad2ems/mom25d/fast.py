@@ -97,10 +97,11 @@ def cap_core_threads():
 
 
 # bytes the via blocks kept over a sweep may take on a small board (a large
-# one: a double Z's; FastOperator._vias). rf_crosstalk, 2.1k unknowns of
-# which a fifth are the sides': 8 anchors in a double Z's bytes, and 14 of
-# its 15 frequencies filled
-ANCHOR_ROOM = 2.0 ** 29
+# one: a double Z's; FastOperator._vias). Where a fifth of the unknowns are
+# the sides', a double Z's bytes hold 7 or 8 anchors: rf_crosstalk (2.1k
+# unknowns) filled 14 of its 15 frequencies, rf_bends (7.1k, 1 to 12 GHz,
+# which takes 16 anchors) all 29
+ANCHOR_ROOM = 2.0 ** 31
 # near-field triplets per piece of the sum into the sparse matrix (_near_csr)
 NEAR_CHUNK = 8_000_000
 
