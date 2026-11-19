@@ -550,7 +550,8 @@ and two LUs besides, mom25d fills the matrix in the GPU's mapped host memory, co
 14.7k: no staging copy), makes the single-precision LU's matrix from it there (no complex64 copy on the host, none
 uploaded) and runs the products on the GPU in double precision: 15 ms for two ports at 14.7k, 57 ms for sixteen,
 to 3e-15 of NumPy's. The fresh solve's refinement costs less, and a kept LU serves frequencies further away, a
-solve with it costing a fraction of a new LU. `MOM25D_GPU_DENSE=off` keeps the products on the host; a GPU without
+solve with it costing a fraction of a new LU: rf_ebg's sweep (14.7k unknowns) made 25 LUs where it had made 29,
+82 s against 104; rf_siw 5 where 13, 20 s against 28; antenna_vivaldi 9 where 16. `MOM25D_GPU_DENSE=off` keeps the products on the host; a GPU without
 double precision (shaderFloat64) does so by itself.
 
 Retired on 2026-11-15 (R-F3): the **tiled** GPU solver (half the symmetric matrix on a CuPy GPU; the block

@@ -181,6 +181,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **mom25d's block low-rank solver failed on every board with thick copper's sides.** The factor's cluster tree
+  had no place for the sides' functions, so it had fewer rows than the matrix (`BLRFactor.solve: R must have N
+  rows`): with no GPU past 20,000 unknowns, or with too little memory for the direct solver (rf_ebg, sma_launch's
+  wave-port cross-sections), mom25d gave no result. A fold now sits at its plate's middle, a vertical at its corner.
 - **A sweep of many ports, or of noisy solves, lost its model (`emsdev.afs`).** The sweep's rational model was
   fitted to 1e-10, through each solve's noise (a mixed-precision solve's S: 1e-5 to 1e-4), so it took a support
   at every sample and put poles between them; and with P ports' P² entries it had no rows left to fit until P²
@@ -260,6 +264,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **mom25d's refinement on the GPU (2026-11-18).** Where the GPU holds the double-precision matrix and two LUs
+  beside it, the hybrid fills the matrix in the GPU's mapped host memory, copies it across (no staging copy, no
+  complex64 copy on the host) and runs GMRES's products there in double precision: 15 ms for two ports at 14.7k
+  unknowns, against 0.12–0.19 s on the CPU. A kept LU then serves frequencies further away, so fewer are made:
+  rf_ebg's sweep 104 → 82 s (29 LUs → 25), rf_siw 27.6 → 20.2 s (13 → 5), antenna_vivaldi 43.4 → 36.7 s (16 →
+  9), antenna_array4x4_phased 31.5 → 27.2 s, sma_launch 50.4 → 47.3 s, rf_bends 20.3 → 18.0 s; S as before, the
+  45 boards' RMS against openEMS within 0.0005 (docs/mom.md#gpu-products). `MOM25D_GPU_DENSE=off` keeps the
+  products on the host.
 - **mom25d fills the via and side blocks at some of a sweep's frequencies (2026-11-19).** The rows and columns of
   the vias and of thick copper's sides were filled at every frequency: 22-38 % of the run on four of the five largest
   Solver Matrix boards. Every entry of them is smooth in f once its 1/(jω) and the permittivity are taken out, so a
