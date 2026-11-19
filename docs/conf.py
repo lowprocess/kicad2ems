@@ -36,7 +36,9 @@ extensions = [
 ]
 # .rst: autosummary's stub pages
 source_suffix = {'.md': 'markdown', '.rst': 'restructuredtext'}
-exclude_patterns = ['_build']
+# reference/api-names.md lists kicad2ems.core.api.* and gui.api, modules gone
+# with the one repository: out of the site until it is brought up to date
+exclude_patterns = ['_build', 'reference/api-names.md']
 templates_path = ['_templates']
 
 html_theme = 'furo'
