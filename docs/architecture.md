@@ -2,6 +2,13 @@
 
 [← Transmission-line model](transmission-lines.md) · [Index](index.md) · [Next: APIs →](api.md)
 
+![The parts of kicad2ems: the front ends, the core, the analyses and solvers, the engines](img/stack-map.svg)
+
+The parts are the subpackages of the one package, `kicad2ems`: the front ends (`ipc`, the KiCad plugin; `gui`;
+`dfsynth`) drive `core`; the analyses (`pcbqs`, `fem`) and the solvers (`fdtd`, `mom25d`, `fem`) plug into it
+through `core.analyses` and `core.solvers` ([APIs](api.md)); `fdtd` runs one FDTD model on openEMS or `gfdtd`, and
+`emsdev` probes the machine for the rest.
+
 ## The run pipeline
 
 `cli.main` reads the command line and the config into one `config.Settings`.

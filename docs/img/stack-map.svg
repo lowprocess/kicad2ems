@@ -1,0 +1,231 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="974" viewBox="0 0 1000 974" role="img" aria-label="Block diagram of kicad2ems, one repository and one package: KiCad (through kicad2ems.ipc), kicad2ems.gui and kicad2ems.dfsynth drive kicad2ems.core as front ends; kicad2ems.pcbqs and kicad2ems.fem are analyses, and kicad2ems.fdtd, kicad2ems.mom25d and kicad2ems.fem solvers, through core.solvers and core.analyses; kicad2ems.fdtd holds one FDTD model and runs it on openEMS or kicad2ems.gfdtd; kicad2ems.emsdev probes the machine for the core, mom25d and gfdtd.">
+  <title>kicad2ems stack map</title>
+  <style>
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans+Condensed:wght@500;600&amp;family=IBM+Plex+Sans:wght@400;500&amp;display=swap");
+/* SVG classes, all from tokens */
+.n { fill: #ffffff; stroke: #1d2420; stroke-width: 1.4; }
+.core { fill: #f3f5f2; stroke: #1d2420; stroke-width: 1.6; }
+.inner { fill: #ffffff; stroke: #c9d1cb; stroke-width: 1.2; }
+.x { fill: none; stroke: #7b8680; stroke-width: 1.3; stroke-dasharray: 5 4; }
+.port { fill: #a8641f; }
+.t { fill: #1d2420; font-family: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif; font-weight: 600; font-size: 15px; }
+.tm { fill: #1d2420; font-family: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: 12px; }
+.s { fill: #5b665f; font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 11.5px; }
+.lab { fill: #5b665f; font-family: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: 11px; }
+.lab.api { fill: #a8641f; }
+.lab.priv { fill: #b3362f; }
+.tx { fill: #7b8680; font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 12px; }
+.e { fill: none; stroke: #1d2420; stroke-width: 1.4; }
+.e.api { stroke: #a8641f; stroke-width: 1.8; }
+.e.proc { stroke-dasharray: 6 4; }
+.e.priv { stroke: #b3362f; stroke-dasharray: 2 4; stroke-width: 2; stroke-linecap: round; }
+.e.soft { stroke: #5b665f; stroke-width: 1.1; }
+.ah { fill: #1d2420; } .ah.api { fill: #a8641f; } .ah.priv { fill: #b3362f; } .ah.soft { fill: #5b665f; }
+
+  </style>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+      <defs>
+        <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="aa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah api" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="ap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah priv" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="as" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="ah soft" d="M0,0 L10,5 L0,10 z"/></marker>
+      </defs>
+
+      <!-- ===== Front ends ===== -->
+      <text class="lab" x="20" y="22">FRONT ENDS</text>
+      <rect class="x" x="20" y="40" width="190" height="82" rx="4"/>
+      <text class="t" x="36" y="68" style="fill:#7b8680">KiCad 9+ PCB editor</text>
+      <text class="tx" x="36" y="90">the open board, unsaved</text>
+      <text class="tx" x="36" y="106">edits included</text>
+
+      <rect class="n" x="270" y="40" width="210" height="82" rx="4"/>
+      <text class="t" x="286" y="68">kicad2ems.ipc</text>
+      <text class="s" x="286" y="90">toolbar plugin: impedance map,</text>
+      <text class="s" x="286" y="106">region + ports, quick run</text>
+
+      <rect class="n" x="540" y="40" width="200" height="82" rx="4"/>
+      <text class="t" x="556" y="68">kicad2ems.gui</text>
+      <text class="s" x="556" y="90">PySide6 window: settings,</text>
+      <text class="s" x="556" y="106">runs, S-params, fields, 3D</text>
+
+      <rect class="n" x="800" y="40" width="180" height="82" rx="4"/>
+      <text class="t" x="816" y="68">kicad2ems.dfsynth</text>
+      <text class="s" x="816" y="90">filter synthesis</text>
+      <text class="s" x="816" y="106">→ .kicad_pcb + .toml</text>
+
+      <!-- KiCad -> ipc -->
+      <path class="e" d="M210,81 L268,81" marker-end="url(#a)"/>
+      <text class="lab" x="216" y="73">IPC API</text>
+      <text class="lab" x="216" y="98">(kipy)</text>
+      <!-- ipc -> gui : the GUI's public API (PlanView) -->
+      <path class="e api" d="M480,62 L538,62" marker-end="url(#aa)"/>
+      <text class="lab api" x="509" y="33" text-anchor="middle">gui.planview</text>
+      <!-- ipc -> gui : launch process -->
+      <path class="e proc" d="M480,100 L538,100" marker-end="url(#a)"/>
+      <text class="lab" x="484" y="116">opens</text>
+      <!-- gui -> dfsynth -->
+      <path class="e proc" d="M740,70 L798,70" marker-end="url(#a)"/>
+      <text class="lab" x="769" y="62" text-anchor="middle">runs</text>
+      <path class="e proc" d="M740,100 L798,100" marker-end="url(#a)"/>
+      <text class="lab" x="769" y="116" text-anchor="middle">describe</text>
+
+      <!-- front ends -> core (api.frontend) -->
+      <path class="e api" d="M330,122 L330,196" marker-end="url(#aa)"/>
+      <text class="lab" x="338" y="158">line model, board</text>
+      <path class="e proc" d="M462,122 L462,196" marker-end="url(#a)"/>
+      <text class="lab" x="470" y="150">run</text>
+
+      <path class="e api" d="M600,122 L600,196" marker-end="url(#aa)"/>
+            <path class="e proc" d="M700,122 L700,196" marker-end="url(#a)"/>
+      <text class="lab" x="708" y="150">kicad2ems process</text>
+      <text class="lab" x="708" y="165">+ --events JSONL</text>
+
+      <path class="e proc" d="M890,122 L890,196" marker-end="url(#a)"/>
+      <text class="lab" x="898" y="150">--validate</text>
+      <text class="lab" x="898" y="165">(process)</text>
+
+      <!-- ===== Core ===== -->
+      <rect class="core" x="20" y="198" width="960" height="214" rx="6"/>
+      <!-- API ports -->
+      <rect class="port" x="290" y="194" width="440" height="6" rx="2"/>
+      <text class="lab api" x="20" y="190">core: for front ends (docs/api.md)</text>
+      <text class="t" x="40" y="230">kicad2ems.core</text>
+      <text class="s" x="162" y="230">CLI · Board · pipeline · report</text>
+
+      <!-- pipeline strip -->
+      <text class="lab" x="40" y="268">pipeline.Job</text>
+      <g>
+        <rect class="inner" x="136" y="250" width="80" height="28" rx="3"/><text class="tm" x="176" y="268" text-anchor="middle">preflight</text>
+        <rect class="inner" x="229" y="250" width="80" height="28" rx="3"/><text class="tm" x="269" y="268" text-anchor="middle">import</text>
+        <rect class="inner" x="322" y="250" width="80" height="28" rx="3"/><text class="tm" x="362" y="268" text-anchor="middle">Board</text>
+        <rect class="inner" x="415" y="250" width="80" height="28" rx="3"/><text class="tm" x="455" y="268" text-anchor="middle">lines</text>
+        <rect class="inner" x="508" y="250" width="80" height="28" rx="3"/><text class="tm" x="548" y="268" text-anchor="middle">assess</text>
+        <rect class="inner" x="601" y="250" width="80" height="28" rx="3"/><text class="tm" x="641" y="268" text-anchor="middle">prepare</text>
+        <rect class="inner" x="694" y="250" width="80" height="28" rx="3"/><text class="tm" x="734" y="268" text-anchor="middle">solve</text>
+        <rect class="inner" x="787" y="250" width="80" height="28" rx="3"/><text class="tm" x="827" y="268" text-anchor="middle">outputs</text>
+        <rect class="inner" x="880" y="250" width="80" height="28" rx="3"/><text class="tm" x="920" y="268" text-anchor="middle">report</text>
+        <path class="e soft" d="M217,264 L227,264" marker-end="url(#as)"/>
+        <path class="e soft" d="M310,264 L320,264" marker-end="url(#as)"/>
+        <path class="e soft" d="M403,264 L413,264" marker-end="url(#as)"/>
+        <path class="e soft" d="M496,264 L506,264" marker-end="url(#as)"/>
+        <path class="e soft" d="M589,264 L599,264" marker-end="url(#as)"/>
+        <path class="e soft" d="M682,264 L692,264" marker-end="url(#as)"/>
+        <path class="e soft" d="M775,264 L785,264" marker-end="url(#as)"/>
+        <path class="e soft" d="M868,264 L878,264" marker-end="url(#as)"/>
+      </g>
+
+      <g transform="translate(0,-56)">
+      <!-- shared modules (the FDTD layer has left the core) -->
+      <text class="lab" x="40" y="366">shared modules</text>
+      <rect class="inner" x="40" y="376" width="180" height="58" rx="3"/>
+      <text class="tm" x="52" y="398">importers/</text>
+      <text class="s" x="52" y="418">.kicad_pcb, Gerber</text>
+
+      <rect class="inner" x="236" y="376" width="220" height="58" rx="3"/>
+      <text class="tm" x="248" y="398">lines/ · solvers/lines</text>
+      <text class="s" x="248" y="418">line model; qucs, scikit-rf</text>
+
+      <rect class="inner" x="472" y="376" width="150" height="58" rx="3"/>
+      <text class="tm" x="484" y="398">fields/</text>
+      <text class="s" x="484" y="418">dumps, far field</text>
+
+      <rect class="inner" x="638" y="376" width="140" height="58" rx="3"/>
+      <text class="tm" x="650" y="398">runs.py</text>
+      <text class="s" x="650" y="418">TOML, stop</text>
+
+      <rect class="inner" x="794" y="376" width="166" height="58" rx="3"/>
+      <text class="tm" x="806" y="398">solvers/ registry</text>
+      <text class="s" x="806" y="418">SOLVERS, ANALYSES lists</text>
+
+      <!-- the one door for solvers and analyses -->
+      <rect class="port" x="40" y="464" width="680" height="6" rx="2"/>
+      <text class="lab api" x="730" y="490">core.solvers,</text>
+      <text class="lab api" x="730" y="505">core.analyses</text>
+
+      <!-- ===== Analysis plugins ===== -->
+      <text class="lab" x="20" y="528">ANALYSIS PLUGINS</text>
+      <rect class="n" x="40" y="540" width="240" height="88" rx="4"/>
+      <text class="t" x="56" y="566">kicad2ems.pcbqs</text>
+      <text class="s" x="56" y="588">power integrity, near field,</text>
+      <text class="s" x="56" y="604">circuits (ngspice), thermal;</text>
+      <text class="s" x="56" y="620">S-parameters at low frequency</text>
+      <rect class="n" x="330" y="540" width="330" height="88" rx="4"/>
+      <text class="t" x="346" y="566">kicad2ems.fem</text>
+      <text class="s" x="346" y="588">Elmer and Palace as engines: a rail's drop,</text>
+      <text class="s" x="346" y="604">temperature, capacitance, coils with ferrite;</text>
+      <text class="s" x="346" y="620">Palace's S-parameters (a solver plugin too)</text>
+      <path class="e api" d="M160,540 L160,474" marker-end="url(#aa)"/>
+      <path class="e api" d="M495,540 L495,474" marker-end="url(#aa)"/>
+
+      <g transform="translate(0,130)">
+
+      <!-- ===== Solver plugins ===== -->
+      <text class="lab" x="20" y="528">SOLVER PLUGINS</text>
+      <rect class="n" x="40" y="540" width="520" height="180" rx="4"/>
+      <text class="t" x="56" y="566">kicad2ems.fdtd</text>
+      <text class="s" x="176" y="566">two FDTD solvers on one model</text>
+
+      <rect class="inner" x="56" y="580" width="488" height="44" rx="3"/>
+      <text class="tm" x="68" y="598">FDTD layer · plugin.FDTD, MESH, RUN · engines.py</text>
+      <text class="s" x="68" y="615">board → mesh + openEMS-style model; per-port runs, antenna, readback</text>
+
+      <text class="lab" x="300" y="642" text-anchor="middle">subclass FDTD</text>
+      <rect class="inner" x="56" y="650" width="236" height="54" rx="3"/>
+      <text class="tm" x="68" y="672">openems/</text>
+      <text class="s" x="68" y="692">openEMS engine, --converge, venv</text>
+      <rect class="inner" x="308" y="650" width="236" height="54" rx="3"/>
+      <text class="tm" x="320" y="672">gfdtd.py</text>
+      <text class="s" x="320" y="692">gfdtd engine, backends, GPU batches</text>
+      <path class="e soft" d="M174,650 L174,627" marker-end="url(#as)"/>
+      <path class="e soft" d="M426,650 L426,627" marker-end="url(#as)"/>
+
+      <rect class="n" x="600" y="540" width="190" height="100" rx="4"/>
+      <text class="t" x="616" y="566">kicad2ems.mom25d</text>
+      <text class="tm" x="616" y="588">mom25d · mixed</text>
+      <text class="s" x="616" y="608">2.5D MoM, triangle mesher,</text>
+      <text class="s" x="616" y="624">C++/OpenMP core</text>
+
+      <rect class="n" x="830" y="540" width="150" height="100" rx="4"/>
+      <text class="t" x="846" y="566">kicad2ems.emsdev</text>
+      <text class="s" x="846" y="588">GPUs, CPU threads,</text>
+      <text class="s" x="846" y="604">memory, compiled-</text>
+      <text class="s" x="846" y="620">core builds</text>
+
+      <!-- registration through api.solver -->
+      <path class="e api" d="M300,540 L300,344" marker-end="url(#aa)"/>
+      <path class="e api" d="M695,540 L695,344" marker-end="url(#aa)"/>
+      <!-- core -> emsdev -->
+      <path class="e" d="M905,340 L905,538" marker-end="url(#a)"/>
+      <text class="lab" x="913" y="440">sysinfo</text>
+      <!-- mom25d -> emsdev -->
+      <path class="e" d="M790,590 L828,590" marker-end="url(#a)"/>
+
+      <!-- ===== Engines and libraries ===== -->
+      <text class="lab" x="20" y="766">ENGINES AND LIBRARIES</text>
+      <rect class="x" x="56" y="780" width="236" height="60" rx="4"/>
+      <text class="tx" x="72" y="806">openEMS + CSXCAD</text>
+      <text class="tx" x="72" y="824">C++, not on PyPI</text>
+
+      <rect class="n" x="308" y="780" width="236" height="60" rx="4"/>
+      <text class="t" x="324" y="804">kicad2ems.gfdtd</text>
+      <text class="s" x="324" y="824">standalone engine; no kicad2ems</text>
+
+      <rect class="x" x="600" y="780" width="190" height="60" rx="4"/>
+      <text class="tx" x="616" y="806">slangpy (Vulkan) · CuPy</text>
+      <text class="tx" x="616" y="824">any GPU · CUDA / ROCm</text>
+
+      <path class="e" d="M174,704 L174,778" marker-end="url(#a)"/>
+      <path class="e api" d="M426,704 L426,778" marker-end="url(#aa)"/>
+      <text class="lab" x="182" y="750">CSX + openEMS</text>
+      <text class="lab api" x="434" y="750">gfdtd's engine</text>
+      <path class="e" d="M544,810 L598,810" marker-end="url(#a)"/>
+      <text class="lab" x="571" y="802" text-anchor="middle">kernels</text>
+      <path class="e" d="M695,640 L695,778" marker-end="url(#a)"/>
+      <text class="lab" x="703" y="712">GPU LU</text>
+      <path class="e soft" d="M870,640 L870,810 L792,810" marker-end="url(#as)"/>
+      <text class="lab" x="878" y="712">probes</text>
+      <path class="e" d="M426,840 L426,872 L945,872 L945,642" marker-end="url(#a)"/>
+      <text class="lab" x="686" y="888" text-anchor="middle">GPU + thread probes</text>
+      </g>
+      </g>
+    </svg>

@@ -278,6 +278,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   its own pytest. The old extras (mom, qs, gfdtd, filter, dumps, openems) install nothing more; the compiled cores
   (mom25d, pcbqs, emsdev's mesher) are built by the installer, not shipped in the wheel. The superproject's pins
   and the separate repositories are no longer how the stack is put together.
+- **The GPU report and the stack map moved here from kicad2ems-project (2026-11-19).** `tools/gpu_report.py` runs
+  in this repository: the GPU tests from `tests/<part>`, the boards from `examples/`, and `--check` compares each GPU
+  part's last commit (gfdtd, mom25d, pcbqs, emsdev, fdtd) with the report's, in place of the superproject's pins.
+  Its first report here (`gpu-report/2026-11-19.md`): every GPU test passes, and each GPU run is within 5e-7 of its
+  CPU run on demo_lowpass and rf_coupler. The stack map (`docs/img/stack-map.svg`, on docs/architecture.md) names
+  the parts as subpackages and their interfaces as the modules they now are (no `kicad2ems.api` or its versions).
+  `tools/bench_solvers.py` is the benchmark of today's stack (it runs; kicad2ems-project's benchmark-results stays
+  an archive).
 - **mom25d's refinement on the GPU (2026-11-18).** Where the GPU holds the double-precision matrix and two LUs
   beside it, the hybrid fills the matrix in the GPU's mapped host memory, copies it across (no staging copy, no
   complex64 copy on the host) and runs GMRES's products there in double precision: 15 ms for two ports at 14.7k

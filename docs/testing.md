@@ -43,6 +43,22 @@ pages offscreen, the 3D view's arrays) in `tests/gui`, on the same stand-in solv
 process of its own; a solver that is not installed or not usable is skipped. It runs openEMS only with
 `KICAD2EMS_CONFORMANCE_OPENEMS=1` (`tools/test_all.sh --openems`).
 
+## The GPUs, before a release
+
+CI has no GPU: its runners have Mesa's CPU Vulkan (lavapipe), on which mom25d's Vulkan LU runs but gfdtd's kernels
+do not. On a machine with GPUs, before a release, `tools/gpu_report.py` runs what CI cannot and writes
+`gpu-report/<date>.md` and `gpu-report/latest.json`, to commit with the release:
+
+```bash
+python tools/gpu_report.py           # the GPU tests, and two boards on each GPU backend against the CPU
+python tools/gpu_report.py --check   # is the latest report for the GPU parts' code as it is now?
+```
+
+It records the GPUs and drivers, the repository's commit and each GPU part's last commit (gfdtd, mom25d, pcbqs,
+emsdev, fdtd), the GPU tests (passed, failed, and skipped with why) and, on demo_lowpass and rf_coupler, the largest
+|ΔS| of each GPU run against its solver's CPU run, with the wall times. `--check` reads the report as out of date
+once a later commit touches one of those parts.
+
 ## Fixtures
 
 `tests/core/k2e_fixtures.py` holds the fixtures, shared with the solver packages' tests (their `conftest.py` imports it

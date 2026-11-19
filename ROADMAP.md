@@ -15,15 +15,13 @@ estimates are working days. Last updated 2026-11-19.
 2. **References** (R-C9, C10):
    - no stored S-parameters to regress against, and mom25d's README figures are tighter than its tests;
    - pcbqs's real-board regressions need `~/Desktop/wpthb`.
-3. **The GPUs** (R-C7): run before a release instead of in CI. Left: the report's tool (`tools/gpu_report.py`)
-   and its reports (`gpu-report/`) are still kicad2ems-project's, not this repository's; an NVIDIA run in the
-   report (the GTX 980 Ti is listed, CuPy runs on the AMD card here); gfdtd on lavapipe in CI, as mom25d's Vulkan
-   LU is (R-C7.2).
+3. **The GPUs** (R-C7): run before a release instead of in CI (`tools/gpu_report.py`, docs/testing.md). Left: an
+   NVIDIA run in the report (the GTX 980 Ti is listed; Vulkan's runs take the AMD card, CuPy runs on it too); the
+   report's mom25d boards are small enough to factor on the CPU, so a board past the GPU's threshold; gfdtd on
+   lavapipe in CI, as mom25d's Vulkan LU is (R-C7.2).
 4. **A release** (R-C12, C16, C17, M). Left:
    - PyPI, which refuses direct-URL dependencies (not yet: the user's call, 2026-11-14);
-   - the KiCad plugin's PCM entry and its v0.1.0 tag;
-   - a benchmark that runs today's stack (kicad2ems-project's benchmark-results is from 2026-11-08 and imports
-     modules that are gone).
+   - the KiCad plugin's PCM entry and its v0.1.0 tag.
 
 ## The study: questions and engines
 
@@ -384,6 +382,4 @@ R-E18, in order:
 
 The review's section G, corrected on 2026-11-14 but for these:
 - the line model's `conductor_loss = yes` (with the line model's item 4, its losses);
-- the stack map (`img/kicad2ems-stack-map.svg` in kicad2ems-project), which has neither pcbqs nor the fem part,
-  and shows separate repositories;
 - mom25d's README validation figures, tighter than its tests check (CI and release, item 2).
