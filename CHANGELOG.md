@@ -63,6 +63,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Sommerfeld integrals depend on it). The next frequency's fill beside the GPU's factor was measured and left:
   sma_launch's 3 factorisations take 4 s of 43 (its other 10 solves reuse one), and the sweep picks each next
   frequency from the last solve. The reused LU's GMRES product (13 s there) is in the ROADMAP.
+- **Failed and stopped runs stay listed (R-E24), and the window's desktop basics (R-E25).** A run that fails or
+  is stopped keeps its row, with how it ended and its log when picked; *Delete run* removes one; a run's process's
+  whole output is kept in stdout.log. A board, config or results folder dropped on the window opens; an exception
+  in a slot is shown in a dialog; a crash, and a run that cannot start, are said (kicad2ems-gui 061e7b6).
+- **The 3D view colours a frame when it is shown (R-D21),** its colour range from a subsample and the map from a
+  lookup table; the height scale no longer recolours. A colour control's step on a 256-voxel frequency-domain
+  volume: 12.1 s and 4.8 GB to 0.5 s and 0.7 GB (kicad2ems-gui 94aceb4).
 - **The window's desktop basics, the rest (R-E25).** *Edit → Undo / Redo* through the settings' changes (a tick
   or a choice a step, a field's typing a step once it pauses; the menu names the field), *View → Plot colours*
   (as the desktop, light or dark: every plot restyled at once, the Smith grid and markers too), *Save…* (HTML with
@@ -471,6 +478,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `mom25d.afs` and `mom25d.blr` (emsdev's `afs`, `fast.cluster_tiles`).
   `--mom-signal-vias` (square or N-sided signal vias: 0.03-0.05 off at 5-8
   GHz, nothing saved; signal vias are round, `--mom-stitching-vias` stays).
+
+### Done before the merge, recorded in the ROADMAP until now (2026-11-15)
+- **gfdtd's memory (R-D7).** The build's host peak 443 to 229 B a node (the geometry as views of the grid's
+  spacings, compress's arrays let go once used), what the core keeps 152 to 86; the GPU backends check the model
+  against the free VRAM, `auto` running one that does not fit on the CPU.
+- **Palace on real boards (R-B21).** `feature_size` takes every piece's nearest gap (a tree, not the first 60 a
+  layer), the copper's outlines are straightened (to a twentieth of the feature, at most 10 µm), and `estimate()`
+  builds the mesh and scales it by the examples' runs (demo_lowpass at the default feature: 16 min and 13.5 GB
+  estimated, 30 min and 19.3 GB as run).
+- **`elmer_dc` on the layered wedges (R-D23).** wpthb VHB in 0.8 s and 120 MB, within 0.2 % of 1.1 M tetrahedra's
+  drop.
+
+### Decided
+- **Wave-port set-up (R-D10).** A port's line is characterised as a 3D model of its own, kept on disk by
+  cross-section: on `tests/mom25d/boards/launch.json` 6.8 s of the first run's 31 s, 0.5 s cached. A shorter line
+  is no cheaper way (18 mm against 8 mm: Zc 6 ohm and beta 1 % off; 10 mm: 36 ohm); a 2D cut of the feed would need
+  a full-wave solve of its own and would not take a coplanar ground stitched by vias. Left until a board needs it.
+- **No one shared gfdtd device (R-D4.2).** A worker's device and pipelines cost about 1 s once and nothing on its
+  later runs; the threads make theirs at the same time, and slangpy gives a device one queue, so one device would
+  save little wall time and stop the runs overlapping.
+- **gfdtd's energy check syncs every 100 steps (R-D8).** Every 1,600 gains 1.7 % of the steps a second on 1.7 M
+  nodes and 3.6 % on 0.22 M (RX 7800 XT): not three backends' work.
+- **The fem part's `mag` keeps its n(n+1)/2 energy solves** (three for a coil pair, where flux linkage would take
+  two and each coil's flux integral).
 
 ## 2026-11-14 (0.3.0)
 
