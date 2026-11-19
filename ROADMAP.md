@@ -117,9 +117,21 @@ The Solver Matrix's 45 boards went from 24.7 to under 9 min on 2026-11-18/19 (CH
 plates as cells, `--mom-coarsen 2`, the sides' blocks, the via and side blocks interpolated over frequency, the
 GPU's double products). Measured and left, roughly in order of what they would save:
 
-1. **The GPU LU's panel.** It runs at about 7 TFLOP/s against its GEMM's 13.6, held by the CPU's panel
-   factorisation in its second half (a 256-column panel about 10 ms at 7000 rows): the panel on the GPU, or a
-   look-ahead. The LU is still 35 % of rf_ebg's solve.
+1. **The GPU LU, measured (2026-11-19, RX 7800 XT; the factor's `stats['steps']`).** At 14k unknowns 0.90 s
+   (8.2 TFLOP/s): the first ~60 % of the steps are the GPU's (the update GEMM ~11.7 TFLOP/s at k = 256, and per
+   step ~4-6 ms besides it: the panel down and up ~1 ms each, the triangular solves 1.6 ms, the interchanges), the
+   rest the CPU's panel (1-4 ms a step, the GPU's share under 1 ms). At 7k the CPU's panels set the pace from the
+   start (0.18 s, 5.2 TFLOP/s). Tried and not kept: wider or narrower panels (128: same, 384 and 512: slower), the
+   first panel factored on the host during the upload or the GPU's conversion (no faster: its copy down is short
+   at these sizes), the diagonal blocks' inverses in a thread (the CPU's panels twice as slow: OpenBLAS's threads
+   shared), Gauss's three-product complex GEMM (+7 % on the GEMM, not on the LU, a larger error). Left, in order:
+   - the GEMM itself (its ceiling with this kernel's layout ~11.7 TFLOP/s, 18.7 the card's FP32 without dual
+     issue): more of k per stage, or a layout the compiler dual-issues;
+   - the panel on the GPU, which would end the copies and the CPU's tail; on a slow bus it is the whole cost: the
+     GTX 980 Ti here reads back at 0.07-0.18 GB/s (its slot; slangpy's own copies too) and its LU at 14k is 16 s,
+     13 of them waiting on the panel's copies;
+   - the copies down and up overlapped with the trailing GEMM (they touch other columns: no barrier between
+     them), and the triangular solves as a GEMM with the CPU's inverse of L11 (~0.7 ms a step early on).
 2. **The near-field correction** (9 % on rf_ebg and sma_launch): its atomics replaced by row locks, estimated 2 %.
 3. **Interpolation where it does not apply.** Boards with holes in PEC planes fill every frequency (their
    estimate always fails); slot planes interpolate a quarter; wide bands (rf_bends, 1-12 GHz) fill 23 of 30.

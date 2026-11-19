@@ -276,6 +276,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **mom25d's Vulkan LU: 96 x 96 GEMM tiles on AMD GPUs (2026-11-19).** `gpu_vk.tile` picks each GPU's tile
+  (`MOM25D_VK_GT` overrides it): on an RX 7800 XT GT = 6 runs the update GEMM at 11.7 TFLOP/s against GT = 4's 10.9,
+  the LU at 14k unknowns 0.935 -> 0.898 s and at 20k 2.44 -> 2.31 s (7k unchanged: its CPU panels set the pace); the
+  factors are bit-for-bit the same. Other GPUs keep GT = 4 (a GTX 980 Ti was 7 % slower with 6). The factor's stats
+  now hold each step's CPU panel and wait (`stats['steps']`). What the LU's time goes to, and what was tried and not
+  kept: ROADMAP.md, mom25d speed item 1.
 - **The window's config and runs in progress as models without Qt (the window, item 1).** `gui/document.py`'s
   `StudyDocument` holds a config as data (the RF settings, each analysis's tables with an analysis's several runs,
   the study, and what this machine cannot show: an analysis not installed, a question no engine here answers) and

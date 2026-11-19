@@ -63,8 +63,9 @@ uniform float alpha_, beta_;
 
 // C = beta C + alpha A B (complex64): 16 x 16 threads, each GT x GT outputs of
 // a TM x TM tile, TK deep per stage
-// (GT = 4: 64 x 64 tiles ran 13.6 TFLOP/s on an RX 7800 XT with the prefetch,
-// 128 x 128 ones 9.3; TK = 32 crashed RADV's shader compiler).
+// (GT per GPU: tile(); on an RX 7800 XT 96 x 96 tiles (GT = 6) ran 11.7
+// TFLOP/s at the LU's k = 256, 64 x 64 ones 10.9, 128 x 128 ones 9.3; TK = 32
+// crashed RADV's shader compiler).
 // gemm_flat: A and B each in one buffer (the host checks), addressed without
 // the buffer table. Whole tiles load without bounds tests (a workgroup-uniform
 // branch).
@@ -423,12 +424,25 @@ DNAMES = ('zgemv', 'to_c64')
 DR = DC = 4
 
 
-GT = 4  # each thread's outputs: GT x GT (the tile 16 GT square)
+GT = 4  # each thread's outputs: GT x GT (the tile 16 GT square); tile() per GPU
 # trsm's workgroup: TRSM_COLS columns, TRSM_LANES threads each. At N = 16k on an
 # RX 7800 XT: 4 x 64 69 ms a factorisation, 16 x 16 271 ms, 16 x 8 377 ms (few
 # rows a thread between barriers is what pays)
 TRSM_COLS = int(os.environ.get('MOM25D_VK_TRSM_COLS') or 4)
 TRSM_LANES = int(os.environ.get('MOM25D_VK_TRSM_LANES') or 64)
+
+
+def tile(device):
+    """GT for a GPU (MOM25D_VK_GT overrides it). The update GEMM at k = 256
+    (2026-11-19, 12.7k x 12.7k): on an RX 7800 XT GT = 6 (96 x 96 tiles) 11.7
+    TFLOP/s against GT = 4's 10.9 (the LU at 14-20k unknowns 4-5 % faster; GT
+    = 5 11.6, Gauss's three-product form 11.7 at GT = 4 with a larger error, 8.8
+    at GT = 6); on a GTX 980 Ti (Maxwell) GT = 6 was the slower, its LU 7 %."""
+    env = os.environ.get('MOM25D_VK_GT', '').strip()
+    if env.isdigit():
+        return int(env)
+    name = str(device).lower()
+    return 6 if ('amd' in name or 'radeon' in name) else GT
 
 
 def source(gt=GT, nbmax=NB):
@@ -491,13 +505,14 @@ class VulkanBackend:
             raise devices.Unavailable(f"vulkan: {e}")
         self.spy, self.device = spy, self.info.name
         self.nb = int(os.environ.get('MOM25D_VK_NB') or NB)
+        self.gt = tile(self.info.name)
         self.usage = (spy.BufferUsage.shader_resource
                       | spy.BufferUsage.unordered_access
                       | spy.BufferUsage.copy_source
                       | spy.BufferUsage.copy_destination)
         mod = self.dev.load_module_from_source(
-            f"mom25d_lu_{self.nb}_{GT}_{TRSM_COLS}_{TRSM_LANES}",
-            source(GT, self.nb))
+            f"mom25d_lu_{self.nb}_{self.gt}_{TRSM_COLS}_{TRSM_LANES}",
+            source(self.gt, self.nb))
         self.k = {
             n: self.dev.create_compute_pipeline(
                 self.dev.link_program([mod], [mod.entry_point(n)]))
@@ -593,7 +608,7 @@ class VulkanBackend:
         and B's n are each in one buffer."""
         if m <= 0 or n <= 0 or k <= 0:
             return
-        tm = 16 * GT
+        tm = 16 * self.gt
         A, fa = self._one_buffer(A, k)
         B, fb = self._one_buffer(B, n)
         self._run(('gemm_flat' if fa and fb else 'gemm'),
@@ -685,6 +700,7 @@ class VulkanBackend:
         U12 = self._work('u12', 8 * nb * N)
         dinv, pending, piv = [], [], np.zeros(N, np.int32)
         t_cpu = t_wait = 0.0
+        steps = []                    # per step: (k0, cpu panel, wait)
 
         def down(k0, b):  # record: panel A[k0:, k0:k0+b] -> hdn
             self._copy(A.desc(k0, k0), self._flatdesc(hdn.address, N - k0),
@@ -780,8 +796,10 @@ class VulkanBackend:
             inverses()
             tw = time.perf_counter()
             self.dev.wait_for_submit(s1)
-            t_wait += time.perf_counter() - tw
+            tc = time.perf_counter()
             moved = cpu(k0 + b, nb1)
+            t_wait += tc - tw
+            steps.append((k0, time.perf_counter() - tc, tc - tw))
         inverses()
         Dbuf = []  # the inverses on the device: block bi at bi NB^2
         for which in (0, 1):
@@ -799,7 +817,7 @@ class VulkanBackend:
         self.lu = (A, Dbuf, order)
         self.piv = piv
         self.stats = dict(seconds=time.perf_counter() - t0, cpu=t_cpu,
-                          wait=t_wait)
+                          wait=t_wait, steps=steps)
 
     # ---- the double Z on the GPU: the refinement's products ----------------
     def dense_ok(self):
