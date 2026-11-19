@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **A board end to end through the FDTD layer in CI (R-C6).** `tests/fdtd/test_board_end_to_end.py` generates
+  demo_lowpass, runs its example config on gfdtd's CPU backend in a process of its own (~8 s) and checks it against
+  openEMS's S-parameters of the same run, stored in `tests/fdtd/data/demo_lowpass_openems.s2p`: within 0.05 in
+  complex S11 and S21 (0.029 measured, at 0.6 GHz), and a low-pass whatever the reference (its -3 dB at 0.76 GHz:
+  the parts' ESL and pads move it from the ideal 1 GHz, in openEMS too).
 - **`--mom-thickness mixed` (mom25d).** Plates of thick copper's sides only where copper faces copper within
   0.5 mm or is narrower than 1 mm, the other edges with `edge`'s correction: unknowns of the 44 boards 177.5k →
   160.7k (rf_bends 7.1k → 5.7k, sma_launch 15.1k → 13.3k), the suite 14.6 → 11.5 min on a loaded machine. Not the

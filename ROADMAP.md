@@ -10,16 +10,15 @@ estimates are working days. Last updated 2026-11-19.
 
 ## CI and release
 
-1. **An FDTD run end to end** (R-C6): a small board through the FDTD layer on `gfdtd:cpu`, with openEMS's
-   S-parameters stored as its reference (CI runs gfdtd's and the FDTD layer's tests, not a solve of a board).
-2. **References** (R-C9, C10):
-   - no stored S-parameters to regress against, and mom25d's README figures are tighter than its tests;
+1. **References** (R-C9, C10):
+   - stored S-parameters to regress against for the other solvers (the FDTD layer has demo_lowpass's, below), and
+     mom25d's README figures are tighter than its tests;
    - pcbqs's real-board regressions need `~/Desktop/wpthb`.
-3. **The GPUs** (R-C7): run before a release instead of in CI (`tools/gpu_report.py`, docs/testing.md). Left: an
+2. **The GPUs** (R-C7): run before a release instead of in CI (`tools/gpu_report.py`, docs/testing.md). Left: an
    NVIDIA run in the report (the GTX 980 Ti is listed; Vulkan's runs take the AMD card, CuPy runs on it too); the
    report's mom25d boards are small enough to factor on the CPU, so a board past the GPU's threshold; gfdtd on
    lavapipe in CI, as mom25d's Vulkan LU is (R-C7.2).
-4. **A release** (R-C12, C16, C17, M). Left:
+3. **A release** (R-C12, C16, C17, M). Left:
    - PyPI, which refuses direct-URL dependencies (not yet: the user's call, 2026-11-14);
    - the KiCad plugin's PCM entry and its v0.1.0 tag.
 
@@ -339,7 +338,7 @@ be checked for each scan.
    The magnetic materials run on the NumPy backend: the compiled kernels' H update with a per-edge μ and loss
    would put them on the GPU.
 
-Tests (a board end to end on `gfdtd:cpu`, lavapipe, NVIDIA) are under CI and release.
+Tests (lavapipe, NVIDIA) are under CI and release.
 
 ## The fem part (Elmer, Palace)
 
@@ -382,4 +381,4 @@ R-E18, in order:
 
 The review's section G, corrected on 2026-11-14 but for these:
 - the line model's `conductor_loss = yes` (with the line model's item 4, its losses);
-- mom25d's README validation figures, tighter than its tests check (CI and release, item 2).
+- mom25d's README validation figures, tighter than its tests check (CI and release, item 1).
