@@ -247,10 +247,8 @@ that does not need N² memory. In this order:
    longer more than the sweep; a shorter line is no cheaper way (its 18 mm against 8 mm: Zc 6 ohm and beta 1 % off,
    10 mm: 36 ohm). A 2D cut of the feed would need a full-wave solve of its own (a quasi-static one has no
    dispersion) and would not take a coplanar ground stitched by vias; left until a board needs it.
-2. **The reused LU's GMRES on the GPU** (found with R-D11, now in the CHANGELOG): a solve that reuses a nearby
-   frequency's LU iterates with the dense Z on the host, a memory-bound product (sma_launch: 13 s of 43, 0.14 s a
-   product of its 6.4 GB Z, 46 GB/s). Z kept on the GPU beside its LU (the RX 7800 XT: 624 GB/s) would take it to
-   about 1 s, for one upload a frequency (0.26 s at PCIe 4's 25 GB/s) and 6.4 GB more of the card.
+2. **The reused LU's GMRES on the GPU.** Done 2026-11-18 (CHANGELOG.md; docs/mom.md#gpu-products): the
+   double Z on the GPU beside its LUs, its products in double there (rf_ebg 104 -> 82 s).
 3. **Copper thickness, the rest.** The sides are the default since 2026-11-17 (docs/mom.md#thickness), resolved
    in one place (`mom25d.thickness`), with wave ports too since 2026-11-18 (`WAVE_SIDES`); left: the sides
    with holes and openings of PEC planes and a via's vertical current, the
@@ -261,6 +259,30 @@ that does not need N² memory. In this order:
    `emsdev/native`. Left to port: mom25d's singular rule over the smaller triangle into pcbqs (`mom25d.sing` wraps
    the shared `offplane_pairs` with it), with pcbqs's compiled static, compressed and layered kernels (they
    integrate over p too; ported in Python alone, fourteen of pcbqs's tests held them apart).
+
+## mom25d speed: what is left (2026-11-19)
+
+The Solver Matrix's 45 boards went from 24.7 to under 9 min on 2026-11-18/19 (CHANGELOG.md: the sweep's fit, the
+plates as cells, `--mom-coarsen 2`, the sides' blocks, the via and side blocks interpolated over frequency, the
+GPU's double products). Measured and left, roughly in order of what they would save:
+
+1. **The GPU LU's panel.** It runs at about 7 TFLOP/s against its GEMM's 13.6, held by the CPU's panel
+   factorisation in its second half (a 256-column panel about 10 ms at 7000 rows): the panel on the GPU, or a
+   look-ahead. The LU is still 35 % of rf_ebg's solve.
+2. **The near-field correction** (9 % on rf_ebg and sma_launch): its atomics replaced by row locks, estimated 2 %.
+3. **Interpolation where it does not apply.** Boards with holes in PEC planes fill every frequency (their
+   estimate always fails); slot planes interpolate a quarter; wide bands (rf_bends, 1-12 GHz) fill 23 of 30.
+4. **Thickness cheaper than the sides.** `--mom-thickness mixed` (plates only on narrow copper and gaps) has
+   10 % fewer unknowns but fails the gates (antenna_patch +0.057 against openEMS); `edge` is 0.047 against the
+   sides' 0.036 on solid copper and unvalidated with wave ports. A better rule for where the plates matter.
+5. **The sweep.** A greedy oracle needs 169 solves on 12 dense boards against the sweep's 206: the rest are
+   confirmations. Uncoupled ports fitted apart helped rf_bends (32 -> 29) but fitted noise on small blocks.
+6. **Without a GPU.** The block low-rank solver beats the CPU's complex64 LU at 14.7k (rf_ebg 39 s against 94 s,
+   5 solves), so `BLR_MIN_N` (20k) could drop on machines without a GPU: untested.
+7. **Estimates.** The window's time and memory estimate ignores the cell growth (`--mom-coarsen`, `--mom-cells`),
+   and `memory_plan` does not count the double Z on the GPU or the kept via blocks (up to one double Z).
+8. **Quad cells** (`--mom-quads`) no longer pay with the hexagonal mesh (same time, six boards further from
+   openEMS): kept experimental; remove if nothing needs them.
 
 ## Power tools (pcbqs)
 

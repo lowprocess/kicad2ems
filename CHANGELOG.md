@@ -264,6 +264,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **One repository, one package (2026-11-16 to 19).** mom25d, gfdtd, pcbqs, kicad2ems-fdtd, kicad2ems-fem,
+  kicad2ems-gui, kicad2ems-ipc, dfsynth and the shared numerics (emsdev) are merged into kicad2ems with their
+  history: `kicad2ems.{core,gui,fdtd,gfdtd,mom25d,pcbqs,fem,ipc,dfsynth,emsdev}`, their tests, docs, tools and
+  examples under `tests/<part>`, `docs/<part>` and so on, one wheel. `tools/test_all.py` runs each part's tests in
+  its own pytest. The old extras (mom, qs, gfdtd, filter, dumps, openems) install nothing more; the compiled cores
+  (mom25d, pcbqs, emsdev's mesher) are built by the installer, not shipped in the wheel. The superproject's pins
+  and the separate repositories are no longer how the stack is put together.
 - **mom25d's refinement on the GPU (2026-11-18).** Where the GPU holds the double-precision matrix and two LUs
   beside it, the hybrid fills the matrix in the GPU's mapped host memory, copies it across (no staging copy, no
   complex64 copy on the host) and runs GMRES's products there in double precision: 15 ms for two ports at 14.7k
