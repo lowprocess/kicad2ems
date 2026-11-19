@@ -377,14 +377,17 @@ def test_vulkan_double_z_products_and_factor(clean, max_buffer):
 
 def test_the_double_z_on_the_gpu_and_freed(clean, S_cpu):
     """The hybrid's products on the (emulated) GPU: the answer the host's,
-    the LU made from the GPU's copy, which is freed after the solve; with
-    MOM25D_GPU_DENSE off the host's products."""
+    the LU made from the GPU's copy, which is freed after the solve, the
+    next solve's matrix in the same mapped memory; with MOM25D_GPU_DENSE off
+    the host's products."""
     from kicad2ems.mom25d import policy
     sim = make_sim('emulate')
     S = sim.sparams(4e9)
     gpu = mom25d_gpu.get_backend('emulate')
     assert any(r[0] == 'Z to the GPU' for r in sim.log.records)
     assert gpu.zd is None and np.abs(S - S_cpu).max() < 1e-6
+    # the mapped matrix again, cleared first (the far fill adds to it)
+    assert np.abs(sim.sparams(4e9) - S_cpu).max() < 1e-6
     clean.setattr(policy, 'GPU_DENSE', False)
     sim = make_sim('emulate')
     S = sim.sparams(4e9)

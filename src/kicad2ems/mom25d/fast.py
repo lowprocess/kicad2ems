@@ -1144,7 +1144,7 @@ class FastOperator:
         return get_backend(self.sim.gpu)
 
     def _host_matrix(self, N):
-        """An N x N complex128 Z in the GPU's mapped host memory (the
+        """An N x N complex128 Z of zeros in the GPU's mapped host memory (the
         backend's host_buffer), kept for the next solve's."""
         zh = getattr(self, '_zh', None)
         if zh is None or zh.nbytes < 16 * N * N:
@@ -1153,7 +1153,9 @@ class FastOperator:
                 self._zh = zh = self._backend().host_buffer(16 * N * N)
             except MemoryError:  # (no mapped memory that large)
                 return np.zeros((N, N), complex)
-        return zh.view(np.complex128, N * N).reshape(N, N)
+        Z = zh.view(np.complex128, N * N).reshape(N, N)
+        _row_blocks(Z, lambda a, b: Z[a:b].fill(0))  # (fill_far adds)
+        return Z
 
     def release_host(self):
         """Free _host_matrix's mapped memory (16 N^2 bytes) after a sweep."""
