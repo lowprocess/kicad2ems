@@ -10,9 +10,8 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QPushButton, QLabel, QFileDialog, QScrollArea,
                                QMessageBox, QToolButton)
 from .runner import (FORM, BASIC, SEMICOLON_LISTS, SECTION_SOLVERS,
-                     SECTION_TITLES, TICK, group as group_of, settings_values,
-                     extra_values, save_config, solvers_from_form,
-                     solver_ticks)
+                     SECTION_TITLES, TICK, group as group_of, save_config,
+                     solvers_from_form, solver_ticks)
 from .optionrow import field, kind as kind_of, value, set_value
 from kicad2ems.core.fields.dumps import G_DUMP
 from .panels import Section, NeededList
@@ -49,12 +48,22 @@ class SetupTab(QWidget):
     undo_changed = Signal()  # what undo / redo can do now changed
     UNDO_REST = 700
 
+    # the document's (document.StudyDocument): the form is its view
+    path = property(lambda self: self.doc.path,
+                    lambda self, v: setattr(self.doc, 'path', v))
+    extra = property(lambda self: self.doc.extra,
+                     lambda self, v: setattr(self.doc, 'extra', v))
+    dirty = property(lambda self: self.doc.dirty,
+                     lambda self, v: setattr(self.doc, 'dirty', v))
+
     def __init__(self, win):
         super().__init__()
         from kicad2ems.core.config import Settings
-        self.win, self.edits, self.extra = win, {}, {}
-        self.path, self.dirty, self._loading, self.est = (None, False, False,
-                                                          None)
+        from .document import StudyDocument
+        # the config the form and the analyses' panels are views of: its path,
+        # the settings with no field here (extra), whether it is saved
+        self.win, self.edits, self.doc = win, {}, StudyDocument()
+        self._loading, self.est = False, None
         self._undo, self._redo, self._base, self._restoring, self._typed = (
             [], [], None, False, None)
         # a field's typing: one step when it rests
@@ -867,12 +876,14 @@ class SetupTab(QWidget):
     def new(self):
         if not self.maybe_save():
             return
+        from .document import StudyDocument
+        self.doc = StudyDocument()
         self.set_values({})
         # another board: the last one's no longer apply
         self.set_estimates(None)
         if hasattr(self.win, 'load_analyses'):
             self.win.load_analyses(None)  # and no analysis's settings
-        self.extra, self.path, self.dirty = {}, None, False
+        self.dirty = False
         self.win.update_title()
 
     def load(self, path=None):
@@ -884,28 +895,24 @@ class SetupTab(QWidget):
                                                   'TOML (*.toml)')
         if not path:
             return False
-        from kicad2ems.core.config import build_settings
+        from .document import StudyDocument
+        questions = getattr(self.win, 'study_questions', None)
         try:
-            vals, extra = settings_values(path), extra_values(path)
-            notes = build_settings({}, path).notes
+            doc = StudyDocument.read(path, questions=questions and questions())
         except Exception as e:
             QMessageBox.warning(self, 'Config', str(e))
             return False
-        self.set_values(vals)
+        self.doc = doc
+        self.set_values(doc.values)
         # another board: the last one's no longer apply
         self.set_estimates(None)
         if hasattr(self.win, 'load_analyses'):
             # the analyses it runs, and their settings
-            self.win.load_analyses(path)
-        self.extra, self.path, self.dirty = extra, os.path.abspath(path), False
+            self.win.load_analyses(doc)
+        self.dirty = False
         self.win.remember(self.path)
         self.win.update_title()
-        board = vals.get('board')
-        if board and not os.path.exists(board):
-            notes = (notes + [
-                f"board not found: {board} (generated examples: see the "
-                "commands at the top of the file)"
-            ])
+        notes = doc.notes
         self.win.statusBar().showMessage(
             ('; '.join(notes) if notes else f"opened {path}"),
             0 if notes else 5000)
@@ -930,7 +937,8 @@ class SetupTab(QWidget):
     def _write(self, path):
         try:
             # keeps the comments of the loaded file
-            save_config(path, self.values(), template=self.path)
+            self.doc.values = self.values()
+            save_config(path, self.doc.values, template=self.path)
             if hasattr(self.win, 'save_analyses'):
                 self.win.save_analyses(path)
         except Exception as e:

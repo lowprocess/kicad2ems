@@ -19,9 +19,12 @@ class WindowStudy:
         under it; the ticks of the last session (the first time: S-parameters,
         as Run always did)."""
         self._study_ready = False
-        (self.queue, self.job, self._job_t0, self._queue_preview,
-         self._queue_stopped, self._failed) = ([], None, 0.0, False, False,
-                                               set())
+        from .runqueue import RunQueue
+        # a Run's runs in progress, with no window: its states said here
+        self.runq = RunQueue(
+            on_state=lambda k, text, bad, sec: self._job_state(k, text, bad,
+                                                               sec),
+            title=title)
         self.study = StudyList()
         panels = dict(self.panels)
         panels.update({k: p.settings_panel() for k, p in self.editors.items()})

@@ -54,33 +54,22 @@ class WindowRun:
                 'or Converter near field in the list'
                 if preview else 'Tick a question in the list first'))
             return
-        from .study import key_of
-        self._steps = {key_of(st): st for st in steps}
-        self.queue, self._queue_preview, self._queue_stopped = (
-            list(self._steps), preview, False)
-        self._failed = set()
-        self.runtab.set_jobs([(k, title(k)) for k in self.queue])
-        for k in self.queue:
+        queued = self.runq.start(steps, preview)
+        self.runtab.set_jobs([(k, title(k)) for k in queued])
+        for k in queued:
             self.study.set_state(k, 'queued', 'gray')
         self._next_job()
 
     def _next_job(self):
-        import time
-        if self.job is not None:  # one at a time
-            return
-        while self.queue:
-            key = self.queue.pop(0)
-            st = getattr(self, '_steps', {}).get(key)
-            need = (unmet(st.engines[0], self._failed)
-                    if st is not None and st.kind == 'analysis' else [])
-            if need:
-                self._failed.add(key)
-                self._job_state(key, "not run: " + ', '.join(map(title, need))
-                                + ' did not finish', bad=True)
-                continue
-            self.job, self._job_t0 = key, time.monotonic()
+        """The queue's next run started (the runs it passes over, and one that
+        cannot start, said on their rows); none left: the toolbar's Stop."""
+        q = self.runq
+        while True:
+            key = q.next()
+            if key is None:
+                break
             try:
-                why = self._start_job(key, self._queue_preview)
+                why = self._start_job(key, q.preview)
             # a page's or an analysis's bug: said on the row, and the queue goes
             # on (the window must not stay busy with nothing running)
             except Exception as e:
@@ -90,21 +79,20 @@ class WindowRun:
                  self.runtab.log).appendPlainText(traceback.format_exc())
                 why = f"{type(e).__name__}: {e}"
             if why is None:
-                self._job_state(key, 'running')
+                q.began(key)
                 self.acts['Stop'].setEnabled(True)
                 self.runtab.stop_btn.setEnabled(True)
-                self.show_panel('Run', front=not self._queue_preview)
+                self.show_panel('Run', front=not q.preview)
                 return
-            self._failed.add(key)
-            self._job_state(key, f"not started: {why}", bad=True)
-        self.job = None
-        self.acts['Stop'].setEnabled(self.runner.busy())
-        self.runtab.stop_btn.setEnabled(self.runner.busy())
+            q.not_started(key, why)
+        if q.job is None:
+            self.acts['Stop'].setEnabled(self.runner.busy())
+            self.runtab.stop_btn.setEnabled(self.runner.busy())
 
     def _start_job(self, key, preview):
         """Start one step: kicad2ems's own run, or an analysis's commands (a
         row of its table each); None, or why it did not start."""
-        st = self._steps[key]
+        st = self.runq.steps[key]
         if key == RF:
             return self.start(preview, st.questions)
         panel = self._panel(key)
@@ -142,27 +130,21 @@ class WindowRun:
             if text == 'running':
                 self.runtab.own_plots(False)
 
+    # the Run's queue (runqueue.RunQueue): the run going, those to come
+    job = property(lambda self: self.runq.job)
+    queue = property(lambda self: self.runq.queue)
+
     def _job_done(self, key, code):
         """A step of the queue ended: its state and time, then the next (the
         last one's page in front)."""
-        import time
-        if self.job != key or key is None:
+        if self.runq.ended(key, code) is None:
             return
-        took = time.monotonic() - self._job_t0
         if code == 0:
-            self._job_state(key, f"done {time.strftime('%H:%M')}", seconds=took)
             out = getattr(self.pages.get(key), 'out', None)
             # its maps, its report and its curves
             if key != RF and out and os.path.isdir(str(out)):
                 self.refresh_runs(select=str(out))
                 self.open_results(str(out), quiet=True, front=False)
-        else:
-            self._failed.add(key)
-            self._job_state(
-                key,
-                ('stopped' if self._queue_stopped else f"failed (exit {code})"),
-                bad=not self._queue_stopped, seconds=took)
-        self.job = None
         self.steps.refresh()
         self._page_visibility()  # (a page of a run alone, not ticked: gone)
         if self.queue:  # after this one's own end is dealt with
@@ -171,7 +153,7 @@ class WindowRun:
             return
         self._next_job()               # none left: the toolbar's Stop
         if key != 'rf' and code == 0:  # S-parameters: _finished chose its page
-            if self._queue_preview:    # a mesh preview: the mesh, in the plan
+            if self.runq.preview:      # a mesh preview: the mesh, in the plan
                 self.viewer.set_view('Plan')
                 self.show_panel('Viewer')
             else:                                                   # its report
@@ -339,12 +321,10 @@ class WindowRun:
         solving, openEMS at once with what it has, later solvers skipped; a
         tool: SIGTERM, it stops what it started), its process ended at the
         second (RunProcess.stop)."""
-        for k in self.queue:
-            self._job_state(k, 'not run: stopped')
-        self.queue = []
+        self.runq.stop()
         if self.job is None and not self.runner.busy():
             return
-        self._queue_stopped = True
+        self.runq.stopped = True
         said = self.runner.stop()
         if said:
             self.runtab.log.appendPlainText(said)

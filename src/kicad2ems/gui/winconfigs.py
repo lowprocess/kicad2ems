@@ -13,17 +13,12 @@ from .winparts import _Preparing
 MAX_RECENT = 8
 
 
-def _whole(tab, base):
-    """A config table's own board and folder made whole: they are beside the
-    config (in base)."""
-    for k in ('board', 'out'):
-        if tab.get(k) and not os.path.isabs(str(tab[k])):
-            tab[k] = os.path.normpath(os.path.join(base, str(tab[k])))
-    return tab
-
-
 class WindowConfigs:
     """MainWindow's configs and examples."""
+
+    # the config the window is a view of (document.StudyDocument): the form's
+    doc = property(lambda self: self.setup.doc,
+                   lambda self, d: setattr(self.setup, 'doc', d))
 
     def _fill_examples(self):
         """The examples, kicad2ems's own and those the installed analyses ship
@@ -107,42 +102,34 @@ class WindowConfigs:
         if self.setup.maybe_save():
             self.setup.load(path)
 
-    def load_analyses(self, path=None):
-        """A config's study into the list
-        (kicad2ems.core.study.read_config: its [study] tables, else the
-        analyses [analysis] run names; neither: S-parameters) and each
-        analysis's settings from its [analysis. <name>] table, the others'
-        cleared. path None: a new study, nothing set. A table of an analysis not
-        installed here is kept, and saved back, as is a question or an engine of
-        the study this window lacks."""
-        from kicad2ems.core import analyses
-        from kicad2ems.core.study import Study, read_config
-        tables, study, more = {}, Study({'sparams': []}), {}
+    def load_analyses(self, doc=None):
+        """A config's study into the list and each analysis's settings into its
+        panel, the others' cleared: from the document read
+        (document.StudyDocument: its [study] tables, else the analyses
+        [analysis] run names; neither: S-parameters), or a config's path, read
+        here. None: a new study, nothing set. What this window cannot show (an
+        analysis not installed, a question with no engine here, an analysis's
+        other tables) stays in the document, and is saved back."""
+        from kicad2ems.core.study import Study
+        from .document import StudyDocument
+        if doc is None or isinstance(doc, (str, os.PathLike)):
+            path = doc
+            doc = StudyDocument()
+            if path:
+                doc.path = os.path.abspath(path)
+                doc._read_study(path, self.study_questions())
+                for note in doc.notes:
+                    self.statusBar().showMessage(note, 8000)
+        self.doc = doc
         if not self.busy():
             # another study: the last one's states are not its
             self.study.clear_states()
         self._fresh_log()
-        base = os.path.dirname(os.path.abspath(path)) if path else os.getcwd()
-        if path:
-            try:
-                tables = analyses.read_config(path)
-                study = read_config(path, strict=False)
-                # the analyses a config gives several tables
-                # ([[analysis.<name>]]: a run each): those after the first
-                more = {
-                    name: [_whole(dict(t), base)
-                           for t in sets[1:]]
-                    for name, sets in analyses.read_sets(path).items()
-                    if len(sets) > 1
-                }
-            except Exception as e:
-                self.statusBar().showMessage(
-                    f"{path}: its study could not be read ({e})", 8000)
-        self.more_sets = more
+        more = doc.more
         loading, self.setup._loading = self.setup._loading, True
         try:
             for key, page in self.pages.items():
-                tab = _whole(dict(tables.get(key) or {}), base)
+                tab = doc.table(key)
                 if key in self.editors:
                     page.load_settings(tab)
                     continue
@@ -150,16 +137,13 @@ class WindowConfigs:
                 page.set_own(tab.pop('board', None), tab.pop('out', None))
                 # several runs (a board's rails): its table
                 if getattr(page, 'table', None) and more.get(key):
-                    page.set_runs([tab, *more.pop(key)])
+                    page.set_runs(doc.runs(key))
+                    # the page holds them all now, as rows: it saves them
+                    more.pop(key)
                 else:
                     page.set_values(tab)
-            self.extra_analyses = {
-                k: ([v, *more[k]] if more.get(k) else v)
-                for k, v in tables.items()
-                if k not in self.pages
-            }
-            # an analysis given several tables (a board's rails): the first is
-            # shown and run here
+            # an analysis given several tables (a board's rails) that its page
+            # shows one of: the first is shown and run here
             for key, rest in more.items():
                 page = self.pages.get(key)
                 if page is not None and hasattr(page, 'status'):
@@ -170,16 +154,7 @@ class WindowConfigs:
                         "the first is shown and run here, and all of them by "
                         "`kicad2ems study`; saving keeps them."
                     )
-            self.extra_study = Study(
-                {
-                    q: n
-                    for q, n in study.asked.items()
-                    if q not in self.study.rows or not self.study.engines[q]
-                }, {
-                    q: v
-                    for q, v in study.fields.items()
-                    if q not in self.study.rows
-                })
+            study = doc.study
             fields = dict(study.fields)
             # a config of before the Fields ticks: what its settings ask for
             for q in study.asked:
@@ -195,8 +170,13 @@ class WindowConfigs:
         first = asked[0] if asked else 'sparams'
         self.study.select(first)
         run = self.study.run_of(first) if first in self.study.rows else RF
-        if path and run in self.editors:
+        if doc.path and run in self.editors:
             self.show_panel(title(run))
+
+    def study_questions(self):
+        """{question: its engines here}: what a document's study shows of a
+        config (the rest is kept for it, not shown)."""
+        return {q: self.study.engines.get(q) for q in self.study.rows}
 
     def _fresh_log(self):
         """Another study: the Log page blank, unless a run of the last one is
@@ -230,16 +210,12 @@ class WindowConfigs:
                 return True
         return False
 
-    def save_analyses(self, path):
-        """The study into a config: what it asks and who answers as its [study]
-        tables (kicad2ems.core.study.write_config), each analysis's
-        settings that are set as its [analysis.<name>] table. A study of
-        S-parameters alone with nothing else set writes neither."""
-        from kicad2ems.core import study
-        from kicad2ems.core.study import Study
-        from kicad2ems.core.runs import update_toml
+    def analysis_tables(self, path):
+        """{analysis: its [analysis.<name>] table, or [tables] for a page with
+        several runs} of the panels as they are, paths relative to the config
+        at `path`; an analysis with nothing set is left out."""
         base = os.path.dirname(os.path.abspath(path))
-        tables = dict(getattr(self, 'extra_analyses', {}))
+        tables = {}
         for key, page in self.pages.items():
             tab = (page.save_settings(path)
                    if key in self.editors else config_values(page, base))
@@ -248,33 +224,15 @@ class WindowConfigs:
                 # a table a row
                 tab = [config_values(page, base, r) for r in page.runs()]
             if tab:
-                # the config's other tables of it: kept, their paths relative
-                # to where it is saved
-                rest = getattr(self, 'more_sets', {}).get(key)
-                if rest:
-                    paths = (*getattr(self.registry.get(key), 'paths',
-                                      ()), 'board', 'out')
-                    rel = lambda v: (
-                        os.path.relpath(v, base).replace(os.sep, '/')
-                        if isinstance(v, str) and os.path.isabs(v) else v)
-                    tab = [
-                        tab, *[{
-                            k: (rel(v) if k in paths else v)
-                            for k, v in t.items()
-                        }
-                               for t in rest]
-                    ]
                 tables[key] = tab
-        update_toml(path, tables={'analysis': tables})
-        st = self.study.study()
-        extra = getattr(self, 'extra_study', None)
-        # what this window could not show: kept
-        if extra is not None and extra.asked:
-            st = Study({**st.asked, **extra.asked},
-                       {**st.fields, **extra.fields}, 'study')
-        plain = (list(st.asked) == ['sparams'] and not st.fields.get('sparams')
-                 and not tables)
-        study.write_config(path, None if plain else st)
+        return tables
+
+    def save_analyses(self, path):
+        """The study and the analyses' settings into the config at `path`, its
+        other settings left as they are (the document writes them:
+        StudyDocument.write_study)."""
+        self.doc.write_study(path, tables=self.analysis_tables(path),
+                             study=self.study.study())
 
     # ---- a file or folder dropped on the window (R-E25) ---------------------
     DROPPED = ('.kicad_pcb', '.toml', '_board.json', '.gbrjob')

@@ -276,6 +276,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **The window's config and runs in progress as models without Qt (the window, item 1).** `gui/document.py`'s
+  `StudyDocument` holds a config as data (the RF settings, each analysis's tables with an analysis's several runs,
+  the study, and what this machine cannot show: an analysis not installed, a question no engine here answers) and
+  reads and writes it, comments kept; the form and the analyses' panels are filled from it and give it their values
+  on save. `gui/runqueue.py`'s `RunQueue` is a Run's queue (the order, the run going, a run passed over when what it
+  needs did not finish, Stop, each state). The window's behaviour is unchanged (the gui suite's 155 tests); 6 more
+  test the two without a window.
 - **One repository, one package (2026-11-16 to 19).** mom25d, gfdtd, pcbqs, kicad2ems-fdtd, kicad2ems-fem,
   kicad2ems-gui, kicad2ems-ipc, dfsynth and the shared numerics (emsdev) are merged into kicad2ems with their
   history: `kicad2ems.{core,gui,fdtd,gfdtd,mom25d,pcbqs,fem,ipc,dfsynth,emsdev}`, their tests, docs, tools and

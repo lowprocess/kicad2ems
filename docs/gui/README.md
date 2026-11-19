@@ -148,6 +148,8 @@ It needs PySide6, pyqtgraph and PyOpenGL (installed with it).
 | `reportview.py` | an analysis's report: the Report page to read, the Tables page's tables to sort, copy and export |
 | `startpage.py` | the Start page: open a board, a config or a results folder; the examples as tiles, their boards drawn in a thread and kept in the cache folder |
 | `steps.py` | the steps bar: `steps_of(win)`, where the study stands as plain data, and the toolbar that shows it |
+| `document.py` | the config with no window (no Qt): `StudyDocument`, the RF settings, each analysis's tables (a run each when given several), the study, and what this machine cannot show (an analysis not installed, a question no engine here answers), read and written back; the form and the analyses' panels are its views |
+| `runqueue.py` | a Run's runs in progress with no window (no Qt): `RunQueue`, the queue, the run going, a run passed over when what it needs did not finish, Stop, each run's state |
 | `runner.py` | the settings form without Qt: its options (`FORM`, the solver tick boxes as Options too), sections, configs read and written back |
 | `optionrow.py` | one option's field, from its `Option`: the settings form's and an analysis's (`field`, `value`, `set_value`) |
 | `runfolders.py` | the Runs page's words for kicad2ems's index of runs (`kicad2ems.core.runs.index`, `RunInfo`, read from each folder's mark): scopes, settings compared, sizes and times |

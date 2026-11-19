@@ -73,11 +73,11 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
 The window keeps its docks, as a studio application's (the user's word, 2026-11-12: a fixed layout was built and
 taken back); nothing below may fix a panel in place. Left:
 
-1. **The study as a model without Qt, the rest.** `study.StudyModel` has the questions' side (what is asked, who
-   answers, the Fields ticks, availability, the runs' states; the Study dock's list is its view). `app.py` is split
-   into the window's parts (`win*.py`, 2026-11-18), but the settings (each analysis's panel and the solvers' still
-   hold their values), the board and the runs in progress are still the window's. Nothing visible changes; it is
-   what makes the rest cheap, and what the KiCad plugin could drive.
+1. **The study as a model without Qt, the rest.** `study.StudyModel` has the questions' side, `document.StudyDocument`
+   the config (the RF settings, the analyses' tables, the study, read and written back) and `runqueue.RunQueue` the
+   runs in progress (2026-11-19). Left: the panels still hold the values between a load and a save (the document is
+   filled when the config opens and when it is saved, not on each edit), and undo is the form's; the board as read
+   (its layout, for picking) is the window's. Then the KiCad plugin can drive a study through these.
 2. **An analysis's panel with its few settings first**, as the solvers' are (an options row may say `level`;
    pcbqs's tables do not yet).
 3. **Picking on the board: what is left.** Nets and parts are picked (an option's `pick`). Not yet: a pad (a port:

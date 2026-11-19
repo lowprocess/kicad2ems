@@ -98,7 +98,7 @@ def test_a_config_opens_as_a_study_and_saves_back(window, tmp_path):
     assert (th.values()['film'] == '12'
             and th.values()['circuit'] == str(tmp_path / 'out' / 'run'))
     assert (mqs.values()['converter'] == ''
-            and w.extra_analyses == dict(cfd=dict(fans=2)))
+            and w.doc.others == dict(cfd=dict(fans=2)))
     pdn.w['rail'].setText('+5V')  # an edit by hand: unsaved
     assert w.setup.dirty
     w.study.rows['nearfield'].setCheckState(
@@ -134,7 +134,7 @@ def test_a_config_opens_as_a_study_and_saves_back(window, tmp_path):
         '"other.kicad_pcb"\n\n[[analysis.pdn]]\nrail = "+1V8"\n'
     )
     assert w.setup.load(str(many))
-    assert (pdn.values()['rail'] == '+5V' and w.more_sets == dict(pdn=[
+    assert (pdn.values()['rail'] == '+5V' and w.doc.more == dict(pdn=[
         dict(rail='+3V3', volts=3.3, board=str(tmp_path / 'other.kicad_pcb')),
         dict(rail='+1V8')
     ]))
@@ -155,8 +155,8 @@ def test_a_config_opens_as_a_study_and_saves_back(window, tmp_path):
     plain.write_text('board = "b.kicad_pcb"\n')
     assert w.setup.load(str(plain))
     assert (w.study.ticked() == ['rf'] and pdn.values()['rail'] == ''
-            and pdn.board.text() == '' and w.extra_analyses == {})
-    assert w.more_sets == {}
+            and pdn.board.text() == '' and w.doc.others == {})
+    assert w.doc.more == {}
     # it stays plain
     assert (w.setup.save() and '[analysis' not in plain.read_text()
             and '[study' not in plain.read_text())
@@ -215,7 +215,7 @@ def test_several_rails_are_a_table_and_a_run_each(tmp_path, monkeypatch):
         assert ([(r['rail'], r['volts'], r['load'], r['scale'])
                  for r in runs] == [('+5V', '5', 'U1=2', '2'),
                                     ('+3V3', '3.3', 'U2=1\nU3=0.5', '2')])
-        assert 'more of these' not in pdn.status.text() and w.more_sets == {}
+        assert 'more of these' not in pdn.status.text() and w.doc.more == {}
         t.item(1, 0).setText('')  # a row without its rail: said, by row
         # the row without its rail
         assert ([n['text']
