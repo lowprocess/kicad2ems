@@ -142,8 +142,11 @@ GPU's double products). Measured and left, roughly in order of what they would s
    - the panel on the GPU, which would end the copies and the CPU's tail; on a slow bus it is the whole cost: the
      GTX 980 Ti here reads back at 0.07-0.18 GB/s (its slot; slangpy's own copies too) and its LU at 14k is 16 s,
      13 of them waiting on the panel's copies;
-   - the copies down and up overlapped with the trailing GEMM (they touch other columns: no barrier between
-     them).
+   - the copies down and up overlapped with the trailing GEMM. Tried 2026-11-20: the panel's copy down last in
+     the CPU's submission with no barrier after it, the trailing GEMM first in the next: slower (14k 0.885 ->
+     0.907 s), RADV does not run two submissions' work together, and the interchanges and U12 move onto the CPU's
+     wait. It needs both in one command buffer with a barrier on the buffers alone (slangpy's encoder has the
+     global barrier only), or a second queue.
 2. **The near-field correction** (9 % on rf_ebg and sma_launch) is its pairs' integrals, not their scatter
    (2026-11-20, rf_ebg, 2 frequencies, 8 threads: 2.25 s; with no scatter at all 2.04 s; row locks in its place
    2.97 s, 2.55 s with a thread taking a triangle's pairs whole: the atomics stay). What would pay: the smooth
