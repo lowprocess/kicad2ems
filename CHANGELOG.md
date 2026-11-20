@@ -10,6 +10,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **A board in pieces, vias as ports (2026-11-20, in progress: `kicad2ems.core.segment`).** Each signal layer's
+  traces over ideal planes, each signal via (or a pair's) a small model with its antipads and the ground vias round
+  it, the pieces joined as one network at cuts round the vias (docs/si.md). Against the whole board on mom25d:
+  rf_msvia S21 within 0.18 dB (0.04 rms), rf_diffvia Sdd21 0.16 dB rms, as close as gfdtd's whole board is; the
+  reflection near 10 GHz 2-3 dB higher (open). The CM5 Minima's 36 high-speed nets: 73 ports at their ends, 95
+  cuts, two layer pieces (88 and 80 ports) and 12 via models.
 - **mom25d's near-field correction built a piece at a time (2026-11-20).** The sparse correction's triplets came
   from the core for every near pair at once (~625 bytes a pair at the peak: a CM5 layer's 74 M pairs, 46 GB): it
   is built a million pairs at a time, its structure found once and each frequency's values summed straight in.

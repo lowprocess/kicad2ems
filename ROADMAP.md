@@ -69,7 +69,11 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    cached by its geometry; the pieces joined as one network: each net's S end to end across its layer changes,
    and the crosstalk through the vias. Validated against whole-board full-wave runs on `rf_diffvia` and the DDR
    example's lane 1, then the CM5 Minima. Its limits to report: a plane's cavity between sparse stitching vias,
-   apertures under a trace (the ideal plane has none), broadside coupling between layers.
+   apertures under a trace (the ideal plane has none), broadside coupling between layers. **Started 2026-11-20**
+   (`kicad2ems.core.segment`, docs/si.md): rf_msvia and rf_diffvia within the whole board's spread of solvers.
+   Left: the extra reflection near 10 GHz (2-3 dB in S11: the via model's, to find), DDR lane 1 (no port
+   footprints: its ends), the CM5 Minima's run and its time, crosstalk figures from the joined S (as Board
+   coupling's), groups within a layer piece, the window.
 4. **mom25d out of core** (asked 2026-11-20, after the near-field build in pieces): a tiled complex64 LU with its
    tiles on the NVMe, factored on the GPU with VRAM as its working set (the mixed path's refinement to double), for
    the problems that cannot be split. To prototype and measure on a case just over RAM (~60,000 unknowns) against

@@ -181,3 +181,35 @@ groups into coupled sections: lines further apart than that (a few heights) read
 It takes ground copper between two lines (a guard trace, a pour) into the lines' cross-section as ideal ground
 along its length, however it is stitched: a guard tied down at its ends alone reads as one stitched every 3 mm
 (mom25d: 2.46 % FEXT against 2.25 %).
+
+## A board in pieces: vias as ports (`kicad2ems.core.segment`, in progress)
+
+For boards too large to solve whole (the user's plan, 2026-11-20): each signal layer's traces over ideal planes
+(mom25d's Green's function carries them: the planes are not meshed), each signal via, or a group of them whose
+circles touch (a pair's), a small model of its own, and the pieces joined as one network.
+
+```sh
+python -m kicad2ems.core.segment examples/rf_msvia.toml --out out/seg
+python -m kicad2ems.core.segment board.kicad_pcb --nets 'PCIE*,HDMI*' --out out/seg   # ports at the nets' ends on pads
+```
+
+- **The cuts:** a circle round each signal via, its radius 0.25 mm beyond the via's pad and the largest antipad round
+  it in the planes; every trace that crosses it is cut there, a port on each side. A via where its net ends at a
+  port (a through-hole pad's barrel) is not cut.
+- **A layer's piece:** its signal copper outside every circle, the planes of the other layers (ideal), no vias, its
+  external ports and a port at each cut.
+- **A via's piece:** its group's copper inside the circle on every layer, the planes clipped to a box 1.5 mm beyond
+  the circle (with their antipads), the vias in the box (its own and the ground vias round it), a port at each
+  cut; mom25d meshes its whole stack.
+- **The join:** S_e = S_ee + S_ei G (I - S_ii G)^-1 S_ie over the pieces' S side by side (G pairs the two sides of
+  each cut); the external ports' Touchstone and `segment.json` (the pieces, their ports and times).
+- **External ports:** the board's own, or (`--ends`, and wherever the board has none) one on each pad where a
+  selected net's tracks end.
+
+Measured against the whole board on mom25d (S21, 1-10 GHz): `rf_msvia` 0.18 dB at worst, 0.04 dB rms (gfdtd whole
+is 0.10 / 0.02 dB from mom25d whole); `rf_diffvia` Sdd21 0.16 dB rms (gfdtd 0.18). Its reflection near 10 GHz is
+2-3 dB higher than the whole board's: neither a via model's box as large as the board, nor the cut further out,
+nor `--calibrate` (each cut corrected for its two lumped ports back to back, from a calibration line of its cross
+section: 0.042 to 0.069 dB rms on rf_msvia, 0.160 to 0.142 on rf_diffvia) changes it much; to find in the via
+model. What the pieces leave out: a plane's apertures under a trace, a plane pair's cavity beyond a via model's
+box, broadside coupling between layers, the vias of nets not selected.
