@@ -205,6 +205,10 @@ python -m kicad2ems.core.segment board.kicad_pcb --nets 'PCIE*,HDMI*' --out out/
   each cut); the external ports' Touchstone and `segment.json` (the pieces, their ports and times).
 - **External ports:** the board's own, or (`--ends`, and wherever the board has none) one on each pad where a
   selected net's tracks end.
+- **Groups:** a layer's nets further apart than `--apart` heights over its plane (20 by default, as Board
+  coupling's) are pieces of their own, their coupling taken as none; `--apart 0`: one piece a layer.
+- **Each piece in a process of its own**, so the memory one took is free for the next. mom25d stops a piece that
+  will not fit, saying so (`--thickness grow` has no copper-side unknowns: a large piece).
 
 Measured against the whole board on mom25d (S21, 1-10 GHz): `rf_msvia` 0.18 dB at worst, 0.04 dB rms (gfdtd whole
 is 0.10 / 0.02 dB from mom25d whole); `rf_diffvia` Sdd21 0.16 dB rms (gfdtd 0.18). Its reflection near 10 GHz is

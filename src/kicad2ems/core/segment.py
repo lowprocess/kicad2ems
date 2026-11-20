@@ -244,8 +244,20 @@ def _to_dict(b):
 
 
 # ---- the pieces --------------------------------------------------------------
-def pieces(m, raw, kb, nets):
-    """The board m (its own ports the external ones) in pieces: [dict(kind
+def _height(m, layer):
+    """A layer's height over its nearest plane (a layer whose ground copper
+    covers half the board or more), mm; 0 where there is none."""
+    half = 0.5 * m.outline.area
+    zs = [m.cu_z[l] for l, ps in m.copper.items() if l != layer and sum(
+        p.area for p, n in zip(ps, m.copper_nets.get(l, []))
+        if n in m.ground_nets) >= half]
+    return min((abs(z - m.cu_z[layer]) for z in zs), default=0.0)
+
+
+def pieces(m, raw, kb, nets, apart_h=None):
+    """The board m (its own ports the external ones) in pieces (a layer's
+    nets in groups further apart than apart_h heights over its plane:
+    coupling.APART_H by default, 0 one piece a layer): [dict(kind
     'layer' | 'via', name, board (a Board), links [(cut port, its partner's
     name)])], and the cuts. A layer piece: that layer's signal copper outside
     every cut circle, the ground copper of the other layers (its planes: ideal
@@ -276,24 +288,40 @@ def pieces(m, raw, kb, nets):
                for p, n in zip(m.copper.get(l, []), m.copper_nets.get(l, [])))
         or any(p.layer == l for p in m.ports)]
     ext = {p.name: p for p in m.ports}
+    from .coupling import APART_H, groups as near_groups
     for lay in sig_layers:
-        mine = [c for c in allcuts if c['layer'] == lay]
-        ports = [(f"P{1000 + c['k']}", _fp(f"cutL{c['k']}", c['at'], c['out'],
-                                            lay)) for c in mine]
-        fps = [(p.name, _port_fp(p)) for p in ext.values() if p.layer == lay]
+        on = sorted({n for p, n in zip(m.copper.get(lay, []),
+                                       m.copper_nets.get(lay, []))
+                     if n in signal})
+        h = _height(m, lay)
+        apart = APART_H * h if apart_h is None else apart_h * h
+        grps = (near_groups(kb, lay, on, apart) if len(on) > 1 and apart > 0
+                else [on])
+        for gi, gnets in enumerate(grps):
+            gnets = set(gnets)
+            mine = [c for c in allcuts if c['layer'] == lay
+                    and c['net'] in gnets]
+            ports = [(f"P{1000 + c['k']}", _fp(f"cutL{c['k']}", c['at'],
+                                                c['out'], lay))
+                     for c in mine]
+            fps = [(p.name, _port_fp(p)) for p in ext.values()
+                   if p.layer == lay and getattr(p, 'net', None) in gnets]
 
-        def keep(l, n, p, lay=lay):
-            if l == lay:
-                if n not in signal:
-                    return None
-                return p.difference(every) if every is not None else p
-            return p if n in m.ground_nets else None
-        if not fps and not ports:
-            continue  # slivers of a via's ring: nothing to join
-        b = _piece(m, raw, keep, fps + ports, vias=lambda n, x, y: False)
-        out.append(dict(kind='layer', name=_safe(lay), layer=lay, board=b,
-                        links=[(f"P{1000 + c['k']}", c['k']) for c in mine],
-                        external=[n for n, _ in fps]))
+            def keep(l, n, p, lay=lay, gnets=gnets):
+                if l == lay:
+                    if n not in gnets:
+                        return None
+                    return p.difference(every) if every is not None else p
+                return p if n in m.ground_nets else None
+            if not fps and not ports:
+                continue  # slivers of a via's ring: nothing to join
+            b = _piece(m, raw, keep, fps + ports, vias=lambda n, x, y: False)
+            name = _safe(lay) + (f"_g{gi + 1}" if len(grps) > 1 else '')
+            out.append(dict(kind='layer', name=name, layer=lay, board=b,
+                            links=[(f"P{1000 + c['k']}", c['k'])
+                                   for c in mine],
+                            external=[n for n, _ in fps],
+                            nets=sorted(gnets)))
     for gi, g in enumerate(groups):
         mine = [c for c in allcuts if c['group'] == gi]
         gnets = {v['net'] for v in g['vias']}
@@ -391,7 +419,8 @@ def junction(fW, SW, fA, SA):
     return abcd_to_s(X, 50.0)
 
 
-def solve_piece(piece, folder, band, solver='mom25d', echo=print):
+def solve_piece(piece, folder, band, solver='mom25d', echo=print,
+                thickness=None):
     """A piece's run (its board file, kicad2ems's pipeline): (S at 50 ohm,
     its ports' names, the run's summary)."""
     from .config import build_settings
@@ -404,6 +433,8 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print):
     cli = dict(out=folder, solvers=solver, no_report=True, **band)
     if solver == 'mom25d':
         cli['mom_port'] = PORT
+        if thickness:
+            cli['mom_thickness'] = thickness
         if piece['kind'] == 'layer':
             ref = _over_its_plane(d, piece['layer'])
             if ref:
@@ -419,9 +450,37 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print):
     with open(bj, 'w', encoding='utf-8') as fh:
         json.dump(d, fh)
     cli['board'] = bj
-    job = Job(build_settings(cli), echo=echo)
-    job.run()
-    with open(os.path.join(folder, f"{job.name}_run.json"),
+    if os.environ.get('K2E_SEG_INPROCESS'):
+        job = Job(build_settings(cli), echo=echo)
+        job.run()
+    else:
+        # a process of its own: the memory a piece took is the system's again
+        # before the next (in one process the next had 20 of 24 GB)
+        import subprocess
+        argv = [sys.executable, '-m', 'kicad2ems.core.cli', bj]
+        for k, v in cli.items():
+            if k == 'board':
+                continue
+            flag = '--' + k.replace('_', '-')
+            if v is True:
+                argv.append(flag)
+            elif v not in (None, False):
+                argv += [flag, str(v)]
+        with open(os.path.join(folder, 'run.log'), 'w') as log:
+            p = subprocess.run(argv, stdout=log, stderr=subprocess.STDOUT,
+                               env=dict(os.environ, PYTHONUNBUFFERED='1'))
+        if p.returncode:
+            with open(os.path.join(folder, 'run.log')) as fh:
+                tail = fh.read()[-1500:]
+            raise ValueError(f"{piece['name']}: its run ended with code "
+                             f"{p.returncode}: {tail}")
+        with open(os.path.join(folder, 'run.log')) as fh:
+            for line in fh:
+                if line.startswith(('mom25d: ', 'WARNING')):
+                    echo(line.rstrip()[:300])
+    name = os.path.splitext(os.path.basename(bj))[0]
+    name = name[:-len('_board')] if name.endswith('_board') else name
+    with open(os.path.join(folder, f"{name}_run.json"),
               encoding='utf-8') as fh:
         sm = json.load(fh)
     solved = {k: r for k, r in sm.get('solved', {}).items()
@@ -465,7 +524,7 @@ def run(a, echo=print):
         echo(f"segment: {len(specs)} ports at the nets' ends on pads")
     m = board_from_settings(s, log=lambda *x: None)
     nets = set(m.sel or [n for ns in m.copper_nets.values() for n in ns])
-    parts, allcuts = pieces(m, raw, raw, nets)
+    parts, allcuts = pieces(m, raw, raw, nets, a.apart)
     out = os.path.abspath(a.out)
     os.makedirs(out, exist_ok=True)
     band = dict(fmin=a.fmin or s.fmin, fmax=a.fmax or s.fmax,
@@ -476,8 +535,17 @@ def run(a, echo=print):
     blocks, links, f0, info, cut_of = [], {}, None, [], {}
     for p in parts:
         t = time.time()
-        f, S, names, sm = solve_piece(p, os.path.join(out, p['name']), band,
-                                      a.solver, echo)
+        try:
+            f, S, names, sm = solve_piece(p, os.path.join(out, p['name']),
+                                          band, a.solver, echo,
+                                          thickness=a.thickness)
+        except ValueError as e:
+            raise ValueError(
+                f"piece {p['name']} ({p['kind']}"
+                + (f", {len(p.get('nets', []))} nets" if p.get('nets') else '')
+                + f", {len(p['board'].ports)} ports) did not solve: {e}"
+                + (" - smaller pieces: --apart" if 'MemoryError' in str(e)
+                   else '')) from None
         if f0 is None:
             f0 = f
         elif len(f) != len(f0) or np.abs(f - f0).max() > 1e-3 * f0.max():
@@ -614,6 +682,13 @@ def parser():
                    "back (a calibration line per cross-section; measured: "
                    "rf_msvia 0.042 to 0.069 dB rms from mom25d whole, "
                    "rf_diffvia 0.160 to 0.142)")
+    p.add_argument('--apart', type=float, default=None,
+                   help="a layer's nets further apart than this many heights "
+                   "over its plane are pieces of their own, their coupling "
+                   "taken as none (default 20; 0: one piece a layer)")
+    p.add_argument('--thickness', default=None,
+                   help="mom25d's copper thickness model (--mom-thickness): "
+                   "grow has no side unknowns (a large piece)")
     p.add_argument('--ends', action='store_true',
                    help="ports at the nets' ends on pads (the default where "
                    "the board has no ports of its own)")

@@ -767,6 +767,15 @@ class Simulation:
                        else '') + f"), {avail / 1e9:.1f} GB available")
             if solver == 'auto':
                 solver = plan['solver']
+                if solver == 'blr' and not plan['fits']:
+                    # (it had gone ahead: the machine ran out instead)
+                    raise MemoryError(
+                        f"{n:,} unknowns ({int(getattr(self, 'Nv', 0) or 0):,}"
+                        " via and copper-side ones) need "
+                        f"~{plan['host'] / 1e9:.1f} GB with the block low-rank "
+                        f"solver, {avail / 1e9:.1f} GB available: "
+                        "--mom-thickness grow (no side unknowns), a coarser "
+                        "--mom-dmax, or the board in smaller pieces")
             elif not plan['fits']:
                 solver = 'blr'
                 self.log.note(

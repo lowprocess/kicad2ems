@@ -212,9 +212,24 @@ def memory_plan(n, avail=None, gpu=None, precision='auto', solver='auto',
         # 5 GB
         p, host, dev = 'blr', 3.0 * n * n + 2e4 * n + SPARE, 0.0
         host += anchor_bytes(n, nv) if interp else 0.0
+        # the via and side blocks it fills whole (B: edges x via and side
+        # unknowns, C: theirs; complex128): a dense Z holds them in place,
+        # this does not (a real board's layer, 37k edges and 10k sides of
+        # thick copper: 7.6 GB, uncounted, and the run was killed)
+        host += via_block_bytes(n, nv)
+        fits = host <= 0.85 * avail
     host += near_bytes(pairs, sparse=p == 'blr')
+    if p == 'blr':
+        fits = host <= 0.85 * avail
     return dict(solver=solver, precision=precision, path=p, host=host,
                 gpu=dev, fits=fits)
+
+
+def via_block_bytes(n, nv):
+    """The block low-rank solve's via and side blocks, filled whole: B ((n -
+    nv) x nv) and C (nv x nv), complex128."""
+    nv = max(0, int(nv))
+    return 16.0 * (n - nv) * nv + 16.0 * nv * nv
 
 
 # a near triangle pair's bytes held across the sweep: its analytic parts kept

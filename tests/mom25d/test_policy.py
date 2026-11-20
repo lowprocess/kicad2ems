@@ -163,3 +163,20 @@ def test_memory_plan_counts_the_near_field():
     assert (blr['host'] - blr0['host']
             == pairs * (policy.NEAR_HELD + FastOperator.NEAR_BYTES)
             + min(FastOperator.NEAR_PIECE_BYTES, near.NEAR_PIECE * pairs))
+
+
+def test_the_block_low_rank_plan_counts_its_via_blocks_and_says_when_it_does_not_fit():
+    """The block low-rank solve fills its via and side blocks whole (B, C:
+    complex128), which a dense Z holds in place: counted (a real board's layer,
+    37k edges and 10k sides of thick copper, had been killed by the machine
+    running out, uncounted), and a plan over the memory available does not
+    fit (sim.py then stops, saying what would)."""
+    n, nv = 47_000, 10_000
+    a = memory_plan(n, avail=500e9, solver='blr', nv=nv, interp=False)
+    b = memory_plan(n, avail=500e9, solver='blr', nv=0, interp=False)
+    assert a['host'] - b['host'] == policy.via_block_bytes(n, nv) == (
+        16.0 * (n - nv) * nv + 16.0 * nv * nv)
+    assert a['fits']
+    tight = memory_plan(n, avail=0.9 * a['host'], solver='blr', nv=nv,
+                        interp=False)
+    assert tight['path'] == 'blr' and not tight['fits']

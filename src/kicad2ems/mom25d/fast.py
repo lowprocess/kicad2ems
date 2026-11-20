@@ -12,6 +12,7 @@ low-rank LU and GMRES
 The compiled core is required (its mesher too): python -m
 kicad2ems.mom25d.core.build.
 """
+import math
 import time
 from collections import namedtuple
 
@@ -974,6 +975,18 @@ class FastOperator:
         low = (getattr(sim, 'loop_tree', 'auto') != 'off'
                and self.kh2(f) < LOOP_TREE_BELOW)
         if low:
+            # nearly the dense complex128 matrix at that tolerance: stop where
+            # it cannot fit, saying from where it would not be needed (a real
+            # board's layer from 0.1 GHz: the machine had run out)
+            need = 0.5 * 16.0 * N * N
+            if need > 0.85 * available_memory():
+                f_ok = f * math.sqrt(LOOP_TREE_BELOW / self.kh2(f))
+                raise MemoryError(
+                    f"below {f_ok / 1e9:.3g} GHz the block low-rank factor of "
+                    f"{N:,} unknowns is in double precision, nearly dense "
+                    f"(~{need / 1e9:.0f} GB), {available_memory() / 1e9:.1f} "
+                    f"GB available: --fmin {f_ok / 1e9:.3g} or above, or "
+                    "fewer unknowns")
             tol = min(tol, 0.01 * self.kh2(f))
             self._once('blr-low', "block low-rank solver: below (k h)^2 = "
                        f"{LOOP_TREE_BELOW:g} ({f / 1e9:.4g} GHz here) its "

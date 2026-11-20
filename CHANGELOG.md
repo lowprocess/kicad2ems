@@ -262,6 +262,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **mom25d's block low-rank solve ran the machine out of memory instead of stopping (2026-11-20).** Its plan did
+  not count the via and copper-side blocks it fills whole (B and C, complex128: a CM5 layer's 37k edges and 10k
+  sides, 7.6 GB), and on that path nothing compared the total with the memory available; the kernel killed the
+  run. Both are counted now, and a solve over the memory available stops at once saying what would fit
+  (`--mom-thickness grow`, a coarser `--mom-dmax`, smaller pieces). Below the frequency where its factor goes to
+  double precision at a tight tolerance (nearly dense: a CM5 layer piece from 0.1 GHz), a factor that cannot fit
+  stops too, naming the `--fmin` from which it is not needed.
 - **Board coupling on a real board (2026-11-20).** The CM5 Minima's 36 high-speed nets (PCIe, HDMI, Ethernet,
   MIPI D-PHY, USB) found four faults. (1) The line model cut a trace in two where two of its pieces met at a
   point written two ways (0.1 um apart: two node names): Ethernet TRD0_N and TRD1_P passed nothing (12.7 %
