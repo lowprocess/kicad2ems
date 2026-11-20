@@ -740,8 +740,10 @@ class Simulation:
                          (precision == 'auto' and n_lu > GPU_MIN_N)))
         avail = available_memory()
         be = get_backend(gpu) if want_gpu else None
+        from .fast import near_pairs
         plan = memory_plan(n, avail, device(be), precision, solver,
                            n_lu=n_lu, nv=int(getattr(self, 'Nv', 0) or 0),
+                           pairs=len(near_pairs(self)[0]),
                            gpu_dense=bool(be is not None
                                           and getattr(be, 'dense_ok',
                                                       lambda: False)()),

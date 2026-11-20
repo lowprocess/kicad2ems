@@ -197,8 +197,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   what `auto` picks solvers by) meshed the board without the cell growth (`--mom-coarsen`, the default since
   2026-11-18, `--mom-cells`), the zone and the stitching vias: rf_coupler 8,242 unknowns, ~49 s, against the run's
   2,740 (now 2,740, ~17 s). `policy.memory_plan` now counts the double Z on the GPU where `choose` puts it there too
-  (20k unknowns on 16 GB: 10.0 GB on the GPU, not 3.6) and the via blocks the sweep keeps to interpolate them
-  (`anchor_bytes`: up to a double Z on the host).
+  (20k unknowns on 16 GB: 10.0 GB on the GPU, not 3.6), the via blocks the sweep keeps to interpolate them
+  (`anchor_bytes`: up to a double Z on the host) and the near field (`near_bytes`: each near triangle pair's
+  kept analytic parts, charge correction and indices, and for the block low-rank solver the sparse correction's
+  build): the near pairs are found before the plan now (`fast.near_pairs`, kept for the FastOperator). rf_ebg
+  (15.0k unknowns, 9.3 M near pairs) had been planned at 1.9 GB compressed and peaked at 8.7 (now 10.7 planned),
+  dense at 6.7 GB against a solve's 7.3 (now 7.5).
 - **mom25d's mixed precision accepted a refinement that had stalled (2026-11-19).** GMRES on the complex64 LU was
   taken as converged at up to 100 times its tolerance (1e-4 against 1e-6): GMRES stops at the tolerance when it
   reaches it, so that slack only ever accepted a refinement that ran out of iterations, whose error is the matrix's

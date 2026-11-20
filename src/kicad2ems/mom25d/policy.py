@@ -164,7 +164,7 @@ def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
 
 
 def memory_plan(n, avail=None, gpu=None, precision='auto', solver='auto',
-                n_lu=None, nv=0, gpu_dense=True, interp=True):
+                n_lu=None, nv=0, gpu_dense=True, interp=True, pairs=0):
     """How the solver of n unknowns runs and the memory it needs: dict(solver,
     precision, path, host, gpu, fits) (bytes). gpu: None or (free bytes, need:
     unknowns -> an LU's bytes), the backend's own estimate (device()). path:
@@ -178,7 +178,8 @@ def memory_plan(n, avail=None, gpu=None, precision='auto', solver='auto',
     double Z where choose puts it there too (gpu_dense: the backend's double
     kernels; GPU_DENSE), the host's the via blocks kept for the sweep's
     interpolation (nv via unknowns, interp: on; blocks.Anchors: up to a double
-    Z, or ANCHOR_ROOM)."""
+    Z, or ANCHOR_ROOM) and the near field's (pairs: near triangle pairs;
+    near_bytes)."""
     if avail is None:
         from kicad2ems.emsdev.memory import available
         avail = available()
@@ -210,8 +211,28 @@ def memory_plan(n, avail=None, gpu=None, precision='auto', solver='auto',
         # unknowns, with the sparse near field: antenna_cp_patch's run peaked at
         # 5 GB
         p, host, dev = 'blr', 3.0 * n * n + 2e4 * n + SPARE, 0.0
+        host += anchor_bytes(n, nv) if interp else 0.0
+    host += near_bytes(pairs, sparse=p == 'blr')
     return dict(solver=solver, precision=precision, path=p, host=host,
                 gpu=dev, fits=fits)
+
+
+# a near triangle pair's bytes held across the sweep: its analytic parts kept
+# (12 float64), its charge correction (complex128) and its indices (int64 and
+# int32, twice); rf_ebg, 9.3 M pairs: 1.3 GB
+NEAR_HELD = 12 * 8 + 16 + 2 * (8 + 4)
+
+
+def near_bytes(pairs, sparse=False):
+    """The near field's host bytes for `pairs` near triangle pairs: those held,
+    and, for a solver that keeps the correction sparse (sparse: the block
+    low-rank LU, a matrix-free refinement), its peak while that is built
+    (fast.FastOperator.NEAR_BYTES: the core's triplets, their sort, the CSR).
+    A dense Z takes the correction in place."""
+    if pairs <= 0:
+        return 0.0
+    from .fast import FastOperator
+    return pairs * (NEAR_HELD + (FastOperator.NEAR_BYTES if sparse else 0.0))
 
 
 def anchor_bytes(n, nv):

@@ -145,3 +145,18 @@ def test_memory_plan_counts_the_via_blocks_kept():
     # capped: a double Z (ANCHOR_ROOM where that is more)
     from kicad2ems.mom25d.fast import ANCHOR_ROOM
     assert policy.anchor_bytes(n, n) == max(16.0 * n * n, ANCHOR_ROOM)
+
+
+def test_memory_plan_counts_the_near_field():
+    """The near triangle pairs' bytes (policy.near_bytes): those held over the
+    sweep, and for the block low-rank solver the sparse correction's build
+    too (a dense Z takes the correction in place)."""
+    from kicad2ems.mom25d.fast import FastOperator
+    n, pairs = 6000, 2_000_000
+    dense = memory_plan(n, avail=30e9, precision='double', pairs=pairs)
+    base = memory_plan(n, avail=30e9, precision='double')
+    assert dense['host'] - base['host'] == pairs * policy.NEAR_HELD
+    blr = memory_plan(n, avail=30e9, solver='blr', pairs=pairs)
+    blr0 = memory_plan(n, avail=30e9, solver='blr')
+    assert (blr['host'] - blr0['host']
+            == pairs * (policy.NEAR_HELD + FastOperator.NEAR_BYTES))

@@ -838,8 +838,14 @@ class MoM25D(Solver):
         from kicad2ems.mom25d.policy import memory_plan, device
         from kicad2ems.mom25d.gpu import get_backend
         be = get_backend('auto')
+        try:  # the near field's (on a fine mesh of several layers the larger)
+            from kicad2ems.mom25d.fast import near_pairs
+            pairs = len(near_pairs(sim)[0])
+        except Exception:  # (an estimate never stops the run)  # noqa: BLE001
+            pairs = 0
         plan = memory_plan(n, None, device(be), nv=int(sim.Nv),
-                           gpu_dense=bool(be is not None and be.dense_ok()))
+                           gpu_dense=bool(be is not None and be.dense_ok()),
+                           pairs=pairs)
         # the CPU LU scales with the cores, a GPU's not
         lu = LU_N3 * REF_CORES / (os.cpu_count() or 1)
         lu = dict(hybrid=LU_GPU_N3).get(plan['path'], lu)

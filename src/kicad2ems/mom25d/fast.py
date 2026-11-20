@@ -359,6 +359,27 @@ class _State:
                 sum(k.M.device_bytes for k in self.kept))
 
 
+def near_pairs(sim, near_fac=None):
+    """(nP, nQ): the near triangle pairs of sim's mesh (sorted, near if within
+    either's radius), found once: the memory plan counts them before the
+    FastOperator is made (policy.memory_plan's pairs), which takes the same."""
+    near_fac = float(near_fac or sim.near_fac)
+    kept = getattr(sim, '_near_found', None)
+    if kept is not None and kept[0] == near_fac:
+        return kept[1]
+    r = sim.rwg
+    size = getattr(sim, 'tri_size', None)
+    if size is None:  # (a mesh_only simulation: Simulation's own rule)
+        V = r.nodes[r.tris]
+        size = np.linalg.norm(V - np.roll(V, 1, axis=1), axis=2).max(1)
+    found = _core.near_pairs(
+        np.ascontiguousarray(r.cent, float),
+        np.ascontiguousarray(size, float),
+        np.ascontiguousarray(sim.st.z[sim.tri_layer], float), near_fac)
+    sim._near_found = (near_fac, found)
+    return found
+
+
 class FastOperator:
     """Builds Z for a mom25d.sim.Simulation with the compiled core and solves
     with it (solve: policy.choose's plan at each frequency)."""
@@ -425,17 +446,11 @@ class FastOperator:
 
     # ---- near pairs (geometry only) -----------------------------------------
     def _near_pairs(self):
-        sim, r = self.sim, self.sim.rwg
-        size = sim.tri_size
-        # (sorted pairs, near if within either's radius)
-        self.nP, self.nQ = _core.near_pairs(
-            np.ascontiguousarray(r.cent, float),
-            np.ascontiguousarray(size, float),
-            np.ascontiguousarray(sim.st.z[self.layer_of_tri], float),
-            float(self.near_fac))
+        sim = self.sim
+        self.nP, self.nQ = near_pairs(sim, self.near_fac)
         sim.log.note(
             f"fast solver: {len(self.nP)} near triangle pairs "
-            f"({len(self.nP) / len(size):.0f} per triangle)"
+            f"({len(self.nP) / len(sim.tri_size):.0f} per triangle)"
         )
 
     # ---- kernels ------------------------------------------------------------
@@ -600,9 +615,9 @@ class FastOperator:
         if mode == 'direct':
             return
         # MemoryError, saying so, where the sparse near-field correction cannot
-        # fit: memory_plan counts the solver's own matrices, not it, and on a
-        # fine mesh of several layers it is the larger (antenna_aperture's whole
-        # stack, 78k unknowns: 37 M near pairs, ~15 GB, which a 16 GB cap killed
+        # fit now (memory_plan counts it, policy.near_bytes; on a fine mesh of
+        # several layers it is the larger: antenna_aperture's whole stack, 78k
+        # unknowns, 37 M near pairs, ~15 GB, which a 16 GB cap had killed
         # without a word)
         need, avail = self.NEAR_BYTES * len(self.nP), available_memory()
         if need > 0.85 * avail:
