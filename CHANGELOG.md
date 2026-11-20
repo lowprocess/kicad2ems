@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **gfdtd: primitive transforms and rotated polygons, as CSXCAD's (2026-11-20).** `AddTransform` / `GetTransform`
+  (`CSTransform`: Translate, RotateAxis, RotateOrigin, Scale, Matrix; post-multiplied, degrees by default; in the
+  XML as CSXCAD's `Transformation`) on every primitive, and `AddRotPoly` (a polygon turned about an axis, CSXCAD's
+  `IsInside` ported); both agree with CSXCAD's `IsInside` on every one of 3,000-4,000 random points per case.
 - **openEMS scripts run unchanged on gfdtd: `kicad2ems.gfdtd.compat` (2026-11-20).** CSXCAD and openEMS packages over
   gfdtd (put first on PYTHONPATH: `python -m kicad2ems.gfdtd.compat` prints the folder), with CSXCAD's own
   `SmoothMeshLines` (vendored, LGPL-3.0: the lines openEMS gets), the grid's `GetLine`, `Snap2LineNumber`
@@ -223,6 +227,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **gfdtd read a polygon normal to y with its coordinates swapped (2026-11-20).** CSXCAD's X1, X2 run along the
+  axes after the normal, cyclic (normal y: X1 is z, X2 is x); gfdtd had taken the two others in order (x, z), so a
+  y-normal Polygon or LinPoly of an openEMS script sat transposed. kicad2ems's own models (z-normal) were not
+  affected. Checked against CSXCAD's own bounds.
 - **gfdtd's `--jobs` on the GPU capped by its memory (R-D7, 2026-11-20).** Each excitation's fields are its own;
   `--jobs N` on Vulkan now runs at most as many at once as the GPU's free memory holds (`engine.runs_that_fit`,
   gpu_bytes per run), and says so, where a run past it had failed with MemoryError.

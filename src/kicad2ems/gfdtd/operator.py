@@ -102,9 +102,12 @@ def inside(q, pts, grid, flat_snap=True):
     nearest mesh line (flat_snap)."""
     import shapely
     shape = tuple(len(x) for x in pts)
+    if (getattr(q, 'transform', None) is not None and q.HasTransform()
+            or isinstance(q, C.RotPoly)):
+        return _inside_transformed(q, pts, grid)
     if isinstance(q, C.Polygon):  # Polygon / LinPoly, normal n
         n = q.norm_dir
-        u, v = [b for b in range(3) if b != n]
+        u, v = (n + 1) % 3, (n + 2) % 3  # CSXCAD's X1, X2 (cyclic)
         if isinstance(q, C.LinPoly) and abs(q.length) > 0:
             lo, hi = sorted((q.elevation, q.elevation + q.length))
         else:
@@ -124,6 +127,8 @@ def inside(q, pts, grid, flat_snap=True):
         inp = shapely.intersects_xy(poly, U.ravel(), V.ravel()).reshape(U.shape)
         plane = np.zeros((shape[u], shape[v]), bool)
         plane[np.ix_(iu, iv)] = inp
+        if u > v:  # (the plane's axes in their order in the grid)
+            plane = plane.T
         return (np.broadcast_to(np.expand_dims(plane, n), shape)
                 & mn.reshape([-1 if b == n else 1 for b in range(3)]))
     if isinstance(q, C.Box):
@@ -182,6 +187,151 @@ def inside(q, pts, grid, flat_snap=True):
         out[np.ix_(*idx)] = sub
         return out
     raise ValueError(f"gfdtd: primitive {type(q).__name__} not supported")
+
+
+def _local_bounds(q):
+    """(lo, hi): primitive q's box in its own coordinates."""
+    if isinstance(q, C.RotPoly):
+        n, ra = q.norm_dir, q.rot_axis
+        P = np.zeros((3, q.points.shape[1]))
+        P[(n + 1) % 3], P[(n + 2) % 3] = q.points[0], q.points[1]
+        rp = 3 - n - ra
+        R = float(np.abs(P[rp]).max())
+        lo, hi = np.full(3, -R), np.full(3, R)
+        lo[ra], hi[ra] = P[ra].min(), P[ra].max()
+        return lo, hi
+    if isinstance(q, C.Box):
+        return np.minimum(q.start, q.stop), np.maximum(q.start, q.stop)
+    if isinstance(q, C.Sphere):
+        r = q.radius + (q.shell_width / 2
+                        if isinstance(q, C.SphericalShell) else 0.0)
+        return np.asarray(q.center) - r, np.asarray(q.center) + r
+    if isinstance(q, C.Cylinder):
+        r = q.radius + (q.shell_width / 2
+                        if isinstance(q, C.CylindricalShell) else 0.0)
+        p0, p1 = np.asarray(q.start), np.asarray(q.stop)
+        return np.minimum(p0, p1) - r, np.maximum(p0, p1) + r
+    if isinstance(q, C.Polygon):
+        n = q.norm_dir
+        u, v = (n + 1) % 3, (n + 2) % 3  # CSXCAD's X1, X2 (cyclic)
+        lo, hi = np.zeros(3), np.zeros(3)
+        lo[u], hi[u] = q.points[0].min(), q.points[0].max()
+        lo[v], hi[v] = q.points[1].min(), q.points[1].max()
+        h = q.length if isinstance(q, C.LinPoly) else 0.0
+        lo[n], hi[n] = sorted((q.elevation, q.elevation + h))
+        return lo, hi
+    raise ValueError(f"gfdtd: a transformed {type(q).__name__} is not "
+                     "supported")
+
+
+def _inside_local(q, P, tol, flat_tol=None):
+    """Whether the points P (N x 3, q's own coordinates) are inside q; along a
+    flat primitive's zero thickness flat_tol (a fraction of a cell) instead of
+    tol."""
+    import shapely
+    flat_tol = tol if flat_tol is None else flat_tol
+    if isinstance(q, C.RotPoly):
+        return _inside_rotpoly(q, P, tol)
+    if isinstance(q, C.Box):
+        lo, hi = _local_bounds(q)
+        t = np.where(hi - lo < 1e-12, flat_tol, tol)
+        return ((P >= lo - t) & (P <= hi + t)).all(1)
+    if isinstance(q, C.Sphere):
+        r = np.linalg.norm(P - np.asarray(q.center), axis=1)
+        if isinstance(q, C.SphericalShell):
+            return np.abs(r - q.radius) <= q.shell_width / 2 + tol
+        return r <= q.radius + tol
+    if isinstance(q, C.Cylinder):
+        p0, p1 = np.asarray(q.start), np.asarray(q.stop)
+        ax = p1 - p0
+        t = ((P - p0) @ ax) / float(ax @ ax)
+        r = np.linalg.norm(P - p0 - t[:, None] * ax, axis=1)
+        ok = (t >= -1e-9) & (t <= 1 + 1e-9)
+        if isinstance(q, C.CylindricalShell):
+            return ok & (np.abs(r - q.radius) <= q.shell_width / 2 + tol)
+        return ok & (r <= q.radius + tol)
+    if isinstance(q, C.Polygon):
+        n = q.norm_dir
+        u, v = (n + 1) % 3, (n + 2) % 3  # CSXCAD's X1, X2 (cyclic)
+        lo, hi = _local_bounds(q)
+        poly = shapely.Polygon(np.asarray(q.points).T)
+        poly = poly if poly.is_valid else poly.buffer(0)
+        tn = flat_tol if hi[n] - lo[n] < 1e-12 else tol
+        within = (P[:, n] >= lo[n] - tn) & (P[:, n] <= hi[n] + tn)
+        out = np.zeros(len(P), bool)
+        if within.any():
+            out[within] = shapely.intersects_xy(
+                poly.buffer(tol), P[within, u], P[within, v])
+        return out
+    raise ValueError(f"gfdtd: a transformed {type(q).__name__} is not "
+                     "supported")
+
+
+def _inside_rotpoly(q, P, tol):
+    """CSXCAD's CSPrimRotPoly::IsInside on the points P (N x 3): each point
+    taken to the polygon's plane at its distance from the axis (either side of
+    it), inside where the polygon holds it and its angle is in the range."""
+    import shapely
+    n, ra = q.norm_dir, q.rot_axis
+    raP, raPP = (ra + 1) % 3, (ra + 2) % 3
+    foot = P[:, ra]
+    dist = np.hypot(P[:, raP], P[:, raPP])
+    alpha = np.arctan2(P[:, raPP], P[:, raP])
+    if raP == n:
+        alpha = alpha - np.pi / 2
+    alpha = np.where(alpha < 0, alpha + 2 * np.pi, alpha)
+    a0, a1 = q.angle
+    poly = shapely.Polygon(np.asarray(q.points).T)
+    poly = (poly if poly.is_valid else poly.buffer(0)).buffer(tol)
+
+    def held(d):
+        o = np.empty((len(P), 3))
+        o[:] = d[:, None]
+        o[:, n] = 0.0
+        o[:, ra] = foot
+        return shapely.intersects_xy(poly, o[:, (n + 1) % 3], o[:, (n + 2) % 3])
+    al = np.where(alpha < a0, alpha + 2 * np.pi, alpha)
+    first = held(dist) & (al < a1 + 1e-12)
+    al2 = alpha + np.pi
+    al2 = np.where(al2 > 2 * np.pi, al2 - 2 * np.pi, al2)
+    al2 = np.where(al2 < a0, al2 + 2 * np.pi, al2)
+    second = (al2 <= a1 + 1e-12) & held(-dist)
+    return first | second
+
+
+def _inside_transformed(q, pts, grid):
+    """inside() of a primitive with a transform (CSXCAD's AddTransform): the
+    grid points in the box its own box maps to, mapped back to its
+    coordinates and tested there (CSXCAD's IsInside: InvertTransform)."""
+    shape = tuple(len(x) for x in pts)
+    out = np.zeros(shape, bool)
+    lo, hi = _local_bounds(q)
+    corners = np.array([[lo[0] if i & 1 == 0 else hi[0],
+                         lo[1] if i & 2 == 0 else hi[1],
+                         lo[2] if i & 4 == 0 else hi[2], 1.0]
+                        for i in range(8)])
+    M = (q.transform.matrix if getattr(q, 'transform', None) is not None
+         and q.HasTransform() else np.eye(4))
+    world = (corners @ M.T)[:, :3]
+    wlo, whi = world.min(0), world.max(0)
+    idx = [np.nonzero(_range_mask(pts[a], wlo[a], whi[a], grid.tol[a]))[0]
+           for a in range(3)]
+    if not all(len(i) for i in idx):
+        return out
+    G = np.stack(np.meshgrid(*[pts[a][idx[a]] for a in range(3)],
+                             indexing='ij'), -1).reshape(-1, 3)
+    Minv = np.linalg.inv(M)
+    L = G @ Minv[:3, :3].T + Minv[:3, 3]
+    # a flat primitive takes the points within half the finest cell of it (as
+    # a thickness, in its own coordinates): a tilted sheet meets few nodes
+    cell = min(float(np.diff(pts[a]).min()) if len(pts[a]) > 1 else 1.0
+               for a in range(3))
+    scale = float(np.abs(np.linalg.det(Minv[:3, :3]))) ** (1 / 3)
+    tol = max(grid.tol) * 10
+    sub = _inside_local(q, L, tol, max(tol, 0.5 * cell * scale)).reshape(
+        [len(i) for i in idx])
+    out[np.ix_(*idx)] = sub
+    return out
 
 
 def _snap_primary(lines, c):
@@ -476,7 +626,9 @@ def _sheet_normal(q):
     """The normal axis of a flat primitive (a Polygon, or a Box flat along one
     axis), else None: openEMS models a conducting sheet on 2D primitives only
     (PEC on the others)."""
-    if isinstance(q, C.Polygon) and not isinstance(q, C.LinPoly):
+    if getattr(q, 'transform', None) is not None and q.HasTransform():
+        return None  # (tilted: not a sheet along an axis; PEC, as solids)
+    if isinstance(q, C.Polygon) and not isinstance(q, (C.LinPoly, C.RotPoly)):
         return int(q.norm_dir)
     flat = ([a for a in range(3) if q.start[a] == q.stop[a]]
             if isinstance(q, C.Box) else [])
@@ -821,7 +973,8 @@ def _core(csx, fdtd):
     mats = [(q.priority, p, q) for p in props if isinstance(p, C.Material)
             for q in p.primitives]
     for pr, p, q in sorted(mats, key=lambda t: t[0]):
-        if isinstance(q, C.Polygon) and not isinstance(q, C.LinPoly):
+        if isinstance(q, C.Polygon) and not isinstance(q, (C.LinPoly,
+                                                           C.RotPoly)):
             continue  # flat: no cell volume
         m = inside(q, grid.mid, grid) & (pr >= prio)
         eps[m], kap[m], prio[m] = p.epsilon, p.kappa, pr
@@ -1444,11 +1597,11 @@ def _dump(p, grid, notes):
     sub = int(np.max(p.sub_sampling)) if p.sub_sampling is not None else 1
     out = []
     for n, q in enumerate(p.primitives):
-        if not isinstance(q, C.Box):
+        if not isinstance(q, C.Box) or q.HasTransform():
             notes.append(
-                f"field dump {p.name}: a {type(q).__name__} - only boxes are "
-                "dumped, skipped"
-            )
+                f"field dump {p.name}: a {type(q).__name__}"
+                + (" with a transform" if isinstance(q, C.Box) else "")
+                + " - only boxes along the axes are dumped, skipped")
             continue
         lo3, hi3 = np.minimum(q.start, q.stop), np.maximum(q.start, q.stop)
         lo, hi, coords = [], [], []

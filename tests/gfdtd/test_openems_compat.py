@@ -103,3 +103,97 @@ def test_spheres(tmp_path):
     kinds = sorted(q.kind for p in back.GetAllProperties()
                    for q in p.GetAllPrimitives())
     assert kinds == ['Sphere', 'SphericalShell'] and not back.skipped
+
+
+def test_transforms(tmp_path):
+    """AddTransform as CSXCAD's: post-multiplied (the last added applies
+    last), angles in degrees; a transformed primitive fills the points that map
+    back inside it, and the transform goes through the XML."""
+    from kicad2ems.gfdtd.operator import inside
+    csx = ContinuousStructure()
+    g = csx.GetGrid()
+    for a in 'xyz':
+        g.SetLines(a, np.linspace(-6, 6, 49))
+    box = csx.AddMetal('m').AddBox([-4, -0.5, -0.5], [4, 0.5, 0.5])
+    box.AddTransform('RotateAxis', 'z', 90)        # along y now
+    box.AddTransform('Translate', [1, 0, 0])       # then moved along x
+    tr = box.GetTransform()
+    assert np.allclose(tr.Transform([4, 0, 0]), [1, 4, 0])
+    assert np.allclose(tr.Transform([1, 4, 0], invers=True), [4, 0, 0])
+    pts = [g.GetLines(a) for a in range(3)]
+
+    class Grid:
+        lines, tol = pts, [1e-6] * 3
+    m = inside(box, pts, Grid)
+    X, Y, Z = np.meshgrid(*pts, indexing='ij')
+    want = ((np.abs(X - 1) <= 0.5 + 1e-5) & (np.abs(Y) <= 4 + 1e-5)
+            & (np.abs(Z) <= 0.5 + 1e-5))
+    assert (m == want).all()
+    sph = csx.AddMaterial('d', epsilon=3).AddSphere([0, 0, 0], 1.0)
+    sph.AddTransform('Scale', 2.0)
+    sph.AddTransform('Translate', [0, 0, 2])
+    ms = inside(sph, pts, Grid)
+    assert (ms == (np.sqrt(X ** 2 + Y ** 2 + (Z - 2) ** 2) <= 2 + 1e-5)).all()
+    csx.Write2XML(str(tmp_path / 'm.xml'))
+    back = ContinuousStructure()
+    back.ReadFromXML(str(tmp_path / 'm.xml'))
+    b, s = [q for p in back.GetAllProperties() for q in p.GetAllPrimitives()]
+    assert np.allclose(b.GetTransform().GetMatrix(), tr.GetMatrix())
+    assert np.allclose(s.GetTransform().GetMatrix(),
+                       sph.GetTransform().GetMatrix()) and not back.skipped
+
+
+def test_a_polygons_coordinates_are_csxcads():
+    """A polygon's X1, X2 run along the axes after its normal, cyclic, as
+    CSXCAD's: normal y, X1 is z and X2 is x (gfdtd had taken x, z)."""
+    from kicad2ems.gfdtd.operator import inside
+    csx = ContinuousStructure()
+    g = csx.GetGrid()
+    for a in 'xyz':
+        g.SetLines(a, np.arange(0, 6.5, 0.5))
+    q = csx.AddMetal('m').AddLinPoly([[0, 1, 1, 0], [0, 0, 5, 5]], 'y', 1.0,
+                                     2.0)
+    pts = [g.GetLines(a) for a in range(3)]
+
+    class Grid:
+        lines, tol = pts, [1e-6] * 3
+    m = inside(q, pts, Grid)
+    X, Y, Z = np.meshgrid(*pts, indexing='ij')
+    want = (Z <= 1 + 1e-6) & (X <= 5 + 1e-6) & (Y >= 1 - 1e-6) & (Y <= 3 + 1e-6)
+    assert (m == want).all()
+
+
+def test_a_rotated_polygon(tmp_path):
+    """AddRotPoly as CSXCAD's: a cone shell (the conical horn's profile: norm
+    x, points[0] the distance from the z axis, points[1] z), turned about z."""
+    from kicad2ems.gfdtd.operator import inside
+    csx = ContinuousStructure()
+    g = csx.GetGrid()
+    for a in 'xy':
+        g.SetLines(a, np.linspace(-6, 6, 61))
+    g.SetLines('z', np.linspace(-1, 6, 36))
+    # an annulus 2 <= r <= 3 from z = 0 to 4
+    q = csx.AddMetal('m').AddRotPoly([[2, 3, 3, 2], [0, 0, 4, 4]], 'x', 0,
+                                     'z', [0, 2 * np.pi])
+    pts = [g.GetLines(a) for a in range(3)]
+
+    class Grid:
+        lines, tol = pts, [1e-6] * 3
+    m = inside(q, pts, Grid)
+    X, Y, Z = np.meshgrid(*pts, indexing='ij')
+    r = np.hypot(X, Y)
+    core = (r >= 2.05) & (r <= 2.95) & (Z >= 0.05) & (Z <= 3.95)
+    away = (r < 1.9) | (r > 3.1) | (Z < -0.1) | (Z > 4.1)
+    assert m[core].all() and not m[away].any()
+    # half a turn, as CSXCAD turns it: from the polygon's own plane (+y, for
+    # norm x) right-handed about z, through -x: the x < 0 half, the other empty
+    h = csx.AddMetal('h').AddRotPoly([[2, 3, 3, 2], [0, 0, 4, 4]], 'x', 0,
+                                     'z', [0, np.pi])
+    mh = inside(h, pts, Grid)
+    assert mh[core & (X < -0.1)].all() and not mh[core & (X > 0.1)].any()
+    csx.Write2XML(str(tmp_path / 'm.xml'))
+    back = ContinuousStructure()
+    back.ReadFromXML(str(tmp_path / 'm.xml'))
+    qs = [x for p in back.GetAllProperties() for x in p.GetAllPrimitives()]
+    assert [x.kind for x in qs] == ['RotPoly', 'RotPoly'] and not back.skipped
+    assert np.isclose(qs[1].angle[1], np.pi)
