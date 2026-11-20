@@ -735,9 +735,15 @@ class VulkanBackend(_Compressed, NumpyBackend):
                     dtf=float(getattr(self, 'dtf', 0.0)))
         rec = np.zeros(1, [(n, {'p': '<u8', 'i': '<i4', 'f': '<f4'}[k])
                            for n, k in kernels_vk.MODEL])
+        # an array the model has none of (no lumped parts, no Mur): a small
+        # zeroed buffer rather than a null address, as loops over none of them
+        # never read it - lavapipe (Mesa's CPU Vulkan) read through the null
+        # pointer anyway, in the energy kernel's empty lumped loops, and
+        # crashed (R-C7.2)
+        self._none = self.zeros(16)
         for name, kind in kernels_vk.MODEL:
             rec[name] = (f[name].addr if kind == 'p' and name in f else
-                         (0 if kind == 'p' else vals[name]))
+                         (self._none.addr if kind == 'p' else vals[name]))
         rec['part'] = self.hpart.address
         self.model = self.up(rec.view(np.uint8))
         self._choose_mode()

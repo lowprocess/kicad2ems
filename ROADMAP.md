@@ -14,10 +14,10 @@ estimates are working days. Last updated 2026-11-19.
    - gfdtd, mom25d and the line model regress against openEMS's demo_lowpass (`tests/data/`); a board with
      wave ports and one with vias would cover more, and mom25d's README figures are tighter than its tests;
    - pcbqs's real-board regressions need `~/Desktop/wpthb`.
-2. **The GPUs** (R-C7): run before a release instead of in CI (`tools/gpu_report.py`, docs/testing.md). Left: an
-   NVIDIA run in the report (the GTX 980 Ti is listed; Vulkan's runs take the AMD card, CuPy runs on it too); the
-   report's mom25d boards are small enough to factor on the CPU, so a board past the GPU's threshold; gfdtd on
-   lavapipe in CI, as mom25d's Vulkan LU is (R-C7.2).
+2. **The GPUs** (R-C7): run before a release instead of in CI (`tools/gpu_report.py`, docs/testing.md); CI runs
+   mom25d's Vulkan LU and gfdtd's Vulkan kernels on lavapipe. Left: an NVIDIA run in the report (the GTX 980 Ti is
+   listed; Vulkan's runs take the AMD card, CuPy runs on it too); the report's mom25d boards are small enough to
+   factor on the CPU, so a board past the GPU's threshold.
 3. **A release** (R-C12, C16, C17, M). Left:
    - PyPI, which refuses direct-URL dependencies (not yet: the user's call, 2026-11-14);
    - the KiCad plugin's PCM entry and its v0.1.0 tag.

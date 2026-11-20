@@ -87,6 +87,18 @@ jobs:
       - name: gfdtd
         if: success() || failure()
         run: python -m pytest -q tests/gfdtd
+      - name: >-
+          gfdtd's Vulkan kernels on lavapipe
+          (Mesa's CPU Vulkan, set up for mom25d's above; R-C7.2)
+        if: success() || failure()
+        timeout-minutes: 15
+        # (the job's GFDTD_BACKEND=cpu would put the GPU tests on the CPU)
+        env:
+          GFDTD_BACKEND: vulkan
+          EMSDEV_VULKAN_CPU: '1'
+        run: |
+          python -m kicad2ems.emsdev
+          python -m pytest -q -rs tests/gfdtd -k "vulkan or gpu"
       - name: fdtd (the FDTD layer, openEMS's and gfdtd's connections)
         if: success() || failure()
         run: python -m pytest -q -n 4 tests/fdtd

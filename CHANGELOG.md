@@ -234,6 +234,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **gfdtd's Vulkan kernels run on lavapipe, and CI runs them there (R-C7.2, 2026-11-20).** The energy kernel's
+  loops over the lumped parts crashed Mesa's CPU Vulkan on a model with none: their arrays were null addresses,
+  which lavapipe read through although the loops never ran. Absent arrays now point at a small zeroed buffer; the
+  GPU tests pass on lavapipe (6, 3 s), and the stack workflow runs them after mom25d's.
 - **gfdtd's `AddLumpedPort` took `edges2grid` as openEMS's (2026-11-20):** grid lines at the port's start and stop in
   those directions. Ignored, it had left the port between lines: openEMS's Simple_Patch_Antenna showed no
   resonance on gfdtd (S11 0 dB); now 2.435 GHz at -26.8 dB against openEMS's 2.435 GHz at -26.6 dB.

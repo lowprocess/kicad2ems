@@ -45,8 +45,10 @@ process of its own; a solver that is not installed or not usable is skipped. It 
 
 ## The GPUs, before a release
 
-CI has no GPU: its runners have Mesa's CPU Vulkan (lavapipe), on which mom25d's Vulkan LU runs but gfdtd's kernels
-do not. On a machine with GPUs, before a release, `tools/gpu_report.py` runs what CI cannot and writes
+CI has no GPU: its runners have Mesa's CPU Vulkan (lavapipe), on which mom25d's Vulkan LU and gfdtd's GPU tests run
+(`EMSDEV_VULKAN_CPU=1`; locally `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json` keeps a real GPU
+out), which shows the kernels compile and agree, not their speed. On a machine with GPUs, before a release,
+`tools/gpu_report.py` runs what CI cannot and writes
 `gpu-report/<date>.md` and `gpu-report/latest.json`, to commit with the release:
 
 ```bash
