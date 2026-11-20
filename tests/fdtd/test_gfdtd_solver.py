@@ -248,3 +248,27 @@ def test_the_runs_shared_by_each_gpu_s_speed(tmp_path, monkeypatch):
     conn.record_speed(1, 2000.0)
     conn.record_speed(1, 1940.0)
     assert conn.gpu_speeds([0, 1]) == {0: None, 1: 1970.0}
+
+
+def test_jobs_on_the_gpu_are_as_many_as_its_memory_holds(monkeypatch):
+    """R-D7: --jobs N on Vulkan runs at most as many excitations at once as the
+    GPU's free memory holds (each run's fields its own); unknown memory, or
+    the CPU: N."""
+    from types import SimpleNamespace
+    import kicad2ems.gfdtd.engine as E
+    from kicad2ems.fdtd import gfdtd as G
+    assert E.runs_that_fit(50e6, 8, 10e9) == 6
+    assert E.runs_that_fit(1e6, 8, 10e9) == 8 == E.runs_that_fit(50e6, 8, None)
+    assert E.runs_that_fit(500e6, 8, 10e9) == 1
+    said = []
+    run = SimpleNamespace(s=SimpleNamespace(gfdtd_backend='gpu', gfdtd_gpus='',
+                                            jobs=8), log=said.append)
+    p = SimpleNamespace(grid={'info': {'cells': 50e6}}, excite=list(range(8)))
+    monkeypatch.setattr(E, 'resolve_backend', lambda name: 'vulkan')
+    monkeypatch.setattr(G, '_vram_free', lambda: 10e9)
+    assert G.GFDTD().jobs(run, p) == 6 and 'holds 6 run(s)' in said[-1]
+    monkeypatch.setattr(G, '_vram_free', lambda: None)
+    assert G.GFDTD().jobs(run, p) == 8
+    monkeypatch.setattr(E, 'resolve_backend', lambda name: 'core')
+    monkeypatch.setattr(G, '_vram_free', lambda: 1.0)
+    assert G.GFDTD().jobs(run, p) == 8

@@ -209,6 +209,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **gfdtd's `--jobs` on the GPU capped by its memory (R-D7, 2026-11-20).** Each excitation's fields are its own;
+  `--jobs N` on Vulkan now runs at most as many at once as the GPU's free memory holds (`engine.runs_that_fit`,
+  gpu_bytes per run), and says so, where a run past it had failed with MemoryError.
 - **A Palace run that hangs silently is stopped at its timeout (2026-11-20).** `fem.palace.run.run` read
   Palace's log as it came and only then waited with the timeout, so a Palace writing nothing was waited on for
   ever, and a timeout that fired escaped as `TimeoutExpired`. A watchdog now stops it (its process group, the MPI

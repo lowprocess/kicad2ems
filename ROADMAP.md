@@ -39,7 +39,7 @@ Left:
 3. **The KiCad plugin** starts `kicad2ems study` for a board whose config has one.
 4. **Ports the solvers share** (R-E1): mom25d's wave window (6 cells + max(2 cells, 4 w, 3 h, 1 mm)) refuses the
    examples' 4-6 mm feeds, where the FDTD's probes stood 3 mm in; the FDTD's line ports on pairs and oblique traces
-   (FDTD, item 4).
+   (FDTD, item 3).
 5. **Parts at angles other than x and y** (R-E5; `parts.py` leaves them out with a note): the lumped piece along
    the dominant axis and a strap along the other.
 6. **A variation's figures in the window and the report**: `<name>_vary.csv` and the log set them side by side
@@ -329,21 +329,20 @@ be checked for each scan.
      own kernels would make it free for every run (R-D6's rest).
    - εr averaged inside a cell, so a thin layer needs no lines of its own (`nz_mask` is 1 since 2026-11-14: 4 cells
      through a 10 µm mask had made hairpin 17× longer for "within 1 MHz").
-3. **Memory, the rest** (R-D7): capping the concurrent runs by the VRAM (each excitation's fields are its own).
-4. **Line ports, the rest** (R-E1): differential pairs (the legs' B A^-1 is exact; the shift back needs each
+3. **Line ports, the rest** (R-E1): differential pairs (the legs' B A^-1 is exact; the shift back needs each
    mode's Zc and gamma from the two runs), a stripline's port driving both of its planes (one plane drives the
    wave between them: the probes need 3 mm to settle), and the probes on an oblique trace.
-5. **Diagonal copper** is a staircase on the mesh: the mesher puts lines at a polygon's vertices, so a diagonal
+4. **Diagonal copper** is a staircase on the mesh: the mesher puts lines at a polygon's vertices, so a diagonal
    edge between them sits on the coarse cells (a 20 mm, 50 ohm line at 30 deg came out 3.4 % longer electrically
    than along x, at 45 deg 1.7 %; a fine cell of 0.09 mm in place of 0.18 helped 0.6 %). Lines along such an
    edge, or a conformal edge (Dey-Mittra), would follow it.
-6. **Boundaries**: first-order Mur is the default on five sides (6 % reflection against 5e-5 for an 8-cell PML),
+5. **Boundaries**: first-order Mur is the default on five sides (6 % reflection against 5e-5 for an 8-cell PML),
    and the PML is CPML with κ = 1, α = 0, at λ/res cells: CFS-CPML, and thinner graded cells.
-7. **Larger boards**: every copper edge is a line across the box. Subgridding or local refinement, temporal
+6. **Larger boards**: every copper edge is a line across the box. Subgridding or local refinement, temporal
    blocking, conformal PEC for curved copper.
-8. **Materials**: Lorentz and Drude, anisotropy; openEMS's Debye run has 0.5 dB more loss than gfdtd's on the same
+7. **Materials**: Lorentz and Drude, anisotropy; openEMS's Debye run has 0.5 dB more loss than gfdtd's on the same
    material (which is right is not checked).
-9. **openEMS's interface** (kept, to be widened; measured 2026-11-18 against openEMS's own Python tutorials,
+8. **openEMS's interface** (kept, to be widened; measured 2026-11-18 against openEMS's own Python tutorials,
    upstream 1b46454, run unchanged with the two imports swapped: `~/pcbqs-bench/openems-compat`). Where both run,
    the answers agree (MSL_NotchFilter |ΔS| ≤ 0.006, StripLine2MSL ≤ 0.007, Rect_Waveguide ≤ 0.001; gfdtd 1.2 s and
    1.6 s against openEMS's 8.6 s and 17.1 s), but only 1 of the 16 tutorials runs as it stands. In order:

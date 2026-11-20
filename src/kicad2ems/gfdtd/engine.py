@@ -136,6 +136,16 @@ def concurrent_runs(cells, runs):
     return max(1, min(int(runs), int(limit // max(cells, 1))))
 
 
+def runs_that_fit(cells, runs, free):
+    """How many of `runs` runs of a model of `cells` fit in `free` bytes of GPU
+    memory at once (each excitation's fields are its own: gpu_bytes per run,
+    its PML left out, within fits' 0.92), at least 1; free None: all of them."""
+    if not free:
+        return max(1, int(runs))
+    per = 29.0 * cells + 64e6
+    return max(1, min(int(runs), int(0.92 * free // per)))
+
+
 def resolve_backend(name='auto'):
     """'vulkan', 'core' or 'numpy' for a backend name: auto (the GPU, else the
     core, else numpy), gpu or vulkan (vk), cpu (the core, else numpy), core,

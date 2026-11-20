@@ -174,7 +174,17 @@ class GFDTD(FDTD):
         if getattr(s, 'gfdtd_gpus', '') and where != 'vulkan':
             run.log("gfdtd: --gfdtd-gpus is for Vulkan's GPUs: one GPU used")
         if s.jobs > 1:
-            return s.jobs
+            if where != 'vulkan':
+                return s.jobs
+            # (R-D7) as many as the GPU's memory holds: each run's fields are
+            # its own, and --jobs past that failed a run with MemoryError
+            from kicad2ems.gfdtd.engine import runs_that_fit
+            n = runs_that_fit(p.grid['info']['cells'], s.jobs, _vram_free())
+            if n < s.jobs:
+                run.log(f"gfdtd: --jobs {s.jobs}: the GPU's free memory holds "
+                        f"{n} run(s) of {p.grid['info']['cells'] / 1e6:.2f} M "
+                        "cells at once")
+            return n
         if where not in GPU_BACKENDS:
             return 1
         return concurrent_runs(p.grid['info']['cells'], len(p.excite))
@@ -198,6 +208,16 @@ class GFDTD(FDTD):
             f"{','.join(p.bc)}, {self.check(s)[1]}"
         )
         return p
+
+
+def _vram_free():
+    """The free bytes of the Vulkan GPU gfdtd runs on, or None: not known."""
+    try:
+        from kicad2ems.gfdtd.engine import VULKAN_NEEDS
+        from kicad2ems.emsdev import gpu as devices
+        return float(devices.vulkan_device(need=VULKAN_NEEDS).free())
+    except Exception:  # (no GPU, no figure: not capped)  # noqa: BLE001
+        return None
 
 
 # [Vulkan GPU index] a process each, of the last plan (GFDTD.jobs), or None
