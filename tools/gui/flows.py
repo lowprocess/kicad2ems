@@ -217,7 +217,7 @@ def flow_start(r, home):
     """No board: the Start page and its tiles; an example opened: its board,
     its preview and the plan."""
     w = _window(r)
-    th = w.start._thread  # (the tiles' pictures: drawn in a thread)
+    th = w.start_page._thread  # (the tiles' pictures: drawn in a thread)
     r.wait(lambda: th is None or not th.isRunning(), 300, what="the tiles")
     r.step("the Start page: the examples as tiles", 5)
     cfg = _example('rf_coupler', home)

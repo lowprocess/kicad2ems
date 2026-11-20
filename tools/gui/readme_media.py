@@ -211,7 +211,7 @@ def gui_media(only):
         w = MainWindow()  # no board: the Start page, its examples as tiles
         sized(w, (1600, 950))
         # (the tiles' pictures: drawn in a thread)
-        t, th = time.time(), w.start._thread
+        t, th = time.time(), w.start_page._thread
         while th is not None and th.isRunning() and time.time() - t < 300:
             pump(5)
         shot(w, os.path.join(GUI, 'start.png'))
