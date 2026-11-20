@@ -191,3 +191,24 @@ def test_stop_lets_the_tool_stop_what_it_started(app, tmp_path):
     child = int((tmp_path / 'child.pid').read_text())
     with pytest.raises(ProcessLookupError):
         os.kill(child, 0)
+
+
+def test_the_basic_settings_come_first(app):
+    """Options of level 'basic' are a first section, open; the rest in their
+    groups, closed (their own 'Settings' group becomes 'More settings'). With
+    none marked, the groups as they come, the first open."""
+    from dataclasses import replace
+    a = FA.PowerIntegrity()
+    opts = a.options()
+    marked = opts[-1].key
+    a.options = lambda: [replace(o, level='basic') if o.key == marked else o
+                         for o in opts]
+    p = AP.AnalysisPanel(a)
+    titles = [t for t in p.sections if t != 'Files']
+    assert titles[0] == 'Settings' and 'More settings' not in titles[:1]
+    assert p.forms['Settings'].indexOf(p.w[marked]) >= 0
+    assert p.sections['Settings'].head.isChecked()
+    assert not any(p.sections[t].head.isChecked() for t in titles[1:])
+    plain = AP.AnalysisPanel(FA.PowerIntegrity())
+    first = [t for t in plain.sections if t != 'Files'][0]
+    assert plain.sections[first].head.isChecked()

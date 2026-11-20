@@ -341,6 +341,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **An analysis's panel opens on its few settings (2026-11-20).** Options of level `basic` are a first section,
+  open, as the solvers' form has them; the rest stay in their groups, closed. pcbqs names its tools': the rail's
+  rail, ground, voltage and loads; the near field's converter, input net, ground, frequency and current; the
+  temperature's losses, circuit and ambient.
 - **mom25d's `fast.py` split (R-F3, 2026-11-20):** 1,457 lines to 1,048, its helpers in modules of their own:
   `dense` (Z scaled and bordered, the host's and the GPU's LU and solves, the sides' loops, batched GMRES), `near`
   (the near pairs and their sparse correction), `tiles` (the block low-rank tiles, the compiled factor) and

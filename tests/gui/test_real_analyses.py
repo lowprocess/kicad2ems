@@ -45,11 +45,15 @@ def window(tmp_path, monkeypatch):
 def test_the_panels_are_pcbqs_s_options(window):
     w, app = window
     pdn, mqs, th = w.pages['pdn'], w.pages['mqs'], w.pages['thermal']
+    # the few settings a run is set up with first (pcbqs.analyses: basic)
     assert ({'rail', 'load', 'plane_min', 'no_pdn'} <= set(pdn.w)
-            and list(pdn.sections)[:2] == ['Files', 'Rail'])
+            and list(pdn.sections)[:3] == ['Files', 'Settings', 'Rail'])
+    assert all(pdn.forms['Settings'].indexOf(pdn.w[k]) >= 0
+               for k in ('rail', 'ground', 'volts', 'load'))
     assert (mqs.find_btn.text() == 'Find converters'
             and {'converter', 'fsw', 'heights'} <= set(mqs.w))
-    assert (list(th.sections) == ['Files', 'Heat', 'Parts', 'Air', 'Solver']
+    assert (list(th.sections) == ['Files', 'Settings', 'Heat', 'Parts', 'Air',
+                                  'Solver']
             and th.w['film'].placeholderText() == '10.0')
     by = {
         q: w.study.rows[q].text(1).replace('  ▾', '')

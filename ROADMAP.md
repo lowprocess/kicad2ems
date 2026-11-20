@@ -86,8 +86,9 @@ taken back); nothing below may fix a panel in place. Left:
    runs in progress (2026-11-19). Left: the panels still hold the values between a load and a save (the document is
    filled when the config opens and when it is saved, not on each edit), and undo is the form's; the board as read
    (its layout, for picking) is the window's. Then the KiCad plugin can drive a study through these.
-2. **An analysis's panel with its few settings first**, as the solvers' are (an options row may say `level`;
-   pcbqs's tables do not yet).
+2. **An analysis's panel with its few settings first, the rest.** The panel puts options of level `basic` first and
+   open (2026-11-20), and pcbqs's rail, near-field and thermal tools name theirs; Elmer's and Palace's tools do not
+   yet (the coil tool does).
 3. **Picking on the board: what is left.** Nets and parts are picked (an option's `pick`). Not yet: a pad (a port:
    `REF.PAD`, or a point), a `REF=VALUE` list's part (a rail's loads, a part's loss), a region dragged as a box,
    and the pick in the 3D view. The Circuit page's *Load model…* and *Save model…* buttons go (*Choose PCB…* went).

@@ -158,8 +158,18 @@ class AnalysisPanel(QWidget):
         v.addWidget(self.sections['Files'])
         self.pick_btns = {}  # {option key: its pick button}
         groups = {}
+        # the few settings a run is set up with first and open (an option's
+        # level 'basic', as the solvers' form has them), the rest in their
+        # groups, closed; with none marked, the groups as they come
+        basic = [o for o in self.options if getattr(o, 'level', '') == 'basic']
+        if basic:
+            groups['Settings'] = basic
         for o in self.options:
-            groups.setdefault(o.group or 'Settings', []).append(o)
+            if o in basic:
+                continue
+            g = o.group or 'Settings'
+            groups.setdefault('More settings' if basic and g == 'Settings'
+                              else g, []).append(o)
         for i, (g, opts) in enumerate(groups.items()):
             inner = QWidget()
             fl = QFormLayout(inner)

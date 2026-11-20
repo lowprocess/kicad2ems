@@ -44,6 +44,8 @@ class _Tool(Analysis):
     engine = 'pcbqs'
     module = ''
     pick = {}                               # a tool's own word over PICK's
+    # the few settings a run is set up with, shown first (Option.level)
+    basic = ()
 
     def check(self):
         from . import __version__
@@ -58,7 +60,9 @@ class _Tool(Analysis):
 
     def options(self):
         pick = {**PICK, **self.pick}  # what a front end may pick on the board
-        return [replace(o, pick=pick.get(o.key)) for o in self.table()]
+        return [replace(o, pick=pick.get(o.key),
+                        level='basic' if o.key in self.basic else o.level)
+                for o in self.table()]
 
     def report(self, folder):
         from . import reports
@@ -192,6 +196,8 @@ class PowerIntegrity(_Tool):
                      unit='mW'))
         return out
 
+    basic = ('rail', 'ground', 'volts', 'load')
+
     def table(self):
         from .pdn.cli import OPTIONS
         return OPTIONS
@@ -243,6 +249,8 @@ class NearField(_Tool):
     provides = ('nearfield',)
     several = 'converter'      # and several converters
     pick = dict(ground='net')  # (one ground net: the loop's return)
+
+    basic = ('converter', 'vin', 'ground', 'fsw', 'current')
 
     def table(self):
         from .mqs_cli import OPTIONS
@@ -529,6 +537,8 @@ class Thermal(_Tool):
                 ])
         except (KeyError, TypeError, ValueError, StopIteration):
             return []
+
+    basic = ('loss', 'circuit', 'ambient')
 
     def table(self):
         from .thermal.__main__ import OPTIONS
