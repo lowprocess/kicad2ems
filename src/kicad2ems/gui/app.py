@@ -16,6 +16,8 @@ of it and the settings of the one selected: study.py) and its pages:
     Filter Synthesis
              design a microstrip filter with dfsynth, validate and tune it on
              the solvers, open its board here
+    Draw     arbitrary shapes over the board, in plan and 3D (copper, cuts,
+             solids, ports), for the runs to add (drawtab.py)
     Circuit  the circuit analysis's model as a schematic to edit
              (pcbqs.circuit), when that analysis is installed
 
@@ -92,6 +94,8 @@ class MainWindow(WindowStudy, WindowDocks, WindowConfigs, WindowRun,
         # (the pages that stepped aside for Start)
         self._had_board, self._aside = None, None
         self.filter = FilterTab(self)
+        from .drawtab import DrawTab
+        self.draw = DrawTab(self)  # shapes drawn over the board: the Draw page
         from .runspanel import RunsPanel
         self.runs_panel = RunsPanel(self)  # this board's runs: the Runs page
         # what runs each analysis of the registry: a settings panel made from
@@ -148,7 +152,8 @@ class MainWindow(WindowStudy, WindowDocks, WindowConfigs, WindowRun,
         self.work.setCentralWidget(QWidget(visible=False))
         widgets = {
             'Viewer': self.viewer, 'Run': self.runtab, 'Results': self.results,
-            'Filter': self.filter, 'Report': self.results.reportview,
+            'Filter': self.filter, 'Draw': self.draw,
+            'Report': self.results.reportview,
             'Tables': self.results.tablesview, 'Start': self.start_page,
             'Section': self.viewer.section, 'Runs': self.runs_panel,
             **{self.registry[k].label: p

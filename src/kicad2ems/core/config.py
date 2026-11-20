@@ -257,6 +257,11 @@ CORE = [
         "repeatable", list, conv=items, gui='Extra ports (P3=J1.1, P4@x,y ...)',
         group='board', cli=dict(flags=['--port'], dest='ports', action='append',
                                 metavar='SPEC'), level='basic'),
+    Option(
+        'shapes', None,
+        "a drawing (kicad2ems-shapes .json, the window's Draw page): its "
+        "copper added to the board's layers, its cuts taken out of them",
+        path=True, gui='Drawn shapes (.json)', group='board'),
     Option('cut_ports', False,
            "a port wherever a signal track crosses the region edge", bool,
            gui='Ports where tracks cross the region edge', group='board'),

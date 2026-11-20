@@ -130,7 +130,7 @@ def test_study_dock(window):
     # no page per analysis: the circuit's editor alone
     assert (list(w.places) == [
         'Viewer', 'Start', 'Results', 'Report', 'Tables', 'Run', 'Runs',
-        'Section', 'Filter', 'Circuit'
+        'Section', 'Filter', 'Draw', 'Circuit'
     ])
     tree.rows['dc'].setCheckState(0, Qt.Checked)
     assert (tree.asked() == dict(sparams=[], dc=[])

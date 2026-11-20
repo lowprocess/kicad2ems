@@ -312,6 +312,7 @@ class WindowStudy:
             if self._layout_stamp is not None:
                 self._layout_stamp, self.drawn = None, None
                 self.viewer.show_layout(None)
+                self.draw.set_board(None)
             return False
         stamp = (os.path.abspath(board), os.path.getmtime(board))
         if stamp == self._layout_stamp:
@@ -329,6 +330,7 @@ class WindowStudy:
         # the board as drawn; None: not one to read
         self.drawn, self._layout_bad = layout, layout is None
         self.viewer.show_layout(layout)
+        self.draw.set_board(layout)
         self.steps.refresh()
         if self._picking:  # a pick was waiting for it
             self._begin_pick()

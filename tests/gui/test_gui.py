@@ -108,7 +108,7 @@ def test_window_tabs(tmp_path):
     # no page per analysis: an editor's
     assert (list(w.places) == [
         'Viewer', 'Start', 'Results', 'Report', 'Tables', 'Run', 'Runs',
-        'Section', 'Filter', 'Circuit'
+        'Section', 'Filter', 'Draw', 'Circuit'
     ])
     assert w.viewer.view() in ('3D', 'Plan')  # 3D when OpenGL can be had
     w.viewer.set_view('Plan')
@@ -1309,7 +1309,7 @@ def test_the_window_is_docks(monkeypatch, tmp_path):
             and w.setup.inspector.isAncestorOf(w.setup.rf_box))
     assert (list(w.docks) == [
         'Viewer', 'Start', 'Results', 'Report', 'Tables', 'Run', 'Runs',
-        'Section', 'Filter', 'Circuit'
+        'Section', 'Filter', 'Draw', 'Circuit'
     ] and w.places is w.docks)
     # a result's pages: its plots, its report, its tables, and the runs' log
     # (the tabs read Plots and Log). On a screen this narrow the plots are the
