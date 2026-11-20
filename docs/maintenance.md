@@ -108,6 +108,14 @@ As on the [index](index.md#conventions), and:
 4. Update the docs. A new API name goes on [APIs](api.md) (`tests/test_api.py` checks every name is there and
    has a docstring).
 
+## Skills for coding agents
+
+`.claude/skills/` holds instructions an agent (Claude Code, or another that reads `SKILL.md` files) loads
+when a task needs them: running boards (`kicad2ems-run`), crosstalk and board coupling
+(`kicad2ems-signal-integrity`), the power tools (`kicad2ems-power-tools`), mom25d's speed and memory
+(`mom25d-performance`), the tests and CI (`kicad2ems-testing`), example boards (`kicad2ems-examples`) and
+adding an analysis (`kicad2ems-add-analysis`). Keep them in step with the code they name.
+
 <a id="documentation-site"></a>
 ## The documentation site
 
