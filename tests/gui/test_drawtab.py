@@ -125,3 +125,71 @@ def test_the_window_has_the_page_and_its_settings(app, tmp_path):
     finally:
         w.setup.dirty = False
         w.close()
+
+
+def _press_3d(tab, app, a, b, mods=None):
+    """A left-button drag in the 3D view from pixel a to b (a click: a == b)."""
+    from PySide6.QtCore import Qt, QPointF, QEvent
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QApplication
+    v, mods = tab.view3d, mods or Qt.NoModifier
+
+    def send(kind, xy, held):
+        p = QPointF(*xy)
+        btn = Qt.LeftButton if kind != QEvent.MouseMove else Qt.NoButton
+        QApplication.sendEvent(v, QMouseEvent(
+            kind, p, v.mapToGlobal(p), btn,
+            Qt.LeftButton if held else Qt.NoButton, mods))
+        app.processEvents()
+    send(QEvent.MouseButtonPress, a, True)
+    for k in range(1, 9):
+        f = k / 8
+        send(QEvent.MouseMove, (a[0] + (b[0] - a[0]) * f,
+                                a[1] + (b[1] - a[1]) * f), True)
+    send(QEvent.MouseButtonRelease, b, False)
+
+
+def test_the_3d_view_selects_and_edits(tab, app):
+    import numpy as np
+    import pyqtgraph as pg
+    from PySide6.QtCore import Qt
+    from kicad2ems.core.shapes import Shape
+    if tab.gl is None:
+        pytest.skip('no 3D view here')
+    tab.resize(1200, 1100)
+    app.processEvents()
+    tab.add(Shape('rect', [[0, 0], [4, 4]], material='metal', z0=2, z1=3))
+    tab.add(Shape('circle', [[10, 2]], radius=1.5, layer='F.Cu'))
+    tab.select(None)
+    tab._redraw_3d()
+    v = tab.view3d
+    v.setCameraPosition(distance=40, elevation=35, azimuth=-60)
+    v.opts['center'] = pg.Vector(5, 2, 1)
+    # the ray under a point's pixel passes through it
+    x, y = tab.project3d([1, 2, 3])
+    o, d = tab.ray3d(x, y)
+    assert np.linalg.norm(np.cross(np.array([1, 2, 3.]) - o, d)) < 1e-6
+    P = tab.project3d
+    # a click on the block selects it (the list and the form follow)
+    _press_3d(tab, app, P([2, 2, 3]), P([2, 2, 3]))
+    assert tab.sel == 0 and tab.list.currentRow() == 0
+    # a drag moves it on its level, snapped
+    _press_3d(tab, app, P([2, 2, 3]), P([5, 3, 3]))
+    assert tab.drawing.shapes[0].points == [[3, 1], [7, 5]]
+    # Shift + drag on its top face stretches it
+    _press_3d(tab, app, P([5, 3, 3]), P([5, 3, 5]), Qt.ShiftModifier)
+    s = tab.drawing.shapes[0]
+    assert (s.z0, s.z1) == (2, pytest.approx(5))
+    # the disc on F.Cu
+    _press_3d(tab, app, P([10, 2, 1.6]), P([10, 2, 1.6]))
+    assert tab.sel == 1
+    # a click on nothing: nothing selected, the camera where it was
+    az = v.opts['azimuth']
+    _press_3d(tab, app, (5, 5), (5, 5))
+    assert tab.sel is None and v.opts['azimuth'] == az
+    # a drag on nothing orbits, and leaves the shapes
+    _press_3d(tab, app, (5, 5), (80, 5))
+    assert v.opts['azimuth'] != az
+    assert tab.drawing.shapes[0].points == [[3, 1], [7, 5]]
+    tab.undo()
+    assert tab.drawing.shapes[0].z1 == 3

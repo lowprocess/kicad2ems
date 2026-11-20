@@ -15,7 +15,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   dielectric or air solids between two heights. `kicad2ems.core.shapes` holds the drawing (a `kicad2ems-shapes`
   JSON file) and applies it to the board (`shapes` setting): every solver gets the drawn copper and cuts, and
   `board.json` keeps the solids, though no solver meshes them yet. The page also writes the `region` and `ports`
-  settings from the shapes.
+  settings from the shapes. Shapes are selected and edited in the 3D view too: a click picks one, a drag moves
+  it on its level, and Shift + drag stretches or lifts a solid (`core.shapes.pick`: a ray against the triangles).
 - **Solvers compared by figures (2026-11-20).** A run with two solvers or more has a *Solvers compared* section in
   its report: each solver's figures (each port's worst match and its dip, each transmission at the band's centre
   and its lowest: `core.sparams.figures`, `compared`) and their spread; `study.compare` takes solver engines too.

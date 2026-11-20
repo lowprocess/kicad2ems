@@ -419,7 +419,10 @@ Arbitrary shapes drawn over the board, in plan and in 3D, for a run to add to it
   *dielectric* and *air* are solids between two heights. Shapes apply in the list's order: a cut takes out what
   is drawn before it.
 - **3D** shows the shapes extruded over the board's substrate and copper (*see-through solids* to look under a
-  lid).
+  lid), and edits them too: a click selects a shape (the plan, the list and the form follow; a click on nothing
+  selects none), a drag moves it on its level, and Shift + drag on a solid stretches it by its top or bottom face,
+  or lifts it whole by a side. A drag on nothing orbits the view, Ctrl + drag pans it, as before. Only drawn
+  shapes are picked, not the board.
 - *Use in runs* saves the drawing (`kicad2ems-shapes` JSON, model mm, y up) and names it in the settings
   (`shapes = "drawing.json"` in a config); *Region from shape* and *Ports to settings* write those settings in
   KiCad's coordinates. Ctrl+Z / Ctrl+Y undo and redo the drawing while the page has the focus.

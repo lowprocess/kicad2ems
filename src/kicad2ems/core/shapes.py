@@ -12,6 +12,9 @@ its geometry, what it does to a Board, and the triangles a 3D view draws.
     notes = apply(board, d)          # its copper into board.copper, its cuts
                                      # out of it; its solids as board.solids
     v, f = prism(polygon, z0, z1)    # a closed triangle mesh, outward normals
+    i, t = pick(meshes, origin, direction)
+                                     # the mesh a ray meets first (a 3D view's
+                                     # click), and how far along it
 
 Coordinates are the model's (mm, y up: board.json's, the 3D view's); a setting
 in KiCad's coordinates (a region, a port at a point) has y negated
@@ -46,6 +49,7 @@ from dataclasses import dataclass, field, asdict
 import numpy as np
 
 __all__ = ['Shape', 'Drawing', 'apply', 'prism', 'shape_mesh', 'stack_of',
+           'ray_hit', 'pick',
            'region_setting', 'port_settings', 'KINDS', 'MATERIALS']
 
 FORMAT, VERSION = 'kicad2ems-shapes', 1
@@ -162,6 +166,20 @@ class Shape:
             self.radius = max(1e-3, math.hypot(x - cx, y - cy))
         else:
             self.points[i] = [float(x), float(y)]
+
+    def lifted(self, dz, face=None):
+        """A copy of a solid raised by dz mm: both faces, or only its 'top'
+        (z1) or 'bottom' (z0) face (`face`), never past the other one."""
+        s = Shape(**asdict(self))
+        lo, hi = sorted((s.z0, s.z1))
+        if face == 'top':
+            hi = max(hi + dz, lo + 1e-3)
+        elif face == 'bottom':
+            lo = min(lo + dz, hi - 1e-3)
+        else:
+            lo, hi = lo + dz, hi + dz
+        s.z0, s.z1 = round(lo, 6), round(hi, 6)
+        return s
 
     def to_dict(self):
         d = asdict(self)
@@ -429,3 +447,38 @@ def shape_mesh(s, stack):
     # a cut drawn just proud of the copper, to be seen over it
     lift = 0.01 if s.material == 'cut' else 0.0
     return prism(g, z - h - lift, z + h + lift)
+
+
+def ray_hit(v, f, origin, direction):
+    """How far along the ray origin + t direction (t > 0) it first meets the
+    triangles (vertices v (n, 3), faces f (m, 3)), or None (Moller-Trumbore,
+    every triangle at once)."""
+    t = np.asarray(v, float)[np.asarray(f)]
+    if not len(t):
+        return None
+    o, d = np.asarray(origin, float), np.asarray(direction, float)
+    e1, e2 = t[:, 1] - t[:, 0], t[:, 2] - t[:, 0]
+    p = np.cross(d, e2)
+    det = np.einsum('ij,ij->i', e1, p)
+    ok = np.abs(det) > 1e-12
+    inv = 1.0 / np.where(ok, det, 1.0)
+    s = o - t[:, 0]
+    u = np.einsum('ij,ij->i', s, p) * inv
+    q = np.cross(s, e1)
+    w = (q @ d) * inv
+    dist = np.einsum('ij,ij->i', e2, q) * inv
+    hit = ok & (u >= 0) & (w >= 0) & (u + w <= 1) & (dist > 1e-9)
+    return float(dist[hit].min()) if hit.any() else None
+
+
+def pick(meshes, origin, direction):
+    """(key, t): the mesh of {key: (vertices, faces)} the ray meets first, and
+    how far along it; (None, None) for none."""
+    best = (None, None)
+    for k, m in meshes.items():
+        if m is None:
+            continue
+        t = ray_hit(m[0], m[1], origin, direction)
+        if t is not None and (best[1] is None or t < best[1]):
+            best = (k, t)
+    return best
