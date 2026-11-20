@@ -215,6 +215,15 @@ python -m kicad2ems.core.segment board.kicad_pcb --nets 'PCIE*,HDMI*' --out out/
   mom25d on that piece (18 nets, 20 through paths) the worst of each path over 1-10 GHz is 0.5 dB at the median,
   1.4 dB on PCIe, and a stub's notch (USB-C's branch) misplaced. A via model keeps the planes in its box and
   small ground pads, not a signal layer's pour (as the layer pieces leave it out).
+- **`--via-solver pbm`** (prototype, `kicad2ems.core.viamodel`): the via models without a mesh, as the hybrid SI
+  tools model vias: each signal via a chain of nodes (at the planes it crosses and its pads), its capacitance to
+  each plane from an axisymmetric electrostatic solve, in each cavity between two planes the parallel-plate
+  Green's function (w mu d / 4) H0^(2)(k rho) coupling every via that crosses it, ground vias shorting the cavity,
+  each port through its stub as a line. Against the whole board on mom25d: rf_msvia S21 within 0.30 dB (the
+  meshed via model 0.34), rf_diffvia Sdd21 0.073 dB rms (meshed 0.193, gfdtd's whole board 0.177); the CM5
+  Minima's 12 via models in 18 s (meshed on the coarse edges: 3.5 min). Its planes are infinite (no board edge,
+  no finite cavity), its cavities carry their TEM mode alone; on the CM5 it differs from the meshed via models by
+  0.06 dB (median) on D-PHY to 2-4 dB on PCIe's clock and Ethernet at 10 GHz, which one is nearer not known yet.
 - **Resumed:** a piece solved before from the same board file and settings is taken as it is (`piece.sha256` in
   its folder), so a run stopped at one piece goes on from it. `--dmax` sets mom25d's cell size.
 - **Each piece in a process of its own**, so the memory one took is free for the next. mom25d stops a piece that

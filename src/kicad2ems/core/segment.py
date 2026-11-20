@@ -484,6 +484,20 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
     elif piece['kind'] == 'via' and via_solver:
         solver = via_solver
     d = _to_dict(piece['board'], piece)
+    if solver == 'pbm':
+        # the physics-based via model (viamodel.py): no mesh, no run
+        from . import viamodel
+        from .touchstone import write_touchstone
+        f = np.linspace(band['fmin'], band['fmax'], int(band['points'])) * 1e9
+        model = viamodel.build(d, piece['vias'])
+        S, names = viamodel.solve(model, f)
+        ts = os.path.join(folder, f"{piece['name']}_pbm.s{len(names)}p")
+        write_touchstone(ts, f, S, 50.0,
+                         comment=f"kicad2ems viamodel: ports {' '.join(names)}")
+        return f, S, names, dict(ports=names, solved={'pbm': dict(
+            touchstone=os.path.basename(ts))}, model=dict(
+                planes=model['planes'], vias=len(model['sig']),
+                ground_vias=len(model['gv'])))
     cli = dict(out=folder, solvers=solver, no_report=True, **band)
     if solver == 'mom25d':
         cli['mom_port'] = PORT
@@ -791,7 +805,9 @@ def parser():
                    help="mom25d's mesh across the copper's edges "
                    "(--mom-edges): coarse ~7x fewer unknowns on narrow traces")
     p.add_argument('--via-solver', default=None,
-                   help="the via models' solver where not --solver's (gfdtd)")
+                   help="the via models' solver where not --solver's: gfdtd, "
+                   "or pbm (a physics-based model: the cavities between the "
+                   "planes, no mesh; viamodel.py)")
     p.add_argument('--dmax', type=float, default=None,
                    help="mom25d's largest cell along the copper, mm "
                    "(--mom-dmax)")

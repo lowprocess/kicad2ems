@@ -176,3 +176,38 @@ def test_a_coarse_edge_mesh_couples_as_the_fine_one(tmp_path):
     db = lambda x: 20 * np.log10(np.abs(x))
     assert np.abs(db(Sc[:, 2, 0]) - db(Sf[:, 2, 0])).max() < 0.8
     assert np.abs(db(Sc[:, 1, 0]) - db(Sf[:, 1, 0])).max() < 0.3
+
+
+def test_a_physics_based_via_model(tmp_path):
+    """--via-solver pbm (viamodel.py: the cavities between the planes, no
+    mesh): rf_diffvia's pair through its blind vias, against the whole board on
+    mom25d: Sdd21 within 0.25 dB rms over 1-10 GHz (measured 0.073; the meshed
+    via model 0.193, gfdtd's whole board 0.177), the via model passive."""
+    pytest.importorskip('kicad2ems.mom25d.core')
+    import glob
+    from kicad2ems.core.touchstone import read_touchstone
+    cfg = _example(tmp_path, 'diffvia')
+    env = dict(os.environ, MOM25D_GPU='off', QT_QPA_PLATFORM='offscreen')
+    common = ['--fmin', '1', '--fmax', '10', '--points', '91']
+    p = subprocess.run([sys.executable, '-m', 'kicad2ems.core.segment',
+                        str(cfg), '--edges', 'coarse', '--via-solver', 'pbm',
+                        '--out', str(tmp_path / 'seg')] + common,
+                       capture_output=True, text=True, env=env)
+    assert p.returncode == 0, (p.stdout + p.stderr)[-3000:]
+    f, Sv = read_touchstone(glob.glob(str(tmp_path / 'seg' / 'via1' /
+                                          '*_pbm.s4p'))[0])
+    assert np.linalg.svd(Sv, compute_uv=False).max() <= 1.0 + 1e-9
+    res = json.load(open(tmp_path / 'seg' / SG.RESULT))
+    f, S = read_touchstone(str(tmp_path / 'seg' / res['touchstone']))
+    p = subprocess.run([sys.executable, '-m', 'kicad2ems', str(cfg),
+                        '--solvers', 'mom25d', '--no-report', '--out',
+                        str(tmp_path / 'whole')] + common,
+                       capture_output=True, text=True, env=env)
+    assert p.returncode == 0, (p.stdout + p.stderr)[-3000:]
+    f0, S0 = read_touchstone(str(tmp_path / 'whole' / 'rf_diffvia_mom25d.s4p'))
+    r = 1 / np.sqrt(2)
+    M = np.array([[r, -r, 0, 0], [r, r, 0, 0], [0, 0, r, -r], [0, 0, r, r]])
+    Sm = np.einsum('ij,fjk,lk->fil', M, S, M)  # P1d, P1c, P2d, P2c
+    db = lambda x: 20 * np.log10(np.abs(x))
+    d = db(Sm[:, 2, 0]) - db(S0[:, 2, 0])  # (the whole board's: mixed mode)
+    assert np.sqrt(np.mean(d ** 2)) < 0.25

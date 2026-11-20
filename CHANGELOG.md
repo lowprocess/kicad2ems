@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **A physics-based via model (2026-11-20, prototype: `kicad2ems.core.viamodel`, `segment --via-solver pbm`).**
+  No mesh: the vias as chains of nodes with their capacitances to the planes (an axisymmetric electrostatic
+  solve), the cavities between planes as parallel-plate Green's functions coupling every via, ground vias
+  shorting them. rf_diffvia Sdd21 0.073 dB rms from the whole board on mom25d (the meshed via model 0.193);
+  the CM5 Minima's 12 via models in 18 s, its 36 nets end to end in 28 s with the layer pieces solved before.
 - **mom25d: a coarse edge mesh (2026-11-20, `--mom-edges coarse`).** Neither the edge rings nor the gap rings, as
   Momentum without its edge mesh. A CM5 carrier's 18-net layer piece: 28,964 unknowns to 3,941, 49 min and 19.6 GB
   to 36 s and 1.4 GB, its through paths within 0.07 dB of the fine mesh at the median, its coupling terms |dS|
