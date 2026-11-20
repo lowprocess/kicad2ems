@@ -19,7 +19,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `SmoothMeshLines` (vendored, LGPL-3.0: the lines openEMS gets), the grid's `GetLine`, `Snap2LineNumber`
   (CSXCAD's `(index, inside)`), `GetSimArea`, `IsValid`, `Clear`, `openEMS.AddEdges2Grid` (openEMS's automesh
   box hints), `openEMS.physical_constants` as upstream, and spheres (`AddSphere`, `AddSphericalShell`, in the XML
-  too). 7 of openEMS's 16 Python tutorials run unchanged, against 1 before (docs/gfdtd/README.md#compat).
+  too), transforms, `AddRotPoly`, openEMS's `utilities` and `sar_utils` (vendored, GPL-3.0). 10 of openEMS's 16
+  Python tutorials run unchanged, against 1 before; the horns' and the helix's directivity and aperture
+  efficiency agree with openEMS's to the printed digit, the patch's resonance to the frequency point
+  (docs/gfdtd/README.md#compat).
 - **Board coupling takes a differential pair as a pair (2026-11-20).** Its legs (by name: `D0_P` / `D0_N`) are one
   channel, driving and received in its differential mode (`coupling.channels`, `modal`: mixed-mode S of every
   channel's ends, the voltage share between modes of other impedances), and each pair reports its own conversion
@@ -227,6 +230,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **gfdtd's `AddLumpedPort` took `edges2grid` as openEMS's (2026-11-20):** grid lines at the port's start and stop in
+  those directions. Ignored, it had left the port between lines: openEMS's Simple_Patch_Antenna showed no
+  resonance on gfdtd (S11 0 dB); now 2.435 GHz at -26.8 dB against openEMS's 2.435 GHz at -26.6 dB.
 - **gfdtd read a polygon normal to y with its coordinates swapped (2026-11-20).** CSXCAD's X1, X2 run along the
   axes after the normal, cyclic (normal y: X1 is z, X2 is x); gfdtd had taken the two others in order (x, z), so a
   y-normal Polygon or LinPoly of an openEMS script sat transposed. kicad2ems's own models (z-normal) were not

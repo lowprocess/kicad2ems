@@ -96,11 +96,21 @@ PYTHONPATH=$(python -m kicad2ems.gfdtd.compat) python Simple_Patch_Antenna.py
 ```
 
 It shadows a real openEMS on the same path: use it where openEMS is not installed, or in an environment of its
-own. Of openEMS's 16 Python tutorials (upstream 1b46454) 7 run so, unchanged (2026-11-20): CRLH_Extraction,
-Helical_Antenna, MSL_NotchFilter, Parallel_Plate_Waveguide, Rect_Waveguide, Simple_Patch_Antenna, StripLine2MSL.
+own. Of openEMS's 16 Python tutorials (upstream 1b46454) 10 run so, unchanged (2026-11-20), and where both ran
+they agree:
+
+| Tutorial | openEMS | gfdtd |
+|---|---|---|
+| MSL_NotchFilter, StripLine2MSL, Rect_Waveguide | | \|ΔS\| ≤ 0.006, 0.007, 0.001 |
+| Simple_Patch_Antenna | resonance 2.435 GHz, S11 −26.6 dB | 2.435 GHz, −26.8 dB (\|ΔS11\| ≤ 0.022) |
+| Helical_Antenna | Dmax 13.31 dBi | 13.31 dBi |
+| Horn_Antenna | Dmax 16.9 dBi, aperture efficiency 64.6 % | 16.9 dBi, 64.6 % |
+| Conical_Horn_Antenna | Dmax 19.22 dBi, aperture efficiency 61.35 % | 19.22 dBi, 61.35 % |
+| CRLH_Extraction, Parallel_Plate_Waveguide, RadarUWBTutorial | (run, not compared) | |
+
 The others need cylindrical grids (Bent_Patch_Antenna, Circ_Waveguide, CylindricalWave_CC), the plane-wave
-excitation (RCS_Sphere), `AddRotPoly` (Conical_Horn_Antenna), transforms (Horn_Antenna, Dipole_SAR,
-MRI_Loop_Coil), or `openEMS.utilities` / `openEMS.sar_utils` (RadarUWBTutorial, MRI_Loop_Coil, Dipole_SAR).
+excitation (RCS_Sphere), openEMS's compiled SAR calculation (Dipole_SAR) or its phantom data files
+(MRI_Loop_Coil).
 
 <a id="ports"></a>
 ## Ports

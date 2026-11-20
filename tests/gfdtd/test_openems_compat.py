@@ -199,3 +199,18 @@ def test_a_rotated_polygon(tmp_path):
     qs = [x for p in back.GetAllProperties() for x in p.GetAllPrimitives()]
     assert [x.kind for x in qs] == ['RotPoly', 'RotPoly'] and not back.skipped
     assert np.isclose(qs[1].angle[1], np.pi)
+
+
+def test_a_lumped_ports_edges_to_the_grid():
+    """AddLumpedPort(..., edges2grid='xy') puts grid lines at the port's start
+    and stop in those directions, as openEMS's (gfdtd had ignored it: the port
+    sat between lines, and openEMS's Simple_Patch_Antenna had no resonance)."""
+    csx = ContinuousStructure()
+    fdtd = openEMS()
+    fdtd.SetCSX(csx)
+    g = csx.GetGrid()
+    g.SetLines('x', [-10, 10]); g.SetLines('y', [-10, 10]); g.SetLines('z', [0, 2])
+    fdtd.AddLumpedPort(1, 50, [-6.0, 0, 0], [-6.0, 0, 1.5], 'z', 1.0,
+                       edges2grid='xy')
+    assert -6.0 in g.GetLines('x') and 0.0 in g.GetLines('y')
+    assert g.GetLines('z').tolist() == [0, 2]

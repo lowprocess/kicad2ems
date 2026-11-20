@@ -143,8 +143,19 @@ class openEMS:  # noqa: N801
                     grid.AddLine(n, hint[n])
 
     def AddLumpedPort(self, port_nr, R, start, stop, p_dir, excite=0, **kw):
-        return self._add(LumpedPort, port_nr, R, start, stop, p_dir, excite,
+        port = self._add(LumpedPort, port_nr, R, start, stop, p_dir, excite,
                          **kw)
+        # edges2grid='xy': grid lines at the port's start and stop in those
+        # directions, as openEMS's (without them its port sat between lines:
+        # openEMS's Simple_Patch_Antenna had no resonance)
+        if kw.get('edges2grid') is not None:
+            from .automesh import multi_dirs
+            grid = self.csx.GetGrid()
+            for n in multi_dirs(kw['edges2grid']):
+                grid.AddLine(n, start[n])
+                if start[n] != stop[n]:
+                    grid.AddLine(n, stop[n])
+        return port
 
     def _add(self, cls, *args, **kw):
         if self.csx is None:

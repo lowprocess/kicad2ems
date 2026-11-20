@@ -342,14 +342,14 @@ be checked for each scan.
    blocking, conformal PEC for curved copper.
 7. **Materials**: Lorentz and Drude, anisotropy; openEMS's Debye run has 0.5 dB more loss than gfdtd's on the same
    material (which is right is not checked).
-8. **openEMS's interface, the rest.** Through `kicad2ems.gfdtd.compat` (docs/gfdtd/README.md#compat) 7 of
-   openEMS's 16 Python tutorials run unchanged (2026-11-20; 1 on 2026-11-18): CSXCAD's `SmoothMeshLines`, the
-   grid's helpers, `AddEdges2Grid`, spheres. Left, in order:
-   - primitive transforms (`AddTransform` / `GetTransform`: Horn_Antenna, Dipole_SAR, MRI_Loop_Coil) and
-     `AddRotPoly` (Conical_Horn_Antenna);
-   - `openEMS.utilities` (`HDF5Dump`, `DelayFidelity`, `get_resource_path`) and `openEMS.sar_utils`
-     (RadarUWBTutorial, Dipole_SAR, MRI_Loop_Coil);
+8. **openEMS's interface, the rest.** Through `kicad2ems.gfdtd.compat` (docs/gfdtd/README.md#compat) 10 of
+   openEMS's 16 Python tutorials run unchanged (2026-11-20; 1 on 2026-11-18), the 7 compared agreeing with openEMS
+   (the horns' and the helix's directivity to the printed digit). Left, in order:
+   - the radiated power: gfdtd's Prad 7-12 % above openEMS's on the helix and the conical horn, with the same
+     directivity (the normalisation of the incident power?);
    - the plane-wave excitation (type 10, a total-field / scattered-field box: RCS_Sphere);
+   - the SAR calculation (`openEMS.sar_calculation`, compiled in openEMS: Dipole_SAR, MRI_Loop_Coil) and the
+     phantom files `get_resource_path` finds in an openEMS tree;
    - the getters and setters scripts read back, wires, polyhedra, Lorentz and Drude materials, `AddDiscMaterial`;
    - cylindrical grids (Bent_Patch_Antenna, Circ_Waveguide, CylindricalWave_CC), the one option gfdtd refuses;
    - the tutorials as a test: gfdtd against openEMS where openEMS is installed, gfdtd alone where not.
