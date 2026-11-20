@@ -122,7 +122,8 @@ its net to the run.
 
 On the `rf_diffvia` example without its port footprints, picking `D_P` sets up the pair as `P1±` at the open ends
 on F.Cu and `P2±` on In2.Cu; with gfdtd, Sdd21 matches the coupled line model within 0.27 dB from 0.5 to 6 GHz
-(46 s on an RX 7800 XT). On `demo_lowpass`, picking `RF_IN` brings in `N1` and `RF_OUT` through L1 and L3, and
+(46 s on an RX 7800 XT with **Use the GPU for gfdtd**; about 15 times that in the plugin's own environment
+without it, on gfdtd's NumPy backend). On `demo_lowpass`, picking `RF_IN` brings in `N1` and `RF_OUT` through L1 and L3, and
 keeps C2 as a shunt part.
 
 ### Net classes and impedance targets

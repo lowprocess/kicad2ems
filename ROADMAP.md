@@ -379,7 +379,8 @@ Tests (lavapipe, NVIDIA) are under CI and release.
 Besides the study (The study, item 3), R-E26 and C16:
 - the analyses beyond the DC drop and the temperature (the near field, the circuit, crosstalk) are the window's
   only;
-- its environment builds gfdtd without its core or a GPU (~15× slower) while the README quotes a GPU's time;
+- its environment builds gfdtd without its compiled core (the GPU is offered: *Use the GPU for gfdtd*; without it
+  NumPy, ~15× slower): the core's build in the plugin's environment, where a compiler is there;
 - the Plugin and Content Manager route its README gives does not exist yet (no entry, `"VERSION"` in its metadata,
   no v0.1.0 tag; also under CI and release).
 
