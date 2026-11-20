@@ -11,8 +11,8 @@ estimates are working days. Last updated 2026-11-19.
 ## CI and release
 
 1. **References** (R-C9, C10):
-   - stored S-parameters to regress against for the other solvers (the FDTD layer has demo_lowpass's, below), and
-     mom25d's README figures are tighter than its tests;
+   - gfdtd, mom25d and the line model regress against openEMS's demo_lowpass (`tests/data/`); a board with
+     wave ports and one with vias would cover more, and mom25d's README figures are tighter than its tests;
    - pcbqs's real-board regressions need `~/Desktop/wpthb`.
 2. **The GPUs** (R-C7): run before a release instead of in CI (`tools/gpu_report.py`, docs/testing.md). Left: an
    NVIDIA run in the report (the GTX 980 Ti is listed; Vulkan's runs take the AMD card, CuPy runs on it too); the

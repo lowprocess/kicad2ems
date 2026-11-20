@@ -1,5 +1,5 @@
 """A board end to end through the FDTD layer on gfdtd's CPU backend (R-C6), against openEMS's S-parameters of the
-same board and settings, stored in data/demo_lowpass_openems.s2p.
+same board and settings, stored in tests/data/demo_lowpass_openems.s2p.
 
 demo_lowpass (examples/make_demo_board.py lowpass: a 3rd-order Butterworth at 1 GHz of three 0402 parts on a
 microstrip) is run as its example config has it, by `python -m kicad2ems` in a process of its own: the import, the
@@ -16,7 +16,7 @@ import pytest
 from kicad2ems.core.touchstone import read_touchstone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-REFERENCE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'demo_lowpass_openems.s2p')
+REFERENCE = os.path.join(ROOT, 'tests', 'data', 'demo_lowpass_openems.s2p')
 # measured 0.029
 TOL = 0.05
 

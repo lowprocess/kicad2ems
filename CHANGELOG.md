@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **mom25d and the line model against a stored reference in CI (R-C9).** `tests/mom25d/test_reference.py` and
+  `tests/core/test_reference.py` solve demo_lowpass as the FDTD test does and compare with openEMS's
+  S-parameters, now in `tests/data/` for all three: mom25d within 0.05 (0.024 measured, ~3 s), the line model's
+  S21 within 0.08 (0.046) and its -3 dB corner within 50 MHz (its S11 has no model of the pads: not compared).
 - **A board's coupling, a layer at a time (2026-11-20).** `python -m kicad2ems.core.coupling board --nets 'DQ*'`
   and the study's *Board coupling* question (Signal integrity; engines mom25d and the line model): the nets by name
   patterns, each copper layer solved with the ground copper alone, each net's stretch on it a port at each end
