@@ -10,6 +10,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **openEMS scripts run unchanged on gfdtd: `kicad2ems.gfdtd.compat` (2026-11-20).** CSXCAD and openEMS packages over
+  gfdtd (put first on PYTHONPATH: `python -m kicad2ems.gfdtd.compat` prints the folder), with CSXCAD's own
+  `SmoothMeshLines` (vendored, LGPL-3.0: the lines openEMS gets), the grid's `GetLine`, `Snap2LineNumber`
+  (CSXCAD's `(index, inside)`), `GetSimArea`, `IsValid`, `Clear`, `openEMS.AddEdges2Grid` (openEMS's automesh
+  box hints), `openEMS.physical_constants` as upstream, and spheres (`AddSphere`, `AddSphericalShell`, in the XML
+  too). 7 of openEMS's 16 Python tutorials run unchanged, against 1 before (docs/gfdtd/README.md#compat).
 - **Board coupling takes a differential pair as a pair (2026-11-20).** Its legs (by name: `D0_P` / `D0_N`) are one
   channel, driving and received in its differential mode (`coupling.channels`, `modal`: mixed-mode S of every
   channel's ends, the voltage share between modes of other impedances), and each pair reports its own conversion

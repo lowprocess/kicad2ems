@@ -14,7 +14,8 @@ built for openEMS can be built, written, read and run here.
 Properties: Material, DebyeMaterial, Metal, ConductingSheet, LumpedElement,
 Excitation (with weight functions or a mode file), ProbeBox (with mode functions
 or a mode file), DumpBox (and LorentzMaterial, read with its static epsilon).
-Primitives: Box, Polygon, LinPoly, Cylinder, CylindricalShell, Curve. Anything
+Primitives: Box, Polygon, LinPoly, Cylinder, CylindricalShell, Sphere,
+SphericalShell, Curve. Anything
 else in a file read here is kept out of the model and listed in `CSX.skipped`.
 
 Weight and mode functions are CSXCAD's function-parser expressions in x, y, z,
@@ -171,15 +172,64 @@ class CSRectGrid:
     def GetLines(self, d, do_sort=False):
         return np.array(self.lines[ny_dir(d)])
 
+    def GetLine(self, d, idx):
+        """Line idx (sorted, unique; a negative idx counts from the end) as
+        CSXCAD's: IndexError out of range."""
+        lines = self.lines[ny_dir(d)]
+        i = int(idx)
+        if not -len(lines) <= i < len(lines):
+            raise IndexError(f"GetLine: line index {idx} out of range for "
+                             f"{len(lines)} lines")
+        return float(lines[i])
+
     def GetQtyLines(self, d):
         return len(self.lines[ny_dir(d)])
 
     def ClearLines(self, d):
         self.lines[ny_dir(d)] = np.zeros(0)
 
+    def Clear(self):
+        """Every line and the drawing unit, as CSXCAD's."""
+        self.lines = [np.zeros(0), np.zeros(0), np.zeros(0)]
+        self.delta_unit = 1.0
+
+    def Sort(self, d='all'):
+        """(The lines are always sorted and unique: as CSXCAD's since 0.7.)"""
+
+    def SmoothMeshLines(self, d, max_res, ratio=1.5, check_symmetry=True):
+        """The lines in direction d ('all': every one) smoothed to steps of
+        max_res at most, growing by `ratio` at most: CSXCAD's own function
+        (smooth.py), so openEMS's scripts get the lines openEMS would."""
+        from .smooth import SmoothMeshLines
+        for a in (range(3) if d == 'all' else [ny_dir(d)]):
+            self.SetLines(a, SmoothMeshLines(self.lines[a], max_res, ratio,
+                                             check_symmetry=check_symmetry))
+
     def Snap2LineNumber(self, d, value):
+        """(index of the line nearest value, whether value is inside the
+        lines' span), as CSXCAD's."""
         lines = self.lines[ny_dir(d)]
-        return int(np.argmin(np.abs(lines - value)))
+        if not len(lines):
+            return 0, False
+        return (int(np.argmin(np.abs(lines - value))),
+                bool(lines[0] <= value <= lines[-1]))
+
+    def GetSimArea(self):
+        """The simulation box the lines span: [[x0, y0, z0], [x1, y1, z1]]."""
+        return np.array([[l[0] if len(l) else 0.0 for l in self.lines],
+                         [l[-1] if len(l) else 0.0 for l in self.lines]])
+
+    def IsValid(self):
+        """At least two lines in every direction."""
+        return all(len(l) >= 2 for l in self.lines)
+
+    def SetMeshType(self, cs_type):
+        """Cartesian (0) alone: gfdtd has no cylindrical grid."""
+        if int(cs_type) != 0:
+            raise ValueError("gfdtd: a cylindrical grid is not supported")
+
+    def GetMeshType(self):
+        return 0
 
 
 class Primitive:
@@ -242,6 +292,31 @@ class Cylinder(Primitive):
         super().__init__(prop, priority)
         self.start, self.stop, self.radius = (_vec(start), _vec(stop),
                                               _num(radius))
+
+
+class Sphere(Primitive):
+    """The points within radius of center."""
+    kind = 'Sphere'
+
+    def __init__(self, prop, center, radius, priority=0):
+        super().__init__(prop, priority)
+        self.center, self.radius = _vec(center), _num(radius)
+
+    def GetCenter(self):
+        return np.array(self.center)
+
+    def GetRadius(self):
+        return self.radius
+
+
+class SphericalShell(Sphere):
+    """The points whose distance from center is within shell_width / 2 of
+    radius."""
+    kind = 'SphericalShell'
+
+    def __init__(self, prop, center, radius, shell_width, priority=0):
+        super().__init__(prop, center, radius, priority)
+        self.shell_width = _num(shell_width)
 
 
 class CylindricalShell(Cylinder):
@@ -313,6 +388,14 @@ class Property:
                             **kw):
         return self._add(
             CylindricalShell(self, start, stop, radius, shell_width, priority))
+
+    def AddSphere(self, center, radius, priority=0, **kw):
+        return self._add(Sphere(self, center, radius, priority))
+
+    def AddSphericalShell(self, center, radius, shell_width, priority=0,
+                          **kw):
+        return self._add(
+            SphericalShell(self, center, radius, shell_width, priority))
 
     def AddCurve(self, points, priority=0, **kw):
         return self._add(Curve(self, points, priority))
@@ -815,6 +898,12 @@ def _write_primitive(parent, q):
         el = ET.SubElement(parent, q.kind, **pr)
         ET.SubElement(el, 'P1', **_xyz(q.start))
         ET.SubElement(el, 'P2', **_xyz(q.stop))
+    elif isinstance(q, Sphere):
+        pr['Radius'] = _fmt(q.radius)
+        if isinstance(q, SphericalShell):
+            pr['ShellWidth'] = _fmt(q.shell_width)
+        el = ET.SubElement(parent, q.kind, **pr)
+        ET.SubElement(el, 'Center', **_xyz(q.center))
     elif isinstance(q, Curve):
         el = ET.SubElement(parent, 'Curve', **pr)
         for P in q.points:
@@ -928,6 +1017,12 @@ def _read_property(pe, skipped):
             getattr(p, 'Add' + q.tag)(
                 _point(q.find('P1')), _point(q.find('P2')),
                 float(q.get('Radius')), *shell, priority=pri)
+        elif q.tag in ('Sphere', 'SphericalShell'):
+            shell = ([float(q.get('ShellWidth'))]
+                     if q.tag == 'SphericalShell' else [])
+            getattr(p, 'Add' + q.tag)(_point(q.find('Center')),
+                                      float(q.get('Radius')), *shell,
+                                      priority=pri)
         elif q.tag == 'Curve':
             p.AddCurve(
                 np.array([_point(v) for v in q.findall('Vertex')]).T,

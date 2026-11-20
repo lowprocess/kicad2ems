@@ -63,11 +63,11 @@ among them) work on gfdtd unchanged.
 
 | | gfdtd |
 |---|---|
-| Grid | rectilinear, Cartesian |
+| Grid | rectilinear, Cartesian; CSXCAD's helpers: `SmoothMeshLines` (CSXCAD's own function: the lines openEMS gets), `GetLine`, `Snap2LineNumber`, `GetSimArea`, `IsValid`, `Clear`; `openEMS.AddEdges2Grid` (box edges, `metal_edge_res`) |
 | Materials | isotropic epsilon and conductivity (kappa), averaged over the four cells around each edge; mue and magnetic loss (sigma) along each dual edge (such a model runs on the NumPy backend: the compiled kernels' H update is geometry alone) |
 | Dispersion | Debye materials (`DebyeMaterial`, any number of poles): `--diel wideband` |
 | Metal | `Metal` as PEC; `ConductingSheet` (conductivity, thickness: kicad2ems's `--sigma`) with openEMS's conductor-loss model on flat primitives, PEC on others and next to the boundaries, as openEMS's; with `roughness` (m RMS, gfdtd's own) rough copper |
-| Primitives | Box, Polygon, LinPoly, Cylinder, CylindricalShell, Curve (a wire along the mesh edges nearest to it, as openEMS's) |
+| Primitives | Box, Polygon, LinPoly, Cylinder, CylindricalShell, Sphere, SphericalShell, Curve (a wire along the mesh edges nearest to it, as openEMS's) |
 | Lumped elements | R, L, C: parallel, or series RLC (`LEtype=1`), with metal caps |
 | Ports | all of openEMS's Python ports: lumped, curve, microstrip (MSL), stripline, CPW, coaxial (with a finite `Feed_R` too, which openEMS's has not: a resistive annulus at the feed plane), rectangular and circular waveguide, any waveguide mode by functions or mode file ([Ports](#ports)) |
 | Excitations | soft and hard, E and H field (types 0-3), weighted by functions of x, y, z, rho, a, r, t or a mode file, delayed |
@@ -80,8 +80,27 @@ among them) work on gfdtd unchanged.
 | End | the energy in the field and in the lumped parts (`EndCriteria`), timestep limit, `MaxTime` (the run's own seconds), `ABORT`, `SetAbort` |
 
 Not yet: Lorentz materials, the mode-purity column of mode-matching probes, frequency-domain field probes (the
-time-domain file's DFT does it), and cylindrical grids. A file that holds these is still read: what gfdtd doesn't
-model is listed as a note.
+time-domain file's DFT does it), the plane-wave excitation (type 10), rotated polygons (`AddRotPoly`), primitive
+transforms, and cylindrical grids. A file that holds these is still read: what gfdtd doesn't model is listed as a
+note.
+
+<a id="compat"></a>
+### openEMS scripts unchanged
+
+`kicad2ems.gfdtd.compat` is a folder of `CSXCAD` and `openEMS` packages over gfdtd (`CSXCAD.CSXCAD`,
+`CSXCAD.CSRectGrid`, `openEMS.openEMS`, `openEMS.physical_constants` as upstream defines them, `openEMS.automesh`,
+`openEMS.ports`). Put it first on the module path and a script written for openEMS runs on gfdtd as it is:
+
+```bash
+PYTHONPATH=$(python -m kicad2ems.gfdtd.compat) python Simple_Patch_Antenna.py
+```
+
+It shadows a real openEMS on the same path: use it where openEMS is not installed, or in an environment of its
+own. Of openEMS's 16 Python tutorials (upstream 1b46454) 7 run so, unchanged (2026-11-20): CRLH_Extraction,
+Helical_Antenna, MSL_NotchFilter, Parallel_Plate_Waveguide, Rect_Waveguide, Simple_Patch_Antenna, StripLine2MSL.
+The others need cylindrical grids (Bent_Patch_Antenna, Circ_Waveguide, CylindricalWave_CC), the plane-wave
+excitation (RCS_Sphere), `AddRotPoly` (Conical_Horn_Antenna), transforms (Horn_Antenna, Dipole_SAR,
+MRI_Loop_Coil), or `openEMS.utilities` / `openEMS.sar_utils` (RadarUWBTutorial, MRI_Loop_Coil, Dipole_SAR).
 
 <a id="ports"></a>
 ## Ports

@@ -90,7 +90,7 @@ taken back); nothing below may fix a panel in place. Left:
    pcbqs's tables do not yet).
 3. **Picking on the board: what is left.** Nets and parts are picked (an option's `pick`). Not yet: a pad (a port:
    `REF.PAD`, or a point), a `REF=VALUE` list's part (a rail's loads, a part's loss), a region dragged as a box,
-   and the pick in the 3D view. The Circuit page's own file buttons go.
+   and the pick in the 3D view. The Circuit page's *Load model…* and *Save model…* buttons go (*Choose PCB…* went).
 4. **The pages, the rest.** *Images* may belong on a page of its own as Section does (asked, not decided); a Start
    page tile says nothing of what its example takes (the engine, the time: the index has neither).
 5. **Left from the removed bridge:** the schematic's format-1 layout code.
@@ -281,7 +281,6 @@ engine. (A piecewise-linear switched state-space engine was built and removed: C
 | Two faces in the circuit: a local loop basis | fewer iterations, no dense setup | | iterations grow with frequency (217 at DC, 575 at 20 MHz); the dense common-mode setup is 19 s |
 | The dense solves, after their assembly | the LU is 90 % of a two-face S-parameter solve (147 s at 17,700 unknowns) | | a compressed or block low-rank LU as mom25d has; ngspice's text output read by `np.loadtxt` (a binary raw file); the compression of field dumps; shapely's unions in the near field's mesh (`tools/pcbqs/perf/README.md` has where each tool's time goes) |
 | Whole-board near field | | convergence | `--backend hierarchical` is GMRES in the loop basis (47,548 triangles in 13 s, docs/pcbqs/quasistatic.md). Left: mesh and crop convergence on a whole board. A crop around the converter is enough for DC-DC loops |
-| The pencil, with `dc` loss (R-D13, the rest) | one factor a sweep | M | `Rl + jωLl` is a pencil: one eigendecomposition and Woodbury for the parts |
 
 The quasi-static solver's 10× target is not yet shown on real boards, and an FFT field grid's convergence has to
 be checked for each scan.
@@ -342,20 +341,17 @@ be checked for each scan.
    blocking, conformal PEC for curved copper.
 7. **Materials**: Lorentz and Drude, anisotropy; openEMS's Debye run has 0.5 dB more loss than gfdtd's on the same
    material (which is right is not checked).
-8. **openEMS's interface** (kept, to be widened; measured 2026-11-18 against openEMS's own Python tutorials,
-   upstream 1b46454, run unchanged with the two imports swapped: `~/pcbqs-bench/openems-compat`). Where both run,
-   the answers agree (MSL_NotchFilter |ΔS| ≤ 0.006, StripLine2MSL ≤ 0.007, Rect_Waveguide ≤ 0.001; gfdtd 1.2 s and
-   1.6 s against openEMS's 8.6 s and 17.1 s), but only 1 of the 16 tutorials runs as it stands. In order:
-   - CSXCAD's mesh helpers: `CSRectGrid.SmoothMeshLines` (15 of 16 tutorials; CSXCAD's is pure Python, LGPL-3.0,
-     so a faithful port gives openEMS's very meshes), `GetLine`, `AddEdges2Grid`, `GetSimArea`, `Sort`, `Clear`:
-     11 of 16;
-   - primitives and transforms: `AddSphere`, `AddRotPoly`, `AddTransform` / `GetTransform`, `AddDiscMaterial`:
-     15 of 16;
-   - the getters and setters scripts read back (of the 572 public members of CSXCAD's and openEMS's classes gfdtd
-     lacks, most are these, and the display colours), wires, polyhedra, Lorentz and Drude materials (9);
-   - cylindrical grids (CylindricalWave_CC), the one option gfdtd refuses (no use for them yet);
-   - the tutorials as a test: gfdtd against openEMS where openEMS is installed, gfdtd alone (it runs) where not;
-   - the docs ("a model made for openEMS runs here unchanged") to say what is covered.
+8. **openEMS's interface, the rest.** Through `kicad2ems.gfdtd.compat` (docs/gfdtd/README.md#compat) 7 of
+   openEMS's 16 Python tutorials run unchanged (2026-11-20; 1 on 2026-11-18): CSXCAD's `SmoothMeshLines`, the
+   grid's helpers, `AddEdges2Grid`, spheres. Left, in order:
+   - primitive transforms (`AddTransform` / `GetTransform`: Horn_Antenna, Dipole_SAR, MRI_Loop_Coil) and
+     `AddRotPoly` (Conical_Horn_Antenna);
+   - `openEMS.utilities` (`HDF5Dump`, `DelayFidelity`, `get_resource_path`) and `openEMS.sar_utils`
+     (RadarUWBTutorial, Dipole_SAR, MRI_Loop_Coil);
+   - the plane-wave excitation (type 10, a total-field / scattered-field box: RCS_Sphere);
+   - the getters and setters scripts read back, wires, polyhedra, Lorentz and Drude materials, `AddDiscMaterial`;
+   - cylindrical grids (Bent_Patch_Antenna, Circ_Waveguide, CylindricalWave_CC), the one option gfdtd refuses;
+   - the tutorials as a test: gfdtd against openEMS where openEMS is installed, gfdtd alone where not.
    The magnetic materials run on the NumPy backend: the compiled kernels' H update with a per-edge μ and loss
    would put them on the GPU.
 
@@ -398,5 +394,4 @@ R-E18, in order:
 ## Docs that do not say what the code does
 
 The review's section G, corrected on 2026-11-14 but for these:
-- the line model's `conductor_loss = yes` (with the line model's item 4, its losses);
 - mom25d's README validation figures, tighter than its tests check (CI and release, item 1).

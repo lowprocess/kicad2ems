@@ -119,6 +119,29 @@ class openEMS:  # noqa: N801
     def SetCSX(self, CSX):
         self.csx = CSX
 
+    def GetCSX(self):
+        return self.csx
+
+    def AddEdges2Grid(self, dirs, primitives=None, properties=None, **kw):
+        """The edges of primitives (and of properties' primitives) as grid
+        lines in dirs ('x', 'xy', 'all'), as openEMS's: boxes alone
+        (automesh.mesh_hint_from_box; metal_edge_res=, up_dir=, down_dir=)."""
+        from .automesh import mesh_hint_from_primitive
+        if self.csx is None:
+            raise ValueError("AddEdges2Grid: SetCSX first")
+        prims = []
+        for group, get in ((primitives, lambda p: [p]),
+                           (properties, lambda p: p.GetAllPrimitives())):
+            for item in (group if isinstance(group, (list, tuple)) else
+                         [group] if group is not None else []):
+                prims += get(item)
+        grid = self.csx.GetGrid()
+        for prim in prims:
+            hint = mesh_hint_from_primitive(prim, dirs, **kw)
+            for n in range(3):
+                if hint is not None and hint[n] is not None:
+                    grid.AddLine(n, hint[n])
+
     def AddLumpedPort(self, port_nr, R, start, stop, p_dir, excite=0, **kw):
         return self._add(LumpedPort, port_nr, R, start, stop, p_dir, excite,
                          **kw)

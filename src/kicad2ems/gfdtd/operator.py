@@ -163,6 +163,24 @@ def inside(q, pts, grid, flat_snap=True):
             sub = (t >= -1e-9) & (t <= 1 + 1e-9) & (r2 <= (q.radius + tol) ** 2)
         out[np.ix_(*idx)] = sub
         return out
+    if isinstance(q, C.Sphere):
+        c = np.asarray(q.center, float)
+        rout = q.radius + (q.shell_width / 2
+                           if isinstance(q, C.SphericalShell) else 0.0)
+        m = [_range_mask(pts[a], c[a] - rout, c[a] + rout, grid.tol[a])
+             for a in range(3)]
+        out = np.zeros(shape, bool)
+        idx = [np.nonzero(x)[0] for x in m]
+        if not all(len(i) for i in idx):
+            return out
+        P = np.stack(np.meshgrid(*[pts[a][idx[a]] for a in range(3)],
+                                 indexing='ij'), -1) - c
+        r = np.sqrt((P ** 2).sum(-1))
+        tol = max(grid.tol) * 10
+        sub = (np.abs(r - q.radius) <= q.shell_width / 2 + tol
+               if isinstance(q, C.SphericalShell) else r <= q.radius + tol)
+        out[np.ix_(*idx)] = sub
+        return out
     raise ValueError(f"gfdtd: primitive {type(q).__name__} not supported")
 
 
