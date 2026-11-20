@@ -12,13 +12,10 @@ low-rank LU and GMRES
 The compiled core is required (its mesher too): python -m
 kicad2ems.mom25d.core.build.
 """
-import os
-import threading
 import time
 from collections import namedtuple
 
 import numpy as np
-import scipy.linalg as sla
 from scipy import sparse
 
 from .base import gram_matrix
@@ -26,74 +23,14 @@ from . import _core  # python -m kicad2ems.mom25d.core.build
 from kicad2ems.emsdev.memory import available as available_memory
 from .blocks import Anchors
 from .policy import LOOP_TREE_BELOW, RETRY, REUSE_KEEP, SPARE, choose, device
-
-
-def fast_cores():
-    """The physical cores of the fastest class (a hybrid CPU's P-cores; every
-    core of the others) among the CPUs this process may use: emsdev's, which the
-    other solvers ask too (mom25d had its own rule, 0.9 of the top clock over
-    every CPU of the machine, affinity ignored); None where emsdev cannot
-    tell."""
-    from kicad2ems.emsdev.cpu import core_threads
-    return core_threads() or None
-
-
-_blas_capped = False
-
-
-def cap_blas_threads():
-    """Once: the LU's BLAS (OpenBLAS / MKL, through threadpoolctl) on the fast
-    physical cores only. A BLAS LU splits each step evenly over its threads and
-    waits for the slowest: on an i7-13700K (8 P-cores with their hyperthreads, 8
-    E-cores) its 24 threads made rf_stubnotch's 1.5k-unknown LU 0.62 s against
-    0.047 s on 8 (a whole kicad2ems run 10.8 s against 3.3 s), as fast at 5k
-    unknowns. MOM25D_BLAS_THREADS (or OPENBLAS_NUM_THREADS / MKL_NUM_THREADS)
-    sets it instead; without threadpoolctl nothing is changed."""
-    global _blas_capped
-    cap_core_threads()  # (its own setting: a BLAS one set by the user had
-    if _blas_capped:    # returned before it, so OpenMP ran on every thread;
-        return          # and per thread, below)
-    _blas_capped = True
-    env = os.environ.get('MOM25D_BLAS_THREADS')
-    if (not env and (os.environ.get('OPENBLAS_NUM_THREADS')
-                     or os.environ.get('MKL_NUM_THREADS'))):
-        return
-    try:
-        from threadpoolctl import threadpool_limits
-    except ImportError:
-        return
-    n = int(env) if env else fast_cores()
-    if n:
-        threadpool_limits(limits=n, user_api='blas')
-
-
-_omp_capped = threading.local()
-
-
-def cap_core_threads():
-    """Once in each thread: the compiled core's OpenMP (the matrix fill, the
-    near-field correction) on the fast physical cores only, as the BLAS. Its
-    schedule splits the rows over every thread, and on an i7-13700K the E-cores
-    and the hyperthreads held the fill back: antenna_vivaldi's (21.9k unknowns)
-    took 1.5-3.1 s a frequency on 24 threads, 0.87 s on 8 and 0.79 s on 16, the
-    whole fresh solve 8.5 s against 6.9-7.1 s. Per thread: libgomp keeps
-    omp_set_num_threads as the calling thread's own, so a cap set once in the
-    main thread left a solve in another (kicad2ems's --solver-jobs, a window's
-    worker) on all 24 CPUs. MOM25D_OMP_THREADS (or OMP_NUM_THREADS) sets it
-    instead; without threadpoolctl nothing is changed."""
-    if getattr(_omp_capped, 'done', False):
-        return
-    _omp_capped.done = True
-    env = os.environ.get('MOM25D_OMP_THREADS')
-    if not env and os.environ.get('OMP_NUM_THREADS'):
-        return
-    try:
-        from threadpoolctl import threadpool_limits
-    except ImportError:
-        return
-    n = int(env) if env else fast_cores()
-    if n:
-        threadpool_limits(limits=n, user_api='openmp')
+# the pieces split out of this module (R-F3): their names are still fast's,
+# which the other modules and the tests import from here
+from .threads import (fast_cores, cap_blas_threads, cap_core_threads,  # noqa: F401
+                      _one_blas_thread)
+from .dense import (_row_blocks, _equilibrate, _border, _loop_transform, _c64,
+                    _lu, HostLU, GpuLU, _lu_solve, gmres_batched)
+from .near import NEAR_CHUNK, _near_csr, near_pairs  # noqa: F401
+from .tiles import Cluster, cluster_tiles, _CompiledBLR  # noqa: F401
 
 
 # bytes the via blocks kept over a sweep may take on a small board (a large
@@ -102,74 +39,6 @@ def cap_core_threads():
 # unknowns) filled 14 of its 15 frequencies, rf_bends (7.1k, 1 to 12 GHz,
 # which takes 16 anchors) all 29
 ANCHOR_ROOM = 2.0 ** 31
-# near-field triplets per piece of the sum into the sparse matrix (_near_csr)
-NEAR_CHUNK = 8_000_000
-
-
-def _near_csr(ri, ci, vv, n, owner):
-    """The n x n CSR of the core's near-field triplets, duplicates summed. The
-    structure is built once and kept on `owner` (3.4 s on the SMA launch's 84 M
-    triplets); each frequency then only sums its values into it, a piece at a
-    time (0.6 s, against 3.1 s for SciPy's COO -> CSR every frequency)."""
-    pat = getattr(owner, '_near_pat', None)
-    if pat is None or pat[0] != (len(ri), n):
-        # the CSR structure of the triplets (row < 0: unused), the same at every
-        # frequency (a pair's nine slots are the edges of its two triangles):
-        # the used slots in CSR order, and where each entry's run of them starts
-        slot = np.flatnonzero(ri >= 0)
-        key = ri[slot].astype(np.int64) * n + ci[slot]
-        o = np.argsort(key)
-        slot, key = slot[o].astype(np.int32), key[o]
-        del o
-        first = np.flatnonzero(np.r_[True, key[1:] != key[:-1]])
-        key = key[first]
-        indptr = np.r_[0, np.cumsum(np.bincount(key // n, minlength=n))].astype(
-            np.int32)
-        pat = owner._near_pat = ((len(ri), n),
-                                 (indptr, (key % n).astype(np.int32), slot,
-                                  first.astype(np.int32)))
-    indptr, indices, slot, first = pat[1]
-    data = np.empty(len(first), vv.dtype)
-    a = 0
-    while a < len(first):  # whole entries per piece: about NEAR_CHUNK slots
-        b = min(len(first), int(np.searchsorted(first, first[a] + NEAR_CHUNK)))
-        s1 = first[b] if b < len(first) else len(slot)
-        data[a:b] = np.add.reduceat(vv[slot[first[a]:s1]],
-                                    first[a:b] - first[a])
-        a = b
-    M = sparse.csr_matrix((data, indices, indptr), shape=(n, n))
-    M.has_canonical_format = True
-    return M
-
-
-# ---- the BLR's tiles: a cluster tree ----------------------------------------
-class Cluster:
-    __slots__ = ('idx', 'lo', 'hi', 'kids')
-
-    def __init__(self, idx, pts, leaf):
-        p = pts[idx]
-        self.idx, self.lo, self.hi, self.kids = idx, p.min(0), p.max(0), []
-        if len(idx) > leaf:  # bisect along the longest side
-            o, h = (np.argsort(p[:, np.argmax(self.hi - self.lo)],
-                               kind='stable'), len(idx) // 2)
-            self.kids = [
-                Cluster(idx[o[:h]], pts, leaf),
-                Cluster(idx[o[h:]], pts, leaf)
-            ]
-
-    @property
-    def diam(self):
-        return np.linalg.norm(self.hi - self.lo)
-
-
-def cluster_tiles(pts, tile):
-    """The block low-rank solver's tiles: geometric bisection (Cluster) into
-    leaves of <= tile points; their index arrays and bounding boxes."""
-    def leaves(c):
-        return [c] if not c.kids else leaves(c.kids[0]) + leaves(c.kids[1])
-
-    tiles = leaves(Cluster(np.arange(len(pts)), pts, tile))
-    return [c.idx for c in tiles], [(c.lo, c.hi) for c in tiles]
 
 
 # ---- Fast operator for a Simulation -----------------------------------------
@@ -198,127 +67,6 @@ BLR_TOL_MIN = 1e-9       # ... down to this
 # a block low-rank solve whose GMRES ends above this residual is an error, not
 # an answer
 BLR_GIVE_UP = 1e-2
-
-
-def _row_blocks(Z, fn):
-    """fn(a, b) over blocks of Z's rows (about 32 MB each) on the fast cores:
-    NumPy's in-place arithmetic and copies release the GIL, and one block's two
-    passes stay in cache. A pass over a dense Z is bound by memory bandwidth,
-    which one thread does not fill: at 16k unknowns (4 GB) the equilibration
-    took 0.48 s on one, 0.27 s on 8."""
-    n = Z.shape[0]
-    rows = max(1, (1 << 25) // max(1, Z.shape[1] * Z.itemsize))
-    blocks = [(a, min(a + rows, n)) for a in range(0, n, rows)]
-    nt = min(len(blocks), fast_cores() or 4)
-    if nt <= 1:
-        for a, b in blocks:
-            fn(a, b)
-        return
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(nt) as ex:
-        list(ex.map(lambda ab: fn(*ab), blocks))
-
-
-def _equilibrate(Z, dsc=None):
-    """Symmetric diagonal equilibration of Z in place (via fan-charge rows dwarf
-    strip rows, most at low f), by dsc or 1 / sqrt|Z_ii|; returns the scales."""
-    if dsc is None:
-        dsc = 1.0 / np.sqrt(np.abs(np.diagonal(Z)).astype(float) + 1e-300)
-    dr = dsc.astype(Z.real.dtype)
-
-    def scale(a, b):
-        Z[a:b] *= dr[a:b, None]
-        Z[a:b] *= dr[None, :]
-    _row_blocks(Z, scale)
-    return dsc
-
-
-def _border(Z, B, C, both=True):
-    """Z's border from the vias', holes' and sides' blocks: Z[:Ne, Ne:] = B,
-    Z[Ne:, :Ne] = B^T, Z[Ne:, Ne:] = C, a block of rows at a time on the
-    fast cores (B^T whole strides through B a column at a time: with the
-    sides' 2,176 columns at 10.1k edges 0.2 s of a 3.5 s solve). both=False:
-    B^T alone (B and C are Z's own blocks)."""
-    Ne = B.shape[0]
-
-    def copy(a, b):
-        if a < Ne and both:
-            Z[a:min(b, Ne), Ne:] = B[a:min(b, Ne)]
-        if b > Ne:
-            a = max(a, Ne)
-            Z[a:b, :Ne] = B[:, a - Ne:b - Ne].T
-            if both:
-                Z[a:b, Ne:] = C[a - Ne:b - Ne]
-    _row_blocks(Z, copy)
-
-
-def _loop_transform(Z, W):
-    """Z <- T^T Z T in place, T = I + W (W: nonzero in some columns V, on rows
-    outside V): Z's columns V, then its rows V; the compiled core's
-    (loop_transform: 0.1 s at 16.3k unknowns, 1.1k loops)."""
-    V = np.flatnonzero(np.diff(W.indptr))
-    nz = np.diff(W.indptr)[V]
-    idx = np.zeros((len(V), nz.max()), np.int64)
-    cw = np.zeros(idx.shape)
-    k = np.arange(idx.shape[1]) < nz[:, None]
-    idx[k], cw[k] = W.indices, W.data         # (the columns V's, in order)
-    return _core.loop_transform(Z, V.astype(np.int64), idx, cw)
-
-
-def _c64(Z, dsc):
-    """Z equilibrated by dsc as a complex64 copy (the single-precision LU's
-    input; scaled in double, then rounded), Z as it was: one pass in the
-    compiled core."""
-    return _core.scale_c64(Z, np.ascontiguousarray(dsc, float), False)
-
-
-def _lu(Z):
-    """LU of Z^T, in place: Z^T of a C-ordered Z is Fortran-ordered, so LAPACK
-    needs no second N^2 copy."""
-    return sla.lu_factor(Z.T, overwrite_a=True, check_finite=False)
-
-
-class HostLU:
-    """An LU on the host (_lu's, complex64 or complex128): M(R) = Z^-1 R."""
-    on_gpu, device_bytes = False, 0
-
-    def __init__(self, lu):
-        self.lu, self.nbytes = lu, lu[0].nbytes
-
-    def __call__(self, R):
-        return _lu_solve(self.lu, R)
-
-
-class GpuLU:
-    """A complex64 LU on the GPU, taken from the backend (its work arrays
-    freed for the next): M(R) = Z^-1 R there; to_host() downloads it."""
-    on_gpu, nbytes = True, 0
-
-    def __init__(self, gpu, n):
-        self.gpu, self.lu, self.piv = gpu, gpu.lu, gpu.piv
-        self.device_bytes = 8.0 * n * n
-        gpu.lu = gpu.piv = None
-
-    def _with(self, fn):
-        g = self.gpu
-        held, (g.lu, g.piv) = (g.lu, g.piv), (self.lu, self.piv)
-        try:
-            return fn()
-        finally:
-            g.lu, g.piv = held
-
-    def __call__(self, R):
-        return self._with(lambda: self.gpu.solve(R))
-
-    def to_host(self):
-        return HostLU(self._with(self.gpu.download))
-
-
-def _lu_solve(lu, R):
-    """Z^-1 R with _lu's factor (trans=1), in the factor's precision; complex128
-    out."""
-    return sla.lu_solve(lu, R.astype(lu[0].dtype), trans=1,
-                        check_finite=False).astype(complex)
 
 
 # a kept factorisation: its frequency, M (HostLU, GpuLU, _CompiledBLR), the
@@ -357,27 +105,6 @@ class _State:
         """The kept ones' (host, GPU) bytes."""
         return (sum(k.M.nbytes for k in self.kept),
                 sum(k.M.device_bytes for k in self.kept))
-
-
-def near_pairs(sim, near_fac=None):
-    """(nP, nQ): the near triangle pairs of sim's mesh (sorted, near if within
-    either's radius), found once: the memory plan counts them before the
-    FastOperator is made (policy.memory_plan's pairs), which takes the same."""
-    near_fac = float(near_fac or sim.near_fac)
-    kept = getattr(sim, '_near_found', None)
-    if kept is not None and kept[0] == near_fac:
-        return kept[1]
-    r = sim.rwg
-    size = getattr(sim, 'tri_size', None)
-    if size is None:  # (a mesh_only simulation: Simulation's own rule)
-        V = r.nodes[r.tris]
-        size = np.linalg.norm(V - np.roll(V, 1, axis=1), axis=2).max(1)
-    found = _core.near_pairs(
-        np.ascontiguousarray(r.cent, float),
-        np.ascontiguousarray(size, float),
-        np.ascontiguousarray(sim.st.z[sim.tri_layer], float), near_fac)
-    sim._near_found = (near_fac, found)
-    return found
 
 
 class FastOperator:
@@ -1316,142 +1043,4 @@ class FastOperator:
             st.kept = [Kept(f, blr, dsc, time.time() - t_fresh, False)]
         return dsc[:, None] * Y
 
-class _CompiledBLR:
-    """The compiled core's BLRFactor (core/mom25d_core.cpp): solve, memory,
-    stats; the tiles in elimination order, the pairs compressed where their
-    clusters are apart (gap > eta x the larger's diameter), the near correction
-    and extra blocks as CSR, the via rows and columns, the equilibration. Its
-    BLAS calls run on OpenMP's threads, so SciPy's are held at one while it
-    factors and solves."""
 
-    on_gpu, device_bytes = False, 0
-
-    def __init__(self, fo, tiles, boxes, dZx, dsc, tol, eta, double=False):
-        lo, hi = (np.array([b[0]
-                            for b in boxes]), np.array([b[1] for b in boxes]))
-        gap = np.linalg.norm(
-            np.maximum(
-                0, np.maximum(lo[:, None] - hi[None], lo[None] - hi[:, None])),
-            axis=2)
-        diam = np.linalg.norm(hi - lo, axis=1)
-        far = ((gap > eta * np.maximum(diam[:, None], diam[None]))
-               & ~np.eye(len(tiles), dtype=bool))
-        order = np.concatenate(tiles).astype(np.int32)
-        start = np.r_[0, np.cumsum([len(t) for t in tiles])].astype(np.int32)
-        sim, c = fo.sim, np.ascontiguousarray
-        B = c(fo.B, complex) if sim.Nv else np.zeros((sim.Ne, 0), complex)
-        C = c(fo.C, complex) if sim.Nv else np.zeros((0, 0), complex)
-        with _one_blas_thread():
-            # (double: low frequency, solve_blr)
-            make = fo.core.BLRFactor128 if double else fo.core.BLRFactor
-            self.f = make(order, start, far.astype(np.uint8), fo.g, fo.tb, fo.w,
-                          dZx.indptr.astype(np.int64),
-                          dZx.indices.astype(np.int32), c(dZx.data, complex), B,
-                          C, c(dsc, float), float(tol), 0)
-        self.stats = self.f.stats()
-        self.memory = self.nbytes = self.stats['bytes']
-
-    def __call__(self, b):
-        with _one_blas_thread():
-            return self.f.solve(np.ascontiguousarray(b, complex))
-
-
-def _one_blas_thread():
-    """threadpoolctl's limit of one BLAS thread (a no-op context without it)."""
-    try:
-        from threadpoolctl import threadpool_limits
-    except ImportError:
-        from contextlib import nullcontext
-        return nullcontext()
-    return threadpool_limits(limits=1, user_api='blas')
-
-
-def gmres_batched(A, B, M=None, x0=None, rtol=1e-6, restart=30, maxiter=10,
-                  stall=None, reach=None, out=None):
-    """
-    Right-preconditioned restarted GMRES for k independent systems A x_j = b_j
-    run in lockstep, so every operator / preconditioner call is one batched (N x
-    k_active) product. A, M: callables on (N x k) arrays. Converged columns drop
-    out. Returns (X, iterations per column). stall: (iterations, residual): give
-    up when a column's relative residual is still above that after so many
-    iterations (a preconditioner that is no inverse: a fresh factorisation takes
-    two or three iterations, a broken one all of them). reach: (iterations,
-    residual): give up, from the third iteration, when at the rate so far a
-    column would still be above that residual after so many (a kept
-    factorisation too far from its frequency). out: a dict that receives
-    'rel', each column's relative residual |b - A x| / |b| at the end, from
-    the products made (b - sum y_j A z_j: exact, and no product more).
-    """
-    B = np.asarray(B, complex)
-    N, k = B.shape
-    X = np.zeros((N, k), complex) if x0 is None else np.array(x0, complex)
-    M = M or (lambda R: R)
-    bn = np.linalg.norm(B, axis=0)
-    bn[bn == 0] = 1.0
-    iters, act = np.zeros(k, int), np.arange(k)
-    rel = np.zeros(k)
-    for _ in range(maxiter):
-        R = B[:, act] - (A(X[:, act]) if np.any(X[:, act]) else 0)
-        beta = np.linalg.norm(R, axis=0)
-        rel[act] = beta / bn[act]
-        done = beta <= rtol * bn[act]
-        act, R, beta = act[~done], R[:, ~done], beta[~done]
-        if not len(act):
-            break
-        ka = len(act)
-        V, Z = (np.zeros((restart + 1, N, ka),
-                         complex), np.zeros((restart, N, ka), complex))
-        AZ = [None] * restart  # A z_j, as made (the end's residual's)
-        H, g = (np.zeros((restart + 1, restart, ka),
-                         complex), np.zeros((restart + 1, ka), complex))
-        cs, sn = (np.zeros((restart, ka),
-                           complex), np.zeros((restart, ka), complex))
-        g[0], V[0] = beta, R / beta
-        live, last, stalled = np.ones(ka, bool), np.full(ka, restart - 1), False
-        for j in range(restart):
-            Z[j] = M(V[j])
-            Wv = AZ[j] = A(Z[j])
-            for i in range(j + 1):  # modified Gram-Schmidt
-                H[i, j] = hij = np.einsum('nk,nk->k', V[i].conj(), Wv)
-                Wv = Wv - V[i] * hij
-            H[j + 1, j] = hn = np.linalg.norm(Wv, axis=0)
-            V[j + 1] = Wv / np.where(hn > 0, hn, 1)
-            for i in range(j):  # apply previous Givens rotations
-                H[i, j], H[i + 1, j] = (cs[i] * H[i, j] + sn[i] * H[i + 1, j],
-                                        -np.conj(sn[i]) * H[i, j]
-                                        + np.conj(cs[i]) * H[i + 1, j])
-            den = np.sqrt(np.abs(H[j, j]) ** 2 + np.abs(H[j + 1, j]) ** 2)
-            den[den == 0] = 1.0
-            # conjugated: [[c, s], [-s*, c*]] [a, b] = [|(a, b)|, 0] for complex
-            # a, b (without the conjugates the second entry is not zero and |g|
-            # underestimated the residual: 7 iterations "converged" at a true
-            # 1.5e-4 where SciPy's GMRES took 12 to 5e-8)
-            cs[j], sn[j] = H[j, j].conj() / den, H[j + 1, j].conj() / den
-            H[j, j], H[j + 1, j] = cs[j] * H[j, j] + sn[j] * H[j + 1, j], 0
-            g[j + 1], g[j] = -np.conj(sn[j]) * g[j], cs[j] * g[j]
-            iters[act[live]] += 1
-            conv = live & (np.abs(g[j + 1]) <= rtol * bn[act])
-            last[conv] = j
-            live &= ~conv
-            if not live.any():
-                break
-            res = np.abs(g[j + 1])[live] / bn[act][live]
-            if ((stall is not None and j + 1 >= stall[0]
-                 and (res > stall[1]).any())
-                    or (reach is not None and j + 1 >= 3 and
-                        (res ** (reach[0] / (j + 1.0)) > reach[1]).any())):
-                last[live], stalled = j, True
-                break
-        for c in range(ka):  # update each column
-            m = last[c] + 1
-            y = (np.linalg.solve(np.triu(H[:m, :m,
-                                           c]), g[:m, c]) if m else np.zeros(0))
-            X[:, act[c]] += Z[:m, :, c].T @ y
-            for i in range(m):
-                R[:, c] -= AZ[i][:, c] * y[i]
-        rel[act] = np.linalg.norm(R, axis=0) / bn[act]
-        if stalled:
-            break  # no restart either
-    if out is not None:
-        out['rel'] = rel
-    return X, iters.tolist()

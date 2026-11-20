@@ -294,6 +294,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **mom25d's `fast.py` split (R-F3, 2026-11-20):** 1,457 lines to 1,048, its helpers in modules of their own:
+  `dense` (Z scaled and bordered, the host's and the GPU's LU and solves, the sides' loops, batched GMRES), `near`
+  (the near pairs and their sparse correction), `tiles` (the block low-rank tiles, the compiled factor) and
+  `threads` (the BLAS's and OpenMP's threads). `fast` still has their names.
 - **mom25d's Vulkan LU: U12 as a GEMM with the CPU's inverse of L11 (2026-11-20),** in place of the GPU's forward
   substitution (MAGMA's getrf does the same): at 14k unknowns 0.898 -> 0.883 s, at 20k 2.31 -> 2.30, and the
   factor's residual 2-3 times smaller (14k: 3.5e-2 -> 1.6e-2 on a random matrix). The inverse is the one the solves

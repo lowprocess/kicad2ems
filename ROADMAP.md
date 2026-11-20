@@ -223,8 +223,7 @@ that does not need N² memory. The loop/tree basis, the block low-rank LU and th
 
 ## mom25d: the code
 
-1. **`fast.py` split** (the rest of R-F3).
-2. **The numerics shared with pcbqs** (R-F4): one copy in `kicad2ems.emsdev.numerics`. Left to port: mom25d's
+1. **The numerics shared with pcbqs** (R-F4): one copy in `kicad2ems.emsdev.numerics`. Left to port: mom25d's
    singular rule over the smaller triangle into pcbqs (`mom25d.sing` wraps the shared `offplane_pairs` with it),
    with pcbqs's compiled static, compressed and layered kernels (they integrate over p too; ported in Python alone,
    fourteen of pcbqs's tests held them apart).

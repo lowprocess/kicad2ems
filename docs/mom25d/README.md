@@ -95,7 +95,11 @@ f, S, info = solve_band(sim, 1e9, 6e9, points=101, zref=m.port_z0)
 | `quads.py` | quad cells |
 | `thickness.py` | the copper's thickness: the mode a run gets (`resolve`); `sides.py`, `edge.py` model it |
 | `policy.py` | how each frequency is solved: `choose` (a `SolvePlan`: basis, factorisation, what is kept) and `memory_plan` (a run's solver, precision and memory) |
-| `fast.py` | the matrix fill and the solve a `SolvePlan` asks for: the factorisations, the kept LUs, the retries (the block low-rank solver's tiling; its factor is compiled in `core/`) |
+| `fast.py` | the matrix fill and the solve a `SolvePlan` asks for: the factorisations, the kept LUs, the retries |
+| `dense.py` | the dense matrix's pieces: Z scaled and bordered, its LU on the host or the GPU and their solves, the sides' loops, batched GMRES |
+| `near.py` | the near triangle pairs and the sparse matrix of their correction |
+| `tiles.py` | the block low-rank solver's tiles and the compiled factor (in `core/`) |
+| `threads.py` | the BLAS's and the core's OpenMP threads on the fast physical cores |
 | `blocks.py` | the via and sides blocks kept over a sweep, and between the frequencies filled (`Anchors`) |
 | `looptree.py` | the loop/tree basis the direct solver takes at low frequency (pcbqs's) |
 | `gpu.py` | the GPU backends (Vulkan, and an emulated one for the tests) |
