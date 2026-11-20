@@ -10,6 +10,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Draw page, a prototype (2026-11-20).** The window's *Draw* page puts arbitrary shapes over the board, in plan
+  and 3D: rectangles, circles, polygons, traces and ports, made of copper or cut out of a layer, or as metal,
+  dielectric or air solids between two heights. `kicad2ems.core.shapes` holds the drawing (a `kicad2ems-shapes`
+  JSON file) and applies it to the board (`shapes` setting): every solver gets the drawn copper and cuts, and
+  `board.json` keeps the solids, though no solver meshes them yet. The page also writes the `region` and `ports`
+  settings from the shapes.
 - **Solvers compared by figures (2026-11-20).** A run with two solvers or more has a *Solvers compared* section in
   its report: each solver's figures (each port's worst match and its dip, each transmission at the band's centre
   and its lowest: `core.sparams.figures`, `compared`) and their spread; `study.compare` takes solver engines too.

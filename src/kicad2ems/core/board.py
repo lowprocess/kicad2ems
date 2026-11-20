@@ -24,6 +24,8 @@ coordinates: y up, the negative of KiCad's y).
   parts       [parts.Part] lumped R / L / C parts between two pads
   walls       [(axis, coord, t0, t1, z0, z1)] edge walls where the ground planes
               end (edges.py)
+  solids      drawn 3D shapes (core.shapes.apply): dict(shape, material, z0,
+              z1, er, tand, polygon); no solver meshes them yet
   prims       the primitives behind the copper, for the line model: items,
               shapes, tracks, footprints, vias
   ground, ground_nets, signal_nets, sel (the nets kept; None: all), region,
@@ -34,7 +36,7 @@ snapped to a mesh, split for a solver or fitted: the solvers do that, and say
 so. board.json holds all of it (format kicad2ems-board, version 1); a reader
 refuses a newer major version and ignores keys it does not know.
 """
-import json
+import json, os
 import numpy as np
 import shapely
 from shapely.geometry import (Polygon, MultiPolygon, LineString, Point,
@@ -294,7 +296,8 @@ class Board:
     def __init__(self, raw, nets=None, pos_file=None, include_mask=False,
                  region=None, ground=None, parts='auto', log=print, ports=None,
                  cut_ports=False, edge_walls=(), edge_keepout=0.5,
-                 need_ports=True, fill_voids='off', part_ports=()):
+                 need_ports=True, fill_voids='off', part_ports=(),
+                 shapes=None):
         from .region import (region_polygon, auto_nets, extra_port_fps,
                              ground_nets)
         self.log, self.notes, self.need_ports = (
@@ -305,7 +308,10 @@ class Board:
                             region=region, ground=ground, parts=parts,
                             ports=list(ports or []), cut_ports=cut_ports,
                             edge_walls=list(edge_walls or []),
-                            edge_keepout=edge_keepout, fill_voids=fill_voids)
+                            edge_keepout=edge_keepout, fill_voids=fill_voids,
+                            shapes=(os.fspath(shapes) if isinstance(
+                                shapes, (str, os.PathLike)) else
+                                    None if shapes is None else 'drawing'))
         self._stack(raw, include_mask)
         # the stackup's (--finish auto reads it)
         self.copper_finish = getattr(raw, 'copper_finish', None)
@@ -408,6 +414,14 @@ class Board:
         if fill_voids != 'off':
             self._fill_voids(fill_voids, keep)
         self._nets_of_copper()
+        # drawn shapes (core.shapes): copper added and cut before the vias and
+        # ports find it (a port may sit on a drawn trace)
+        self.solids = []
+        if shapes:
+            from .shapes import Drawing, apply
+            self.notes += apply(
+                self, Drawing.load(shapes) if isinstance(
+                    shapes, (str, os.PathLike)) else shapes)
         self._vias()
         self._ports(raw, pos_file, ports or [], cut_ports, rpoly)
         # ---- lumped R / L / C parts ----
@@ -962,7 +976,8 @@ class Board:
             parts=[p.to_dict() for p in self.parts], walls=[
                 dict(axis=a, at=c, t0=t0, t1=t1, z0=z0, z1=z1)
                 for a, c, t0, t1, z0, z1 in self.walls
-            ], prims=self.prims.to_dict(), notes=self.notes)
+            ], solids=list(getattr(self, 'solids', [])),
+            prims=self.prims.to_dict(), notes=self.notes)
 
     def save(self, path):
         """Writes the board file (to_dict as JSON: <name>_board.json); returns
@@ -1015,6 +1030,7 @@ class Board:
         b.walls = [(w['axis'], w['at'], w['t0'], w['t1'], w['z0'], w['z1'])
                    for w in d.get('walls', [])]
         b.prims = Prims.from_dict(d.get('prims', {}))
+        b.solids = [dict(x) for x in d.get('solids', [])]
         return b
 
     @classmethod

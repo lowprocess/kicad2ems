@@ -239,7 +239,7 @@ def board_from_settings(s, log=print):
         b = Board.load(s.board, log=log)
         given = [
             k for k in ('nets', 'pos', 'region', 'ground', 'ports', 'cut_ports',
-                        'edge_walls')
+                        'edge_walls', 'shapes')
             if getattr(s, k) not in (None, False, [], ())
         ]
         if given:
@@ -253,7 +253,8 @@ def board_from_settings(s, log=print):
                  cut_ports=s.cut_ports, ground=s.ground, parts=s.parts,
                  edge_walls=s.edge_walls, edge_keepout=s.edge_keepout,
                  fill_voids=getattr(s, 'fill_voids', 'off'), log=log,
-                 part_ports=(getattr(s, 'part_ports', None) or ()))
+                 part_ports=(getattr(s, 'part_ports', None) or ()),
+                 shapes=getattr(s, 'shapes', None) or None)
 
 
 def _terminal_copy():

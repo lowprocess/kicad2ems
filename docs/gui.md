@@ -29,7 +29,8 @@ itself until a board is chosen or a result opened; *View > Start* brings it back
 ![The Start page: open a board, a config or a results folder, or begin from an example](img/gui/start.png)
 
 - **Toolbar**: New, Open, Save, Save as, Preview, Run, Stop, the run's estimate, the results folder, the report,
-  *Filter* (the wand: [Filter Synthesis](#filter), a window of its own), and *Showing*: the run the pages show
+  *Filter* (the wand: [Filter Synthesis](#filter), a window of its own), *Draw* (the [Draw](#draw) page: shapes
+  over the board), and *Showing*: the run the pages show
   (`Showing: 14:02 · S-parameters · line model (qucsator)`, `Showing: preview`, or *Nothing run yet*); a click
   brings the [Runs](#run-folders) page forward to pick another. The estimate (after a preview) is the time and memory of the
   full-wave solvers ticked, or of the one *auto* would pick, and how many solvers a Run uses, named under it
@@ -401,6 +402,32 @@ option it has no field for appears under *More options*.
   solver, mesh or field dump runs as for any other board.
 
 <a id="impedance"></a>
+<a id="draw"></a>
+## The Draw page (prototype)
+
+Arbitrary shapes drawn over the board, in plan and in 3D, for a run to add to it (*Draw* in the toolbar, or
+*File > Draw shapes*). The board under them is the one chosen in the settings, as drawn; with none, a two-layer
+1.6 mm stack to draw on.
+
+![The Draw page: a trace, a pad, a keep-out cut, a dielectric puck and a shield lid over the hairpin filter](img/gui/draw.png)
+
+- **Tools**: *Select* (click a shape; drag it to move it, drag a handle to reshape it; *Delete*), *Rectangle* and
+  *Circle* (two clicks), *Polygon* and *Trace* (a click per point; double-click, right-click or Enter ends it, Esc
+  drops it), *Port* (a click). Points snap to the grid (*Snap*); a letter picks a tool (S, R, C, P, T, O).
+- **Materials**: *copper* joins its layer's copper (of the net given, else of the copper it overlaps most; a
+  different net's copper under it is reported as a short), *cut* takes copper out of its layer, and *metal*,
+  *dielectric* and *air* are solids between two heights. Shapes apply in the list's order: a cut takes out what
+  is drawn before it.
+- **3D** shows the shapes extruded over the board's substrate and copper (*see-through solids* to look under a
+  lid).
+- *Use in runs* saves the drawing (`kicad2ems-shapes` JSON, model mm, y up) and names it in the settings
+  (`shapes = "drawing.json"` in a config); *Region from shape* and *Ports to settings* write those settings in
+  KiCad's coordinates. Ctrl+Z / Ctrl+Y undo and redo the drawing while the page has the focus.
+
+Every solver reads the board's copper, so drawn copper and cuts reach them all; the line model builds its sections
+from the board's own tracks and does not see them. Solids are kept on the board (`solids` in `board.json`) and
+drawn, but no solver meshes them yet: the run's notes say so.
+
 ## Tools > Impedance calculator
 
 A line's impedance in a stack-up, without a board: kicad2ems's 2D field solver

@@ -26,7 +26,7 @@ EDITORS = {a.label: k for k, a in registry().items()
 # tables, 'Run' the runs' progress and logs (the tab reads Log), and 'Runs'
 # this board's runs, to pick the one shown and those compared
 PANELS = ('Viewer', 'Start', 'Results', 'Report', 'Tables', 'Run', 'Runs',
-          'Section', 'Filter', *EDITORS)
+          'Section', 'Filter', 'Draw', *EDITORS)
 # a page's tab title, when not its name
 TITLES = {'Filter': 'Filter Synthesis', 'Results': 'Plots', 'Run': 'Log'}
 # the pages under the board in a new window's layout
@@ -34,7 +34,7 @@ LOWER = ('Report', 'Tables', 'Run', 'Runs', 'Section')
 BESIDE = ('Results',)                           # and beside it
 # pages closed when the window opens: the toolbar's Filter opens it ('Start'
 # comes and goes with the board: _start_follows)
-ON_DEMAND = ('Filter',)
+ON_DEMAND = ('Filter', 'Draw')
 # pages there only while their analysis is ticked (or running): not opened by
 # hand otherwise (View has them greyed)
 FOLLOWS_TICK = dict(EDITORS)
@@ -49,7 +49,7 @@ class WindowDocks:
     def _splitters(self):
         return {
             'viewer': self.viewer.split, 'results': self.results.splot.split,
-            'filter': self.filter.split,
+            'filter': self.filter.split, 'draw': self.draw.split,
             **{k: p.split
                for k, p in self.editors.items()},
             **({'viewer3d': self.volume.split} if getattr(
@@ -389,7 +389,10 @@ class WindowDocks:
                                                                None),
             ('Filter', WAND,
              'Filter Synthesis: design a microstrip filter with dfsynth',
-             lambda: self.show_panel('Filter'))):
+             lambda: self.show_panel('Filter')),
+            ('Draw', 'SP_FileDialogDetailedView',
+             'Draw shapes over the board (copper, cuts, solids, ports) for '
+             'the runs to add', lambda: self.show_panel('Draw'))):
             if name is None:
                 tb.addSeparator()
                 continue
@@ -510,6 +513,10 @@ class WindowDocks:
             QAction(QIcon(WAND), 'New &filter (Filter Synthesis)…', self,
                     triggered=lambda: (self.show_panel('Filter')),
                     toolTip='design a microstrip filter with dfsynth'))
+        fm.addAction(
+            QAction('&Draw shapes…', self,
+                    triggered=lambda: self.show_panel('Draw'),
+                    toolTip='arbitrary shapes over the board, in plan and 3D'))
         fm.addAction(
             QAction('Open &results folder…', self,
                     triggered=self.results._load))
