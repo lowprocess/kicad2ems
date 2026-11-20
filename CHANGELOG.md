@@ -294,6 +294,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **mom25d's Vulkan LU: U12 as a GEMM with the CPU's inverse of L11 (2026-11-20),** in place of the GPU's forward
+  substitution (MAGMA's getrf does the same): at 14k unknowns 0.898 -> 0.883 s, at 20k 2.31 -> 2.30, and the
+  factor's residual 2-3 times smaller (14k: 3.5e-2 -> 1.6e-2 on a random matrix). The inverse is the one the solves
+  took, made earlier.
 - **mom25d without a GPU: the block low-rank solver from 13k unknowns (2026-11-20).** `policy.BLR_CPU_MIN_N`
   (`MOM25D_BLR_CPU_MIN_N`) where the CPU factors, in place of the GPU's 20k: rf_ebg's mesh, three solves on 8
   P-cores, 10.5k dense 16.6 s against 19.5 s compressed, 13.3k 26.5 / 25.1, 14.7k 32.9 / 26.7, S within 4e-7 of

@@ -698,6 +698,11 @@ class VulkanBackend:
         hsrc = [self._host(f'src{i}', 4 * 2 * nb) for i in (0, 1)]
         tmpS = self._work('swap', 8 * 2 * nb * N)
         U12 = self._work('u12', 8 * nb * N)
+        # L11^-1, the panel's (U12 = L11^-1 A12, a GEMM): from the host by
+        # step parity, as the rows (S2 may read step k's while the CPU writes
+        # step k + 1's)
+        hL = [self._host(f'linv{i}', 8 * nb * nb) for i in (0, 1)]
+        dL = [self._work(f'linv{i}', 8 * nb * nb) for i in (0, 1)]
         dinv, pending, piv = [], [], np.zeros(N, np.int32)
         t_cpu = t_wait = 0.0
         steps = []                    # per step: (k0, cpu panel, wait)
@@ -725,20 +730,23 @@ class VulkanBackend:
                 if j != i:
                     a, c = perm.get(k0 + i, k0 + i), perm.get(k0 + j, k0 + j)
                     perm[k0 + i], perm[k0 + j] = c, a
-            pending.append(
-                (np.tril(P[:b, :b], -1) + np.eye(b, dtype=np.complex64),
-                 np.triu(P[:b, :b])))
+            # the unit lower L11's inverse now (U12's GEMM takes it), kept for
+            # the solves' blocks; U11's is made off the critical path
+            Lf, _ = lapack.ctrtri(
+                np.tril(P[:b, :b], -1) + np.eye(b, dtype=np.complex64),
+                lower=1, unitdiag=1)
+            Lf = np.asfortranarray(Lf, np.complex64)
+            hL[k0 // nb % 2].view(np.complex64, b * b)[:] = Lf.ravel(order='F')
+            pending.append((Lf, np.triu(P[:b, :b])))
             piv[k0:k0 + b] = ip + k0
             t_cpu += time.perf_counter() - tc
             return [(r, s) for r, s in perm.items() if r != s]
 
         def inverses():  # the solves' diagonal blocks, off the critical path
             while pending:
-                L11, U11 = pending.pop(0)
+                Lf, U11 = pending.pop(0)
                 Ui, _ = lapack.ctrtri(U11, lower=0, unitdiag=0)
-                Lf, _ = lapack.ctrtri(L11, lower=1, unitdiag=1)
-                dinv.append((np.asfortranarray(Ui, np.complex64),
-                             np.asfortranarray(Lf, np.complex64)))
+                dinv.append((np.asfortranarray(Ui, np.complex64), Lf))
 
         # record: the interchanges on these column ranges
         def swaps(step, moved, k0, b, ranges):
@@ -752,11 +760,15 @@ class VulkanBackend:
                 self._run('swap_scatter', self._flat(len(moved) * n), **kw)
 
         def trsm(k0, b, c, nc):  # record: U12[:, c:c+nc] = L11^-1 A12, in place
+            # as a GEMM with the CPU's L11^-1 (MAGMA's getrf; the forward
+            # substitution ran at ~5 TFLOP/s, 1.3 ms a step at 14k unknowns),
+            # then U12 into A12's place
             if nc > 0:
-                self._run('trsm', (-(-nc // TRSM_COLS), 1, 1),
-                          A_=A.desc(k0, k0), B_=A.desc(k0, k0 + b + c),
-                          C_=self._flatdesc(U12.device_address, b, 0,
-                                            c), k_=b, n_=nc)
+                Li = self._flatdesc(dL[k0 // nb % 2].device_address, b)
+                Uc = self._flatdesc(U12.device_address, b, 0, c)
+                self._gemm(Li, A.desc(k0, k0 + b + c), Uc, b, nc, b,
+                           alpha=1.0, beta=0.0)
+                self._copy(Uc, A.desc(k0, k0 + b + c), b, nc)
 
         b0 = min(nb, N)
         down(0, b0)
@@ -775,6 +787,8 @@ class VulkanBackend:
             # panel's columns interchanged, solved (U12) and updated, that panel
             # down
             self._copy(self._flatdesc(hdn.address, M), A.desc(k0, k0), M, b)
+            self._copy(self._flatdesc(hL[step % 2].address, b),
+                       self._flatdesc(dL[step % 2].device_address, b), b, b)
             if n2 > 0:
                 swaps(step, moved, k0, b, ((k0 + b, nb1), (0, 0)))
                 trsm(k0, b, 0, nb1)
