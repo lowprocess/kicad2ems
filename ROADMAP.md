@@ -72,24 +72,34 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    apertures under a trace (the ideal plane has none), broadside coupling between layers. **Started 2026-11-20**
    (`kicad2ems.core.segment`, docs/si.md): rf_msvia and rf_diffvia within the whole board's spread of solvers.
    Left: the extra reflection near 10 GHz (2-3 dB in S11: the via model's, to find), DDR lane 1 (no port
-   footprints: its ends), the CM5 Minima's run and its time, crosstalk figures from the joined S (as Board
-   coupling's), groups within a layer piece, the window.
-4. **mom25d out of core** (asked 2026-11-20, after the near-field build in pieces): a tiled complex64 LU with its
+   footprints: its ends), crosstalk figures from the joined S (as Board coupling's), the window. **On the CM5
+   Minima with mom25d's direct factor it is not practical** (2026-11-20, set aside by the user): its 18-net F.Cu
+   piece is 29k unknowns, 49 min and 19.6 GB (the block low-rank factor did not converge at 1-1.5 GHz), the board
+   hours. It waits on a faster piece solver: the iterative one below, or the line model for the layer pieces.
+4. **mom25d iterative: AIM + GMRES (being prototyped, 2026-11-20).** The far (centroid) product by a
+   precorrected FFT on a grid per layer pair (the layered tables sampled on it: no multipole expansion of the
+   layered kernel needed), mom25d's exact near correction as it is, GMRES preconditioned by the near part's
+   sparse LU. Measured on the test strip (4.2k unknowns): the product within 1e-5 of the exact one (grid one
+   median cell), 10-15 iterations from 1 to 10 GHz, S within 2e-5 of the direct solve; SciPy's incomplete LU
+   does not precondition this complex matrix (the exact sparse LU does). On the CM5 F.Cu piece (29k unknowns,
+   22 M near pairs) the prototype's structures on the whole near list did not fit 24 GB: the grid's correction
+   and the preconditioner on smaller reaches (a few grid cells), the near-pair correction in the compiled core.
+5. **mom25d out of core** (asked 2026-11-20, after the near-field build in pieces): a tiled complex64 LU with its
    tiles on the NVMe, factored on the GPU with VRAM as its working set (the mixed path's refinement to double), for
    the problems that cannot be split. To prototype and measure on a case just over RAM (~60,000 unknowns) against
    the block low-rank path before it earns a place.
-5. **The time grid, the rest** (R-E16). The grid holds the longest trace (`si.time_grid`, 16 samples a ripple:
-   CHANGELOG 2026-11-14), and `coupling` uses it too. Left: S to DC for a step's settled value and TDR (item 7),
+6. **The time grid, the rest** (R-E16). The grid holds the longest trace (`si.time_grid`, 16 samples a ripple:
+   CHANGELOG 2026-11-14), and `coupling` uses it too. Left: S to DC for a step's settled value and TDR (item 8),
    and whether 1 / rise as fmax (the top 20 % faded) loses an edge's corner on short, fast traces: to measure
    against a grid to 3 / rise before changing it.
-6. **Drivers and receivers.** A source impedance and a receiver's load in place of `z0` at every end (an
+7. **Drivers and receivers.** A source impedance and a receiver's load in place of `z0` at every end (an
    unterminated receiver doubles what arrives; NEXT reflected at the driver arrives at the far end), and an eye
    for a bit pattern (the edge response is there: superposed).
-7. **A trace's own quality:** its impedance along its length (the line model has it: *Trace impedances*), the
+8. **A trace's own quality:** its impedance along its length (the line model has it: *Trace impedances*), the
    reflections of its discontinuities for the edge (TDR from S11), its loss at the data rate.
-8. **The coupled stretches drawn on the plan**, coloured by their share (the traces are picked on the board
+9. **The coupled stretches drawn on the plan**, coloured by their share (the traces are picked on the board
    already).
-9. **Broadside pairs** on adjacent layers: the groups are of one layer, so such a pair is not coupled at all (it
+10. **Broadside pairs** on adjacent layers: the groups are of one layer, so such a pair is not coupled at all (it
    is listed as not modelled, and the limit not judged).
 
 ## The window
