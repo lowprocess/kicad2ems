@@ -162,6 +162,18 @@ class Viewer(QWidget):
         self._items = {}
         # the board as drawn (show_layout); what each view has to show (load)
         self.drawn, self._has = None, {}
+        # OpenGL that imports but cannot make a context (a display without it,
+        # offscreen): the 3D view as if there were no OpenGL, the Plan in front
+        # (the window had stayed on an empty 3D view, saying so)
+        said = self.volume.view.on_error
+
+        def no_gl(why):
+            said(why)
+            self.volume.gl = None
+            self._enable(dict(self._has, **{'3D': False}))
+            if self.view() == '3D':
+                self.set_view('Plan')
+        self.volume.view.on_error = no_gl
         self.set_view('3D' if self.volume.gl is not None else 'Plan')
         self._fit()
 

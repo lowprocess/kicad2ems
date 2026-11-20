@@ -432,6 +432,44 @@ def test_the_log_shows_what_ran_and_clears_with_another_study(
     w.close()
 
 
+def test_an_analysis_log_follows_its_output(window):
+    """An analysis's log on the Run page shows its last lines as they come,
+    also while the page is behind another (a view sharing the page's document
+    had a scroll range of 0: a long run's log stood at its first lines)."""
+    w, app, _ = window
+    w.show()
+    rt, log = w.runtab, w.pages['circuit'].log
+    w.show_panel('Run')
+    rt.started('circuit')
+    for _ in range(5):
+        app.processEvents()
+    for i in range(400):
+        log.appendPlainText(f"line {i}")
+        if i % 50 == 0:
+            app.processEvents()
+    for _ in range(5):
+        app.processEvents()
+    shown = rt.logs.currentWidget()
+    assert shown.toPlainText().endswith('line 399')
+    assert shown.verticalScrollBar().maximum() > 0
+    bar = shown.verticalScrollBar()
+    assert bar.value() == bar.maximum()
+    bar.setValue(10)  # scrolled up to read: stays
+    log.appendPlainText('one more')
+    for _ in range(5):
+        app.processEvents()
+    assert bar.value() == 10
+    # the S-parameter run's own log too, filled behind the Results page
+    w.show_panel('Results')
+    for i in range(400):
+        rt.log.appendPlainText(f"rf {i}")
+    for _ in range(5):
+        app.processEvents()
+    bar = rt.log.verticalScrollBar()
+    assert bar.maximum() > 0 and bar.value() == bar.maximum()
+    w.close()
+
+
 def test_run_starts_the_ticked_analyses_in_turn(window, monkeypatch):
     """Run: each ticked analysis after the one before ended; one that cannot
     start says why and the rest go on; Stop ends the one running and leaves the
@@ -980,6 +1018,11 @@ def test_stop_asks_the_run_then_ends_its_process(window, tmp_path, monkeypatch):
     w.stop()
     assert (wait_until(lambda: not w.busy(), 20)
             and 'ending the process' in w.runtab.log.toPlainText())
+    for _ in range(5):
+        app.processEvents()
+    # stopped: said so, not as a failure to look into (it had read "ended
+    # with code 1 - see the log")
+    assert w.runtab.stage.text() == 'stopped'
 
 
 def test_a_half_typed_number_is_said_not_frozen(window):

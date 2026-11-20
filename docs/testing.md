@@ -43,6 +43,15 @@ pages offscreen, the 3D view's arrays) in `tests/gui`, on the same stand-in solv
 process of its own; a solver that is not installed or not usable is skipped. It runs openEMS only with
 `KICAD2EMS_CONFORMANCE_OPENEMS=1` (`tools/test_all.sh --openems`).
 
+## The window's flows, recorded
+
+`tools/gui/flows.py` drives the window offscreen through eight flows as a user would (the Start page and an
+example opened, S-parameters by two solvers, crosstalk, board coupling, a circuit, settings typed, undone and
+saved, Filter Synthesis, the Runs page), with real runs, settings and examples of its own. Each flow becomes
+an animated GIF in `build/gui-flows/`, beside `flows.md`: each flow's steps, its time and its errors (an
+exception in a slot, a Qt warning, a run that failed or timed out, a Run-page log not following its run).
+Run it after a change to the window, and look at the GIFs: a page that is empty raises no error.
+
 ## The GPUs, before a release
 
 CI has no GPU: its runners have Mesa's CPU Vulkan (lavapipe), on which mom25d's Vulkan LU and gfdtd's GPU tests run

@@ -633,6 +633,14 @@ def test_viewer_sections_and_views(wilkinson_preview):
     assert v.load(wilkinson_preview)
     assert (v.buttons['Plan'].isEnabled() and v.buttons['Images'].isEnabled()
             and not v.buttons['2D'].isEnabled())
+    # OpenGL that cannot make a context (said by the 3D view): no 3D, the plan
+    # in front (it had stayed on an empty 3D view)
+    v.set_view('3D')
+    v.volume.view.on_error('RuntimeError: no context')
+    assert (v.view() == 'Plan' and not v.buttons['3D'].isEnabled()
+            and v.volume.gl is None
+            and 'could not start OpenGL' in v.volume.status.text())
+    assert v.load(wilkinson_preview) and not v.buttons['3D'].isEnabled()
     # top first
     assert v.plan.current_layer() == 'F.Cu' and v.plan.layer.count() == 2
     n = len([e for e in v.lines['elements'] if e['kind'] != 'coupling'])

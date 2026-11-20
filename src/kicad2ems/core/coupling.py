@@ -624,9 +624,13 @@ class Coupling(Analysis):
         return self.check_with(dict(solvers='mom25d'))
 
     def check_with(self, sets):
-        from .solvers import get
+        from .solvers import LINES, get, resolve_lines
+        name = sets.get('solvers') or 'mom25d'
         try:
-            return get(sets.get('solvers') or 'mom25d').check()
+            # (the line model: whichever a run takes; get('lines') had raised,
+            # and the line-model variant was never offered)
+            return get(resolve_lines() if name in (LINES, 'line', 'fast')
+                       else name).check()
         except ValueError as e:
             return False, str(e)
 

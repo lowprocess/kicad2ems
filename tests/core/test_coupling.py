@@ -102,6 +102,18 @@ def test_the_summary_leaves_a_pairs_other_leg_out():
     assert (w['victim'], w['sum_pct'], w['ok']) == ('D1', 4.5, False)
 
 
+def test_the_line_model_variant_is_offered():
+    """Board coupling's line-model engine checks the line model a run takes
+    (its solvers = "lines": the registry has no solver of that name, and the
+    variant had never been offered)."""
+    from kicad2ems.core.study import engines
+    from kicad2ems.core.solvers import get, resolve_lines
+    e = engines()['coupling_lines']
+    assert e.sets == dict(solvers='lines')
+    assert e.check() == get(resolve_lines()).check()
+    assert e.check()[0]  # scikit-rf at least: always there
+
+
 def test_the_question_end_to_end_on_the_line_model(ddr, tmp_path):
     out = tmp_path / 'cpl'
     p = subprocess.run(

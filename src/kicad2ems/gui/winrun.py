@@ -415,7 +415,12 @@ class WindowRun:
             self.statusBar().showMessage(
                 "preview done: estimates beside the solvers in the "
                 "S-parameters row's menu (? under Solvers for details)", 8000)
-        if code or crashed:
+        if how == 'stopped':
+            # Stop pressed, or a preview another one replaced (a config opened
+            # again while it went): said, not a failure to look into (it had
+            # read "ended with code 1 - see the log", the Run page in front)
+            self.runtab.stage.setText('stopped')
+        elif code or crashed:
             self.runtab.stage.setText('crashed - see the log' if crashed else
                                       f"ended with code {code} - see the log")
             self.show_panel('Run')

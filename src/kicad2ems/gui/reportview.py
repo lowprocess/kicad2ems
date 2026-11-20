@@ -205,6 +205,7 @@ class ReportView(QWidget):
         self._page([QLabel('Table'), self.which, *buttons, self.hint],
                    self.grid)
         lay.addWidget(self.stack)
+        self.set_report(None)  # (it had been blank until a report came)
 
     @staticmethod
     def _buttons(table, **props):
@@ -228,12 +229,22 @@ class ReportView(QWidget):
         lay.addWidget(main, 1)
         self.stack.addWidget(page)
 
-    def set_report(self, report):
-        """The report shown (None: none); the table chosen stays when the new
-        report has one of its title."""
+    def set_report(self, report, own=None):
+        """The report shown (None: none; then `own`, an S-parameter run's own
+        report file, is linked); the table chosen stays when the new report has
+        one of its title."""
         self.report = report
         self._tables = tables(report)
-        if report is None:  # nothing to read yet: say where it comes from
+        if report is None and own:
+            from PySide6.QtCore import QUrl
+            url = QUrl.fromLocalFile(own).toString()
+            self.page.setHtml(
+                "<p>This run's report is a page of its own: "
+                f"<a href='{html.escape(url, True)}'>"
+                f"{html.escape(os.path.basename(own))}"
+                "</a> opens in the browser (the toolbar's Report too). Its "
+                "S-parameters are on the Results page.</p>")
+        elif report is None:  # nothing to read yet: say where it comes from
             self.page.setHtml(
                 "<p style='color:gray'>No report yet. An analysis's result (a "
                 "rail's drop, a circuit, the temperature, crosstalk) is "

@@ -91,3 +91,19 @@ def test_the_tables(tmp_path):
     v.set_report(None)
     assert (not v.has_tables() and g.rowCount() == 0
             and not v.export_csv(str(tmp_path / 'none.csv')))
+
+
+def test_no_report_says_where_one_is(tmp_path):
+    """Before any report the page says where one comes from (it had been
+    blank); after an S-parameter run it links that run's own report page."""
+    pytest.importorskip('PySide6')
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])  # noqa: F841
+    v = RV.ReportView()
+    assert v.page.toPlainText().startswith('No report yet')
+    own = str(tmp_path / 'b_report.html')
+    v.set_report(None, own)
+    assert ('b_report.html opens in the browser' in v.page.toPlainText()
+            and 'file://' in v.page.toHtml()
+            and not any(b.isEnabled() for b in v.page_buttons))

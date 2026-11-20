@@ -21,6 +21,20 @@ COLORS = [
 ]
 
 
+def follow(log):
+    """A log that keeps its last lines in view while at its end, also behind
+    another page (Qt follows only a log on the screen: one looked at after its
+    run had stood at its first lines); one scrolled up to read stays where it
+    is."""
+    bar, end = log.verticalScrollBar(), [0]
+
+    def grown(_lo, hi):
+        if bar.value() >= end[0]:
+            bar.setValue(hi)
+        end[0] = hi
+    bar.rangeChanged.connect(grown)
+
+
 class RunTab(QWidget):
     def __init__(self, win):
         super().__init__()
@@ -78,22 +92,20 @@ class RunTab(QWidget):
         row.addStretch(1)
         lay.addLayout(row)
         self.logs = QStackedWidget()
+        follow(self.log)
         self.logs.addWidget(self.log)
         lay.addWidget(self.logs, 1)
         self.log_label.hide()
         self.log_of.hide()
 
     def add_log(self, key, title, log):
-        """Another analysis's log beside the S-parameter run's: a view of its
-        page's own (the same document)."""
-        view = QPlainTextEdit(readOnly=True)
-        view.setDocument(log.document())
-        view.setFont(log.font())
-        bar = view.verticalScrollBar()
-        # follows, as the page's
-        log.document().contentsChanged.connect(
-            lambda: bar.setValue(bar.maximum()))
-        self.views[key] = (title, self.logs.addWidget(view))
+        """Another analysis's log beside the S-parameter run's: its page's own
+        widget, shown here (it is nowhere else). Not a second view of its
+        document: a QPlainTextEdit sharing another's document never learns
+        that it grew (its scroll range stayed 0), and a long run's log stood at
+        its first lines."""
+        follow(log)
+        self.views[key] = (title, self.logs.addWidget(log))
 
     def started(self, key):
         """A run started: its log listed (in the order they ran), and shown."""

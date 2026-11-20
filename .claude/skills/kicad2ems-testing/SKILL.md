@@ -72,6 +72,19 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m sphinx -W --keep-going -q -b html 
 A new `.md` must be in a toctree or the build warns. (If `.venv/bin/sphinx-build` has a stale shebang, use
 `python -m sphinx`.)
 
+## The window's flows, as a user would (`tools/gui/flows.py`)
+
+```sh
+.venv/bin/python tools/gui/flows.py                    # all 8: start, sparams, crosstalk, coupling,
+                                                       # circuit, settings, filter, runs (~2 min)
+.venv/bin/python tools/gui/flows.py --only coupling    # one; --screen for the 3D view
+```
+Drives the real window offscreen with real runs (own settings and examples under `build/gui-flows/home`),
+records each flow as `build/gui-flows/<flow>.gif` and writes `flows.md` with its steps and errors (slot
+exceptions, Qt warnings, failed or timed-out runs, a Run-page log not at its end). **Look at the GIFs too**
+(e.g. a contact sheet of a few frames): "0 errors" missed a blank Report page, a log stuck at its top and an
+engine choice that did not take, all found in the frames. Add a flow when a page or a question is added.
+
 ## Before a release: the GPU report
 
 ```sh

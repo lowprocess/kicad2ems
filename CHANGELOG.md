@@ -10,6 +10,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **The window's flows, recorded (2026-11-20).** `tools/gui/flows.py` drives the window offscreen through
+  eight flows with real runs and records each as an animated GIF, with its steps and the errors met
+  (docs/testing.md). Its first runs found the four bugs fixed below.
 - **Solvers compared by figures (2026-11-20).** A run with two solvers or more has a *Solvers compared* section in
   its report: each solver's figures (each port's worst match and its dip, each transmission at the band's centre
   and its lowest: `core.sparams.figures`, `compared`) and their spread; `study.compare` takes solver engines too.
@@ -243,6 +246,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **Board coupling's line-model engine was never offered (2026-11-20).** Its check asked the solver
+  registry for `lines`, a run's alias with no solver of that name, so the variant always read as unavailable
+  and a choice of it fell back to mom25d: si_ddr's coupling took 9 min instead of 18 s.
+- **An analysis's log on the Run page stood at its first lines (2026-11-20).** It was a second view of the
+  page's document, which Qt never told of the text added (a scroll range of 0); the page's own log is shown
+  now, and every log there follows its run while at its end, also behind another page.
+- **The Report page was blank** before any report and after an S-parameter run (whose report is a page of its
+  own); it says where a report comes from, and links that run's report. **A stopped run** read "ended with
+  code 1 - see the log" and brought the Run page forward; it reads *stopped*. **OpenGL that cannot make a
+  context** left the Viewer on an empty 3D view; the 3D view is disabled and the Plan shown (2026-11-20).
 - **gfdtd's Vulkan kernels run on lavapipe, and CI runs them there (R-C7.2, 2026-11-20).** The energy kernel's
   loops over the lumped parts crashed Mesa's CPU Vulkan on a model with none: their arrays were null addresses,
   which lavapipe read through although the loops never ran. Absent arrays now point at a small zeroed buffer; the

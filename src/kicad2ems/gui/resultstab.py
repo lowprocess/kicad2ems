@@ -599,6 +599,8 @@ class ResultsTab(QWidget):
             return
         self.report = next((p for l, p in files if p.endswith('_report.html')),
                            None)
+        for view in (self.reportview, self.tablesview):
+            view.set_report(None, self.report)
         z0 = 50.0
         summary = next(
             (p for l, p in files if p.endswith(('_run.json', '_openems.json'))),
