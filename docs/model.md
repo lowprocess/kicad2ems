@@ -131,8 +131,13 @@ With `--parts auto` (the default), two-pad footprints become lumped elements.
 
 **Which footprints.** KiCad's simulation fields come first: `Sim.Device` R, L or C with the value from
 `Sim.Params` or Value. Otherwise the reference prefix (`R12`, `L3`, `C7`) and the Value are used. A part
-is skipped, with a note, if it is DNP or excluded from simulation, its value doesn't parse, it doesn't
-have exactly two pads on modelled copper, or its pads aren't in line along x or y.
+is skipped, with a note, if it is DNP or excluded from simulation, its value doesn't parse, or it doesn't
+have exactly two pads on modelled copper.
+
+**A part at an angle** (its pads not in line along x or y) gets its element along the dominant axis, from
+where the line between the pads leaves the first one, and a copper strap across to the second pad, added to
+the board's copper so every solver has it (a note says so). A 100 Ω 0805 at 45° between two 50 Ω lines gives
+\|S21\| within 0.007 of the same part at 0°, by mom25d and by gfdtd, to 3 GHz.
 
 **Values** like `4p7`, `10k`, `1.2nH`, `0R5` and `100n 50V` are understood. The fields `sim.esr` and
 `sim.esl` add series resistance and inductance. 0 Ω is a metal strap.

@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Parts at an angle (R-E5, 2026-11-20).** A two-pad part whose pads are not in line along x or y had been skipped
+  (an open circuit where it stood); its element now runs along the dominant axis, from where the line between its
+  pads leaves the first, with a copper strap across to the second pad in the board's copper (every solver has
+  it). A 100 Ω 0805 at 45° between 50 Ω lines: |S21| 0.499 at 0.1 GHz (0.5 in theory), within 0.007 of the
+  part at 0° to 3 GHz by mom25d and by gfdtd.
 - **The crosstalk question takes a differential pair as a pair (2026-11-20).** Its legs (by name) are one trace in
   its differential mode (`si.as_channels`, board coupling's channels); `--legs` (the `legs` option) as before.
   On the DDR example, DQ1 beside the DQS0 pair: 4.96 % NEXT at the pair's receiver (6.0 % on its near leg alone),

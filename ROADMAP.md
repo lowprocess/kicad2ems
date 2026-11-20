@@ -40,8 +40,6 @@ Left:
 4. **Ports the solvers share** (R-E1): mom25d's wave window (6 cells + max(2 cells, 4 w, 3 h, 1 mm)) refuses the
    examples' 4-6 mm feeds, where the FDTD's probes stood 3 mm in; the FDTD's line ports on pairs and oblique traces
    (FDTD, item 3).
-5. **Parts at angles other than x and y** (R-E5; `parts.py` leaves them out with a note): the lumped piece along
-   the dominant axis and a strap along the other.
 6. **A variation's figures in the window and the report**: `<name>_vary.csv` and the log set them side by side
    (2026-11-20); the window's *Compare with* still overlays the curves alone.
 7. **Solvers side by side, overlapping** (R-D20): `--solver-jobs N` runs them as threads, but gfdtd's GPU stepping

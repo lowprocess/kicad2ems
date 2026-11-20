@@ -146,3 +146,43 @@ def test_part_body_true_size(rlc):
     # an older board.json
     old = {k: v for k, v in d.items() if k not in ('package', 'body', 'centre')}
     assert Part.from_dict(old).body is None
+
+
+def test_a_part_at_an_angle(tmp_path):
+    """A part whose pads are not in line along x or y (R-E5): its element along
+    the dominant axis, from where the line between the pads leaves the first,
+    and a copper strap across to the second pad, in the board's copper (every
+    solver has it). It had been skipped: an open circuit. mom25d, a 100 ohm
+    0805 at 45 deg between two 50 ohm lines: |S21| 0.499 at 0.1 GHz, within
+    0.007 of the same part at 0 deg to 3 GHz (2026-11-20)."""
+    import math, os, sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..',
+                                    'examples'))
+    from make_rf_examples import Board as PCB, w_on, H4
+    w = w_on(50.0, H4)
+    bd = PCB(nets=("", "GND", "A", "B"))
+    a = math.radians(45)
+    p1 = (10 - math.cos(a), 5 + math.sin(a))
+    p2 = (10 + math.cos(a), 5 - math.sin(a))
+    bd.track([(0.5, p1[1]), (2.0, p1[1]), p1], w, net=2)
+    bd.track([p2, (18.0, p2[1]), (19.5, p2[1])], w, net=3)
+    bd.part('R1', '100', 10, 5, 45, nets=(2, 3), pitch=2.0, pad=(1.0, 1.25))
+    bd.plane('In1.Cu', 20, 10)
+    bd.port(1, 1.0, p1[1], 0)
+    bd.port(2, 19.0, p2[1], 180)
+    bd.write(str(tmp_path / 'r45.kicad_pcb'), 20, 10, ground=False, four=True)
+    m = Board(KiCadBoard(str(tmp_path / 'r45.kicad_pcb')),
+              nets=['A', 'B', 'GND'], log=lambda *x: None)
+    (r1,) = m.parts
+    assert r1.R == pytest.approx(100) and 0 < r1.gap < 0.75
+    assert any('R1 at 45 deg' in n and 'strap' in n for n in m.notes)
+    # both end faces meet copper (the far one the strap, joined to pad 2's)
+    from shapely.geometry import LineString
+    from shapely.ops import unary_union
+    cu = unary_union(m.copper[r1.layer])
+    b = 1 - r1.axis
+    for a in (r1.s[r1.axis] - 1e-3, r1.e[r1.axis] + 1e-3):
+        p0, p1 = [0.0, 0.0], [0.0, 0.0]
+        p0[r1.axis] = p1[r1.axis] = a
+        p0[b], p1[b] = r1.s[b], r1.e[b]
+        assert cu.intersects(LineString([p0, p1]))

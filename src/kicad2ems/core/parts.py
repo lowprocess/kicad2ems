@@ -225,6 +225,43 @@ def _copper_gap(board, layer, axis, e1, e2, cb, w):
     return lo, hi
 
 
+def _chord(pad, centre, u):
+    """The length of the line through `centre` along unit vector u inside the
+    pad's polygon."""
+    from shapely.geometry import LineString
+    r = 4 * max(pad.bounds[2] - pad.bounds[0], pad.bounds[3] - pad.bounds[1])
+    seg = LineString([tuple(centre - r * u), tuple(centre + r * u)])
+    return float(pad.intersection(seg).length)
+
+
+def _strap(board, layer, axis, a0, cb, w, pad, centre, back=False):
+    """A copper strap on `layer` from an end of an angled part's element (at
+    a0 along axis, its width w about cb across) to a pad (pad, its centre): a
+    rectangle w long along axis from a0 (back: towards lower a, the near end's)
+    and across from the element to the pad's centre, joined to the copper the
+    pad sits on. False where the pad is on no modelled copper."""
+    from shapely.geometry import Point, box
+    from shapely.geometry.polygon import orient
+    b = 1 - axis
+    polys = board.copper.get(layer, [])
+    at = Point(*centre)
+    k = next((i for i, q in enumerate(polys) if q.distance(at) < 1e-6), None)
+    if k is None:
+        return False
+    span = min(w, pad.bounds[2 + axis] - pad.bounds[axis])
+    r = [0.0] * 4
+    r[axis], r[2 + axis] = (a0 - span, a0) if back else (a0, a0 + span)
+    r[b] = min(cb - w / 2, float(centre[b]))
+    r[2 + b] = max(cb + w / 2, float(centre[b]))
+    joined = polys[k].union(box(*r))
+    if joined.geom_type != 'Polygon':
+        return False
+    new = list(polys)  # (a new list: the copper index rebuilds)
+    new[k] = orient(joined, 1.0)
+    board.copper[layer] = new
+    return True
+
+
 def find_parts(board):
     """Lumped parts among the footprints of a Board (board.Board: its
     primitives, model coordinates) that sit on its copper. Returns (parts,
@@ -271,20 +308,47 @@ def find_parts(board):
         c = [np.array(q.centroid.coords[0]) for q in g]
         d = c[1] - c[0]
         axis = int(np.argmax(np.abs(d)))
-        if abs(d[1 - axis]) > 0.01:
-            notes.append(
-                f"part {ref} skipped: pads not in line along x or y (rotation "
-                f"{fp['rot']:g} deg)"
-            )
-            continue
         lo, hi = (0, 1) if d[axis] > 0 else (1, 0)
-        e1, e2 = g[lo].bounds[2 + axis], g[hi].bounds[axis]  # inner pad edges
-        if e2 - e1 <= 1e-6:
-            notes.append(f"part {ref} skipped: pads overlap")
-            continue
         b = 1 - axis
-        w = min(q.bounds[2 + b] - q.bounds[b] for q in g)
-        cb = 0.5 * (c[0][b] + c[1][b])
+        angled = abs(d[b]) > 0.01
+        if not angled:
+            e1, e2 = g[lo].bounds[2 + axis], g[hi].bounds[axis]  # inner edges
+            w = min(q.bounds[2 + b] - q.bounds[b] for q in g)
+            cb = 0.5 * (c[0][b] + c[1][b])
+        else:
+            # at an angle (R-E5): each pad's inner edge where the line between
+            # their centres leaves it (a rotated pad's box overlaps the
+            # other's), the element along the dominant axis between them on the
+            # first pad's side, and a copper strap across to the second pad (in
+            # the board's copper: every solver has it)
+            u = (c[hi] - c[lo]) / np.linalg.norm(c[hi] - c[lo])
+            n = np.array([-u[1], u[0]])
+            p1 = c[lo] + u * _chord(g[lo], c[lo], u) / 2
+            p2 = c[hi] - u * _chord(g[hi], c[hi], u) / 2
+            e1, e2, cb = float(p1[axis]), float(p2[axis]), float(p1[b])
+            w = 0.5 * min(_chord(q, cq, n) for q, cq in zip(g, c))
+        if e2 - e1 <= 1e-6:
+            notes.append(f"part {ref} skipped: pads overlap"
+                         + (f" (rotation {fp['rot']:g} deg)" if angled else ""))
+            continue
+        if angled:
+            from shapely.geometry import Point
+            start = [0.0, 0.0]
+            start[axis], start[b] = e1 - 1e-3, cb
+            # the element's near end on its pad's copper too (the pad's edge is
+            # at an angle: the end may stand just off it)
+            on = board.copper_at(lay, Point(*start)) is not None
+            if not (on or _strap(board, lay, axis, e1, cb, w, g[lo], c[lo],
+                                 back=True)) \
+                    or not _strap(board, lay, axis, e2, cb, w, g[hi], c[hi]):
+                notes.append(
+                    f"part {ref} skipped: at {fp['rot']:g} deg, no copper of "
+                    "its second pad to strap to")
+                continue
+            notes.append(
+                f"part {ref} at {fp['rot']:g} deg: its element along "
+                f"{'xy'[axis]} from pad {pads[lo]['name']}, a copper strap "
+                f"along {'xy'[b]} to pad {pads[hi]['name']}")
         e1, e2 = _copper_gap(board, lay, axis, e1, e2, cb, w)
         if e2 - e1 <= 1e-6:
             notes.append(
