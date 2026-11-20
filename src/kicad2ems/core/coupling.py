@@ -145,24 +145,48 @@ def tracks_on(kb, net, layer):
 APART_H = 20.0
 
 
-def groups(kb, layer, nets, apart):
+def groups(kb, layer, nets, apart, run=0.0):
     """A layer's nets in groups: those whose tracks there come within `apart`
-    mm of each other (through others) one group, in the nets' order. apart <=
-    0: one group."""
+    mm of each other (through others) one group, in the nets' order; run > 0:
+    only where one runs that near the other over `run` mm of its length or
+    more (a close approach at a connector's pads does not chain two buses
+    that couple nowhere else: a CM5 carrier's D-PHY, PCIe and USB-C). apart
+    <= 0: one group."""
     from shapely.geometry import LineString, Point
     from shapely.ops import unary_union
     nets = list(nets)
     if apart is None or apart <= 0 or len(nets) < 2:
         return [nets]
-    geom = {}
+    geom, axis = {}, {}
     for n in nets:
-        parts = []
+        parts, lines = [], []
         for t in kb.tracks:
             if t['net'] == n and t['layer'] == layer:
                 pts = [tuple(p) for p in t['pts']]
                 g = (LineString(pts) if len(pts) > 1 else Point(pts[0]))
                 parts.append(g.buffer(float(t.get('width') or 0) / 2))
+                if len(pts) > 1:
+                    lines.append(g)
         geom[n] = unary_union(parts) if parts else Point(0, 0).buffer(0)
+        axis[n] = unary_union(lines) if lines else None
+    near = {}
+
+    from .si import _legs
+
+    def coupled(a, b):
+        if _legs(a, b):
+            return True  # a pair's two legs: one group, always
+        if geom[a].distance(geom[b]) > apart:
+            return False
+        if run <= 0:
+            return True
+        for x, y in ((a, b), (b, a)):
+            if axis[x] is None:
+                continue
+            zone = near.setdefault(y, geom[y].buffer(apart, quad_segs=4))
+            if axis[x].intersection(zone).length >= run:
+                return True
+        return False
     up = {n: n for n in nets}
 
     def root(n):
@@ -172,7 +196,7 @@ def groups(kb, layer, nets, apart):
         return n
     for i, a in enumerate(nets):
         for b in nets[i + 1:]:
-            if root(a) != root(b) and geom[a].distance(geom[b]) <= apart:
+            if root(a) != root(b) and coupled(a, b):
                 up[root(a)] = root(b)
     out = {}
     for n in nets:

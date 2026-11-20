@@ -37,6 +37,8 @@ GAP = float(os.environ.get('K2E_SEG_GAP', 0.25))  # mm: the cut circle beyond
 GROUND_REACH = float(os.environ.get('K2E_SEG_REACH', 1.5))  # mm: a via
 # model's box beyond its cut circles
 NUDGE = 1e-3      # mm: a cut port's point inside its own piece
+RUN = 2.0         # mm: two nets are one layer piece where they run that far
+                  # within --apart of each other (coupling.groups' run)
 PORT = os.environ.get('K2E_SEG_PORT', 'lumped')  # mom25d's ports in the pieces (wave where it can: its feed's
                   # own parasitics de-embedded, which two lumped ports back to
                   # back at a cut are not)
@@ -295,8 +297,8 @@ def pieces(m, raw, kb, nets, apart_h=None):
                      if n in signal})
         h = _height(m, lay)
         apart = APART_H * h if apart_h is None else apart_h * h
-        grps = (near_groups(kb, lay, on, apart) if len(on) > 1 and apart > 0
-                else [on])
+        grps = (near_groups(kb, lay, on, apart, RUN)
+                if len(on) > 1 and apart > 0 else [on])
         for gi, gnets in enumerate(grps):
             gnets = set(gnets)
             mine = [c for c in allcuts if c['layer'] == lay
@@ -420,13 +422,11 @@ def junction(fW, SW, fA, SA):
 
 
 def solve_piece(piece, folder, band, solver='mom25d', echo=print,
-                thickness=None):
+                thickness=None, dmax=None):
     """A piece's run (its board file, kicad2ems's pipeline): (S at 50 ohm,
     its ports' names, the run's summary)."""
     from .config import build_settings
     from .pipeline import Job
-    from .touchstone import read_touchstone
-    from .si import renormalised
     from .coupling import _over_its_plane
     os.makedirs(folder, exist_ok=True)
     d = _to_dict(piece['board'])
@@ -446,10 +446,27 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
             # with their holes (mom25d's planes 'holes')
             cli['mom_stack'] = 'whole'
             cli['mom_planes'] = 'holes'
+    if solver == 'mom25d' and dmax:
+        cli['mom_dmax'] = dmax
     bj = os.path.join(folder, f"{piece['name']}_board.json")
-    with open(bj, 'w', encoding='utf-8') as fh:
-        json.dump(d, fh)
+    # a piece solved before from the same board file and settings: its result
+    # again (a run that stopped at a later piece is resumed where it stopped)
+    import hashlib
+    text = json.dumps(d, sort_keys=True, default=str)
+    key = hashlib.sha256((text + json.dumps(cli, sort_keys=True, default=str))
+                         .encode()).hexdigest()
+    stamp = os.path.join(folder, 'piece.sha256')
     cli['board'] = bj
+    name = piece['name']
+    done = os.path.join(folder, f"{name}_run.json")
+    if (os.path.isfile(stamp) and os.path.isfile(done)
+            and open(stamp).read().strip() == key):
+        echo(f"{name}: solved before, its result again")
+        return _read_piece(folder, name)
+    if os.path.isfile(stamp):
+        os.remove(stamp)
+    with open(bj, 'w', encoding='utf-8') as fh:
+        fh.write(text)
     if os.environ.get('K2E_SEG_INPROCESS'):
         job = Job(build_settings(cli), echo=echo)
         job.run()
@@ -478,15 +495,23 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
             for line in fh:
                 if line.startswith(('mom25d: ', 'WARNING')):
                     echo(line.rstrip()[:300])
-    name = os.path.splitext(os.path.basename(bj))[0]
-    name = name[:-len('_board')] if name.endswith('_board') else name
+    out = _read_piece(folder, name)
+    with open(stamp, 'w') as fh:
+        fh.write(key)
+    return out
+
+
+def _read_piece(folder, name):
+    """A piece's run read back: (f, S at 50 ohm, its ports, its summary)."""
+    from .touchstone import read_touchstone
+    from .si import renormalised
     with open(os.path.join(folder, f"{name}_run.json"),
               encoding='utf-8') as fh:
         sm = json.load(fh)
     solved = {k: r for k, r in sm.get('solved', {}).items()
               if r.get('touchstone')}
     if not solved:
-        raise ValueError(f"{piece['name']}: no solver gave S-parameters "
+        raise ValueError(f"{name}: no solver gave S-parameters "
                          f"({sm.get('warnings')})")
     key = next(iter(solved))
     f, S = read_touchstone(os.path.join(folder, solved[key]['touchstone']))
@@ -538,7 +563,8 @@ def run(a, echo=print):
         try:
             f, S, names, sm = solve_piece(p, os.path.join(out, p['name']),
                                           band, a.solver, echo,
-                                          thickness=a.thickness)
+                                          thickness=a.thickness,
+                                          dmax=a.dmax)
         except ValueError as e:
             raise ValueError(
                 f"piece {p['name']} ({p['kind']}"
@@ -689,6 +715,9 @@ def parser():
     p.add_argument('--thickness', default=None,
                    help="mom25d's copper thickness model (--mom-thickness): "
                    "grow has no side unknowns (a large piece)")
+    p.add_argument('--dmax', type=float, default=None,
+                   help="mom25d's largest cell along the copper, mm "
+                   "(--mom-dmax)")
     p.add_argument('--ends', action='store_true',
                    help="ports at the nets' ends on pads (the default where "
                    "the board has no ports of its own)")

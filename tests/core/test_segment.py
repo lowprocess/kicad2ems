@@ -103,3 +103,10 @@ def test_a_via_transition_in_pieces_is_the_whole_board(tmp_path):
     d = db(S[:, 1, 0]) - db(S0[:, 1, 0])
     assert np.abs(d).max() < 0.3 and np.sqrt(np.mean(d ** 2)) < 0.1
     assert db(S[:, 0, 0]).max() < -8.0  # a matched transition still
+    # again: every piece solved before is taken as it is, the result the same
+    p = subprocess.run([sys.executable, '-m', 'kicad2ems.core.segment',
+                        str(cfg), '--out', str(tmp_path / 'seg')] + common,
+                       capture_output=True, text=True, env=env)
+    assert p.returncode == 0 and p.stdout.count('solved before') == 3
+    f2, S2 = read_touchstone(str(tmp_path / 'seg' / res['touchstone']))
+    assert np.array_equal(S2, S)

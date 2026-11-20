@@ -206,7 +206,11 @@ python -m kicad2ems.core.segment board.kicad_pcb --nets 'PCIE*,HDMI*' --out out/
 - **External ports:** the board's own, or (`--ends`, and wherever the board has none) one on each pad where a
   selected net's tracks end.
 - **Groups:** a layer's nets further apart than `--apart` heights over its plane (20 by default, as Board
-  coupling's) are pieces of their own, their coupling taken as none; `--apart 0`: one piece a layer.
+  coupling's) are pieces of their own, their coupling taken as none; two nets are one piece only where one runs
+  that near the other for 2 mm or more (a close approach at a connector's pads had chained a CM5 carrier's
+  D-PHY, PCIe and USB-C into one piece), a pair's legs always together; `--apart 0`: one piece a layer.
+- **Resumed:** a piece solved before from the same board file and settings is taken as it is (`piece.sha256` in
+  its folder), so a run stopped at one piece goes on from it. `--dmax` sets mom25d's cell size.
 - **Each piece in a process of its own**, so the memory one took is free for the next. mom25d stops a piece that
   will not fit, saying so (`--thickness grow` has no copper-side unknowns: a large piece).
 

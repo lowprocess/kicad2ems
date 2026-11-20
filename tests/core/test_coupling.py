@@ -258,7 +258,8 @@ def test_a_layers_nets_in_groups_and_their_matrices_merged(kb):
     assert C.groups(kb, 'F.Cu', nets, 0) == [nets]  # 0: one group
     assert C.groups(kb, 'F.Cu', nets, 0.5) == [nets]  # 0.2 mm gaps: chained
     alone = C.groups(kb, 'F.Cu', nets, 0.05)  # nearer than their gaps: none
-    assert sorted(map(len, alone)) == [1] * 6
+    # (a pair's two legs one group always: DQS0_P / _N)
+    assert sorted(map(len, alone)) == [1, 1, 1, 1, 2]
     m = lambda names, v: dict(
         nets=names, kinds={n: 'single' for n in names},
         legs={n: [n] for n in names}, conversion={},
