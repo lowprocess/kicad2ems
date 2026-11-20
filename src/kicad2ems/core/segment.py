@@ -680,16 +680,18 @@ def run(a, echo=print):
         echo(f"calibration: {lay}, {w:.3f} mm wide: a cut's correction "
              f"|S11| up to {np.abs(cal[key][:, 0, 0]).max():.3f}")
     pairs = []
-    for k, ends in links.items():
-        if len(ends) != 2:
-            raise ValueError(f"cut {k}: {len(ends)} sides ({', '.join(ends)})")
+    for k, sides in links.items():
+        # (sides, not ends: ends is the external ports' list, written below)
+        if len(sides) != 2:
+            raise ValueError(f"cut {k}: {len(sides)} sides "
+                             f"({', '.join(sides)})")
         X = cal.get(widths.get(k))
         if X is None:
-            pairs.append(tuple(ends))
+            pairs.append(tuple(sides))
             continue
         xa, xb = f"cut{k}:a", f"cut{k}:b"
         blocks.append((X, [xa, xb]))
-        pairs += [(ends[0], xa), (xb, ends[1])]
+        pairs += [(sides[0], xa), (xb, sides[1])]
     S, names = join(blocks, pairs)
     ext = [n.split(':', 1)[1] for n in names]
     order = sorted(range(len(ext)), key=lambda i: _num(ext[i]))

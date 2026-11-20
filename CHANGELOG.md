@@ -272,6 +272,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **segment.json's `port_nets` was a cut's two sides (2026-11-20)**, not the external ports' nets: the loop over the
+  cuts reused the name of the ports' list.
 - **mom25d's block low-rank solve ran the machine out of memory instead of stopping (2026-11-20).** Its plan did
   not count the via and copper-side blocks it fills whole (B and C, complex128: a CM5 layer's 37k edges and 10k
   sides, 7.6 GB), and on that path nothing compared the total with the memory available; the kernel killed the

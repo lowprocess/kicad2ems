@@ -75,7 +75,15 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    footprints: its ends), crosstalk figures from the joined S (as Board coupling's), the window. **On the CM5
    Minima with mom25d's direct factor it is not practical** (2026-11-20, set aside by the user): its 18-net F.Cu
    piece is 29k unknowns, 49 min and 19.6 GB (the block low-rank factor did not converge at 1-1.5 GHz), the board
-   hours. **With `--layer-solver lines` (2026-11-20)** its layer pieces take 2 min and the via models are the
+   hours. **With `--edges coarse` (2026-11-20) the whole board runs on mom25d: 6 min 25 s, 3.8 GB peak**, 13
+   layer pieces (4-43 s each) and 12 via models (12-47 s; the 28-port one had not fitted 24 GB on the fine
+   mesh): the 36 nets' 73-port S end to end. Next: its figures in each pair's differential mode (as Board
+   coupling's matrix; single-ended at 50 ohm the 100 ohm pairs read -13 dB between HDMI lanes), the Ethernet
+   pairs' -2.6 dB match and USB-C's reflection looked into (parts left out: ESD diodes, connectors), and a check
+   of one interface against a cut-out solved whole. Measured and set aside: edge cells only near the signal
+   copper (the via models' plane edges: 10 % fewer unknowns on the fine mesh, 1 % on the coarse), and an
+   aggressor's copper fine with its victims coarse (rf_coupler: between the two meshes in unknowns and in S31,
+   which all three give within 0.2 dB of gfdtd; and a run per aggressor). **With `--layer-solver lines`** its layer pieces take 2 min and the via models are the
    cost: 9-33k unknowns each (the whole stack's planes in their boxes, D-PHY's rows of 8 vias one model), 33 s
    to 23 min, the largest over 24 GB. On gfdtd (`--via-solver gfdtd`) as accurate on the test boards (rf_msvia
    S21 within 0.14 dB of the whole board, rf_diffvia Sdd21 0.078 dB rms against mom25d's via model's 0.110) and
