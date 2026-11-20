@@ -29,7 +29,8 @@ from .threads import (fast_cores, cap_blas_threads, cap_core_threads,  # noqa: F
                       _one_blas_thread)
 from .dense import (_row_blocks, _equilibrate, _border, _loop_transform, _c64,
                     _lu, HostLU, GpuLU, _lu_solve, gmres_batched)
-from .near import NEAR_CHUNK, _near_csr, near_pairs  # noqa: F401
+from .near import (NEAR_CHUNK, NEAR_KEPT, NEAR_PAIRS, NEAR_PIECE,  # noqa: F401
+                   _near_csr, near_pairs, near_sparse)
 from .tiles import Cluster, cluster_tiles, _CompiledBLR  # noqa: F401
 
 
@@ -204,16 +205,15 @@ class FastOperator:
     def _near_exact(self):
         """The core's exact near-field correction (sparse, double); keeps its
         via-fan part (_qcorr)."""
-        ri, ci, vv, self._qcorr = self.core.near_coo(self.g, self.tb, self.q,
-                                                     self.nP32, self.nQ32,
-                                                     self.w)
+        M, self._qcorr = near_sparse(self)
         self._near_kept()
-        return _near_csr(ri, ci, vv, self.sim.Ne, self)
+        return M
 
-    # a near triangle pair's peak memory in the sparse correction: its nine
-    # triplets from the core (24 B each), their CSR structure's sort (20 B each)
-    # and the CSR (20 B each)
-    NEAR_BYTES = 400.0
+    # a near triangle pair's memory in the sparse correction, built a piece at
+    # a time (near.near_sparse): what it keeps (the pieces' sorts, the CSR);
+    # the piece's own peak is NEAR_PIECE_BYTES. All at once it had been ~400
+    NEAR_BYTES = NEAR_KEPT
+    NEAR_PIECE_BYTES = NEAR_PIECE * NEAR_PAIRS
 
     def _near_kept(self):
         """After a pass of the core's near_core: its analytic parts are in
@@ -346,7 +346,9 @@ class FastOperator:
         # several layers it is the larger: antenna_aperture's whole stack, 78k
         # unknowns, 37 M near pairs, ~15 GB, which a 16 GB cap had killed
         # without a word)
-        need, avail = self.NEAR_BYTES * len(self.nP), available_memory()
+        need, avail = (self.NEAR_BYTES * len(self.nP) + min(
+            self.NEAR_PIECE_BYTES, NEAR_PIECE * len(self.nP)),
+            available_memory())
         if need > 0.85 * avail:
             raise MemoryError(
                 f"the near-field correction of {sim.Ne:,} unknowns needs "

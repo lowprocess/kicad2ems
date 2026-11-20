@@ -134,7 +134,15 @@ What it does:
    way they run, so the matrices' neighbours sit beside their diagonal.
 3. **The solve.** The board is imported once with every layer's ports. Each layer is then solved on a board of
    its own: that layer's stretches and the ground copper of every layer (the reference planes: mom25d takes solid
-   planes as PEC), the selected nets' vias, their copper on other layers and the parts left out.
+   planes as PEC), the selected nets' vias, their copper on other layers and the parts left out. A port at its
+   net's own via (a stretch that leaves the layer there) gets the plane's copper under it, the via's antipad
+   closed. mom25d solves the layer over its own reference plane (the plane its ports reference, the copper beyond
+   it left out; `--mom-stack ground`), the board turned over for a layer under its plane (B.Cu under In4.Cu):
+   its automatic stack had meshed every plane of a real board, whose planes have apertures under the traces.
+   **Groups:** a layer's nets whose tracks come no nearer than `--apart` mm to any others of them (default 20
+   heights over the layer's plane: microstrip crosstalk falls as 1 / (1 + (s/h)^2), ~0.25 % of its close range
+   there) are solved as separate groups, the coupling between groups taken as none; each group's run in
+   `<layer>/group<k>`. `--apart 0`: the whole layer at once.
 4. **The coupling.** Each net's near end driven in turn, every end terminated in `--z0`: each victim's NEXT and
    FEXT from each aggressor, as the largest share of the swing for an edge of `--rise` ps (as the crosstalk
    question's). Each layer gets the matrices (victim by aggressor), each victim its `--top` worst aggressors and
@@ -168,4 +176,8 @@ sections alone.
 
 What it leaves out: what crosses between layers (a via's field, a reference plane's gaps, broadside traces on
 adjacent layers), since each layer is solved on its own; drivers and receivers, as the crosstalk question; and a
-stretch's own branches (a net that forks on a layer is its longest path there).
+stretch's own branches (a net that forks on a layer is its longest path there). The line model couples only the lines it
+groups into coupled sections: lines further apart than that (a few heights) read 0 % where mom25d finds a little.
+It takes ground copper between two lines (a guard trace, a pour) into the lines' cross-section as ideal ground
+along its length, however it is stitched: a guard tied down at its ends alone reads as one stitched every 3 mm
+(mom25d: 2.46 % FEXT against 2.25 %).

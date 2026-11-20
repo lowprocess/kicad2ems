@@ -227,12 +227,17 @@ def near_bytes(pairs, sparse=False):
     """The near field's host bytes for `pairs` near triangle pairs: those held,
     and, for a solver that keeps the correction sparse (sparse: the block
     low-rank LU, a matrix-free refinement), its peak while that is built
-    (fast.FastOperator.NEAR_BYTES: the core's triplets, their sort, the CSR).
-    A dense Z takes the correction in place."""
+    (fast.FastOperator.NEAR_BYTES: what its piece-at-a-time build keeps, and
+    one piece's peak, near.near_sparse). A dense Z takes the correction in
+    place."""
     if pairs <= 0:
         return 0.0
     from .fast import FastOperator
-    return pairs * (NEAR_HELD + (FastOperator.NEAR_BYTES if sparse else 0.0))
+    from .near import NEAR_PIECE
+    return pairs * NEAR_HELD + (
+        pairs * FastOperator.NEAR_BYTES
+        + min(FastOperator.NEAR_PIECE_BYTES, NEAR_PIECE * pairs)
+        if sparse else 0.0)
 
 
 def anchor_bytes(n, nv):

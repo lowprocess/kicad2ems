@@ -383,3 +383,43 @@ def test_grounded_cpw_from_the_field_solver_or_the_formula(boards,
     assert (off.source == 'formula'
             and off.z0 == pytest.approx(off.z0_formula)
             and on.z0 < 0.95 * off.z0)
+
+
+def test_a_trace_whose_pieces_meet_a_hair_apart_stays_one_line(tmp_path):
+    """Two pieces of a line that meet at a point written two ways (20.000049 and
+    20.000051 mm: an arc's end and a track's on a real board) are one node: the
+    names their rounding gave had cut the line in two, each side an open end
+    (a CM5 carrier's Ethernet legs: no transmission)."""
+    import sys
+    import numpy as np
+    sys.path.insert(
+        0,
+        os.path.join(
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            'examples'))
+    import make_rf_examples as rf
+    path = tmp_path / 'hair.kicad_pcb'
+    bd = rf.Board()
+    bd.track([(0.0, 5.0), (20.0, 5.0)], rf.W50)
+    bd.track([(20.0, 5.0), (40.0, 5.0)], rf.W50)
+    bd.port(1, 0.5, 5.0, 0)
+    bd.port(2, 39.5, 5.0, 180)
+    bd.write(str(path), 40.0, 10.0)
+    text = path.read_text()
+    assert text.count('(end 20.0000 ') == 1 and text.count('(start 20.0000 ') == 1
+    path.write_text(text.replace('(end 20.0000 ', '(end 20.000049 ').replace(
+        '(start 20.0000 ', '(start 20.000051 '))
+    m = Board(KiCadBoard(str(path)), ground='B.Cu', log=lambda *a: None)
+    lm = build(m)
+    # (the line's own ends, beyond its ports, are open: not its middle)
+    mid = [j['node'] for j in lm.junctions
+           if j['kind'] == 'open' and abs(j['xy'][0] - 20.0) < 0.1]
+    assert not mid, mid
+    (p, q, secs, _), = lm.paths
+    assert {p, q} == {'P1', 'P2'} and abs(
+        sum(e.length for e, _, _ in secs) - 39.0) < 0.5
+    pytest.importorskip('skrf')
+    from kicad2ems.core.solvers.lines.fastsolve import solve
+    S, _ = solve(lm, m.ports, np.array([1e9]), backend='skrf')
+    assert abs(S[0, 1, 0]) > 0.9

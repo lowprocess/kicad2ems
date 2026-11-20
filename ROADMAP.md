@@ -54,24 +54,38 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
 1. **Differential pairs as pairs, the rest.** Board coupling and the crosstalk question take a pair as one trace in
    its differential mode (2026-11-20; board coupling with its own mode conversion). Left: a pair's skew (its legs'
    delays), and the common-mode noise its neighbours put on it (in the modal S, not yet reported).
-2. **A board's coupling, the rest** (`kicad2ems.core.coupling`, docs/si.md#coupling, 2026-11-20). Left: a real
-   board's bus (90 nets, 180 ports: mom25d's time and the report's size; the tests run the 12-net example);
-   what crosses between layers (each layer is solved alone: vias, a plane's gaps, broadside traces on adjacent
-   layers), which a second pass with two layers and their vias could give for the worst victims; a net that
-   forks on a layer (its longest path there is the stretch); and the window's view of the matrices (its report
-   shows the figures as images).
-3. **The time grid, the rest** (R-E16). The grid holds the longest trace (`si.time_grid`, 16 samples a ripple:
-   CHANGELOG 2026-11-14), and `coupling` uses it too. Left: S to DC for a step's settled value and TDR (item 5),
+2. **A board's coupling, the rest** (`kicad2ems.core.coupling`, docs/si.md#coupling, 2026-11-20). On a real
+   board (the CM5 Minima's 36 high-speed nets, 18 pairs; 2026-11-20) the line model answers in 4 min; mom25d does
+   not fit yet: each layer's group still carries its share of the signal layer's ground pour and stitching vias,
+   and the last run was stopped by the machine running out of memory with nothing logged (its plan does not count
+   the signal zone with the pour cut near the group: to check by a size-only preview per group). **Being replaced
+   by the segmented solve below.** Also left: what crosses between layers (vias, a plane's gaps, broadside
+   traces), a net that forks on a layer (its longest path there is the stretch), a port inside an antipad but off
+   its via's ring (no reference copper under it on the full board: the question stops), and the window's view of
+   the matrices.
+3. **A board solved in pieces (the user's plan, 2026-11-20): vias as ports.** Each signal layer's traces alone
+   over ideal planes (mom25d's Green's function: the planes not meshed), a port wherever a trace meets a via or a
+   pad; each kind of signal via (its pads, antipads, stub and the ground vias around it) a small model of its own,
+   cached by its geometry; the pieces joined as one network: each net's S end to end across its layer changes,
+   and the crosstalk through the vias. Validated against whole-board full-wave runs on `rf_diffvia` and the DDR
+   example's lane 1, then the CM5 Minima. Its limits to report: a plane's cavity between sparse stitching vias,
+   apertures under a trace (the ideal plane has none), broadside coupling between layers.
+4. **mom25d out of core** (asked 2026-11-20, after the near-field build in pieces): a tiled complex64 LU with its
+   tiles on the NVMe, factored on the GPU with VRAM as its working set (the mixed path's refinement to double), for
+   the problems that cannot be split. To prototype and measure on a case just over RAM (~60,000 unknowns) against
+   the block low-rank path before it earns a place.
+5. **The time grid, the rest** (R-E16). The grid holds the longest trace (`si.time_grid`, 16 samples a ripple:
+   CHANGELOG 2026-11-14), and `coupling` uses it too. Left: S to DC for a step's settled value and TDR (item 7),
    and whether 1 / rise as fmax (the top 20 % faded) loses an edge's corner on short, fast traces: to measure
    against a grid to 3 / rise before changing it.
-4. **Drivers and receivers.** A source impedance and a receiver's load in place of `z0` at every end (an
+6. **Drivers and receivers.** A source impedance and a receiver's load in place of `z0` at every end (an
    unterminated receiver doubles what arrives; NEXT reflected at the driver arrives at the far end), and an eye
    for a bit pattern (the edge response is there: superposed).
-5. **A trace's own quality:** its impedance along its length (the line model has it: *Trace impedances*), the
+7. **A trace's own quality:** its impedance along its length (the line model has it: *Trace impedances*), the
    reflections of its discontinuities for the edge (TDR from S11), its loss at the data rate.
-6. **The coupled stretches drawn on the plan**, coloured by their share (the traces are picked on the board
+8. **The coupled stretches drawn on the plan**, coloured by their share (the traces are picked on the board
    already).
-7. **Broadside pairs** on adjacent layers: the groups are of one layer, so such a pair is not coupled at all (it
+9. **Broadside pairs** on adjacent layers: the groups are of one layer, so such a pair is not coupled at all (it
    is listed as not modelled, and the limit not judged).
 
 ## The window

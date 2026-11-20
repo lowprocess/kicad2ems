@@ -213,7 +213,26 @@ def _build(model, nets, refcu):
                 node = f"via{vias[hit[0]]['i']}:{layer}"
                 parallel[node] = len(hit)
                 return node, None
-        return f"{layer}:{xy[0]:.4f}:{xy[1]:.4f}", None
+        return named(layer, xy, net), None
+
+    named_at = {}  # (layer, net, x, y in TOL cells) -> a node's name
+
+    def named(layer, xy, net, tol=1e-4):
+        """A free end's node: the name of one already given within tol (mm) on
+        the layer and net, else its own (rounded to tol). Two pieces of a trace
+        that meet at a point computed two ways (an arc's end, a track's)
+        had rounded to two names a 0.1 um apart: the trace cut in two there,
+        each side an open end (a real board's Ethernet legs: no transmission)."""
+        ix, iy = int(np.floor(xy[0] / tol)), int(np.floor(xy[1] / tol))
+        for dx in (0, -1, 1):
+            for dy in (0, -1, 1):
+                got = named_at.get((layer, net, ix + dx, iy + dy))
+                if got is not None and np.hypot(got[1][0] - xy[0],
+                                                got[1][1] - xy[1]) <= tol:
+                    return got[0]
+        name = f"{layer}:{xy[0]:.4f}:{xy[1]:.4f}"
+        named_at[(layer, net, ix, iy)] = (name, (float(xy[0]), float(xy[1])))
+        return name
 
     # ---- traces (split at T-junctions, shortened by the pads they end in) ----
     clipped = []

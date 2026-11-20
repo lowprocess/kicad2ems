@@ -169,3 +169,31 @@ def test_an_unconverged_block_low_rank_solve_is_an_error_not_an_answer(
     sim.blr_tile = 128
     with pytest.raises(FloatingPointError, match='did not converge'):
         sim.sparams(4e9)
+
+
+def test_the_near_field_built_a_piece_at_a_time_is_the_whole(monkeypatch):
+    """The sparse near-field correction built a piece of near pairs at a time
+    (near.near_sparse: all the triplets at once had peaked at ~400 bytes a
+    pair, 29.6 GB on a real board's layer) is SciPy's sum of all of them, at
+    the frequency that builds its structure and at one that reuses it; and so
+    is the per-pair via-fan part."""
+    pytest.importorskip('kicad2ems.mom25d._core')
+    from scipy import sparse
+    from kicad2ems.mom25d import near
+    sim = _sim()
+    fo = sim.fast
+    pieces = max(1, len(fo.nP) // 7)  # seven pieces and a bit
+    monkeypatch.setattr(near, 'NEAR_PAIRS', pieces)
+    for k, f in enumerate((3e9, 4.5e9)):
+        fo.setup(f, mode='sparse')
+        assert fo._near_pat[0] == ('pieces', len(fo.nP), sim.Ne, pieces)
+        assert len(fo._near_pat[1]) == -(-len(fo.nP) // pieces) >= 7
+        got, qc = fo.dZ, fo._qcorr
+        ri, ci, vv, qref = fo.core.near_coo(fo.g, fo.tb, fo.q, fo.nP32,
+                                            fo.nQ32, fo.w)
+        m = ri >= 0
+        ref = sparse.coo_matrix((vv[m], (ri[m], ci[m])),
+                                shape=(sim.Ne, sim.Ne)).tocsr()
+        scale = abs(ref).max()
+        assert abs(got - ref).max() < 1e-12 * scale, f
+        assert np.allclose(qc, qref, rtol=1e-12, atol=0)

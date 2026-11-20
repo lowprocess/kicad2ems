@@ -151,6 +151,7 @@ def test_memory_plan_counts_the_near_field():
     """The near triangle pairs' bytes (policy.near_bytes): those held over the
     sweep, and for the block low-rank solver the sparse correction's build
     too (a dense Z takes the correction in place)."""
+    from kicad2ems.mom25d import near
     from kicad2ems.mom25d.fast import FastOperator
     n, pairs = 6000, 2_000_000
     dense = memory_plan(n, avail=30e9, precision='double', pairs=pairs)
@@ -158,5 +159,7 @@ def test_memory_plan_counts_the_near_field():
     assert dense['host'] - base['host'] == pairs * policy.NEAR_HELD
     blr = memory_plan(n, avail=30e9, solver='blr', pairs=pairs)
     blr0 = memory_plan(n, avail=30e9, solver='blr')
+    # what the piece-at-a-time build keeps, and one piece's peak (near.py)
     assert (blr['host'] - blr0['host']
-            == pairs * (policy.NEAR_HELD + FastOperator.NEAR_BYTES))
+            == pairs * (policy.NEAR_HELD + FastOperator.NEAR_BYTES)
+            + min(FastOperator.NEAR_PIECE_BYTES, near.NEAR_PIECE * pairs))

@@ -139,6 +139,69 @@ def tracks_on(kb, net, layer):
             for t in kb.tracks if t['net'] == net and t['layer'] == layer]
 
 
+# a layer's nets further apart than this many heights over its plane are
+# solved as separate groups (microstrip crosstalk falls as 1 / (1 + (s/h)^2):
+# ~0.25 % of its close range at 20 heights)
+APART_H = 20.0
+
+
+def groups(kb, layer, nets, apart):
+    """A layer's nets in groups: those whose tracks there come within `apart`
+    mm of each other (through others) one group, in the nets' order. apart <=
+    0: one group."""
+    from shapely.geometry import LineString, Point
+    from shapely.ops import unary_union
+    nets = list(nets)
+    if apart is None or apart <= 0 or len(nets) < 2:
+        return [nets]
+    geom = {}
+    for n in nets:
+        parts = []
+        for t in kb.tracks:
+            if t['net'] == n and t['layer'] == layer:
+                pts = [tuple(p) for p in t['pts']]
+                g = (LineString(pts) if len(pts) > 1 else Point(pts[0]))
+                parts.append(g.buffer(float(t.get('width') or 0) / 2))
+        geom[n] = unary_union(parts) if parts else Point(0, 0).buffer(0)
+    up = {n: n for n in nets}
+
+    def root(n):
+        while up[n] != n:
+            up[n] = up[up[n]]
+            n = up[n]
+        return n
+    for i, a in enumerate(nets):
+        for b in nets[i + 1:]:
+            if root(a) != root(b) and geom[a].distance(geom[b]) <= apart:
+                up[root(a)] = root(b)
+    out = {}
+    for n in nets:
+        out.setdefault(root(n), []).append(n)
+    return list(out.values())
+
+
+def merged(mats):
+    """Groups' matrices (matrix's dicts) as one: their channels in turn, the
+    coupling between groups none (0 %, -300 dB)."""
+    if len(mats) == 1:
+        return mats[0]
+    nets = [c for m in mats for c in m['nets']]
+    n, out, k = len(nets), {}, 0
+    for key in ('next_pct', 'fext_pct', 'next_sign', 'fext_sign', 'next_db',
+                'fext_db'):
+        out[key] = np.full((n, n), -300.0 if key.endswith('_db') else 0.0)
+    for m in mats:
+        w = len(m['nets'])
+        for key in list(out):
+            out[key][k:k + w, k:k + w] = np.asarray(m[key])
+        k += w
+    out = {key: v.tolist() for key, v in out.items()}  # (as matrix's: JSON)
+    out['nets'] = nets
+    for key in ('kinds', 'legs', 'conversion'):
+        out[key] = {c: v for m in mats for c, v in m[key].items()}
+    return out
+
+
 def ports(by_layer, near=()):
     """(the --port specs, {layer: {port: (net, 'near' | 'far')}}, {layer: {net:
     (near end, far end)}}): every layer's stretches, numbered across the
@@ -184,7 +247,142 @@ def layer_board(full, layer, nets, port_names):
     d['prims'] = pr
     d['notes'] = list(d.get('notes', [])) + [
         f"coupling: {layer} alone ({len(nets)} nets) over the ground copper"]
+    _close_antipads(d)
     return d
+
+
+POUR_REACH_H, POUR_REACH_MIN = 15.0, 1.0  # the signal layer's ground kept
+
+
+def _ground_near(d, layer, nets):
+    """mom25d's board for a group: the ground copper on the signal layer kept
+    within POUR_REACH_H heights over its plane (POUR_REACH_MIN mm at least) of
+    the group's nets, cut along a coarse outline (a cut that follows the traces
+    had more edges to mesh than it saved), and the ground vias left out where
+    none of it is (the plane's own: it is not meshed). What was done, or ''."""
+    from shapely.geometry import Point, mapping, shape
+    from shapely.ops import unary_union
+    ground = set(d.get('ground_nets') or ())
+    cu = d['copper'].get(layer) or []
+    sig = unary_union([shape(c['polygon']) for c in cu if c['net'] in nets])
+    if sig.is_empty:
+        return ''
+    zs = {c['name']: c['z'] for c in d['stack']['copper']}
+    ref = d.get('ground')
+    h = abs(zs.get(ref, zs[layer]) - zs[layer])
+    reach = max(POUR_REACH_MIN, POUR_REACH_H * h)
+    # a coarse outline: square-ended, simplified to a tenth of the reach
+    near = sig.buffer(reach, quad_segs=1, join_style='mitre').simplify(
+        reach / 10)
+    before = after = 0.0
+    keep = []
+    for c in cu:
+        if c['net'] not in ground:
+            keep.append(c)
+            continue
+        g = shape(c['polygon'])
+        before += g.area
+        g = g.intersection(near)
+        for piece in getattr(g, 'geoms', [g]):
+            if piece.geom_type == 'Polygon' and piece.area > 1e-4:
+                after += piece.area
+                keep.append(dict(c, polygon=mapping(piece)))
+    if before - after < 1e-3:
+        return ''
+    d['copper'][layer] = keep
+    pr = d['prims']
+    items = []
+    for it in pr.get('items', []):
+        if it['layer'] != layer or it['net'] not in ground:
+            items.append(it)
+            continue
+        g = shape(it['geom']).intersection(near)
+        for piece in getattr(g, 'geoms', [g]):
+            if piece.geom_type == 'Polygon' and piece.area > 1e-4:
+                items.append(dict(it, geom=mapping(piece)))
+    pr['items'] = items
+    pr['tracks'] = [t for t in pr.get('tracks', [])
+                    if t['layer'] != layer or t['net'] not in ground
+                    or near.intersects(Point(*t['pts'][0]))]
+    kept = unary_union([shape(c['polygon']) for c in keep
+                        if c['net'] in ground])
+    nv = len(d.get('vias') or [])
+
+    def touches(v):
+        at = v.get('xy') or (v.get('x'), v.get('y'))
+        return at[0] is not None and kept.intersects(Point(*at))
+    d['vias'] = [v for v in d.get('vias') or [] if touches(v)]
+    pr['vias'] = [v for v in pr.get('vias') or [] if touches(v)]
+    said = (f"its ground on {layer} kept within {reach:.2f} mm of its nets "
+            f"({after:.0f} of {before:.0f} mm2), {len(d['vias'])} of {nv} "
+            "ground vias")
+    d['notes'].append(f"coupling: {said}")
+    return said
+
+
+def _over_its_plane(d, layer):
+    """A layer's board (layer_board's) set up as its signal copper over its
+    reference plane for mom25d: the plane its ports reference named as the
+    ground, and the board turned over (every height mirrored) when that plane is
+    above the layer (B.Cu under In4.Cu), mom25d's ground being below its
+    copper. The plane's name, or None (no port says one)."""
+    import collections
+    refs = collections.Counter(p.get('ref_layer') for p in d.get('ports') or ()
+                               if p.get('ref_layer'))
+    if not refs:
+        return None
+    ref = refs.most_common(1)[0][0]
+    st = d['stack']
+    cu_z = {c['name']: c['z'] for c in st['copper']}
+    if cu_z.get(ref, 0.0) > cu_z.get(layer, 0.0):
+        T = float(st['thickness'])
+        for lay in st['layers']:
+            lay['z0'], lay['z1'] = T - lay['z1'], T - lay['z0']
+        st['layers'].sort(key=lambda lay: lay['z0'])
+        for c in st['copper']:
+            c['z'] = T - c['z']
+        st['copper'].sort(key=lambda c: c['z'])
+        for v in d.get('vias') or ():
+            if 'z0' in v and 'z1' in v:
+                v['z0'], v['z1'] = T - v['z1'], T - v['z0']
+        for p in d.get('ports') or ():
+            for k in ('z_sig', 'z_ref'):
+                if p.get(k) is not None:
+                    p[k] = T - p[k]
+        d['turned'] = True
+        d['notes'].append(f"coupling: turned over, {layer} on top of {ref}")
+    d['ground'] = ref
+    return ref
+
+
+def _close_antipads(d):
+    """A port at its net's own via (a trace that leaves the layer there) had
+    that via's ring on the plane layer under it as its reference; with the via
+    left out, its antipad is a hole there and mom25d's port ended on no metal
+    (a real board's PCIe, Ethernet, USB: every such port). The hole under each
+    port closed with the nearest ground copper of its reference layer, as if
+    the plane ran on under the trace's end (the via is not in the question)."""
+    from shapely.geometry import Point, mapping, shape
+    for p in d.get('ports') or ():
+        ref = p.get('ref_layer')
+        cu = d['copper'].get(ref) or []
+        if not cu or p.get('c') is None:
+            continue
+        at = Point(*p['c'])
+        polys = [(shape(c['polygon']), c['net']) for c in cu]
+        if any(g.covers(at) for g, _ in polys):
+            continue
+        g, net = min(polys, key=lambda t: t[0].distance(at))
+        gap = g.distance(at)
+        if gap > max(1.0, 4 * (p.get('w') or 0.0)):  # no plane near: not a hole
+            continue
+        disc = at.buffer(gap + max(0.05, 0.5 * (p.get('w') or 0.0)))
+        cu.append(dict(net=net, polygon=mapping(disc)))
+        d['prims'].setdefault('items', []).append(
+            dict(layer=ref, net=net, shape=False, geom=mapping(disc)))
+        d['notes'].append(
+            f"{p['name']}: the antipad under it on {ref} closed (its via is "
+            "not in the question)")
 
 
 # ---- from S-parameters: the coupling matrix ---------------------------------
@@ -378,6 +576,11 @@ def parser():
                    help="each victim's worst aggressors listed")
     p.add_argument('--min-length', type=float, default=MIN_LENGTH,
                    help="mm: shorter stretches on a layer are left out")
+    p.add_argument('--apart', type=float, default=None,
+                   help="mm: a layer's nets further apart than this are "
+                   "solved as separate groups, their coupling taken as none "
+                   f"(default: {APART_H:g} heights over the layer's plane; 0: "
+                   "one group)")
     p.add_argument('--solvers', default='mom25d',
                    help="mom25d (default) or lines (the line model: a first "
                    "look)")
@@ -395,9 +598,8 @@ def run(a, echo=print):
     """The question for parsed arguments `a`; returns coupling.json's dict."""
     from .importers.kicad import KiCadBoard
     from .config import build_settings
-    from .pipeline import Job, board_from_settings
-    from .touchstone import read_touchstone
-    from .si import renormalised, time_grid, _end
+    from .pipeline import board_from_settings
+    from .si import time_grid, _end
     kb = KiCadBoard(a.board)
     nets = select_nets(kb, a.nets.split(','))
     if len(nets) < 2:
@@ -441,43 +643,38 @@ def run(a, echo=print):
             raise ValueError(f"{layer}: ports {', '.join(miss)} were not "
                              "placed on the board")
         sub = os.path.join(out, _safe(layer))
-        os.makedirs(sub, exist_ok=True)
-        bj = os.path.join(sub, f"{name}_{_safe(layer)}_board.json")
-        with open(bj, 'w', encoding='utf-8') as fh:
-            json.dump(layer_board(full, layer, list(ends), set(want)), fh)
-        cli = dict(board=bj, fmin=fmin, fmax=fmax, points=points, out=sub,
-                   solvers=a.solvers, no_report=True,
-                   **({'sigma': a.sigma} if a.sigma else {}))
-        if 'mom25d' in a.solvers:
-            cli['mom_port'] = 'lumped'
-        echo(f"{layer}: {len(ends)} nets, {len(want)} ports, {fmin:.3g} to "
-             f"{fmax:g} GHz in {points} points: {a.solvers}")
-        job = Job(build_settings(cli), echo=echo)
-        job.run()
-        with open(os.path.join(sub, f"{job.name}_run.json"),
-                  encoding='utf-8') as fh:
-            run_sum = json.load(fh)
-        order = run_sum['ports']
-        lnames = {p: want[p] for p in order if p in want}
-        if len(lnames) != len(want):
-            raise ValueError(f"{layer}: the run has ports {', '.join(order)}, "
-                             f"not every stretch's two ends")
-        solved = {k: r for k, r in run_sum.get('solved', {}).items()
-                  if r.get('touchstone')}
-        if not solved:
-            raise ValueError(f"{layer}: no solver gave S-parameters "
-                             f"({run_sum.get('warnings')})")
-        key = next((k for k in solved if 'line model' not in
-                    solved[k].get('label', k)), next(iter(solved)))
-        ts = os.path.join(sub, solved[key]['touchstone'])
-        f, S = read_touchstone(ts)
-        S = renormalised(S, run_sum.get('zref') or 50.0, a.z0)
-        mat = matrix(f, S, lnames, rise, pairs=not a.legs, z0=a.z0)
+        hs = [abs(p['z_sig'] - p['z_ref']) for p in full['ports']
+              if p['name'] in want and p.get('z_ref') is not None]
+        apart = (a.apart if a.apart is not None
+                 else APART_H * min(hs) if hs else 0.0)
+        grps = groups(kb, layer, list(ends), apart)
+        if len(grps) > 1:
+            echo(f"{layer}: {len(grps)} groups of nets more than "
+                 f"{apart:.2f} mm apart, solved on their own (their coupling "
+                 f"taken as none): {', '.join(str(len(g)) for g in grps)} nets")
+        mats, solved_by, runs = [], [], []
+        for gi, gnets in enumerate(grps):
+            gwant = {p: v for p, v in want.items() if v[0] in gnets}
+            gsub = (sub if len(grps) == 1
+                    else os.path.join(sub, f"group{gi + 1}"))
+            os.makedirs(gsub, exist_ok=True)
+            tag = _safe(layer) + (f"_group{gi + 1}" if len(grps) > 1 else '')
+            what = layer + (f" group {gi + 1}" if len(grps) > 1 else '')
+            mat, label, ts, run_sum = _solve_group(
+                a, full, layer, gnets, gwant, gsub, f"{name}_{tag}", what,
+                dict(fmin=fmin, fmax=fmax, points=points), rise, echo)
+            mats.append(mat)
+            solved_by.append(label)
+            runs.append(dict(nets=list(gnets), touchstone=os.path.relpath(
+                ts, out), warnings=run_sum.get('warnings', [])))
+        mat = merged(mats)
         vs, ps = summary(mat, a.top)
         result_layers.append(dict(
-            layer=layer, label=solved[key].get('label', key),
-            touchstone=os.path.relpath(ts, out), nets=mat['nets'],
-            ports={p: dict(net=n, end=e) for p, (n, e) in lnames.items()},
+            layer=layer, label=solved_by[0],
+            touchstone=runs[0]['touchstone'], nets=mat['nets'],
+            groups=runs if len(runs) > 1 else None,
+            apart_mm=apart if len(runs) > 1 else None,
+            ports={p: dict(net=n, end=e) for p, (n, e) in want.items()},
             ends={n: dict(near=_end(e0), far=_end(e1),
                           length_mm=float(e0['length']))
                   for n, (e0, e1) in ordered[layer].items()},
@@ -487,7 +684,8 @@ def run(a, echo=print):
             conversion=mat['conversion'],
             tracks={n: tracks_on(kb, n, layer)
                     for legs in mat['legs'].values() for n in legs},
-            victims=vs, pairs=ps, warnings=run_sum.get('warnings', [])))
+            victims=vs, pairs=ps,
+            warnings=[x for r in runs for x in r['warnings']]))
         w = vs and max(vs, key=lambda r: max(r['next_sum_pct'],
                                              r['fext_sum_pct']))
         if w:
@@ -524,6 +722,65 @@ def run(a, echo=print):
                 if a.limit is not None else ''))
     echo(f"-> {os.path.join(out, RESULT)}")
     return res
+
+
+def _solve_group(a, full, layer, nets, want, sub, stem, what, band, rise,
+                 echo):
+    """One group of a layer's nets solved on its own board (layer_board's):
+    (its matrix, the solver's label, its Touchstone, the run's summary)."""
+    from .config import build_settings
+    from .pipeline import Job
+    from .touchstone import read_touchstone
+    from .si import renormalised
+    bj = os.path.join(sub, f"{stem}_board.json")
+    lb = layer_board(full, layer, list(nets), set(want))
+    cli = dict(board=bj, out=sub, solvers=a.solvers, no_report=True, **band,
+               **({'sigma': a.sigma} if a.sigma else {}))
+    if 'mom25d' in a.solvers:
+        cli['mom_port'] = 'lumped'
+        ref = _over_its_plane(lb, layer)
+        if ref:
+            # the layer over its own plane (the copper beyond left out), not
+            # the whole stack meshed: a real board's planes have apertures
+            # under its traces, and mom25d's auto stack then meshed them all
+            # (a CM5 carrier: 1.6 TiB)
+            cli['mom_stack'] = 'ground'
+            echo(f"{what}: over {ref}" + (" (the board turned over: mom25d's "
+                 "ground is below its copper)" if lb.get('turned') else ''))
+            # its own layer's ground near the group alone, meshed in detail
+            # only near the traces: a pour over the whole layer and its
+            # stitching vias had been most of the question (CM5's F.Cu:
+            # 155,000 unknowns and 37,000 via unknowns for 16 nets)
+            said = _ground_near(lb, layer, nets)
+            if said:
+                echo(f"{what}: {said}")
+            cli['mom_zone'] = 'on'
+    with open(bj, 'w', encoding='utf-8') as fh:
+        json.dump(lb, fh)
+    echo(f"{what}: {len(nets)} nets, {len(want)} ports, {band['fmin']:.3g} to "
+         f"{band['fmax']:g} GHz in {band['points']} points: {a.solvers}")
+    job = Job(build_settings(cli), echo=echo)
+    job.run()
+    with open(os.path.join(sub, f"{job.name}_run.json"),
+              encoding='utf-8') as fh:
+        run_sum = json.load(fh)
+    order = run_sum['ports']
+    lnames = {p: want[p] for p in order if p in want}
+    if len(lnames) != len(want):
+        raise ValueError(f"{what}: the run has ports {', '.join(order)}, "
+                         f"not every stretch's two ends")
+    solved = {k: r for k, r in run_sum.get('solved', {}).items()
+              if r.get('touchstone')}
+    if not solved:
+        raise ValueError(f"{what}: no solver gave S-parameters "
+                         f"({run_sum.get('warnings')})")
+    key = next((k for k in solved if 'line model' not in
+                solved[k].get('label', k)), next(iter(solved)))
+    ts = os.path.join(sub, solved[key]['touchstone'])
+    f, S = read_touchstone(ts)
+    S = renormalised(S, run_sum.get('zref') or 50.0, a.z0)
+    mat = matrix(f, S, lnames, rise, pairs=not a.legs, z0=a.z0)
+    return mat, solved[key].get('label', key), ts, run_sum
 
 
 def _safe(layer):

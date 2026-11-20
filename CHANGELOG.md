@@ -10,6 +10,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **mom25d's near-field correction built a piece at a time (2026-11-20).** The sparse correction's triplets came
+  from the core for every near pair at once (~625 bytes a pair at the peak: a CM5 layer's 74 M pairs, 46 GB): it
+  is built a million pairs at a time, its structure found once and each frequency's values summed straight in.
+  5.5 M pairs: 289 bytes a pair at the peak (with the 112 the old build held too), the first frequency 3.5 s
+  against 2.8 (np.unique's hashing had made it 10 s: a sort in place), the later ones unchanged; the same CSR.
+  The memory plan counts it so. On the CM5's F.Cu the run got past the near field at 12.6 GB.
+- **Board coupling in groups (2026-11-20).** A layer's nets further apart than `--apart` (default 20 heights over
+  its plane) are solved as separate groups, the coupling between them taken as none; for mom25d each group's
+  board keeps its layer's ground within 15 heights of its nets (a coarse outline) and the stitching vias in it,
+  meshed in detail only near the traces (`--mom-zone on`). The CM5's F.Cu: two groups (16, 8 nets), B.Cu four.
 - **The window's flows, recorded (2026-11-20).** `tools/gui/flows.py` drives the window offscreen through
   eight flows with real runs and records each as an animated GIF, with its steps and the errors met
   (docs/testing.md). Its first runs found the four bugs fixed below.
@@ -246,6 +256,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **Board coupling on a real board (2026-11-20).** The CM5 Minima's 36 high-speed nets (PCIe, HDMI, Ethernet,
+  MIPI D-PHY, USB) found four faults. (1) The line model cut a trace in two where two of its pieces met at a
+  point written two ways (0.1 um apart: two node names): Ethernet TRD0_N and TRD1_P passed nothing (12.7 %
+  "mode conversion", now 0.03-0.25 %); a trace end takes the node already named within 0.1 um on its layer and
+  net. (2) A port at its net's own via took that via's ring as its reference; with the via left out of the
+  layer's board its antipad was a hole and mom25d stopped ("ends where there is no metal"): the hole under the
+  port is closed with the plane's copper. (3) mom25d's automatic stack meshed every plane of the board (1.6 TiB on
+  the first layer): a layer is solved over its own reference plane (`--mom-stack ground`). (4) A layer under its
+  plane (B.Cu under In4.Cu) could not be posed to mom25d (its ground is below its copper): its board is turned
+  over; a mirrored pair couples exactly as its top-side original (1.88 / 3.95 %).
 - **Board coupling's line-model engine was never offered (2026-11-20).** Its check asked the solver
   registry for `lines`, a run's alias with no solver of that name, so the variant always read as unavailable
   and a choice of it fell back to mom25d: si_ddr's coupling took 9 min instead of 18 s.
