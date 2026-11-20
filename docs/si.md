@@ -209,6 +209,12 @@ python -m kicad2ems.core.segment board.kicad_pcb --nets 'PCIE*,HDMI*' --out out/
   coupling's) are pieces of their own, their coupling taken as none; two nets are one piece only where one runs
   that near the other for 2 mm or more (a close approach at a connector's pads had chained a CM5 carrier's
   D-PHY, PCIe and USB-C into one piece), a pair's legs always together; `--apart 0`: one piece a layer.
+- **`--layer-solver lines`:** the layer pieces on the line model (its 2D field-solved cross-sections), the via
+  models on mom25d: rf_msvia S21 within 0.15 dB of the whole board, rf_diffvia Sdd21 0.11 dB rms (all on mom25d
+  0.18 / 0.16). On the CM5 Minima its 13 layer pieces take 2 min (mom25d's largest alone took 49 min); against
+  mom25d on that piece (18 nets, 20 through paths) the worst of each path over 1-10 GHz is 0.5 dB at the median,
+  1.4 dB on PCIe, and a stub's notch (USB-C's branch) misplaced. A via model keeps the planes in its box and
+  small ground pads, not a signal layer's pour (as the layer pieces leave it out).
 - **Resumed:** a piece solved before from the same board file and settings is taken as it is (`piece.sha256` in
   its folder), so a run stopped at one piece goes on from it. `--dmax` sets mom25d's cell size.
 - **Each piece in a process of its own**, so the memory one took is free for the next. mom25d stops a piece that

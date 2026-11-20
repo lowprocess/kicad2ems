@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **segment: the layer pieces on the line model (2026-11-20, `--layer-solver lines`).** The via models stay on
+  mom25d. rf_msvia S21 within 0.15 dB of the whole board, rf_diffvia Sdd21 0.11 dB rms; the CM5 Minima's 13 layer
+  pieces in 2 min, against mom25d on its largest (49 min alone) 0.5 dB median, a stub's notch misplaced. A layer
+  piece's tracks are its own nets', cut at the via circles (uncut, the line model saw an open stub past each cut
+  port); a via model leaves a signal layer's pour out.
 - **A board in pieces, vias as ports (2026-11-20, in progress: `kicad2ems.core.segment`).** Each signal layer's
   traces over ideal planes, each signal via (or a pair's) a small model with its antipads and the ground vias round
   it, the pieces joined as one network at cuts round the vias (docs/si.md). Against the whole board on mom25d:

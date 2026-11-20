@@ -110,3 +110,41 @@ def test_a_via_transition_in_pieces_is_the_whole_board(tmp_path):
     assert p.returncode == 0 and p.stdout.count('solved before') == 3
     f2, S2 = read_touchstone(str(tmp_path / 'seg' / res['touchstone']))
     assert np.array_equal(S2, S)
+    # the layers on the line model, the via on mom25d (--layer-solver lines):
+    # as near the whole board (measured 0.15 dB at worst; rf_diffvia's Sdd21
+    # 0.11 dB rms, all on mom25d 0.16)
+    p = subprocess.run([sys.executable, '-m', 'kicad2ems.core.segment',
+                        str(cfg), '--layer-solver', 'lines', '--out',
+                        str(tmp_path / 'hyb')] + common,
+                       capture_output=True, text=True, env=env)
+    assert p.returncode == 0, (p.stdout + p.stderr)[-3000:]
+    res = json.load(open(tmp_path / 'hyb' / SG.RESULT))
+    f3, S3 = read_touchstone(str(tmp_path / 'hyb' / res['touchstone']))
+    d = db(S3[:, 1, 0]) - db(S0[:, 1, 0])
+    assert np.abs(d).max() < 0.3 and np.sqrt(np.mean(d ** 2)) < 0.1
+
+
+def test_a_layer_pieces_tracks_end_at_the_via_circles(tmp_path):
+    """A layer piece's tracks (what the line model builds from) are its own
+    nets' on its layer, cut outside the via circles as its copper is (uncut, a
+    trace ran on past its cut port into the circle: an open stub)."""
+    from shapely.geometry import LineString, Point
+    from kicad2ems.core.config import build_settings
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.pipeline import board_from_settings
+    _example(tmp_path, 'msvia')
+    s = build_settings(dict(board=str(tmp_path / 'rf_msvia.kicad_pcb'),
+                            nets=['RF', 'GND']))
+    m = board_from_settings(s, log=lambda *x: None)
+    kb = KiCadBoard(s.board)
+    parts, cs = SG.pieces(m, kb, kb, set(m.sel))
+    (g,) = SG.via_groups(m, {'RF'})
+    via = Point(g['vias'][0]['x'], g['vias'][0]['y'])
+    for p in parts:
+        if p['kind'] != 'layer':
+            continue
+        d = SG._to_dict(p['board'], p)
+        tr = [t for t in d['prims']['tracks'] if t['net'] == 'RF']
+        assert tr and all(t['layer'] == p['layer'] for t in tr)
+        for t in tr:
+            assert LineString(t['pts']).distance(via) >= g['vias'][0]['r'] - 1e-6

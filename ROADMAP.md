@@ -75,7 +75,13 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    footprints: its ends), crosstalk figures from the joined S (as Board coupling's), the window. **On the CM5
    Minima with mom25d's direct factor it is not practical** (2026-11-20, set aside by the user): its 18-net F.Cu
    piece is 29k unknowns, 49 min and 19.6 GB (the block low-rank factor did not converge at 1-1.5 GHz), the board
-   hours. It waits on a faster piece solver: the iterative one below, or the line model for the layer pieces.
+   hours. **With `--layer-solver lines` (2026-11-20)** its layer pieces take 2 min and the via models are the
+   cost: 9-33k unknowns each (the whole stack's planes in their boxes, D-PHY's rows of 8 vias one model), 33 s
+   to 23 min, the largest over 24 GB. Next: identical via geometries solved once (most are a pair's two vias of
+   one size), the planes as PEC with their holes where the via stays on one side of them, a row of vias split
+   where its circles only touch. A purpose-built trace mesher was measured first and set aside: the CM5 piece's
+   unknowns are 80 % edge rings at 65 a mm of trace, and neither fewer rings (more triangles: the area limit
+   splits the wider strips), coarsening nor quads lowers them; an outline simplified at 5 um saves 18 %.
 4. **mom25d iterative: AIM + GMRES (being prototyped, 2026-11-20).** The far (centroid) product by a
    precorrected FFT on a grid per layer pair (the layered tables sampled on it: no multipole expansion of the
    layered kernel needed), mom25d's exact near correction as it is, GMRES preconditioned by the near part's

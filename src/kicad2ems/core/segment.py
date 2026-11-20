@@ -37,6 +37,8 @@ GAP = float(os.environ.get('K2E_SEG_GAP', 0.25))  # mm: the cut circle beyond
 GROUND_REACH = float(os.environ.get('K2E_SEG_REACH', 1.5))  # mm: a via
 # model's box beyond its cut circles
 NUDGE = 1e-3      # mm: a cut port's point inside its own piece
+PAD_AREA = 0.5    # mm2: a via model's ground copper off its planes kept up to
+                  # this (a ground via's pad), the rest (a pour) left out
 RUN = 2.0         # mm: two nets are one layer piece where they run that far
                   # within --apart of each other (coupling.groups' run)
 PORT = os.environ.get('K2E_SEG_PORT', 'lumped')  # mom25d's ports in the pieces (wave where it can: its feed's
@@ -233,14 +235,52 @@ def _piece(m, raw, keep, ports, outline=None, vias=None):
     return b
 
 
-def _to_dict(b):
-    """The piece's board file; its prims (the line model's) as the copper
-    left: what the piece's run reads beside mom25d is its own."""
+def _to_dict(b, piece=None):
+    """The piece's board file. A layer piece's prims (what the line model
+    builds from) are its own: its nets' tracks and pads on its layer, cut
+    outside the via circles as its copper is (uncut, a trace ran on past its
+    cut port into the circle: an open stub to the line model), and the other
+    layers' ground copper (its reference planes)."""
+    from shapely.geometry import LineString, mapping, shape
     d = b.to_dict()
-    lays = {l for l, ps in b.copper.items() if ps}
     pr = d.get('prims') or {}
-    pr['tracks'] = [t for t in pr.get('tracks', []) if t['layer'] in lays]
     pr['vias'] = []
+    if piece is None or piece.get('kind') != 'layer':
+        lays = {l for l, ps in b.copper.items() if ps}
+        pr['tracks'] = [t for t in pr.get('tracks', []) if t['layer'] in lays]
+        d['prims'] = pr
+        return d
+    lay, nets, clip = piece['layer'], set(piece['nets']), piece.get('clip')
+    ground = set(d.get('ground_nets') or ())
+    tracks = []
+    for t in pr.get('tracks', []):
+        if t['layer'] != lay:
+            if t['net'] in ground:
+                tracks.append(t)
+            continue
+        if t['net'] not in nets or len(t['pts']) < 2:
+            continue
+        g = LineString(t['pts'])
+        if clip is not None:
+            g = g.difference(clip)
+        for q in getattr(g, 'geoms', [g]):
+            if q.geom_type == 'LineString' and q.length > 1e-6:
+                tracks.append(dict(t, pts=[list(c[:2]) for c in q.coords]))
+    items = []
+    for it in pr.get('items', []):
+        if it['layer'] != lay:
+            if it['net'] in ground:
+                items.append(it)
+            continue
+        if it['net'] not in nets:
+            continue
+        g = shape(it['geom'])
+        if clip is not None:
+            g = g.difference(clip)
+        for q in getattr(g, 'geoms', [g]):
+            if q.geom_type == 'Polygon' and q.area > 1e-9:
+                items.append(dict(it, geom=mapping(q)))
+    pr['tracks'], pr['items'] = tracks, items
     d['prims'] = pr
     return d
 
@@ -323,7 +363,7 @@ def pieces(m, raw, kb, nets, apart_h=None):
                             links=[(f"P{1000 + c['k']}", c['k'])
                                    for c in mine],
                             external=[n for n, _ in fps],
-                            nets=sorted(gnets)))
+                            nets=sorted(gnets), clip=every))
     for gi, g in enumerate(groups):
         mine = [c for c in allcuts if c['group'] == gi]
         gnets = {v['net'] for v in g['vias']}
@@ -334,11 +374,20 @@ def pieces(m, raw, kb, nets, apart_h=None):
                                             (-c['out'][0], -c['out'][1]),
                                             c['layer'])) for c in mine]
 
-        def keep(l, n, p, circle=circle, gnets=gnets, bx=bx):
+        # the planes in the box: layers whose ground covers half of it; a
+        # signal layer's pour left out as the layer pieces leave it (in via1
+        # of a CM5 carrier it was 9,100 of 19,445 triangles), a ground via's
+        # small pad kept
+        planes = {l for l, ps in m.copper.items() if sum(
+            p.intersection(bx).area for p, n in zip(ps, m.copper_nets.get(
+                l, [])) if n in m.ground_nets) >= 0.5 * bx.area}
+
+        def keep(l, n, p, circle=circle, gnets=gnets, bx=bx, planes=planes):
             if n in gnets:
                 return p.intersection(circle)
             if n in m.ground_nets:
-                return p.intersection(bx)
+                g = p.intersection(bx)
+                return g if l in planes or g.area <= PAD_AREA else None
             return None
         b = _piece(m, raw, keep, ports, outline=bx,
                    vias=lambda n, x, y, bx=bx, gnets=gnets:
@@ -422,14 +471,16 @@ def junction(fW, SW, fA, SA):
 
 
 def solve_piece(piece, folder, band, solver='mom25d', echo=print,
-                thickness=None, dmax=None):
+                thickness=None, dmax=None, layer_solver=None):
     """A piece's run (its board file, kicad2ems's pipeline): (S at 50 ohm,
     its ports' names, the run's summary)."""
     from .config import build_settings
     from .pipeline import Job
     from .coupling import _over_its_plane
     os.makedirs(folder, exist_ok=True)
-    d = _to_dict(piece['board'])
+    if piece['kind'] == 'layer' and layer_solver:
+        solver = layer_solver
+    d = _to_dict(piece['board'], piece)
     cli = dict(out=folder, solvers=solver, no_report=True, **band)
     if solver == 'mom25d':
         cli['mom_port'] = PORT
@@ -571,7 +622,8 @@ def run(a, echo=print):
             f, S, names, sm = solve_piece(p, os.path.join(out, p['name']),
                                           band, a.solver, echo,
                                           thickness=a.thickness,
-                                          dmax=a.dmax)
+                                          dmax=a.dmax,
+                                          layer_solver=a.layer_solver)
         except ValueError as e:
             raise ValueError(
                 f"piece {p['name']} ({p['kind']}"
@@ -722,6 +774,10 @@ def parser():
     p.add_argument('--thickness', default=None,
                    help="mom25d's copper thickness model (--mom-thickness): "
                    "grow has no side unknowns (a large piece)")
+    p.add_argument('--layer-solver', default=None,
+                   help="the layer pieces' solver where not --solver's: lines "
+                   "(the line model: seconds; the via models stay on "
+                   "--solver's)")
     p.add_argument('--dmax', type=float, default=None,
                    help="mom25d's largest cell along the copper, mm "
                    "(--mom-dmax)")
