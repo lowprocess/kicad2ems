@@ -345,3 +345,28 @@ def test_gfdtd_beside_the_line_model_agrees(tmp_path):
     assert ('by gfdtd' in rep['summary']
             and any(s['title'].startswith('Against line model')
                     for s in rep['sections']))
+
+
+def test_a_pair_is_one_trace_in_its_differential_mode():
+    """as_channels: a pair (D_P / D_N) one channel, its differential mode the
+    voltage share (2 z0 against z0); a single trace's terms as they were; with
+    pairs off, S as given."""
+    import numpy as np
+    from kicad2ems.core import si
+    names = {'P1': ('A', 'near'), 'P2': ('A', 'far'),
+             'P3': ('D_P', 'near'), 'P4': ('D_P', 'far'),
+             'P5': ('D_N', 'near'), 'P6': ('D_N', 'far')}
+    S = np.zeros((1, 6, 6))
+    S[0, 2, 0] = S[0, 0, 2] = 0.06       # A's near end to the near leg's
+    S[0, 4, 0] = S[0, 0, 4] = 0.01       # ... and to the far leg's
+    Sc, cn, cu, agg = si.as_channels(S, names, set(), ['D_N'], 50.0)
+    assert list(cn.values()) == [('A', 'near'), ('A', 'far'), ('D', 'near'),
+                                 ('D', 'far')]
+    assert list(cn)[2] == 'P3/P5' and agg == ['D']
+    i = {v: k for k, v in enumerate(cn.values())}
+    # A's 1 V gives the pair's receiver 0.05 V differential; the pair's 1 V
+    # differential (half on each leg) gives A 0.025 V
+    assert np.isclose(Sc[0, i[('D', 'near')], i[('A', 'near')]], 0.05)
+    assert np.isclose(Sc[0, i[('A', 'near')], i[('D', 'near')]], 0.025)
+    same = si.as_channels(S, names, set(), None, 50.0, pairs=False)
+    assert same[0] is S and same[1] is names

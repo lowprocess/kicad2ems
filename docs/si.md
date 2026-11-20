@@ -86,6 +86,7 @@ twice the stretch's delay of 176 ps, so NEXT is saturated and only a wider gap l
 | `--nets` | | the traces, by net, comma-separated: two or more |
 | `--aggressor` | each in turn | the driven traces |
 | `--near` | nearest ends | the parts at the near (driven) ends: `U1,U2` |
+| `--legs` | off | a differential pair's legs as two traces (default: the pair one trace, in its differential mode) |
 | `--mode` | both | what the headline and the limit are about: `next`, `fext`, or the larger |
 | `--rise` | 100 | the aggressor's edge, ps (10 to 90 %) |
 | `--limit` | none | the most crosstalk allowed, percent of the swing |
@@ -100,8 +101,9 @@ stretches), beside the run's own files (`<name>_<solver>.sNp`, `<name>_lines.jso
 
 ## What it leaves out
 
-- **Differential pairs as pairs.** The two legs of a pair are two traces here; crosstalk between pairs in their
-  differential and common modes is not worked out (the proposals leave a pair's own legs out).
+- **A pair's common mode.** A differential pair is one trace in its differential mode (as it drives and as its
+  receiver sees it; `--legs` takes its legs as two traces). What its neighbours put into its common mode, and its
+  skew, are not reported yet.
 - **Drivers and receivers.** Every end is terminated in `--z0`. A real driver's impedance and an unterminated
   receiver reflect, and NEXT that reflects at the near end arrives at the far end too.
 - **Coupling that is not a parallel run.** The line model sees side-by-side stretches. Crossings on adjacent

@@ -14,7 +14,11 @@ first end), and the S-parameters between all of them are solved: by the line
 model (its coupled sections from the 2D field solver; milliseconds), and by a
 full-wave solver beside it when one is named.
 
-With trace a driven at its near end (the aggressor), a victim v's
+A differential pair (its legs by their names: D0_P / D0_N, TX+ / TX-) is one
+trace in its differential mode, as it drives and as its receiver sees it (the
+voltage share between modes: kicad2ems.core.coupling's channels); --legs takes
+its legs as two traces. With trace a driven at its near end (the aggressor), a
+victim v's
     NEXT    is S(v near, a near): what comes back at the victim's near end
     FEXT    is S(v far, a near):  what arrives at its far end
 over frequency (dB), and in time for an edge of `--rise` ps (10 to 90 %): the
@@ -290,6 +294,38 @@ def crosstalk(f, S, names, rise_s, aggressors=None, unknown=()):
     return out
 
 
+def as_channels(S, names, unknown, aggressors, z0, pairs=True):
+    """S of the traces as their channels' (kicad2ems.core.coupling.channels: a
+    differential pair one, by its legs' names): (S of each channel's main mode
+    at its two ends, as voltage ratios between modes of other impedance (a
+    pair's differential 2 z0, a single trace's z0), its names {label: (channel,
+    end)}, the unknown terms by those labels, the aggressors as channels). With
+    no pair (or pairs False), S, names, unknown and aggressors as given."""
+    from .coupling import channels, modal
+    nets = list(dict.fromkeys(n for n, _ in names.values()))
+    chans = channels(nets, pairs)
+    if all(c['kind'] == 'single' for c in chans):
+        return S, names, unknown, aggressors
+    Sm, rows, zref = modal(S, names, chans, z0)
+    keep = [i for i, (_, mode, _) in enumerate(rows) if mode != 'c']
+    z = np.asarray(zref, float)[keep]
+    Sc = Sm[:, keep][:, :, keep] * np.sqrt(z[:, None] / z[None, :])
+    port_of = {v: p for p, v in names.items()}
+    legs = {c['name']: c['legs'] for c in chans}
+    label = lambda ch, end: '/'.join(port_of[(n, end)] for n in legs[ch])
+    cn = {label(rows[i][0], rows[i][2]): (rows[i][0], rows[i][2])
+          for i in keep}
+    # a channel's term is unknown where any of its legs' is
+    part = {label(ch, e): {port_of[(n, e)] for n in legs[ch]}
+            for ch, e in cn.values()}
+    cu = {(r, c) for r in cn for c in cn
+          if any((pr, pc) in unknown for pr in part[r] for pc in part[c])}
+    of = {n: c['name'] for c in chans for n in c['legs']}
+    agg = (list(dict.fromkeys(of.get(x, x) for x in aggressors))
+           if aggressors else None)
+    return Sc, cn, cu, agg
+
+
 def victims(rows, f):
     """Each victim with all its aggressors: [dict(victim, aggressors, next_pct,
     fext_pct (the sum of their peaks: the worst case), psnext_db, psfext_db
@@ -466,6 +502,9 @@ def parser():
     )
     p.add_argument('--rise', type=float, default=100.0,
                    help="the aggressor's edge, ps (10 to 90 %%)")
+    p.add_argument('--legs', action='store_true',
+                   help="a differential pair's legs as two traces (default: "
+                   "the pair one, in its differential mode)")
     p.add_argument('--limit', type=float, default=None,
                    help="the most crosstalk allowed, %% of the swing")
     p.add_argument(
@@ -561,9 +600,11 @@ def run(a, echo=print):
             continue
         ts = os.path.join(out, r['touchstone'])
         f, S = read_touchstone(ts)
-        rows = crosstalk(f, renormalised(S,
-                                         summary.get('zref') or 50.0, a.z0),
-                         names, rise, aggressors, unknown_terms(ts))
+        S = renormalised(S, summary.get('zref') or 50.0, a.z0)
+        Sc, cnames, cunknown, cagg = as_channels(
+            S, names, unknown_terms(ts), aggressors, a.z0,
+            pairs=not getattr(a, 'legs', False))
+        rows = crosstalk(f, Sc, cnames, rise, cagg, cunknown)
         solved[key] = dict(label=r.get('label',
                                        key), touchstone=r['touchstone'],
                            f_Hz=[float(x) for x in f], pairs=rows,
@@ -798,6 +839,10 @@ class Crosstalk(Analysis):
                 "the parts at the near (driven) ends, comma-separated: U1 "
                 "(empty: the ends nearest the first trace's first "
                 "end)", pick='parts'),
+            Option('legs', False,
+                   "a differential pair's legs as two traces (default: the "
+                   "pair one, in its differential mode)", bool,
+                   group='Traces'),
             o(
                 'mode', 'str', 'both',
                 "what the headline and the limit are about: both (the larger), "
@@ -853,6 +898,8 @@ class Crosstalk(Analysis):
             v = values.get(key)
             if v not in (None, '', []):
                 cmd += ['--' + key, str(v)]
+        if values.get('legs'):
+            cmd.append('--legs')
         # (the engine's: variants; a config's [analysis.crosstalk] check)
         if values.get('check'):
             cmd += ['--solvers', 'lines,' + str(values['check'])]

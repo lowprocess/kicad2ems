@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **The crosstalk question takes a differential pair as a pair (2026-11-20).** Its legs (by name) are one trace in
+  its differential mode (`si.as_channels`, board coupling's channels); `--legs` (the `legs` option) as before.
+  On the DDR example, DQ1 beside the DQS0 pair: 4.96 % NEXT at the pair's receiver (6.0 % on its near leg alone),
+  2.48 % on DQ1 from the pair (each leg half the differential swing).
 - **gfdtd: primitive transforms and rotated polygons, as CSXCAD's (2026-11-20).** `AddTransform` / `GetTransform`
   (`CSTransform`: Translate, RotateAxis, RotateOrigin, Scale, Matrix; post-multiplied, degrees by default; in the
   XML as CSXCAD's `Transformation`) on every primitive, and `AddRotPoly` (a polygon turned about an axis, CSXCAD's

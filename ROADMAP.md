@@ -52,10 +52,9 @@ Left:
 
 The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in the order a board would want them:
 
-1. **Differential pairs as pairs, the rest.** Board coupling takes a pair as one channel in its differential mode,
-   with its own mode conversion (2026-11-20). Left: the crosstalk question (`si`) still takes legs, a pair's skew
-   (its legs' delays), and a pair's common-mode noise from its neighbours (an aggressor's common mode is in the
-   modal S, not yet reported).
+1. **Differential pairs as pairs, the rest.** Board coupling and the crosstalk question take a pair as one trace in
+   its differential mode (2026-11-20; board coupling with its own mode conversion). Left: a pair's skew (its legs'
+   delays), and the common-mode noise its neighbours put on it (in the modal S, not yet reported).
 2. **A board's coupling, the rest** (`kicad2ems.core.coupling`, docs/si.md#coupling, 2026-11-20). Left: a real
    board's bus (90 nets, 180 ports: mom25d's time and the report's size; the tests run the 12-net example);
    what crosses between layers (each layer is solved alone: vias, a plane's gaps, broadside traces on adjacent
