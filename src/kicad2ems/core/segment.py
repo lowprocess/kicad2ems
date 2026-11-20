@@ -484,8 +484,15 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
             elif v not in (None, False):
                 argv += [flag, str(v)]
         with open(os.path.join(folder, 'run.log'), 'w') as log:
+            # a direct factor wherever it fits (the block low-rank one did not
+            # converge on a CM5 layer piece at 1-1.5 GHz, 29k and 42k
+            # unknowns; the direct solved it, 49 min): the user's own
+            # thresholds kept
+            env = dict(os.environ, PYTHONUNBUFFERED='1')
+            env.setdefault('MOM25D_BLR_MIN_N', '1000000')
+            env.setdefault('MOM25D_BLR_CPU_MIN_N', '1000000')
             p = subprocess.run(argv, stdout=log, stderr=subprocess.STDOUT,
-                               env=dict(os.environ, PYTHONUNBUFFERED='1'))
+                               env=env)
         if p.returncode:
             with open(os.path.join(folder, 'run.log')) as fh:
                 tail = fh.read()[-1500:]
