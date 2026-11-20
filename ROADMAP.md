@@ -144,7 +144,11 @@ GPU's double products). Measured and left, roughly in order of what they would s
      13 of them waiting on the panel's copies;
    - the copies down and up overlapped with the trailing GEMM (they touch other columns: no barrier between
      them), and the triangular solves as a GEMM with the CPU's inverse of L11 (~0.7 ms a step early on).
-2. **The near-field correction** (9 % on rf_ebg and sma_launch): its atomics replaced by row locks, estimated 2 %.
+2. **The near-field correction** (9 % on rf_ebg and sma_launch) is its pairs' integrals, not their scatter
+   (2026-11-20, rf_ebg, 2 frequencies, 8 threads: 2.25 s; with no scatter at all 2.04 s; row locks in its place
+   2.97 s, 2.55 s with a thread taking a triangle's pairs whole: the atomics stay). What would pay: the smooth
+   rest's 3- or 6-point rules where the pair is far enough for fewer, or the rest tabulated per pair once like
+   the analytic parts (`stat`), as long as the stack is the same.
 3. **Interpolation where it does not apply.** Boards with holes in PEC planes fill every frequency (their
    estimate always fails); slot planes interpolate a quarter; wide bands (rf_bends, 1-12 GHz) fill 23 of 30.
 4. **Thickness cheaper than the sides.** `--mom-thickness mixed` (plates only on narrow copper and gaps) has
