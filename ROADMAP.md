@@ -154,9 +154,7 @@ GPU's double products). Measured and left, roughly in order of what they would s
    confirmations. Uncoupled ports fitted apart helped rf_bends (32 -> 29) but fitted noise on small blocks.
 6. **Without a GPU.** The block low-rank solver beats the CPU's complex64 LU at 14.7k (rf_ebg 39 s against 94 s,
    5 solves), so `BLR_MIN_N` (20k) could drop on machines without a GPU: untested.
-7. **Estimates.** The window's time and memory estimate ignores the cell growth (`--mom-coarsen`, `--mom-cells`),
-   and `memory_plan` does not count the double Z on the GPU or the kept via blocks (up to one double Z).
-8. **Quad cells** (`--mom-quads`) no longer pay with the hexagonal mesh (same time, six boards further from
+7. **Quad cells** (`--mom-quads`) no longer pay with the hexagonal mesh (same time, six boards further from
    openEMS): kept experimental; remove if nothing needs them.
 
 ## mom25d: multi-layer boards

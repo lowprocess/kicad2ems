@@ -816,15 +816,30 @@ class MoM25D(Solver):
             for k, gs in bm.shapes.items()
             if sum(g.area for g in gs) > 0.5 * bm.outline_area
         }
+        # meshed as the run meshes it (api.build_board): the cells grown
+        # away from the features (--mom-coarsen, --mom-cells), the zone, the
+        # stitching vias (without the growth the estimate had counted the
+        # unknowns of before 2026-11-18's default coarsening)
+        from kicad2ems.mom25d.api import cell_growth, ZONE_OUT
+        kw = _mesh_kw(s)
+        coarsen = cell_growth(bm, planes, run.fmax, dmax, kw['cells'],
+                              kw['coarsen'])
         sim = bm.simulation(dmax=dmax, dmax_layer=planes, fmin=run.fmin,
                             fmax=run.fmax, characterize=False, verbose=False,
-                            wave_down_to=run.fmin, mesh_only=True)
+                            wave_down_to=run.fmin, mesh_only=True,
+                            coarsen=coarsen,
+                            stitching_vias=kw['stitching_vias'],
+                            **(dict(zone=kw['zone'], dmax_out=ZONE_OUT * dmax)
+                               if kw['zone'] else {}))
         n, solves, layers = (int(sim.Ne + sim.Nv), min(s.mom_solves,
                                                        SOLVES), len(bm.shapes))
-        # this machine's memory now, mom25d's GPU
+        # this machine's memory now, mom25d's GPU (its double Z there too),
+        # the via blocks the sweep keeps
         from kicad2ems.mom25d.policy import memory_plan, device
         from kicad2ems.mom25d.gpu import get_backend
-        plan = memory_plan(n, None, device(get_backend('auto')))
+        be = get_backend('auto')
+        plan = memory_plan(n, None, device(be), nv=int(sim.Nv),
+                           gpu_dense=bool(be is not None and be.dense_ok()))
         # the CPU LU scales with the cores, a GPU's not
         lu = LU_N3 * REF_CORES / (os.cpu_count() or 1)
         lu = dict(hybrid=LU_GPU_N3).get(plan['path'], lu)

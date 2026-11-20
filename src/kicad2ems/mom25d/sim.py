@@ -738,9 +738,13 @@ class Simulation:
                     and (precision == 'mixed' or
                          (precision == 'auto' and n_lu > GPU_MIN_N)))
         avail = available_memory()
-        plan = memory_plan(n, avail, device(get_backend(gpu) if want_gpu
-                                            else None), precision, solver,
-                           n_lu=n_lu)
+        be = get_backend(gpu) if want_gpu else None
+        plan = memory_plan(n, avail, device(be), precision, solver,
+                           n_lu=n_lu, nv=int(getattr(self, 'Nv', 0) or 0),
+                           gpu_dense=bool(be is not None
+                                          and getattr(be, 'dense_ok',
+                                                      lambda: False)()),
+                           interp=getattr(self, 'interp', 'auto') != 'off')
         self.plan, self.precision, precision = (plan, plan['precision'],
                                                 plan['precision'])
         if solver in ('auto', 'direct'):

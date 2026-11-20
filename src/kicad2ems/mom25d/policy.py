@@ -158,7 +158,7 @@ def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
 
 
 def memory_plan(n, avail=None, gpu=None, precision='auto', solver='auto',
-                n_lu=None):
+                n_lu=None, nv=0, gpu_dense=True, interp=True):
     """How the solver of n unknowns runs and the memory it needs: dict(solver,
     precision, path, host, gpu, fits) (bytes). gpu: None or (free bytes, need:
     unknowns -> an LU's bytes), the backend's own estimate (device()). path:
@@ -167,7 +167,11 @@ def memory_plan(n, avail=None, gpu=None, precision='auto', solver='auto',
     GPU), 'cpu-mixed' (complex64 LU on the CPU), 'blr' (compressed, no dense
     Z). n_lu: the unknowns the LU factors (fewer with quads). 'auto' takes the
     block low-rank LU from BLR_MIN_N unknowns where the hybrid does not fit,
-    and wherever the direct solver does not."""
+    and wherever the direct solver does not. The GPU's bytes include the
+    double Z where choose puts it there too (gpu_dense: the backend's double
+    kernels; GPU_DENSE), the host's the via blocks kept for the sweep's
+    interpolation (nv via unknowns, interp: on; blocks.Anchors: up to a double
+    Z, or ANCHOR_ROOM)."""
     if avail is None:
         from kicad2ems.emsdev.memory import available
         avail = available()
@@ -180,10 +184,13 @@ def memory_plan(n, avail=None, gpu=None, precision='auto', solver='auto',
         # 2 cores: 14.0 s a solve against 18.0 s, |dS| <= 7e-6 over 1-8 GHz)
         precision = ('mixed' if m > (GPU_MIN_N if fits_gpu else MIXED_MIN_N)
                      or 18.0 * n * n + SPARE > 0.5 * avail else 'double')
-    p = choose(np.inf, n, m, avail=avail, gpu=gpu, precision=precision,
-               loop_tree='off').path
+    plan = choose(np.inf, n, m, avail=avail, gpu=gpu, precision=precision,
+                  loop_tree='off', gpu_dense=gpu_dense)
+    p = plan.path
     host = {'double': 18.0, 'hybrid': 24.0}.get(p, 10.0) * n * n + SPARE
+    host += anchor_bytes(n, nv) if interp else 0.0
     dev = gpu[1](m) if p in ('hybrid', 'gpu-lu') else 0.0
+    dev += 16.0 * m * m if plan.gpu_dense else 0.0
     fits = host <= 0.8 * avail
     if solver == 'auto':
         # (quad cells: the direct solver's alone)
@@ -197,6 +204,19 @@ def memory_plan(n, avail=None, gpu=None, precision='auto', solver='auto',
         p, host, dev = 'blr', 3.0 * n * n + 2e4 * n + SPARE, 0.0
     return dict(solver=solver, precision=precision, path=p, host=host,
                 gpu=dev, fits=fits)
+
+
+def anchor_bytes(n, nv):
+    """The host's bytes of the via blocks the sweep keeps to interpolate them
+    (blocks.Anchors: KEEP anchors, each the via columns' blocks less the
+    first's, complex64: n x nv of them and two nv x nv), capped as fast.py
+    caps them: a double Z, or ANCHOR_ROOM where that is more."""
+    if nv <= 0:
+        return 0.0
+    from .blocks import KEEP
+    from .fast import ANCHOR_ROOM
+    return min(KEEP * 8.0 * (n * nv + 2.0 * nv * nv),
+               max(16.0 * n * n, ANCHOR_ROOM))
 
 
 def device(b):

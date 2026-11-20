@@ -1,6 +1,7 @@
 """policy.choose and memory_plan from a table: the rung, the basis, what is
 kept, and the retry rules (a rung that failed at f is passed over up to
 RETRY x f)."""
+import numpy as np
 import pytest
 
 from kicad2ems.mom25d import policy
@@ -119,4 +120,26 @@ def test_memory_plan(kw, want):
     assert (p['precision'], p['path'], p['solver']) == want, p
     # the compiled factor: a fraction of a complex64 matrix
     assert p['solver'] != 'blr' or p['host'] < 8.0 * n * n
-    assert p['gpu'] == (GPU[1](n) if want[1] in ('hybrid', 'gpu-lu') else 0)
+    # the LU, and the double Z where choose puts it on the GPU too
+    zd = choose(np.inf, n, kw.get('n_lu') or n, avail=30e9, gpu=kw.get('gpu'),
+                precision='mixed', loop_tree='off',
+                gpu_dense=True).gpu_dense if want[1] == 'hybrid' else False
+    m = kw.get('n_lu') or n
+    assert p['gpu'] == ((GPU[1](m) if want[1] in ('hybrid', 'gpu-lu') else 0)
+                        + (16.0 * m * m if zd else 0))
+    off = memory_plan(n, **dict(dict(avail=30e9, gpu_dense=False), **kw))
+    assert off['gpu'] == (GPU[1](m) if want[1] in ('hybrid', 'gpu-lu') else 0)
+
+
+def test_memory_plan_counts_the_via_blocks_kept():
+    """The sweep's interpolation keeps the via columns' blocks (blocks.Anchors:
+    KEEP of them, at most a double Z or ANCHOR_ROOM): the host's bytes."""
+    n, nv = 6000, 40
+    base = memory_plan(n, avail=30e9, precision='double')
+    kept = memory_plan(n, avail=30e9, precision='double', nv=nv)
+    assert kept['host'] - base['host'] == policy.anchor_bytes(n, nv) > 0
+    assert memory_plan(n, avail=30e9, precision='double', nv=nv,
+                       interp=False)['host'] == base['host']
+    # capped: a double Z (ANCHOR_ROOM where that is more)
+    from kicad2ems.mom25d.fast import ANCHOR_ROOM
+    assert policy.anchor_bytes(n, n) == max(16.0 * n * n, ANCHOR_ROOM)

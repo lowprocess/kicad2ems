@@ -193,6 +193,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **mom25d's estimate and memory plan (2026-11-20).** The estimate (the window's, a run's `estimate:` line, and
+  what `auto` picks solvers by) meshed the board without the cell growth (`--mom-coarsen`, the default since
+  2026-11-18, `--mom-cells`), the zone and the stitching vias: rf_coupler 8,242 unknowns, ~49 s, against the run's
+  2,740 (now 2,740, ~17 s). `policy.memory_plan` now counts the double Z on the GPU where `choose` puts it there too
+  (20k unknowns on 16 GB: 10.0 GB on the GPU, not 3.6) and the via blocks the sweep keeps to interpolate them
+  (`anchor_bytes`: up to a double Z on the host).
 - **mom25d's mixed precision accepted a refinement that had stalled (2026-11-19).** GMRES on the complex64 LU was
   taken as converged at up to 100 times its tolerance (1e-4 against 1e-6): GMRES stops at the tolerance when it
   reaches it, so that slack only ever accepted a refinement that ran out of iterations, whose error is the matrix's
