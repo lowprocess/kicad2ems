@@ -21,7 +21,12 @@ copper on the other layers left out. So a layer's figures are its own coupling:
 what crosses between layers (a via's field, a plane's gap, broadside traces) is
 not in them, and the result says so.
 
-With each net's near end driven in turn (the near end: the one at a part
+A differential pair (its legs by their names: D0_P / D0_N, TX+ / TX-) is one
+channel (--legs: two nets): it drives, and its receiver sees, in its
+differential mode; crosstalk between channels of other modes is the voltage
+share (S scaled by the modes' reference impedances), and each pair's own
+conversion to common mode is reported. With each channel's near end driven in
+turn (the near end: the one at a part
 --near names, else the end nearest the layer's first net's first end), a
 victim's NEXT is S(victim near, aggressor near) and its FEXT S(victim far,
 aggressor near), each ports' termination z0; in time, the largest share of the
@@ -183,32 +188,115 @@ def layer_board(full, layer, nets, port_names):
 
 
 # ---- from S-parameters: the coupling matrix ---------------------------------
-def matrix(f, S, names, rise_s):
+def channels(nets, pairs=True):
+    """The channels of a layer's nets, in their order: [dict(name, legs, kind)],
+    kind 'single' (one net) or 'pair' (the two legs of a differential pair by
+    their names, si._legs: D0_P / D0_N, TX+ / TX-; the positive leg first), its
+    name the legs' common stem. pairs False: every net single."""
+    from .si import _legs
+    out, used = [], set()
+    for a in nets:
+        if a in used:
+            continue
+        b = next((x for x in nets if pairs and x != a and x not in used
+                  and _legs(a, x)), None)
+        if b is None:
+            out.append(dict(name=a, legs=[a], kind='single'))
+            used.add(a)
+            continue
+        pos, neg = sorted((a, b), key=lambda n: n[-1].upper() not in 'P+')
+        stem = re.sub(r'[_.]?[PN+-]$', '', pos, flags=re.I) or pos
+        out.append(dict(name=stem, legs=[pos, neg], kind='pair'))
+        used |= {a, b}
+    return out
+
+
+def modal(S, names, chans, z0=50.0):
+    """S of the channels' modes at their two ends from single-ended S (ports
+    `names`: {port: (net, end)} in S's order, each terminated in z0): (Sm (nf,
+    m, m), rows [(channel, mode, end)], zref per row). A single net is its own
+    mode 'se' (z0); a pair its differential 'd' (2 z0) and common 'c' (z0 / 2)
+    modes, (p - n) / sqrt 2 and (p + n) / sqrt 2 (power waves: the core's
+    sparams.mixed_mode convention)."""
+    idx = {v: i for i, v in enumerate(names.values())}
+    n, rows, M, zref = len(names), [], [], []
+    r2 = 1 / math.sqrt(2)
+    for c in chans:
+        for end in ('near', 'far'):
+            if c['kind'] == 'single':
+                v = np.zeros(n)
+                v[idx[(c['legs'][0], end)]] = 1
+                rows.append((c['name'], 'se', end))
+                M.append(v)
+                zref.append(z0)
+                continue
+            ip, im = idx[(c['legs'][0], end)], idx[(c['legs'][1], end)]
+            for mode, sgn, z in (('d', -1, 2 * z0), ('c', 1, z0 / 2)):
+                v = np.zeros(n)
+                v[ip], v[im] = r2, sgn * r2
+                rows.append((c['name'], mode, end))
+                M.append(v)
+                zref.append(z)
+    M = np.array(M)
+    return np.einsum('ij,fjk,lk->fil', M, S, M), rows, zref
+
+
+def matrix(f, S, names, rise_s, pairs=True, z0=50.0):
     """The coupling of one layer's S (nf x n x n, ports `names`: {port: (net,
-    end)} in S's order): dict(nets, next_pct, fext_pct (victim x aggressor, %
-    of the swing for the edge; the diagonal 0), next_db, fext_db (their peaks
-    over f, dB), next_sign, fext_sign)."""
+    end)} in S's order, terminated in z0) between its channels (channels: a
+    differential pair one, in its differential mode, as it drives and as a
+    receiver sees it; pairs False: every net single-ended): dict(nets (the
+    channels' names), kinds, legs, next_pct, fext_pct (victim x aggressor, % of
+    the aggressor's swing in its mode, as voltage, for the edge; the diagonal
+    0), next_db, fext_db (the modes' S peaks over f, dB), next_sign, fext_sign,
+    conversion {pair: dict(near_db, far_db, near_pct, far_pct)}: its own
+    differential drive at its near end seen in common mode at either end)."""
     from .si import edge_response
     nets = list(dict.fromkeys(n for n, _ in names.values()))
-    idx = {v: i for i, v in enumerate(names.values())}
-    n = len(nets)
+    chans = channels(nets, pairs)
+    Sm, rows, zref = modal(S, names, chans, z0)
+    at = {r: i for i, r in enumerate(rows)}
+    main = {c['name']: ('se' if c['kind'] == 'single' else 'd') for c in chans}
+    n = len(chans)
     out = {k: np.zeros((n, n)) for k in ('next_pct', 'fext_pct', 'next_sign',
                                          'fext_sign')}
     out.update(next_db=np.full((n, n), -300.0), fext_db=np.full((n, n), -300.0))
-    for j, a in enumerate(nets):
-        src = idx[(a, 'near')]
-        for i, v in enumerate(nets):
+
+    def edge(h, zv, za):
+        """The edge's largest share at the victim, as voltage: S scaled by
+        sqrt(zv / za) between modes of other reference impedances."""
+        _, y = edge_response(f, h, rise_s)
+        k = int(np.argmax(np.abs(y)))
+        return 100 * abs(y[k]) * math.sqrt(zv / za), float(np.sign(y[k]))
+    for j, a in enumerate(chans):
+        src = at[(a['name'], main[a['name']], 'near')]
+        for i, v in enumerate(chans):
             if i == j:
                 continue
             for what, end in (('next', 'near'), ('fext', 'far')):
-                h = S[:, idx[(v, end)], src]
-                _, y = edge_response(f, h, rise_s)
-                k = int(np.argmax(np.abs(y)))
-                out[f"{what}_pct"][i, j] = 100 * abs(y[k])
-                out[f"{what}_sign"][i, j] = np.sign(y[k])
+                dst = at[(v['name'], main[v['name']], end)]
+                h = Sm[:, dst, src]
+                pct, sgn = edge(h, zref[dst], zref[src])
+                out[f"{what}_pct"][i, j] = pct
+                out[f"{what}_sign"][i, j] = sgn
                 out[f"{what}_db"][i, j] = float(
                     20 * np.log10(max(np.abs(h).max(), 1e-15)))
-    return dict(nets=nets, **{k: v.tolist() for k, v in out.items()})
+    conv = {}
+    for c in chans:
+        if c['kind'] != 'pair':
+            continue
+        src = at[(c['name'], 'd', 'near')]
+        row = {}
+        for end in ('near', 'far'):
+            dst = at[(c['name'], 'c', end)]
+            h = Sm[:, dst, src]
+            row[f"{end}_db"] = float(20 * np.log10(max(np.abs(h).max(), 1e-15)))
+            row[f"{end}_pct"] = edge(h, zref[dst], zref[src])[0]
+        conv[c['name']] = row
+    return dict(nets=[c['name'] for c in chans],
+                kinds={c['name']: c['kind'] for c in chans},
+                legs={c['name']: c['legs'] for c in chans}, conversion=conv,
+                **{k: v.tolist() for k, v in out.items()})
 
 
 def summary(m, top=TOP, pairs=PAIRS):
@@ -283,6 +371,9 @@ def parser():
                    "%% of the swing")
     p.add_argument('--mode', default='both', choices=('both', 'next', 'fext'),
                    help="what --limit and the headline are about")
+    p.add_argument('--legs', action='store_true',
+                   help="a differential pair's legs as two single-ended nets "
+                   "(default: the pair one channel, in its differential mode)")
     p.add_argument('--top', type=int, default=TOP,
                    help="each victim's worst aggressors listed")
     p.add_argument('--min-length', type=float, default=MIN_LENGTH,
@@ -381,7 +472,7 @@ def run(a, echo=print):
         ts = os.path.join(sub, solved[key]['touchstone'])
         f, S = read_touchstone(ts)
         S = renormalised(S, run_sum.get('zref') or 50.0, a.z0)
-        mat = matrix(f, S, lnames, rise)
+        mat = matrix(f, S, lnames, rise, pairs=not a.legs, z0=a.z0)
         vs, ps = summary(mat, a.top)
         result_layers.append(dict(
             layer=layer, label=solved[key].get('label', key),
@@ -390,8 +481,12 @@ def run(a, echo=print):
             ends={n: dict(near=_end(e0), far=_end(e1),
                           length_mm=float(e0['length']))
                   for n, (e0, e1) in ordered[layer].items()},
-            matrix={k: v for k, v in mat.items() if k != 'nets'},
-            tracks={n: tracks_on(kb, n, layer) for n in mat['nets']},
+            matrix={k: v for k, v in mat.items()
+                    if k not in ('nets', 'kinds', 'legs', 'conversion')},
+            kinds=mat['kinds'], legs=mat['legs'],
+            conversion=mat['conversion'],
+            tracks={n: tracks_on(kb, n, layer)
+                    for legs in mat['legs'].values() for n in legs},
             victims=vs, pairs=ps, warnings=run_sum.get('warnings', [])))
         w = vs and max(vs, key=lambda r: max(r['next_sum_pct'],
                                              r['fext_sum_pct']))
@@ -400,6 +495,9 @@ def run(a, echo=print):
                  f"{w['next_sum_pct']:.2f} %, FEXT {w['fext_sum_pct']:.2f} % "
                  f"from all, the worst from "
                  f"{', '.join(x['aggressor'] for x in w['worst'])}")
+        for k, c in mat['conversion'].items():
+            echo(f"{layer}: pair {k}: differential to common {c['near_pct']:.2f} "
+                 f"% at its near end, {c['far_pct']:.2f} % at its far end")
     res = dict(
         format=FORMAT, version=1, board=os.path.abspath(a.board), name=name,
         patterns=a.nets, nets=nets, rise_ps=a.rise, limit_pct=a.limit,
@@ -457,16 +555,18 @@ def plot(res, L, path):
     sums = {v['victim']: max(v['next_sum_pct'], v['fext_sum_pct'])
             for v in L['victims']}
     top = max(sums.values()) or 1.0
+    of = {n: ch for ch, legs in L.get('legs', {}).items() for n in legs}
     from matplotlib import cm
     for net, e in L['ends'].items():
-        c = cm.viridis(sums.get(net, 0) / top)
+        ch = of.get(net, net)
+        c = cm.viridis(sums.get(ch, 0) / top)
         for line in L.get('tracks', {}).get(net) or [
                 [[e['near']['x'], e['near']['y']],
                  [e['far']['x'], e['far']['y']]]]:
             xy = np.asarray(line, float)
             ax.plot(xy[:, 0], -xy[:, 1], '-', color=c, lw=2)
         ax.plot([e['near']['x']], [-e['near']['y']], 'o', color='k', ms=3)
-        ax.annotate(f" {net} {sums.get(net, 0):.1f} %",
+        ax.annotate(f" {net} {sums.get(ch, 0):.1f} %",
                     (e['far']['x'], -e['far']['y']), fontsize=6,
                     va='center')
     ax.set_aspect('equal')
@@ -547,6 +647,10 @@ class Coupling(Analysis):
               "the parts at the near (driven) ends, comma-separated (empty: "
               "the ends nearest each layer's first net's first end)",
               pick='parts'),
+            Option('legs', False,
+                   "a differential pair's legs as two single-ended nets "
+                   "(default: one channel, in its differential mode)", bool,
+                   group='Nets'),
             o('min_length', 'float', MIN_LENGTH,
               "a stretch on a layer shorter than this is left out (a "
               "breakout), mm"),
@@ -594,6 +698,8 @@ class Coupling(Analysis):
             v = values.get(key)
             if v not in (None, '', []):
                 cmd += ['--' + key.replace('_', '-'), str(v)]
+        if values.get('legs'):
+            cmd.append('--legs')
         cmd += ['--solvers', str(values.get('solvers') or 'mom25d')]
         return cmd
 
@@ -623,8 +729,9 @@ class Coupling(Analysis):
                 text=f"Each net's stretch on {L['layer']} terminated in "
                 f"{d['z0']:g} ohm at both ends, driven at its near end in "
                 "turn; the sums are every aggressor's peak at once (the "
-                "worst case). A differential pair's other leg is not an "
-                "aggressor.",
+                "worst case). A differential pair is one channel, in its "
+                "differential mode as it drives and as its receiver sees it "
+                "(% of the aggressor's swing, as voltage).",
                 table=dict(
                     columns=['victim', 'worst aggressors', 'NEXT, all (%)',
                              'FEXT, all (%)', 'length (mm)'],
@@ -633,9 +740,23 @@ class Coupling(Analysis):
                                      f"{max(x['next_pct'], x['fext_pct']):.2f}"
                                      for x in v['worst']),
                            v['next_sum_pct'], v['fext_sum_pct'],
-                           L['ends'][v['victim']]['length_mm']]
+                           L['ends'][L.get('legs', {}).get(
+                               v['victim'], [v['victim']])[0]]['length_mm']]
                           for v in L['victims']],
                     formats=[None, None, '.2f', '.2f', '.1f'])))
+            if L.get('conversion'):
+                sec.append(dict(
+                    title=f"{L['layer']}: the pairs' mode conversion",
+                    text="A pair driven differentially at its near end, seen "
+                    "in common mode at its near and far ends: what its "
+                    "asymmetry (a leg longer, a neighbour nearer one leg) "
+                    "turns into common mode.",
+                    table=dict(columns=['pair', 'near (%)', 'far (%)',
+                                        'near, peak (dB)', 'far, peak (dB)'],
+                               rows=[[k, c['near_pct'], c['far_pct'],
+                                      c['near_db'], c['far_db']]
+                                     for k, c in L['conversion'].items()],
+                               formats=[None, '.2f', '.2f', '.1f', '.1f'])))
             sec.append(dict(
                 title=f"{L['layer']}: the worst pairs",
                 table=dict(columns=['aggressor', 'victim', 'NEXT (%)',

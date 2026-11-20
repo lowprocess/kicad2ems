@@ -116,9 +116,15 @@ def test_the_question_end_to_end_on_the_line_model(ddr, tmp_path):
     assert set(layers) == {'F.Cu', 'In2.Cu'}
     for name, L in layers.items():
         N, F = (np.asarray(L['matrix'][k]) for k in ('next_pct', 'fext_pct'))
-        assert N.shape == (6, 6) and not np.diag(N).any()
+        # four DQ lines and the DQS pair as one channel, in its order across
+        assert N.shape == (5, 5) and not np.diag(N).any()
+        assert [L['kinds'][c] for c in L['nets']] == [
+            'single', 'single', 'pair', 'single', 'single']
         # a neighbour couples more than the line two over
         assert N[0, 1] > 3 * N[0, 2]
+        # the pair between two lines, mirror-symmetric: no mode conversion
+        (conv,) = L['conversion'].values()
+        assert conv['near_pct'] < 0.05 and conv['far_pct'] < 0.05
         assert (out / f"coupling_{C._safe(name)}.png").is_file()
     # stripline (one dielectric): next to no FEXT; microstrip: as much as NEXT
     s = layers['In2.Cu']['victims']
@@ -129,3 +135,23 @@ def test_the_question_end_to_end_on_the_line_model(ddr, tmp_path):
         v['next_sum_pct'] for v in m)
     assert res['worst']['layer'] == 'F.Cu' and res['worst']['ok'] is True
     assert len(res['left_out']) == 6 and res['not_modelled']
+
+
+def test_channels_and_their_modes():
+    ch = C.channels(['DQ0', 'DQS0_N', 'DQS0_P', 'CLK+', 'CLK-'])
+    assert [(c['name'], c['kind'], c['legs']) for c in ch] == [
+        ('DQ0', 'single', ['DQ0']), ('DQS0', 'pair', ['DQS0_P', 'DQS0_N']),
+        ('CLK', 'pair', ['CLK+', 'CLK-'])]
+    assert [c['kind'] for c in C.channels(['A_P', 'A_N'], pairs=False)] == [
+        'single', 'single']
+    # a pair whose legs transmit 1 and 0.5: half the difference to common mode
+    names = {'P1': ('A_P', 'near'), 'P2': ('A_P', 'far'),
+             'P3': ('A_N', 'near'), 'P4': ('A_N', 'far')}
+    S = np.zeros((1, 4, 4))
+    S[0, 1, 0] = S[0, 0, 1] = 1.0
+    S[0, 3, 2] = S[0, 2, 3] = 0.5
+    Sm, rows, zref = C.modal(S, names, C.channels(['A_P', 'A_N']))
+    at = {r: i for i, r in enumerate(rows)}
+    assert np.isclose(Sm[0, at[('A', 'd', 'far')], at[('A', 'd', 'near')]], 0.75)
+    assert np.isclose(Sm[0, at[('A', 'c', 'far')], at[('A', 'd', 'near')]], 0.25)
+    assert zref[at[('A', 'd', 'near')]] == 100.0 and zref[at[('A', 'c', 'far')]] == 25.0

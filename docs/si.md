@@ -136,21 +136,29 @@ What it does:
 4. **The coupling.** Each net's near end driven in turn, every end terminated in `--z0`: each victim's NEXT and
    FEXT from each aggressor, as the largest share of the swing for an edge of `--rise` ps (as the crosstalk
    question's). Each layer gets the matrices (victim by aggressor), each victim its `--top` worst aggressors and
-   their sum (every aggressor's peak at once: the worst case), and the worst pairs. A differential pair's other
-   leg (`D0_P` / `D0_N`) is not an aggressor. `--limit` judges the worst victim's sum (`--mode`: of NEXT, FEXT or
-   the larger).
+   their sum (every aggressor's peak at once: the worst case), and the worst pairs. A differential pair (its legs
+   by name: `D0_P` / `D0_N`, `TX+` / `TX-`) is one channel: it drives, and its receiver sees, in its differential
+   mode, and crosstalk between modes is the voltage share (S scaled by the modes' reference impedances: 2 z0
+   differential, z0 single). Each pair also gets its own conversion to common mode (driven differentially, seen in
+   common mode at either end: what an asymmetric neighbour or a longer leg makes). `--legs` takes the legs as two
+   nets instead. `--limit` judges the worst victim's sum (`--mode`: of NEXT, FEXT or the larger).
 
 The result is `coupling.json`, a figure per layer (`coupling_<layer>.png`: the NEXT and FEXT matrices, and the
 layer's stretches coloured by each victim's sum) and each layer's run in its own folder.
 
 `examples/si_ddr.toml` (`make_rf_examples.py ddr`): two byte lanes, each four DQ lines and a DQS pair, lane 0
-microstrip on F.Cu, lane 1 stripline on In2.Cu through vias. For a 100 ps edge, the worst victim's sum:
+microstrip on F.Cu, lane 1 stripline on In2.Cu through vias. For a 100 ps edge, the worst victim's sum (the
+DQS pair on both layers, in its differential mode, from the lines on either side of it):
 
 | | mom25d | line model |
 |---|---|---|
-| F.Cu (microstrip): NEXT, FEXT | 14.7 %, 20.4 % | 14.2 %, 16.5 % |
-| In2.Cu (stripline): NEXT, FEXT | 8.1 %, 1.4 % | 7.4 %, 0.4 % |
+| F.Cu (microstrip): NEXT, FEXT | 12.1 %, 14.0 % | 11.4 %, 10.9 % |
+| In2.Cu (stripline): NEXT, FEXT | 8.3 %, 1.5 % | 7.2 %, 0.5 % |
+| the pair's conversion to common mode | 0.02-0.06 % | 0 |
 | run time, both layers | 8.6 min (GPU) | 18 s |
+
+The pairs sit mirror-symmetric between two lines, so they convert next to nothing; with the legs as two nets
+(`--legs`) the worst victim is DQ1, beside DQS0_P: 14.7 % NEXT and 20.4 % FEXT by mom25d.
 
 In stripline (one dielectric around the traces) FEXT nearly cancels, in microstrip it is larger than NEXT. mom25d
 finds more FEXT than the line model: it sees the fan-outs and the whole layer's field, the line model its coupled

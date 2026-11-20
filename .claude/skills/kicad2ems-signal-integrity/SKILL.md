@@ -37,7 +37,9 @@ sections; pairs it cannot see are marked `modelled: false` and the limit is not 
   leaves the layer. `--min-length` (5 mm) drops breakouts; they are listed in `left_out`.
 - Each layer is solved on its own board file: its stretches + every layer's ground copper; the selected nets'
   vias and other-layer copper are removed. So inter-layer coupling is NOT included (stated in `not_modelled`).
-- A differential pair's other leg (`X_P`/`X_N`, `X+`/`X-`) is not counted as an aggressor (`pair_leg`).
+- A differential pair (`X_P`/`X_N`, `X+`/`X-`) is one channel in its differential mode, with its own
+  conversion to common mode (`conversion`); `--legs` takes the legs as two nets (then neither leg counts the
+  other as an aggressor: `pair_leg`).
 - Result `coupling.json`: per layer `matrix` (victim × aggressor NEXT/FEXT % and peak dB), `victims` (top
   aggressors, sums), `pairs`, `ends`, `tracks`; overall `worst` with the limit verdict. Figures
   `coupling_<layer>.png`; each layer's run under `<out>/<layer>/`.

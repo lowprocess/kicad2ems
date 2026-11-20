@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Board coupling takes a differential pair as a pair (2026-11-20).** Its legs (by name: `D0_P` / `D0_N`) are one
+  channel, driving and received in its differential mode (`coupling.channels`, `modal`: mixed-mode S of every
+  channel's ends, the voltage share between modes of other impedances), and each pair reports its own conversion
+  to common mode; `--legs` (the `legs` option) keeps them as two nets. On si_ddr the DQS pairs are the worst
+  victims: 12.1 % NEXT and 14.0 % FEXT on F.Cu, 8.3 % and 1.5 % on In2.Cu (mom25d), converting 0.02-0.06 %.
 - **dfsynth writes the filter as a footprint (R-E18, 2026-11-20):** `<out>.kicad_mod` beside the board, to place
   in one's own: the copper as polygons on F.Cu, pads 1 and 2 at the ports (the feed's width), the ground vias as
   plated pads 3, the origin at the filter's centre, its substrate in the description.
