@@ -65,6 +65,8 @@ def test_an_openems_script_runs_unchanged_through_compat(tmp_path):
         "from openEMS import openEMS\n"
         "from openEMS.physical_constants import *\n"
         "from openEMS.automesh import mesh_hint_from_box\n"
+        "from openEMS.utilities import HDF5Dump, DelayFidelity\n"
+        "from CSXCAD.Utilities import CheckNyDir; assert CheckNyDir('z') == 2\n"
         "csx = CSXCAD.ContinuousStructure(); g = csx.GetGrid()\n"
         "g.SetLines('x', [0, 10]); g.SmoothMeshLines('all', 2.5)\n"
         "assert CoordinateSystem.CARTESIAN == 0 and abs(MUE0 - 4e-7 * 3.141592653589793) < 1e-20\n"

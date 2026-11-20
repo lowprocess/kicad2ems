@@ -3,8 +3,9 @@ openEMS's and CSXCAD's Python packages over gfdtd, for scripts written for
 openEMS to run here unchanged: put PATH first on the module path and their
 `from CSXCAD import ContinuousStructure`, `from openEMS import openEMS`,
 `from openEMS.physical_constants import *` (and CSXCAD.CSXCAD,
-CSXCAD.CSRectGrid, openEMS.openEMS, openEMS.automesh, openEMS.ports) are
-gfdtd's:
+CSXCAD.CSRectGrid, CSXCAD.Utilities, openEMS.openEMS, openEMS.automesh,
+openEMS.ports, and openEMS.utilities and openEMS.sar_utils, vendored as
+upstream) are gfdtd's:
 
     PYTHONPATH=$(python -m kicad2ems.gfdtd.compat) python Simple_Patch_Antenna.py
 
