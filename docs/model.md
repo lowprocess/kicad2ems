@@ -176,6 +176,16 @@ whole job for every combination (at most 32), each in `<out>/vary/<tag>/` (`fine
 result reused where nothing changed, and lists them in `<out>/<name>_vary.json`. The window shows the first run of
 such a folder, with the others, and a run's part-value combinations, under *Compare with* (*This run varied*).
 
+The combinations' figures are set side by side in `<out>/<name>_vary.csv` and at the end of the log, a line a
+combination and solver: at each port the worst match (S11's highest, dB) and its dip (lowest, dB, and where), and
+each transmission term at the band's centre and its lowest (dB), for the first four ports:
+
+```
+fmax  solver  S11 max dB  S11 dip dB  S11 dip GHz  ...  S21 mid dB  S21 min dB
+3     qucs    -0.087      -39.854     0.1          ...  -20.221     -64.627
+4     qucs    -0.087      -39.854     0.1          ...  -33.136     -64.565
+```
+
 ## What isn't modelled
 
 - Ports must point along x or y.

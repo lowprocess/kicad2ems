@@ -10,6 +10,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **A variation's figures side by side (2026-11-20).** `--vary` (and `[vary]`) writes `<name>_vary.csv` and ends
+  its log with a table, a line a combination and solver: each port's worst match and its dip, each transmission
+  term at the band's centre and its lowest (`vary.figures`, also in `<name>_vary.json`).
 - **mom25d and the line model against a stored reference in CI (R-C9).** `tests/mom25d/test_reference.py` and
   `tests/core/test_reference.py` solve demo_lowpass as the FDTD test does and compare with openEMS's
   S-parameters, now in `tests/data/` for all three: mom25d within 0.05 (0.024 measured, ~3 s), the line model's

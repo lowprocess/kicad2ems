@@ -42,7 +42,8 @@ Left:
    (FDTD, item 4).
 5. **Parts at angles other than x and y** (R-E5; `parts.py` leaves them out with a note): the lumped piece along
    the dominant axis and a strap along the other.
-6. **A variation's figures side by side** (`--vary`, `[vary]`): the report, one line a combination.
+6. **A variation's figures in the window and the report**: `<name>_vary.csv` and the log set them side by side
+   (2026-11-20); the window's *Compare with* still overlays the curves alone.
 7. **Solvers side by side, overlapping** (R-D20): `--solver-jobs N` runs them as threads, but gfdtd's GPU stepping
    records its kernels from Python and holds the GIL, so a solver beside it waits; processes of their own, or
    gfdtd recording many steps for each Python call, would let them overlap.
