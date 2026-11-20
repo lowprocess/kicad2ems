@@ -471,7 +471,7 @@ def junction(fW, SW, fA, SA):
 
 
 def solve_piece(piece, folder, band, solver='mom25d', echo=print,
-                thickness=None, dmax=None, layer_solver=None):
+                thickness=None, dmax=None, layer_solver=None, via_solver=None):
     """A piece's run (its board file, kicad2ems's pipeline): (S at 50 ohm,
     its ports' names, the run's summary)."""
     from .config import build_settings
@@ -480,6 +480,8 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
     os.makedirs(folder, exist_ok=True)
     if piece['kind'] == 'layer' and layer_solver:
         solver = layer_solver
+    elif piece['kind'] == 'via' and via_solver:
+        solver = via_solver
     d = _to_dict(piece['board'], piece)
     cli = dict(out=folder, solvers=solver, no_report=True, **band)
     if solver == 'mom25d':
@@ -623,7 +625,8 @@ def run(a, echo=print):
                                           band, a.solver, echo,
                                           thickness=a.thickness,
                                           dmax=a.dmax,
-                                          layer_solver=a.layer_solver)
+                                          layer_solver=a.layer_solver,
+                                          via_solver=a.via_solver)
         except ValueError as e:
             raise ValueError(
                 f"piece {p['name']} ({p['kind']}"
@@ -778,6 +781,8 @@ def parser():
                    help="the layer pieces' solver where not --solver's: lines "
                    "(the line model: seconds; the via models stay on "
                    "--solver's)")
+    p.add_argument('--via-solver', default=None,
+                   help="the via models' solver where not --solver's (gfdtd)")
     p.add_argument('--dmax', type=float, default=None,
                    help="mom25d's largest cell along the copper, mm "
                    "(--mom-dmax)")

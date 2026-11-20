@@ -77,7 +77,12 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    piece is 29k unknowns, 49 min and 19.6 GB (the block low-rank factor did not converge at 1-1.5 GHz), the board
    hours. **With `--layer-solver lines` (2026-11-20)** its layer pieces take 2 min and the via models are the
    cost: 9-33k unknowns each (the whole stack's planes in their boxes, D-PHY's rows of 8 vias one model), 33 s
-   to 23 min, the largest over 24 GB. Next: identical via geometries solved once (most are a pair's two vias of
+   to 23 min, the largest over 24 GB. On gfdtd (`--via-solver gfdtd`) as accurate on the test boards (rf_msvia
+   S21 within 0.14 dB of the whole board, rf_diffvia Sdd21 0.078 dB rms against mom25d's via model's 0.110) and
+   light (2.5 GB), but not faster on the CM5 (via1 983 s against 1358, via3 179 s against 44; via12's 28 ports
+   ~2.4 h): its fine cell came down to 19 um (the cut circles' short edges, a part, C705, left in the via box), a
+   0.018 ps time step, 87k steps a port, a 5 mm air margin. To try: the via box's parts left out, its fine cell
+   at the via's own scale, a smaller margin. Next: identical via geometries solved once (most are a pair's two vias of
    one size), the planes as PEC with their holes where the via stays on one side of them, a row of vias split
    where its circles only touch. A purpose-built trace mesher was measured first and set aside: the CM5 piece's
    unknowns are 80 % edge rings at 65 a mm of trace, and neither fewer rings (more triangles: the area limit
