@@ -148,3 +148,31 @@ def test_a_layer_pieces_tracks_end_at_the_via_circles(tmp_path):
         assert tr and all(t['layer'] == p['layer'] for t in tr)
         for t in tr:
             assert LineString(t['pts']).distance(via) >= g['vias'][0]['r'] - 1e-6
+
+
+def test_a_coarse_edge_mesh_couples_as_the_fine_one(tmp_path):
+    """mom25d's --mom-edges coarse (no edge rings, no gap rings): rf_coupler's
+    10 dB coupling in under half the unknowns, S31 within 0.6 dB of the fine
+    mesh's (measured 0.55 dB at 2.4 GHz; each 0.5-0.6 from gfdtd's)."""
+    pytest.importorskip('kicad2ems.mom25d.core')
+    from kicad2ems.core.touchstone import read_touchstone
+    cfg = _example(tmp_path, 'coupler')
+    env = dict(os.environ, MOM25D_GPU='off', QT_QPA_PLATFORM='offscreen')
+    got = {}
+    for edges in ('fine', 'coarse'):
+        p = subprocess.run([sys.executable, '-m', 'kicad2ems', str(cfg),
+                            '--solvers', 'mom25d', '--mom-edges', edges,
+                            '--points', '31', '--no-report', '--out',
+                            str(tmp_path / edges)],
+                           capture_output=True, text=True, env=env)
+        assert p.returncode == 0, (p.stdout + p.stderr)[-3000:]
+        n = int(next(l for l in p.stdout.splitlines()
+                     if l.startswith('mom25d:') and 'unknowns' in l)
+                .split()[1].replace(',', ''))
+        f, S = read_touchstone(str(tmp_path / edges / 'rf_coupler_mom25d.s4p'))
+        got[edges] = (n, S)
+    (nf, Sf), (nc, Sc) = got['fine'], got['coarse']
+    assert nc < 0.55 * nf
+    db = lambda x: 20 * np.log10(np.abs(x))
+    assert np.abs(db(Sc[:, 2, 0]) - db(Sf[:, 2, 0])).max() < 0.8
+    assert np.abs(db(Sc[:, 1, 0]) - db(Sf[:, 1, 0])).max() < 0.3

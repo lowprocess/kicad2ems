@@ -68,7 +68,7 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
                 stitching_vias='auto',
                 keep_at=(), quad_tol=35.0, coarsen=COARSEN, planes='pec',
                 stitching_pads='drop', wideband=None, cells=CELLS,
-                thickness=THICKNESS):
+                thickness=THICKNESS, edges='fine'):
     """S-parameters of a board (a <name>_board.json path, or its content) on
     `freq` (Hz).
 
@@ -105,7 +105,7 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
         quads=quads, zone=zone, stitching_vias=stitching_vias,
         quad_tol=quad_tol, coarsen=coarsen,
         planes=planes, stitching_pads=stitching_pads, wideband=wideband,
-        title=name, cells=cells, thickness=thickness)
+        title=name, cells=cells, thickness=thickness, edges=edges)
     f, S, info = solve_band(sim, fmin, fmax, points=len(freq),
                             zref=model.port_z0, max_solves=max_solves,
                             afs_tol=afs_tol, log=log, progress=progress,
@@ -131,12 +131,26 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
         afs=list(info.get('afs', [])), afs_tol=info.get('afs_tol'))
 
 
+# the mesh across the copper's edges (edges=): fine, the edge rings (ncross 6,
+# graded from the narrowest trace) and the rings at narrow gaps; coarse, neither
+# (as Momentum without its edge mesh): a CM5 carrier's F.Cu piece (18 nets, 447
+# mm of 0.13 mm trace) 28,964 unknowns -> 3,899
+EDGES = {'fine': {}, 'coarse': dict(ncross=2, gap_rings=None)}
+
+
+def edge_kw(edges):
+    """Simulation's mesh options for edges= ('fine', 'coarse')."""
+    if edges not in EDGES:
+        raise ValueError(f"edges: {', '.join(EDGES)}, not {edges!r}")
+    return dict(EDGES[edges])
+
+
 def build_board(board, fmin, fmax, dmax=0.3e-3, plane_factor=3.0, port='auto',
                 pairs=False, mesher='auto', metal=None, ground=None, log=print,
                 quads=False, zone=None, stitching_vias='auto', quad_tol=35.0,
                 coarsen=COARSEN, planes='pec', stitching_pads='drop',
                 wideband=None, title=None, mesh_only=False, characterize=True,
-                cells=CELLS, thickness=THICKNESS):
+                cells=CELLS, thickness=THICKNESS, edges='fine'):
     """(BoardModel, Simulation) of a board as solve_board builds them, with its
     options (solve_board's). mesh_only: stop once the mesh and its unknowns are
     known (a preview of the mesh solve_board would solve on; the quad cells are
@@ -167,7 +181,7 @@ def build_board(board, fmin, fmax, dmax=0.3e-3, plane_factor=3.0, port='auto',
         verbose=False, wave_down_to=fmin, mesher=mesher, title=title or 'board',
         metal=metal, quads=quads, quad_tol=quad_tol, coarsen=coarsen,
         stitching_vias=stitching_vias, mesh_only=mesh_only,
-        characterize=characterize,
+        characterize=characterize, **edge_kw(edges),
         **(dict(zone=zone, dmax_out=ZONE_OUT * dmax) if zone else {}))
     return model, sim
 

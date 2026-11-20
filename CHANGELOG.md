@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **mom25d: a coarse edge mesh (2026-11-20, `--mom-edges coarse`).** Neither the edge rings nor the gap rings, as
+  Momentum without its edge mesh. A CM5 carrier's 18-net layer piece: 28,964 unknowns to 3,941, 49 min and 19.6 GB
+  to 36 s and 1.4 GB, its through paths within 0.07 dB of the fine mesh at the median, its coupling terms |dS|
+  0.006 (median); the 10 dB coupler's S31 within 0.46 dB of gfdtd (the fine mesh 0.64), its isolation 3.4 dB off
+  at -25 dB (docs/mom.md#edges). `kicad2ems.core.segment --edges coarse` passes it to every piece.
 - **segment: the layer pieces on the line model (2026-11-20, `--layer-solver lines`).** The via models stay on
   mom25d. rf_msvia S21 within 0.15 dB of the whole board, rf_diffvia Sdd21 0.11 dB rms; the CM5 Minima's 13 layer
   pieces in 2 min, against mom25d on its largest (49 min alone) 0.5 dB median, a stub's notch misplaced. A layer

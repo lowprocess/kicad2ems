@@ -217,7 +217,7 @@ def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
 def _board_kw(m, dmax, port, quads=False, quad_tol=35.0, coarsen=None,
               zone=None, stitching_vias='auto',
               stack='ground', planes='pec', stitching_pads='drop',
-              wideband=None, cells=30.0, thickness=THICKNESS):
+              wideband=None, cells=30.0, thickness=THICKNESS, edges='fine'):
     """(pairs, mom25d.api's board and mesh options) of solve()'s settings: what
     the run meshes, and the preview."""
     kind = 'via' if port == 'lumped' else port
@@ -227,6 +227,7 @@ def _board_kw(m, dmax, port, quads=False, quad_tol=35.0, coarsen=None,
                  coarsen=coarsen, zone=zone, cells=cells, planes=planes,
                  stitching_pads=stitching_pads, wideband=wideband,
                  thickness=thickness, stitching_vias=stitching_vias,
+                 edges=edges,
                  **(dict(ground='none') if stack == 'whole' else {})))
 
 
@@ -314,7 +315,8 @@ def _mesh_kw(s, m=None):
               quad_tol=s.mom_quad_tol, coarsen=s.mom_coarsen or None,
               cells=getattr(s, 'mom_cells', 30.0),
               zone=('auto' if s.mom_zone == 'on' else None),
-              stitching_vias=s.mom_stitching_vias)
+              stitching_vias=s.mom_stitching_vias,
+              edges=getattr(s, 'mom_edges', 'fine'))
     return kw if m is None else dict(kw, stack=_stack(s, m), **_model_kw(s))
 
 
@@ -509,6 +511,15 @@ class MoM25D(Solver):
             "plane's cells / 8; docs/mom.md#coarsen): default {default}; 0 or "
             "1: only by --mom-cells", float, name='coarsen',
             gui='MoM coarsening', group=G, cli=dict(metavar='X')),
+        Option(
+            'mom_edges', 'fine',
+            "the mesh across the copper's edges: fine (default: edge rings "
+            "graded from the narrowest trace, and rings where copper faces "
+            "copper across a narrow gap) or coarse (neither, as Momentum "
+            "without its edge mesh: a CM5 carrier's 18-net layer piece 28,964 "
+            "unknowns to 3,899; docs/mom.md#edges for its accuracy)",
+            choices=('fine', 'coarse'), name='edges', gui='MoM edge mesh',
+            group=G),
         Option(
             'mom_zone', 'off',
             "experimental: mesh detail only within 0.5 mm of the signal copper "
@@ -820,7 +831,7 @@ class MoM25D(Solver):
         # away from the features (--mom-coarsen, --mom-cells), the zone, the
         # stitching vias (without the growth the estimate had counted the
         # unknowns of before 2026-11-18's default coarsening)
-        from kicad2ems.mom25d.api import cell_growth, ZONE_OUT
+        from kicad2ems.mom25d.api import cell_growth, edge_kw, ZONE_OUT
         kw = _mesh_kw(s)
         coarsen = cell_growth(bm, planes, run.fmax, dmax, kw['cells'],
                               kw['coarsen'])
@@ -829,6 +840,7 @@ class MoM25D(Solver):
                             wave_down_to=run.fmin, mesh_only=True,
                             coarsen=coarsen,
                             stitching_vias=kw['stitching_vias'],
+                            **edge_kw(kw['edges']),
                             **(dict(zone=kw['zone'], dmax_out=ZONE_OUT * dmax)
                                if kw['zone'] else {}))
         n, solves, layers = (int(sim.Ne + sim.Nv), min(s.mom_solves,

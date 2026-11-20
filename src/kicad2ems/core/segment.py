@@ -471,7 +471,8 @@ def junction(fW, SW, fA, SA):
 
 
 def solve_piece(piece, folder, band, solver='mom25d', echo=print,
-                thickness=None, dmax=None, layer_solver=None, via_solver=None):
+                thickness=None, dmax=None, layer_solver=None, via_solver=None,
+                edges=None):
     """A piece's run (its board file, kicad2ems's pipeline): (S at 50 ohm,
     its ports' names, the run's summary)."""
     from .config import build_settings
@@ -501,6 +502,8 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
             cli['mom_planes'] = 'holes'
     if solver == 'mom25d' and dmax:
         cli['mom_dmax'] = dmax
+    if solver == 'mom25d' and edges:
+        cli['mom_edges'] = edges
     bj = os.path.join(folder, f"{piece['name']}_board.json")
     # a piece solved before from the same board file and settings: its result
     # again (a run that stopped at a later piece is resumed where it stopped)
@@ -626,7 +629,8 @@ def run(a, echo=print):
                                           thickness=a.thickness,
                                           dmax=a.dmax,
                                           layer_solver=a.layer_solver,
-                                          via_solver=a.via_solver)
+                                          via_solver=a.via_solver,
+                                          edges=a.edges)
         except ValueError as e:
             raise ValueError(
                 f"piece {p['name']} ({p['kind']}"
@@ -781,6 +785,9 @@ def parser():
                    help="the layer pieces' solver where not --solver's: lines "
                    "(the line model: seconds; the via models stay on "
                    "--solver's)")
+    p.add_argument('--edges', default=None, choices=('fine', 'coarse'),
+                   help="mom25d's mesh across the copper's edges "
+                   "(--mom-edges): coarse ~7x fewer unknowns on narrow traces")
     p.add_argument('--via-solver', default=None,
                    help="the via models' solver where not --solver's (gfdtd)")
     p.add_argument('--dmax', type=float, default=None,

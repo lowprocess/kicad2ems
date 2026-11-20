@@ -420,6 +420,17 @@ mesh (`tools/zone_study.py`, `tools/quad_configs_study.py` in mom25d).
   this removes is stitching-via pads (about 130 unknowns each, 4 now): the demo transition goes from 8,334 to 2,781
   unknowns at about the same error (0.015–0.018 at 2–8 GHz). At 8 GHz the differential via loses about 0.02, where its transition excites
   the space between the ground planes.
+<a id="edges"></a>
+- **Coarse edges** (`--mom-edges coarse`): neither the edge rings nor the rings at narrow gaps, as Momentum
+  without its edge mesh: a narrow trace is a cell or two across, the cells along it at the run's spacing. On
+  narrow traces most unknowns are the rings: a CM5 carrier's F.Cu piece (18 nets, 447 mm of 0.13-0.14 mm trace
+  over its plane) has 80 % of its triangles within 20 µm of an edge, and goes from 28,964 unknowns to 3,941 (49
+  min and 19.6 GB to 36 s and 1.4 GB). Against the fine mesh there: each of its 20 through paths within 0.07 dB at
+  the median of their worst over 1-10 GHz (a stub's −33 dB notch moves: 10 dB at its bottom), the coupling and
+  reflection terms |ΔS| 0.006 at the median, 0.029 at the 95th percentile. On the 10 dB coupler (0.14 mm gap,
+  1.28 mm lines), against gfdtd, S31 within 0.46 dB over 1-4 GHz (the fine mesh 0.64) at 1,258 unknowns against
+  2,740; its isolation S41 3.4 dB off at −25 dB (the fine mesh 1.8 dB). For crosstalk on long buses; the fine
+  mesh for a coupler's directivity or a filter's passband.
 <a id="vias"></a>
 - **Via meshing** (`--mom-stitching-vias`: `auto`, `round`, `square` or N sides). Square stitching vias are close
   (the GCPW's fence: 0.006 at 8 GHz instead of 0.002); `auto` ones are square outside `--mom-zone`, else round.
