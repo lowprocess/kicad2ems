@@ -206,6 +206,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **A Palace run that hangs silently is stopped at its timeout (2026-11-20).** `fem.palace.run.run` read
+  Palace's log as it came and only then waited with the timeout, so a Palace writing nothing was waited on for
+  ever, and a timeout that fired escaped as `TimeoutExpired`. A watchdog now stops it (its process group, the MPI
+  ranks with it) and says so (`tests/fem/test_palace_watchdog.py`, with a stand-in palace). The roadmap's other
+  quiet failures were already fixed: Elmer's timeout (`fem.children.run`), Palace's non-convergence (read and
+  written beside its log), both engines' versions in the results, Palace's ranks one a fast core.
 - **mom25d's estimate and memory plan (2026-11-20).** The estimate (the window's, a run's `estimate:` line, and
   what `auto` picks solvers by) meshed the board without the cell growth (`--mom-coarsen`, the default since
   2026-11-18, `--mom-cells`), the zone and the stitching vias: rf_coupler 8,242 unknowns, ~49 s, against the run's

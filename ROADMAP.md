@@ -378,8 +378,6 @@ Tests (lavapipe, NVIDIA) are under CI and release.
    12 MHz) to explain: zero-thickness PEC against 35 µm copper, the capacitors as straps against filaments, one
    port against all the converter's pads.
 4. **Real boards, the rest** (R-B14): the Elmer builder's fragmenting, a gap per edge.
-5. **Runs that fail quietly:** Elmer's timeout is not caught, Palace's non-convergence not read, the versions not
-   recorded, the MPI ranks fixed at 8.
 
 ## The KiCad plugin (`kicad2ems.ipc`)
 

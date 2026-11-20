@@ -30,6 +30,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 
 import numpy as np
@@ -135,6 +136,19 @@ def run(workdir, cfg, np=None, threads=1, log=print, how=None, timeout=None,
         p = children.popen(cmd, cwd=cwd, stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT, text=True,
                            env=environment(cmd))
+        # the timeout as a watchdog: the log is read as Palace writes it, so a
+        # wait(timeout) after it only began once Palace had closed its output
+        # (a hung Palace, silent, was waited on for ever), and its
+        # TimeoutExpired escaped the tools
+        expired = threading.Event()
+        dog = None
+        if timeout:
+            def bite():
+                expired.set()
+                children.stop(p)
+            dog = threading.Timer(float(timeout), bite)
+            dog.daemon = True
+            dog.start()
         tail, shown = [], 0.0
         for line in p.stdout:
             fh.write(line)
@@ -153,7 +167,12 @@ def run(workdir, cfg, np=None, threads=1, log=print, how=None, timeout=None,
             if head.startswith(
                 ('It ', 'Computing', 'Adaptive', 'Greedy', 'Elapsed', 'Total')):
                 log('palace: ' + line.strip())
-        rc = p.wait(timeout)
+        rc = p.wait()
+        if dog is not None:
+            dog.cancel()
+    if expired.is_set():
+        raise RuntimeError(f"palace did not finish in {timeout:g} s: stopped\n"
+                           + '\n'.join(tail[-20:]))
     if children.stopped(p):
         children.raise_stopped()
     with open(os.path.join(workdir, logfile + '.json'), 'w') as fh:
