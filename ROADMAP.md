@@ -47,8 +47,6 @@ Left:
 7. **Solvers side by side, overlapping** (R-D20): `--solver-jobs N` runs them as threads, but gfdtd's GPU stepping
    records its kernels from Python and holds the GIL, so a solver beside it waits; processes of their own, or
    gfdtd recording many steps for each Python call, would let them overlap.
-8. **Board cutouts** (R-E6) stay dielectric, and a region that splits the board keeps its largest piece without a
-   note.
 
 ## Signal integrity
 
