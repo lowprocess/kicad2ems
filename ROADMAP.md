@@ -80,7 +80,15 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    mesh): the 36 nets' 73-port S end to end. Next: its figures in each pair's differential mode (as Board
    coupling's matrix; single-ended at 50 ohm the 100 ohm pairs read -13 dB between HDMI lanes), the Ethernet
    pairs' -2.6 dB match and USB-C's reflection looked into (parts left out: ESD diodes, connectors), and a check
-   of one interface against a cut-out solved whole. Measured and set aside: edge cells only near the signal
+   of one interface against a cut-out solved whole (done for PCIe's clock: Sdd21 within 0.13-0.15 dB rms of the
+   cut-out, either via model; the board's other interfaces to check the same way). **Via models without a mesh:**
+   the physics-based model (`--via-solver pbm`, viamodel.py) is in; mom25d's plane holes on a whole stack were
+   studied (2026-11-20): lifting the `holes` gate for whole stacks (board.py:532) and adding the cavity's
+   transfer admittance between holes of adjacent planes (frill.py:376 returns 0 there) solved rf_msvia's
+   through via on PEC planes in 983 unknowns against 6,597 (S21 within 0.06 dB, the static two-plane
+   capacitance within 0.8 % of meshed planes); about half the unknowns on the CM5's via models (their outer
+   layers stay meshed). Left there: the RF part above 5 GHz, power planes, and a pair's shared or oval antipads
+   (a via through a slot opening, 1-2 weeks). Measured and set aside: edge cells only near the signal
    copper (the via models' plane edges: 10 % fewer unknowns on the fine mesh, 1 % on the coarse), and an
    aggressor's copper fine with its victims coarse (rf_coupler: between the two meshes in unknowns and in S31,
    which all three give within 0.2 dB of gfdtd; and a run per aggressor). **With `--layer-solver lines`** its layer pieces take 2 min and the via models are the

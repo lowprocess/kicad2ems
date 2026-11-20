@@ -510,10 +510,11 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
                 echo(f"{piece['name']}: over {ref}"
                      + (" (turned over)" if d.get('turned') else ''))
         else:
-            # the via's whole stack in its box, the planes perfect conductors
-            # with their holes (mom25d's planes 'holes')
+            # the via's whole stack in its box, every plane meshed (planes
+            # 'holes' is not taken on a whole stack, and asking for it had
+            # turned the copper's thickness off: every via model solved as
+            # sheets)
             cli['mom_stack'] = 'whole'
-            cli['mom_planes'] = 'holes'
     if solver == 'mom25d' and dmax:
         cli['mom_dmax'] = dmax
     if solver == 'mom25d' and edges:

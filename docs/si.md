@@ -223,7 +223,11 @@ python -m kicad2ems.core.segment board.kicad_pcb --nets 'PCIE*,HDMI*' --out out/
   meshed via model 0.34), rf_diffvia Sdd21 0.073 dB rms (meshed 0.193, gfdtd's whole board 0.177); the CM5
   Minima's 12 via models in 18 s (meshed on the coarse edges: 3.5 min). Its planes are infinite (no board edge,
   no finite cavity), its cavities carry their TEM mode alone; on the CM5 it differs from the meshed via models by
-  0.06 dB (median) on D-PHY to 2-4 dB on PCIe's clock and Ethernet at 10 GHz, which one is nearer not known yet.
+  0.06 dB (median) on D-PHY to 2-4 dB on PCIe's clock and Ethernet at 10 GHz single-ended. **Checked against a
+  cut-out solved whole** (the SIPro way: PCIe's clock pair, 52 mm from the M.2 connector to the module through
+  its vias, the region round it on mom25d's whole stack: 24,697 unknowns, 25.5 min, 16.7 GB): its differential
+  Sdd21 within 0.13 dB rms (0.36 at worst) with the meshed via models, 0.15 dB rms (0.43) with the physics-based
+  ones, over 1-10 GHz; the single-ended differences are the common mode's.
 - **Resumed:** a piece solved before from the same board file and settings is taken as it is (`piece.sha256` in
   its folder), so a run stopped at one piece goes on from it. `--dmax` sets mom25d's cell size.
 - **Each piece in a process of its own**, so the memory one took is free for the next. mom25d stops a piece that
