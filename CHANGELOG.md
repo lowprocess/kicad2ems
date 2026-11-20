@@ -10,6 +10,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **A board's coupling, a layer at a time (2026-11-20).** `python -m kicad2ems.core.coupling board --nets 'DQ*'`
+  and the study's *Board coupling* question (Signal integrity; engines mom25d and the line model): the nets by name
+  patterns, each copper layer solved with the ground copper alone, each net's stretch on it a port at each end
+  (`si.trace_ends` takes a layer now: ended where it leaves it), breakouts under `--min-length` left out and said.
+  Each layer's NEXT and FEXT matrices for an edge, each victim's worst aggressors and their sum (a differential
+  pair's other leg not an aggressor), the worst pairs, a figure per layer, a limit on the worst victim. The
+  example `si_ddr` (`make_rf_examples.py ddr`: two byte lanes, microstrip on F.Cu and stripline on In2.Cu through
+  vias): the worst victim 14.7 % NEXT and 20.4 % FEXT on F.Cu, 8.1 % and 1.4 % on In2.Cu by mom25d (8.6 min), the
+  line model within 3-15 % on NEXT in 18 s (docs/si.md#coupling).
 - **A board end to end through the FDTD layer in CI (R-C6).** `tests/fdtd/test_board_end_to_end.py` generates
   demo_lowpass, runs its example config on gfdtd's CPU backend in a process of its own (~8 s) and checks it against
   openEMS's S-parameters of the same run, stored in `tests/fdtd/data/demo_lowpass_openems.s2p`: within 0.05 in

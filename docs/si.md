@@ -1,4 +1,4 @@
-# Signal integrity: crosstalk
+# Signal integrity: crosstalk and a board's coupling
 
 The crosstalk question tells you how much of one trace's edge arrives on its neighbours, at their near end (NEXT)
 and at their far end (FEXT), and what in the layout makes it. You name the traces by their nets; the ports, the
@@ -106,3 +106,56 @@ stretches), beside the run's own files (`<name>_<solver>.sNp`, `<name>_lines.jso
   receiver reflect, and NEXT that reflects at the near end arrives at the far end too.
 - **Coupling that is not a parallel run.** The line model sees side-by-side stretches. Crossings on adjacent
   layers, a shared return via or a gap in the plane under the traces need the full-wave check.
+
+<a id="coupling"></a>
+## A board's coupling, a layer at a time
+
+The crosstalk question is for a few named traces. **Board coupling** (`kicad2ems.core.coupling`) is for a bus: many
+nets named by patterns, each signal layer solved with its reference planes alone, and for each victim its worst
+aggressors.
+
+```sh
+python -m kicad2ems.core.coupling board.kicad_pcb --nets 'DQ*,DQS*' --rise 100 --limit 15 --out out/cpl
+kicad2ems study examples/si_ddr.toml          # the same from a config: [analysis.coupling]
+```
+
+In the window it is **Board coupling** under *Signal integrity*, answered by mom25d (the default) or the line
+model (`coupling_lines`: seconds, a first look). A config says it as `[study.coupling] engine = "coupling_lines"`.
+
+What it does:
+
+1. **The nets.** Those whose names match a pattern (`DQ*`, `DQS?_[PN]`: fnmatch; a name alone is a pattern too).
+   Nets with zones (planes, pours) are never traces.
+2. **The layers.** On each copper layer where the nets run (`--layers` to choose), each net's stretch there: its
+   tracks on that layer, ended where it leaves the layer (at a via or a pad), a port at each end. A stretch shorter
+   than `--min-length` (5 mm) is a breakout: left out, and listed. The nets of a layer are ordered across the
+   way they run, so the matrices' neighbours sit beside their diagonal.
+3. **The solve.** The board is imported once with every layer's ports. Each layer is then solved on a board of
+   its own: that layer's stretches and the ground copper of every layer (the reference planes: mom25d takes solid
+   planes as PEC), the selected nets' vias, their copper on other layers and the parts left out.
+4. **The coupling.** Each net's near end driven in turn, every end terminated in `--z0`: each victim's NEXT and
+   FEXT from each aggressor, as the largest share of the swing for an edge of `--rise` ps (as the crosstalk
+   question's). Each layer gets the matrices (victim by aggressor), each victim its `--top` worst aggressors and
+   their sum (every aggressor's peak at once: the worst case), and the worst pairs. A differential pair's other
+   leg (`D0_P` / `D0_N`) is not an aggressor. `--limit` judges the worst victim's sum (`--mode`: of NEXT, FEXT or
+   the larger).
+
+The result is `coupling.json`, a figure per layer (`coupling_<layer>.png`: the NEXT and FEXT matrices, and the
+layer's stretches coloured by each victim's sum) and each layer's run in its own folder.
+
+`examples/si_ddr.toml` (`make_rf_examples.py ddr`): two byte lanes, each four DQ lines and a DQS pair, lane 0
+microstrip on F.Cu, lane 1 stripline on In2.Cu through vias. For a 100 ps edge, the worst victim's sum:
+
+| | mom25d | line model |
+|---|---|---|
+| F.Cu (microstrip): NEXT, FEXT | 14.7 %, 20.4 % | 14.2 %, 16.5 % |
+| In2.Cu (stripline): NEXT, FEXT | 8.1 %, 1.4 % | 7.4 %, 0.4 % |
+| run time, both layers | 8.6 min (GPU) | 18 s |
+
+In stripline (one dielectric around the traces) FEXT nearly cancels, in microstrip it is larger than NEXT. mom25d
+finds more FEXT than the line model: it sees the fan-outs and the whole layer's field, the line model its coupled
+sections alone.
+
+What it leaves out: what crosses between layers (a via's field, a reference plane's gaps, broadside traces on
+adjacent layers), since each layer is solved on its own; drivers and receivers, as the crosstalk question; and a
+stretch's own branches (a net that forks on a layer is its longest path there).

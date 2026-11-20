@@ -143,6 +143,7 @@ __all__ = ['RF', 'KINDS', 'Analysis', 'registry', 'analysis_of', 'read_config',
 
 # every analysis, as 'module:class': imported on the first registry() call
 ANALYSES = ('kicad2ems.core.si:Crosstalk',
+            'kicad2ems.core.coupling:Coupling',
             'kicad2ems.pcbqs.analyses:PowerIntegrity',
             'kicad2ems.pcbqs.analyses:NearField',
             'kicad2ems.pcbqs.analyses:Circuit',

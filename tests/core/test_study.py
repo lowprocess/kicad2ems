@@ -86,11 +86,11 @@ def test_the_tree_lists_every_question_with_its_engines(fakes):
              for g in tree] == ['RF', 'Signal integrity', 'Power', 'Thermal'])
     rows = {r['question'].name: r for g in tree for r in g['questions']}
     assert (list(rows) == [
-        'sparams', 'antenna', 'lines', 'crosstalk', 'dc', 'pdn', 'nearfield',
-        'circuit', 'coils', 'capacitance', 'thermal'
+        'sparams', 'antenna', 'lines', 'crosstalk', 'coupling', 'dc', 'pdn',
+        'nearfield', 'circuit', 'coils', 'capacitance', 'thermal'
     ])
     # kicad2ems's own (analyses.BUILTIN): not these fakes'
-    assert rows['crosstalk']['engines'] == []
+    assert rows['crosstalk']['engines'] == [] == rows['coupling']['engines']
     assert ([e.name for e in rows['dc']['engines']] == ['pdn'] ==
             [e.name for e in rows['pdn']['engines']])
     assert (rows['pdn']['question'].shares == 'dc'

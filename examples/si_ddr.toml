@@ -1,0 +1,27 @@
+# kicad2ems example: a board's coupling, a layer at a time (kicad2ems.coupling):
+# two byte lanes of a DDR-like bus on a 4-layer board
+#   # make the board first (it is not in the repository)
+#   python examples/make_rf_examples.py ddr examples/rf_ddr
+#   kicad2ems study examples/si_ddr.toml
+# Lane 0 (DQ0-DQ3 and the DQS0_P / DQS0_N pair) runs as microstrip on F.Cu over
+# the In1.Cu plane; lane 1 (DQ4-DQ7, DQS1) drops through vias to stripline on
+# In2.Cu between In1.Cu and B.Cu. Each layer is solved on its own, its
+# stretches a port at each end; lane 1's 2 mm F.Cu breakouts are left out. For
+# a 100 ps edge (mom25d, 2026-11-20): on F.Cu the middle lines take ~15 % NEXT
+# and ~20 % FEXT from all their neighbours; on In2.Cu (stripline) ~8 % NEXT and
+# ~1.4 % FEXT. The line model (engine "coupling_lines") answers in seconds,
+# within 3-15 % of mom25d's NEXT.
+board   = "rf_ddr.kicad_pcb"   # paths are relative to this file
+out     = "out"
+
+[study]
+run = ["coupling"]
+
+# [study.coupling]
+# engine = "coupling_lines"    # the line model instead of mom25d: a first look
+
+[analysis.coupling]
+nets   = ["DQ*"]               # name patterns: DQ0-DQ7 and the DQS pairs
+rise   = 100                   # ps, 10 to 90 %
+limit  = 15                    # % of the swing, a victim from all its aggressors
+top    = 3

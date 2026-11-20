@@ -55,18 +55,12 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
 
 1. **Differential pairs as pairs.** Crosstalk between pairs in their differential and common modes (mixed-mode
    S of the pairs' four ends), a pair's own skew and mode conversion; the proposals then name pairs, not legs.
-2. **A board's coupling, a layer pair at a time (the user's, 2026-11-19).** Many nets at once, named by patterns
-   (`DQ*`, `DQS*_[PN]`, `A[0-9]*`: a DDR bus, its byte lanes), each signal layer solved with its reference planes
-   alone: mom25d, its solid planes PEC (a layer between two planes is a stripline region of its own), a lumped
-   port at each net's two ends. Out of it: each victim's NEXT and FEXT from its worst aggressors and their sum (the
-   question's figures, step 3 of docs/si.md, over a matrix), the worst pairs and the stretches that make them, a
-   map of the coupling on the plan, and a byte lane against another. What it needs first: the ports' count (a
-   64-bit bus's lanes are ~90 nets, 180 ports: the solves are many right-hand sides of one factor, but the S
-   matrix and the report must stay readable: a victim's top aggressors, not the whole matrix), the nets' ends on
-   a layer when a net changes layer (its stretch on this layer, ended at its vias), and what crosses between
-   layer pairs (vias, a reference plane's gap) said as not modelled. The line model can answer the same per
-   layer for a first look (it couples only within a layer's coupled sections); mom25d is what sees the whole
-   layer's fields.
+2. **A board's coupling, the rest** (`kicad2ems.core.coupling`, docs/si.md#coupling, 2026-11-20). Left: a real
+   board's bus (90 nets, 180 ports: mom25d's time and the report's size; the tests run the 12-net example);
+   what crosses between layers (each layer is solved alone: vias, a plane's gaps, broadside traces on adjacent
+   layers), which a second pass with two layers and their vias could give for the worst victims; a net that
+   forks on a layer (its longest path there is the stretch); and the window's view of the matrices (its report
+   shows the figures as images).
 3. **The time grid** (R-E16), before items 4 and 5 build on it. The edge response comes from 401 points at
    fmax/400 steps, linearly interpolated: a 5 % coupler reads 3.3 % at 1 m and 25 ps. Its step from the longest
    trace's delay, H interpolated with the delay taken out, fmax 2-3 times 1/rise, S11 to DC (for TDR).

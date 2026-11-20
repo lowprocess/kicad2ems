@@ -96,6 +96,12 @@ QUESTIONS = {
             "the swing"
         ),
         Question(
+            'coupling', 'Board coupling', 'Signal integrity',
+            "many nets' crosstalk a layer at a time (a bus by name patterns): "
+            "each victim's worst aggressors", order=15, figures=
+            "NEXT <victim>, FEXT <victim> [(<layer>)]: all its aggressors on "
+            "its layer together, % of the swing"),
+        Question(
             'dc', 'Rail drop', 'Power',
             "a rail's DC drop, its current density and its loss", order=10,
             figures="drop <load>: the rail's own copper from the source to the "

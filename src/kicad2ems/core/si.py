@@ -61,16 +61,20 @@ WIDEN = 3
 
 
 # ---- the traces' ends -------------------------------------------------------
-def trace_ends(kb, net, tol=1e-3):
+def trace_ends(kb, net, tol=1e-3, layer=None):
     """The two ends of net's routed copper on board kb
     (importers.kicad.KiCadBoard), [dict(x, y, layer, pad, at)]: the pair of free
     track ends furthest apart along the tracks (a net of several separate
     pieces: its longest). pad: (ref, name) of the pad the end is on, or None;
-    at: a point INSET mm in from a free end. KiCad mm."""
+    at: a point INSET mm in from a free end. KiCad mm. layer: its stretch on
+    that copper layer alone (its tracks there, not joined through vias: it ends
+    where it leaves the layer)."""
     import heapq
-    tracks = [t for t in kb.tracks if t['net'] == net and len(t['pts']) >= 2]
+    tracks = [t for t in kb.tracks if t['net'] == net and len(t['pts']) >= 2
+              and (layer is None or t['layer'] == layer)]
     if not tracks:
-        raise ValueError(f"net {net!r} has no tracks on this board")
+        raise ValueError(f"net {net!r} has no tracks on "
+                         + (layer if layer else "this board"))
     key = lambda p, layer: (round(float(p[0]) / tol), round(float(p[1]) / tol),
                             layer)
     adj, pos = {}, {}
@@ -86,7 +90,7 @@ def trace_ends(kb, net, tol=1e-3):
                               t['layer']), (float(q[0]), float(q[1]),
                                             t['layer'])
             edge(a, b, float(np.hypot(*(q - p))))
-    for v in kb.vias:  # a via joins its layers at its place
+    for v in (kb.vias if layer is None else ()):  # a via joins its layers
         if v.get('net') not in (net, None, ''):
             continue
         here = [

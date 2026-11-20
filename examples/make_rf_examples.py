@@ -455,6 +455,58 @@ def diffvia(path, length=24.0, s=0.2, pitch=1.0, antipad=0.55):
     return wm, ws
 
 
+def ddr(path, nq=4, length=30.0, gap=0.2, fan=3.0, spread=1.6, antipad=0.45):
+    """A board-scale coupling example (kicad2ems.core.coupling): two byte lanes
+    of a DDR-like bus on a 4-layer board, each nq DQ lines and a DQS pair
+    (nets DQ0.., DQS0_P / DQS0_N, ...). Lane 0 runs as 50 ohm microstrip on
+    F.Cu over the In1.Cu plane; lane 1 leaves its F.Cu pads, drops through vias
+    (antipads in In1.Cu, a return via beside each) to 50 ohm stripline on
+    In2.Cu between In1.Cu and B.Cu, and comes back up at the far end. The lines
+    of a lane run `gap` mm apart for `length` mm, fanned out to `spread` mm at
+    their ends. No ports: the question puts them at each net's ends on each
+    layer."""
+    wm = w_on(50.0, H4)
+    ws = round(solve(lambda w: -strip_z(w, 2 * H4, ER)[0], -50.0, 0.03, 2.0), 3)
+    lanes = []
+    for k in range(2):
+        nets = [f"DQ{k * nq + i}" for i in range(nq)]
+        lanes.append(nets[:nq // 2] + [f"DQS{k}_P", f"DQS{k}_N"]
+                     + nets[nq // 2:])
+    names = [n for lane in lanes for n in lane]
+    bd = Board(nets=("", "GND") + tuple(names))
+    net = {n: 2 + i for i, n in enumerate(names)}
+    m = len(lanes[0])
+    L = length + 2 * fan + 6.0
+    H0 = (m - 1) * spread + 6.0
+    H = 2 * H0
+    holes = []
+    for k, lane in enumerate(lanes):
+        yc = H0 * (k + 0.5)
+        w = wm if k == 0 else ws
+        for i, n in enumerate(lane):
+            off = i - (m - 1) / 2
+            y, ye = yc + off * (w + gap), yc + off * spread
+            x0, x1 = 3.0 + fan, 3.0 + fan + length
+            if k == 0:
+                bd.track([(1.0, ye), (3.0, ye), (x0, y), (x1, y),
+                          (L - 3.0, ye), (L - 1.0, ye)], wm, net=net[n])
+                continue
+            # F.Cu breakout -> via -> In2.Cu stripline -> via -> F.Cu
+            for xv, xe in ((3.0, 1.0), (L - 3.0, L - 1.0)):
+                bd.track([(xe, ye), (xv, ye)], wm, net=net[n])
+                bd.via(xv, ye, net=net[n], size=0.4, drill=0.2,
+                       layers=('F.Cu', 'In2.Cu'))
+                holes.append((xv, ye, antipad))
+                # a return via beside it, off the line
+                bd.via(xv + (-0.8 if xv < L / 2 else 0.8), ye, size=0.4,
+                       drill=0.2)
+            bd.track([(3.0, ye), (x0, y), (x1, y), (L - 3.0, ye)], ws,
+                     layer='In2.Cu', net=net[n])
+    bd.plane('In1.Cu', L, H, holes=holes)
+    bd.write(path, L, H, four=True)
+    return dict(microstrip=wm, stripline=ws, nets=names)
+
+
 RO4003 = (0.508, 3.55, 0.0027, 'RO4003C')
 
 
@@ -1060,7 +1112,7 @@ KINDS = dict(branchline=branchline, wilkinson=wilkinson, steplpf=steplpf,
              shielded=shielded, siw=siw, msvia=msvia, ms2cpw=ms2cpw,
              slotline=slotline, marchand=marchand, bends=bends,
              serpentine=serpentine, crosstalk=crosstalk,
-             crosstalk_guard=crosstalk_guard, bus=si_bus, pcoupled=pcoupled,
+             crosstalk_guard=crosstalk_guard, bus=si_bus, ddr=ddr, pcoupled=pcoupled,
              combline=combline, openloop=openloop, dgs=dgs, ebg=ebg, idc=idc,
              meander=meander, spiral=spiral)
 
