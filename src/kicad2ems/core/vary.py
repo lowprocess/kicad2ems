@@ -134,35 +134,9 @@ def run(s, command='', echo=print):
 
 
 def figures(path, most=4):
-    """A Touchstone file's figures, to set combinations side by side: the worst
-    match (S11's highest, dB) and its dip (S11's lowest, dB, and where, GHz) at
-    each port, and each transmission term's value at the band's centre and its
-    lowest (dB); ports past `most` left out. {} for a file that cannot be
-    read."""
-    import numpy as np
-    from .touchstone import read_touchstone
-    try:
-        f, S = read_touchstone(path)
-    except (OSError, ValueError):
-        return {}
-    db = lambda h: 20 * np.log10(np.maximum(np.abs(h), 1e-15))
-    n, out, mid = min(S.shape[1], most), {}, len(f) // 2
-    for i in range(n):
-        d = db(S[:, i, i])
-        if np.isnan(d).all():
-            continue
-        k = int(np.nanargmin(d))
-        out[f"S{i + 1}{i + 1} max dB"] = round(float(np.nanmax(d)), 3)
-        out[f"S{i + 1}{i + 1} dip dB"] = round(float(d[k]), 3)
-        out[f"S{i + 1}{i + 1} dip GHz"] = round(float(f[k] / 1e9), 4)
-    for i in range(n):
-        for j in range(i):
-            d = db(S[:, i, j])
-            if np.isnan(d).all():
-                continue
-            out[f"S{i + 1}{j + 1} mid dB"] = round(float(d[mid]), 3)
-            out[f"S{i + 1}{j + 1} min dB"] = round(float(np.nanmin(d)), 3)
-    return out
+    """A Touchstone file's figures (core.sparams.figures)."""
+    from .sparams import figures as f
+    return f(path, most)
 
 
 def table(keys, runs):

@@ -507,6 +507,25 @@ def _saw_section(saw):
         "so).</p>" + _table([''] + saw['solvers'], rows))
 
 
+def _compared_section(paths):
+    """The solvers' S-parameters as figures side by side (core.sparams.compared:
+    each port's worst match and its dip, each transmission at the band's centre
+    and its lowest), and the spread where two give one."""
+    from .sparams import compared
+    c = compared(paths)
+    split = lambda n: (n.rsplit(' ', 1) if n.endswith((' dB', ' GHz'))
+                       else (n, ''))
+    rows = [[_e(split(n)[0]), _e(split(n)[1])]
+            + [_f(v, '.3f') for v in c['values'][n]]
+            + [_f(c['spread'][n], '.3f')] for n in c['names']]
+    return ("<p>Figures of each solver's S-parameters, to read their agreement "
+            "at a glance: at each port the worst match (S11's highest) and its "
+            "dip, and each transmission at the band's centre and its lowest; "
+            "the spread is the largest difference between solvers.</p>"
+            + _table(['figure', 'unit', *map(_e, c['labels']), 'spread'], rows,
+                     num=tuple(range(2, 3 + len(c['labels'])))))
+
+
 def _mesh_section(sm, g, st):
     """openEMS's mesh: cells, cell sizes, time step, boundaries, the preview,
     the convergence levels."""
@@ -745,6 +764,10 @@ def build(sm, base):
         section('results', 'S-parameters', content)
     if sm.get('saw') and len(sm['saw']['solvers']) > 1:
         section('saw', 'What each solver saw', _saw_section(sm['saw']))
+    have = {v.get('label', k): v['touchstone'] for k, v in solved.items()
+            if v.get('touchstone') and os.path.isfile(v['touchstone'])}
+    if len(have) > 1:
+        section('compared', 'Solvers compared', _compared_section(have))
     for n in solved:
         section(n, solved[n]['label'], _solver_section(sm, n, base))
     if ant:

@@ -3,7 +3,7 @@ S-parameter post-processing: mixed-mode conversion for differential ports.
 """
 import numpy as np
 
-__all__ = ['mixed_mode', 'fill_reciprocal']
+__all__ = ['mixed_mode', 'fill_reciprocal', 'figures', 'compared']
 
 
 def mixed_mode(S, m):
@@ -44,3 +44,50 @@ def fill_reciprocal(S, excite):
         for i in excite:
             S[:, i, k] = S[:, k, i]
     return missing
+
+
+def figures(path, most=4):
+    """A Touchstone file's figures, to set combinations side by side: the worst
+    match (S11's highest, dB) and its dip (S11's lowest, dB, and where, GHz) at
+    each port, and each transmission term's value at the band's centre and its
+    lowest (dB); ports past `most` left out. {} for a file that cannot be
+    read."""
+    from .touchstone import read_touchstone
+    try:
+        f, S = read_touchstone(path)
+    except (OSError, ValueError):
+        return {}
+    db = lambda h: 20 * np.log10(np.maximum(np.abs(h), 1e-15))
+    n, out, mid = min(S.shape[1], most), {}, len(f) // 2
+    for i in range(n):
+        d = db(S[:, i, i])
+        if np.isnan(d).all():
+            continue
+        k = int(np.nanargmin(d))
+        out[f"S{i + 1}{i + 1} max dB"] = round(float(np.nanmax(d)), 3)
+        out[f"S{i + 1}{i + 1} dip dB"] = round(float(d[k]), 3)
+        out[f"S{i + 1}{i + 1} dip GHz"] = round(float(f[k] / 1e9), 4)
+    for i in range(n):
+        for j in range(i):
+            d = db(S[:, i, j])
+            if np.isnan(d).all():
+                continue
+            out[f"S{i + 1}{j + 1} mid dB"] = round(float(d[mid]), 3)
+            out[f"S{i + 1}{j + 1} min dB"] = round(float(np.nanmin(d)), 3)
+    return out
+
+
+def compared(paths, most=4):
+    """Several Touchstone files' figures side by side: dict(names (the
+    figures, in the first file's order and then the others' own), values
+    {name: [a number or None per file]}, spread {name: the largest difference
+    between the files that give it, or None}) from {label: path}."""
+    got = {k: figures(p, most) for k, p in paths.items()}
+    names = list(dict.fromkeys(n for f in got.values() for n in f))
+    values = {n: [got[k].get(n) for k in paths] for n in names}
+    spread = {}
+    for n, vals in values.items():
+        have = [v for v in vals if v is not None]
+        spread[n] = (max(have) - min(have)) if len(have) > 1 else None
+    return dict(labels=list(paths), names=names, values=values,
+                spread=spread)

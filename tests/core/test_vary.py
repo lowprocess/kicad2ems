@@ -98,3 +98,33 @@ def test_a_files_figures(tmp_path):
     assert fig['S21 mid dB'] == pytest.approx(20 * np.log10(0.99), abs=1e-3)
     assert fig['S21 min dB'] == pytest.approx(20 * np.log10(0.5), abs=1e-3)
     assert V.figures(str(tmp_path / 'none.s2p')) == {}
+
+
+def test_solvers_compared(tmp_path):
+    """core.sparams.compared: several files' figures side by side with their
+    spread; study.compare takes solver engines too, from a run folder's
+    Touchstone files (a dip's level and frequency two figures)."""
+    import json
+    import numpy as np
+    from kicad2ems.core import sparams, study
+    from kicad2ems.core.touchstone import write_touchstone
+    f = np.linspace(1e9, 3e9, 5)
+    for name, a in (('mom25d', 0.9), ('gfdtd', 0.8)):
+        S = np.zeros((5, 2, 2), complex)
+        S[:, 0, 0] = [0.5, 0.1, 0.01, 0.1, 0.5]
+        S[:, 1, 0] = S[:, 0, 1] = a
+        write_touchstone(str(tmp_path / f"b_{name}.s2p"), f, S, 50.0)
+    c = sparams.compared({k: str(tmp_path / f"b_{k}.s2p")
+                          for k in ('mom25d', 'gfdtd')})
+    assert c['labels'] == ['mom25d', 'gfdtd']
+    assert c['spread']['S21 mid dB'] == pytest.approx(
+        20 * np.log10(0.9 / 0.8), abs=1e-3)
+    assert c['spread']['S11 dip dB'] == 0
+    (tmp_path / 'b_run.json').write_text(json.dumps(dict(solved={
+        k: dict(touchstone=f"b_{k}.s2p") for k in ('mom25d', 'gfdtd')})))
+    r = study.compare({'mom25d': str(tmp_path), 'gfdtd': str(tmp_path)})
+    rows = {x['name']: x for x in r['rows']}
+    assert r['engines'] == ['mom25d', 'gfdtd']
+    assert rows['S11 dip at']['unit'] == 'GHz' and rows['S11 dip']['unit'] == 'dB'
+    assert rows['S21 mid']['spread'] == pytest.approx(
+        20 * np.log10(0.9 / 0.8), abs=1e-3)

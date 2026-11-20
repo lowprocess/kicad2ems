@@ -307,11 +307,14 @@ def compare(results):
     own; spread: the largest difference between engines that give it (None with
     fewer than two)."""
     es = engines()
-    names = [n for n in results if n in es and es[n].kind == 'analysis']
+    names = [n for n in results if n in es
+             and es[n].kind in ('analysis', 'solver')]
     got, order, units = {}, [], {}
     for n in names:
         try:
-            figs = es[n].impl.figures(results[n]) or []
+            figs = (es[n].impl.figures(results[n]) or []
+                    if es[n].kind == 'analysis' else
+                    _solver_figures(n, results[n]))
         # (an analysis's own reader)
         except Exception:  # noqa: BLE001
             figs = []
@@ -332,6 +335,26 @@ def compare(results):
             dict(name=name, unit=units[name], values=vals,
                  spread=((max(have) - min(have)) if len(have) > 1 else None)))
     return dict(engines=names, labels=[es[n].label for n in names], rows=rows)
+
+
+def _solver_figures(name, folder):
+    """A solver's figures from a run folder: its Touchstone file's
+    (core.sparams.figures), named 'S11 max' with the unit apart."""
+    import glob
+    from .sparams import figures
+    for fn in glob.glob(os.path.join(folder, '*_run.json')):
+        with open(fn, encoding='utf-8') as fh:
+            solved = json.load(fh).get('solved', {})
+        ts = (solved.get(name) or {}).get('touchstone')
+        if ts:
+            out = []
+            for k, v in figures(os.path.join(folder, ts)).items():
+                label, _, unit = k.rpartition(' ')
+                # (a dip's level and its frequency: two figures)
+                out.append(dict(name=label + (' at' if unit == 'GHz' else ''),
+                                value=v, unit=unit))
+            return out
+    return []
 
 
 def check_lines():

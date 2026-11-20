@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Solvers compared by figures (2026-11-20).** A run with two solvers or more has a *Solvers compared* section in
+  its report: each solver's figures (each port's worst match and its dip, each transmission at the band's centre
+  and its lowest: `core.sparams.figures`, `compared`) and their spread; `study.compare` takes solver engines too.
+  On demo_lowpass it shows at a glance the line model's stop band 14 dB shallower than mom25d's at mid-band.
 - **Parts at an angle (R-E5, 2026-11-20).** A two-pad part whose pads are not in line along x or y had been skipped
   (an open circuit where it stood); its element now runs along the dominant axis, from where the line between its
   pads leaves the first, with a copper strap across to the second pad in the board's copper (every solver has

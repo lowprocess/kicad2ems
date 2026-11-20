@@ -40,7 +40,7 @@ do.
 | `kicad2ems.core.solvers` | `Solver`, `Result`, `Deviation`, `AUTO`, `FEATURES`, `LINES`, `registry()`, `get(name)` (a solver by name or alias), `resolve_lines(s)` |
 | `kicad2ems.core.options` | `Option` (`kind`, `flag`, `pick`, `level`, `required`, `describe()`: its `--describe --json` row); its value parsers `floatlist`, `floats`, `strlist`, `items`, `lines`, `split`; a tool's options from a table (`table`) or an argparse parser (`from_parser`), into a parser (`add_arguments`), and the command line of values (`argv(options, values)`) |
 | `kicad2ems.core.stop` | `check()` between steps raises `Stopped` when the GUI's Stop was pressed; `requested()` |
-| `kicad2ems.core.sparams` | `mixed_mode`, `fill_reciprocal` |
+| `kicad2ems.core.sparams` | `mixed_mode`, `fill_reciprocal`, `figures(path)` (a Touchstone file's figures: each port's worst match and its dip, each transmission at the band's centre and its lowest), `compared({label: path})` (those side by side, with their spread) |
 | `kicad2ems.core.plots` | `plot_antenna`, `plot_pattern`, `plot_convergence`, `preview` (the model and its mesh) |
 | `kicad2ems.core.fields.antenna` | `describe` (an antenna's log lines), `match_summary`, `save`, `read`, `gain_table`, `add_polarisation`, `pattern_gain`, `read_sphere`, `sphere_cuts`, `sphere_gain` (far fields) |
 | `kicad2ems.core.fields.dumps` | `Dump`, `write_info`, `write_npz`, `read_npz`, `G_DUMP` (the field-dump settings group), `parse_dump`, `add_dumps`, `estimate_size_mb`, `write_norm`, `plot_fd_dumps` |

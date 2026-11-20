@@ -30,9 +30,10 @@ config holds a study (`[study]`) and `kicad2ems study` runs it (docs/usage.md#st
 questions, with the engine chosen on each row, and compares two engines' named figures (docs/gui.md#the-study).
 Left:
 
-1. **S-parameters compared per engine in the same way.** Two solvers' S-parameters are overlaid on the Plots page
-   (and scored in the report); the *Engines compared* table is for the analyses' named figures. A solver could
-   give figures too (|S21| at the band's centre, a resonance, a line's delay).
+1. **S-parameters compared per engine, the rest.** The run's report has *Solvers compared* (each solver's figures:
+   each port's worst match and its dip, each transmission at the band's centre and its lowest, with their spread)
+   and `study.compare` takes solvers too (2026-11-20). Left: the window's *Engines compared* table for the
+   S-parameters question (it asks the analyses alone), and a resonance's or a line's delay as figures.
 2. **Engines with different settings for one thing.** pcbqs's rail tool takes `rail`, Elmer's `net`: asked both,
    the same rail is typed twice. A question could say what it needs (the net, the source, the loads) and each
    engine take it from there.
