@@ -15,7 +15,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   dielectric or air solids between two heights. `kicad2ems.core.shapes` holds the drawing (a `kicad2ems-shapes`
   JSON file) and applies it to the board (`shapes` setting): every solver gets the drawn copper and cuts, and
   `board.json` keeps the solids, though no solver meshes them yet. The page also writes the `region` and `ports`
-  settings from the shapes.
+  settings from the shapes. Shapes are selected and edited in the 3D view too: a click picks one, a drag moves
+  it on its level, and Shift + drag stretches or lifts a solid (`core.shapes.pick`: a ray against the triangles).
 - **Decoupling chosen to a target impedance (`pcbqs.pdn --choose-decaps`, `kicad2ems.pcbqs.pdn.decoupling`,
   docs/pcbqs/decoupling.md, 2026-11-27).** The fewest capacitors (`--decap-mode cost`: the least relative cost)
   at a rail's decap sites that keep every load under its target over the band. The sites are its two-pad `C*`

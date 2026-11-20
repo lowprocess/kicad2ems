@@ -10,7 +10,11 @@ to the board).
             Esc drops), Port (a click). Points snap to the grid.
     3D      the same shapes extruded: copper and cuts as slabs on their layer,
             metal, dielectric and air as solids between their two heights,
-            over the board's substrate and copper
+            over the board's substrate and copper. Click a shape to select it
+            (a click on nothing: none), drag it to move it on its level,
+            Shift+drag a solid's top or bottom face to stretch it or its side
+            to lift it; a drag on nothing orbits, Ctrl+drag pans (picking: a
+            ray from the mouse through the camera, against the triangles)
     Shapes  the list in the order they are applied (a cut takes out what is
             drawn before it), the selected one's properties to edit
 
@@ -100,6 +104,10 @@ class DrawTab(QWidget):
         self._undo, self._redo = [], []
         self._items, self._board_items = [], []
         self._gl_items, self._board3d = [], None
+        # the 3D view's shapes: {index: (vertices, faces)} to pick, {index: its
+        # mesh item}; a press there, a drag of a shape there
+        self._meshes3d, self._shape_gl = {}, {}
+        self._press3d_at, self._drag3d = None, None
         self.setFocusPolicy(Qt.StrongFocus)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(4, 4, 4, 4)
@@ -286,7 +294,7 @@ class DrawTab(QWidget):
             self.gl = None
             return QLabel(f"The 3D preview is off: {why}", wordWrap=True,
                           alignment=Qt.AlignCenter, styleSheet='color: gray')
-        view = _view_class(self.gl)()
+        view = _pick_view(_view_class(self.gl), self)()
         view.setBackgroundColor(theme.colors()['bg'])
         view.setCameraPosition(distance=60, elevation=30, azimuth=-60)
         self.zscale = 1.0
@@ -772,26 +780,26 @@ class DrawTab(QWidget):
         for v, f, rgba, opaque in (
                 self._board3d if self.board_on.isChecked() else []):
             self._mesh(v, f, rgba, opaque)
+        self._meshes3d, self._shape_gl = {}, {}
         for i, s in enumerate(self.drawing.shapes):
-            try:
-                m = sh.shape_mesh(s, self.stack)
-            except Exception:  # noqa: BLE001 (a shape shapely cannot fill)
-                m = None
-            if m is None:
-                continue
-            rgb = PORT_COLOUR if s.kind == 'port' else COLOURS[s.material]
-            if i == self.sel:
-                rgb = (SELECTED.red(), SELECTED.green(), SELECTED.blue())
-            a = (0.45 if s.material in ('dielectric', 'air') else 0.55
-                 if s.material == 'metal' and self.see_through.isChecked() else
-                 1.0)
-            self._mesh(*m, (*(c / 255 for c in rgb), a), a == 1.0)
+            m = self._meshes3d[i] = _mesh_of(s, self.stack)
+            if m is not None:
+                self._shape_gl[i] = self._mesh(*m, *self._look(i, s))
         if not self._gl_items:
             grid = gl.GLGridItem()
             grid.setSize(40, 40)
             grid.setSpacing(1, 1)
             view.addItem(grid)
             self._gl_items.append(grid)
+
+    def _look(self, i, s):
+        """(rgba, opaque) of shape i in 3D."""
+        rgb = PORT_COLOUR if s.kind == 'port' else COLOURS[s.material]
+        if i == self.sel:
+            rgb = (SELECTED.red(), SELECTED.green(), SELECTED.blue())
+        a = (0.45 if s.material in ('dielectric', 'air') else 0.55
+             if s.material == 'metal' and self.see_through.isChecked() else 1.0)
+        return (*(c / 255 for c in rgb), a), a == 1.0
 
     def _mesh(self, v, f, rgba, opaque):
         from .volumetab import copper_shader
@@ -803,6 +811,7 @@ class DrawTab(QWidget):
         it.setDepthValue(0 if opaque else 5)
         self.view3d.addItem(it)
         self._gl_items.append(it)
+        return it
 
     def _board_meshes(self):
         """The board's substrate and copper as (vertices, faces, rgba,
@@ -829,6 +838,138 @@ class DrawTab(QWidget):
         except Exception:  # noqa: BLE001 (a board without copper)
             pass
         return out
+
+    # ---- picking and editing in 3D ----
+    def ray3d(self, x, y):
+        """(origin, unit direction) of the ray under pixel (x, y) of the 3D
+        view, model mm."""
+        inv = np.linalg.inv(self._mvp())
+        nx, ny = 2 * x / self.view3d.width() - 1, 1 - 2 * y / self.view3d.height()
+        a, b = (inv @ np.array([nx, ny, z, 1.0]) for z in (-1.0, 1.0))
+        a, b = a[:3] / a[3], b[:3] / b[3]
+        return a, (b - a) / np.linalg.norm(b - a)
+
+    def project3d(self, p):
+        """The 3D view's pixel (x, y) of model point p."""
+        c = self._mvp() @ np.array([*p, 1.0])
+        c = c[:3] / c[3]
+        return ((c[0] + 1) / 2 * self.view3d.width(),
+                (1 - c[1]) / 2 * self.view3d.height())
+
+    def _mvp(self):
+        v = self.view3d
+        vp = (0, 0, max(v.width(), 1), max(v.height(), 1))
+        m = v.projectionMatrix(vp, vp) * v.viewMatrix()
+        return np.array(m.data(), float).reshape(4, 4).T  # (column-major)
+
+    def pick3d(self, x, y):
+        """(shape index, model point) under pixel (x, y) of the 3D view, or
+        (None, None). The board itself is not picked: only drawn shapes."""
+        o, d = self.ray3d(x, y)
+        i, t = sh.pick(self._meshes3d, o, d)
+        return (None, None) if i is None else (i, o + t * d)
+
+    def _press3d(self, ev):
+        """A left press in 3D: on a shape, it is selected and a drag of it
+        starts (True: the view does not orbit); on nothing, the view orbits
+        and a click there (no move) leaves nothing selected."""
+        pos = ev.position()
+        self._press3d_at, self._drag3d = (pos.x(), pos.y()), None
+        if (ev.button() != Qt.LeftButton
+                or ev.modifiers() & Qt.ControlModifier):  # Ctrl: pan
+            return False
+        if self._3d_timer.isActive():  # what is drawn, before it is picked
+            self._3d_timer.stop()
+            self._redraw_3d()
+        i, at = self.pick3d(pos.x(), pos.y())
+        if i is None:
+            return False
+        if i != self.sel:
+            self.select(i)
+        s = self.drawing.shapes[i]
+        face = None
+        if ev.modifiers() & Qt.ShiftModifier and s.solid:
+            lo, hi = sorted((s.z0, s.z1))
+            tol = 0.02 * max(hi - lo, 1e-3)
+            face = ('top' if abs(at[2] - hi) < tol else
+                    'bottom' if abs(at[2] - lo) < tol else 'side')
+        o, d = self.ray3d(pos.x(), pos.y())
+        # a lift moves on the upright plane through the point facing the
+        # camera; a move on the level plane through it
+        n = np.array([d[0], d[1], 0.0])
+        n = n / np.linalg.norm(n) if np.linalg.norm(n) > 1e-6 else None
+        self._drag3d = dict(i=i, at=at, shape=s, face=face, normal=n,
+                            before=self.drawing.to_dict(), moved=False)
+        self.view3d.setCursor(Qt.ClosedHandCursor)
+        self.status.setText(
+            f"3D: {s.label()} - drag to move it" + (
+                '; Shift+drag a solid\'s top or bottom face to stretch it, '
+                'its side to lift it' if s.solid else ''))
+        return True
+
+    def _move3d(self, ev):
+        """A drag of the shape pressed on (True), else a hover (the cursor
+        says what a press would do) or the view's own orbit (False)."""
+        pos = ev.position()
+        st = self._drag3d
+        if st is None:
+            if ev.buttons() == Qt.NoButton:
+                i, _ = self.pick3d(pos.x(), pos.y())
+                self.view3d.setCursor(Qt.OpenHandCursor if i is not None else
+                                      Qt.ArrowCursor)
+            return False
+        o, d = self.ray3d(pos.x(), pos.y())
+        at, g = st['at'], self.snap.value()
+        rnd = (lambda v: round(v / g) * g) if g > 0 else (lambda v: v)
+        if st['face'] is not None:  # lifted or stretched
+            n = st['normal']
+            if n is None:  # looking straight down: the mouse's rows
+                dz = -(pos.y() - self._press3d_at[1]) * self.view3d.pixelSize(
+                    pg.Vector(*at))
+            else:
+                den = d @ n
+                if abs(den) < 1e-9:
+                    return True
+                dz = (o + ((at - o) @ n / den) * d)[2] - at[2]
+            new = st['shape'].lifted(rnd(dz), None if st['face'] == 'side' else
+                                     st['face'])
+        else:  # moved on its level
+            if abs(d[2]) < 1e-9:
+                return True
+            p = o + ((at[2] - o[2]) / d[2]) * d
+            new = st['shape'].moved(rnd(p[0] - at[0]), rnd(p[1] - at[1]))
+        i = st['i']
+        if new.to_dict() != self.drawing.shapes[i].to_dict():
+            self.drawing.shapes[i] = new
+            st['moved'] = True
+            self._refresh(listing=False, quick=True)
+            self._update_shape_3d(i)
+        return True
+
+    def _release3d(self, ev):
+        st, at = self._drag3d, self._press3d_at
+        self._drag3d = self._press3d_at = None
+        if st is not None:
+            self.view3d.setCursor(Qt.OpenHandCursor)
+            if st['moved']:
+                self._commit(st['before'])
+            return
+        # a click on nothing (not an orbit): nothing selected
+        pos = ev.position()
+        if (at is not None and ev.button() == Qt.LeftButton
+                and abs(pos.x() - at[0]) + abs(pos.y() - at[1]) < 4
+                and self.sel is not None):
+            self.select(None)
+
+    def _update_shape_3d(self, i):
+        """Shape i's 3D mesh, again (while it is dragged: the rest stays)."""
+        s = self.drawing.shapes[i]
+        m = self._meshes3d[i] = _mesh_of(s, self.stack)
+        it = self._shape_gl.get(i)
+        if it is None or m is None:
+            return
+        it.setMeshData(meshdata=self.gl.MeshData(
+            vertexes=m[0].astype(np.float32), faces=m[1].astype(np.uint32)))
 
     # ---- files and settings ----
     def save(self, path=None):
@@ -922,6 +1063,41 @@ class DrawTab(QWidget):
                                  taken=taken)
         if self._set_setting('ports', '; '.join(have + specs)):
             self.status.setText(f"ports added: {', '.join(specs)}")
+
+
+def _pick_view(base, tab):
+    """The 3D view class whose left button the page's 3D editing has first
+    (DrawTab._press3d / _move3d / _release3d): what they leave orbits and pans
+    as before. Its keys are the page's (Delete, Esc, a tool's letter, undo)."""
+    class PickView(base):
+        def mousePressEvent(self, ev):
+            super().mousePressEvent(ev)  # (where an orbit starts from)
+            tab._press3d(ev)
+
+        def mouseMoveEvent(self, ev):
+            if not tab._move3d(ev):
+                super().mouseMoveEvent(ev)
+            else:
+                self.mousePos = ev.position()
+
+        def mouseReleaseEvent(self, ev):
+            tab._release3d(ev)
+            super().mouseReleaseEvent(ev)
+
+        def keyPressEvent(self, ev):
+            if ev.key() in (Qt.Key_Left, Qt.Key_Right, Qt.Key_Up,
+                            Qt.Key_Down, Qt.Key_PageUp, Qt.Key_PageDown):
+                super().keyPressEvent(ev)  # the camera's keys
+            else:
+                tab.keyPressEvent(ev)
+    return PickView
+
+
+def _mesh_of(s, stack):
+    try:
+        return sh.shape_mesh(s, stack)
+    except Exception:  # noqa: BLE001 (a shape shapely cannot fill)
+        return None
 
 
 def _rings(g):

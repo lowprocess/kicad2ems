@@ -137,3 +137,27 @@ def test_meshes_are_closed():
                              z1=1.6), st)[0]
     assert solid[:, 2].min() == 0 and solid[:, 2].max() == 1.6
     assert shape_mesh(Shape('port', [[0, 0]]), st) is not None
+
+
+def test_a_ray_picks_the_nearest_shape():
+    from kicad2ems.core.shapes import ray_hit, pick
+    st = stack_of(None)
+    low = shape_mesh(Shape('rect', [[0, 0], [2, 2]], material='metal', z0=0,
+                           z1=1), st)
+    high = shape_mesh(Shape('rect', [[0, 0], [2, 2]], material='metal', z0=3,
+                            z1=4), st)
+    down = ([1, 1, 10], [0, 0, -1])
+    assert ray_hit(*low, *down) == pytest.approx(9)
+    assert pick({'low': low, 'high': high}, *down) == ('high', pytest.approx(6))
+    assert pick({'low': low}, [5, 5, 10], [0, 0, -1]) == (None, None)
+    # the ray's origin inside the solid: its far face
+    assert ray_hit(*low, [1, 1, 0.5], [0, 0, 1]) == pytest.approx(0.5)
+
+
+def test_a_solid_lifted_or_stretched():
+    s = Shape('rect', [[0, 0], [1, 1]], material='metal', z0=1, z1=2)
+    assert (s.lifted(0.5).z0, s.lifted(0.5).z1) == (1.5, 2.5)
+    assert (s.lifted(1, 'top').z0, s.lifted(1, 'top').z1) == (1, 3)
+    # never past the other face
+    b = s.lifted(5, 'bottom')
+    assert b.z0 < b.z1 == 2
