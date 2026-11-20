@@ -76,6 +76,12 @@ autodoc_mock_imports += [
     f'kicad2ems{p}.__main__' for p in ('', '.gui', '.ipc', '.gfdtd', '.dfsynth',
                                        '.emsdev', '.mom25d', '.pcbqs', '.fdtd')
 ]
+# openEMS's own modules, vendored into gfdtd's compat packages: they import
+# `openEMS` and `CSXCAD` by those names, which resolve only with the compat
+# folder on the path (kicad2ems.gfdtd.compat)
+autodoc_mock_imports += [
+    f'kicad2ems.gfdtd.compat.openEMS.{m}' for m in ('utilities', 'sar_utils')
+]
 # these compile their core
 autodoc_mock_imports += [
     f'kicad2ems.{p}.core.build' for p in ('mom25d', 'gfdtd', 'pcbqs')
