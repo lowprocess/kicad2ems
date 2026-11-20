@@ -727,7 +727,8 @@ class Simulation:
                     "non-reciprocal when ports differ")
         n = r.Ne + self.Nv
         from .fast import cap_blas_threads, FastOperator
-        from .policy import memory_plan, device, GPU_MIN_N, BLR_MIN_N
+        from .policy import (memory_plan, device, GPU_MIN_N, BLR_MIN_N,
+                             BLR_CPU_MIN_N)
         cap_blas_threads()
         # mixed above MIXED_MIN_N (policy.memory_plan): the complex64 LU on the
         # GPU (5.7 s a solve against 14.9 s on the via transition, 13.5k
@@ -751,8 +752,10 @@ class Simulation:
             if plan['path'] == 'blr':
                 self.log.note(
                     "memory: the block low-rank solver needs "
-                    f"~{plan['host'] / 1e9:.1f} GB (from {BLR_MIN_N} unknowns "
-                    "where the GPU's hybrid does not hold the matrix), "
+                    f"~{plan['host'] / 1e9:.1f} GB (from "
+                    + (f"{BLR_MIN_N} unknowns where the GPU's hybrid does not "
+                       "hold the matrix" if be is not None else
+                       f"{BLR_CPU_MIN_N} unknowns on the CPU") + "), "
                     f"{avail / 1e9:.1f} GB available")
             else:
                 self.log.note(

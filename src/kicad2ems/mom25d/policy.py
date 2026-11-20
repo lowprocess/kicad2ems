@@ -53,6 +53,12 @@ HYBRID_MAX_N = int(os.environ.get('MOM25D_HYBRID_MAX_N', 25000))
 # antenna_vivaldi (21.9k) without a GPU 202 s against 243 s; in a fifth of the
 # memory or less (1.2 GB, 1.2 GB, 2.4 GB)
 BLR_MIN_N = int(os.environ.get('MOM25D_BLR_MIN_N', 20000))
+# ... and from this many where the CPU factors (no GPU, or none that fits):
+# rf_ebg's mesh at 1e9-8e9 Hz, three solves, 8 P-cores (2026-11-20): 10.5k
+# dense complex64 16.6 s against block low-rank 19.5 s, 11.4k 19.4 / 21.4,
+# 13.3k 26.5 / 25.1, 14.7k 32.9 / 26.7 (S within 4e-7 of each other); a
+# sweep of 8 solves at 15.0k 82 s / 56 s and a peak of 15.8 GB / 8.7 GB
+BLR_CPU_MIN_N = int(os.environ.get('MOM25D_BLR_CPU_MIN_N', 13000))
 # the hybrid's double Z on the GPU too, its products there in double
 # precision (the refinement's: a GMRES iteration's cost), where that leaves
 # room for two LUs: MOM25D_GPU_DENSE=off keeps them on the host
@@ -166,8 +172,9 @@ def memory_plan(n, avail=None, gpu=None, precision='auto', solver='auto',
     on the host for the refinement), 'gpu-lu' (complex64 Z on the host and the
     GPU), 'cpu-mixed' (complex64 LU on the CPU), 'blr' (compressed, no dense
     Z). n_lu: the unknowns the LU factors (fewer with quads). 'auto' takes the
-    block low-rank LU from BLR_MIN_N unknowns where the hybrid does not fit,
-    and wherever the direct solver does not. The GPU's bytes include the
+    block low-rank LU from BLR_MIN_N unknowns where the GPU factors without
+    the hybrid, from BLR_CPU_MIN_N where the CPU factors, and wherever the
+    direct solver does not fit. The GPU's bytes include the
     double Z where choose puts it there too (gpu_dense: the backend's double
     kernels; GPU_DENSE), the host's the via blocks kept for the sweep's
     interpolation (nv via unknowns, interp: on; blocks.Anchors: up to a double
@@ -194,8 +201,9 @@ def memory_plan(n, avail=None, gpu=None, precision='auto', solver='auto',
     fits = host <= 0.8 * avail
     if solver == 'auto':
         # (quad cells: the direct solver's alone)
+        big = BLR_MIN_N if p == 'gpu-lu' else BLR_CPU_MIN_N
         solver = ('blr' if not fits or (p in ('gpu-lu', 'cpu-mixed')
-                                        and n >= BLR_MIN_N and m >= n)
+                                        and n >= big and m >= n)
                   else 'direct')
     if solver == 'blr':
         # the compiled factor: measured 18-30 % of a complex64 matrix at 22-41k

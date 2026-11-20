@@ -108,7 +108,9 @@ def test_gpu_fits_keeps_half_a_gigabyte_or_3_percent():
     # 'auto': block low-rank from BLR_MIN_N where the hybrid does not hold Z
     (dict(n=40000, gpu=GPU), ('mixed', 'blr', 'blr')),
     (dict(n=20000, gpu=GPU), ('mixed', 'hybrid', 'direct')),
-    (dict(n=15000), ('mixed', 'cpu-mixed', 'direct')),
+    # without a GPU, from BLR_CPU_MIN_N
+    (dict(n=policy.BLR_CPU_MIN_N - 1000), ('mixed', 'cpu-mixed', 'direct')),
+    (dict(n=policy.BLR_CPU_MIN_N), ('mixed', 'blr', 'blr')),
     (dict(n=policy.BLR_MIN_N), ('mixed', 'blr', 'blr')),
     (dict(n=40000, avail=8e9, gpu=GPU), ('mixed', 'blr', 'blr')),
     # quads (fewer in the LU): the direct solver's
@@ -119,7 +121,7 @@ def test_memory_plan(kw, want):
     p = memory_plan(n, **dict(dict(avail=30e9), **kw))
     assert (p['precision'], p['path'], p['solver']) == want, p
     # the compiled factor: a fraction of a complex64 matrix
-    assert p['solver'] != 'blr' or p['host'] < 8.0 * n * n
+    assert p['solver'] != 'blr' or p['host'] - policy.SPARE < 8.0 * n * n
     # the LU, and the double Z where choose puts it on the GPU too
     zd = choose(np.inf, n, kw.get('n_lu') or n, avail=30e9, gpu=kw.get('gpu'),
                 precision='mixed', loop_tree='off',

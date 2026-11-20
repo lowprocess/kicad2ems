@@ -290,6 +290,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **mom25d without a GPU: the block low-rank solver from 13k unknowns (2026-11-20).** `policy.BLR_CPU_MIN_N`
+  (`MOM25D_BLR_CPU_MIN_N`) where the CPU factors, in place of the GPU's 20k: rf_ebg's mesh, three solves on 8
+  P-cores, 10.5k dense 16.6 s against 19.5 s compressed, 13.3k 26.5 / 25.1, 14.7k 32.9 / 26.7, S within 4e-7 of
+  each other; a sweep of 8 solves at 15.0k 82 s / 56 s and a peak of 15.8 / 8.7 GB.
 - **mom25d's Vulkan LU: 96 x 96 GEMM tiles on AMD GPUs (2026-11-19).** `gpu_vk.tile` picks each GPU's tile
   (`MOM25D_VK_GT` overrides it): on an RX 7800 XT GT = 6 runs the update GEMM at 11.7 TFLOP/s against GT = 4's 10.9,
   the LU at 14k unknowns 0.935 -> 0.898 s and at 20k 2.44 -> 2.31 s (7k unchanged: its CPU panels set the pace); the
