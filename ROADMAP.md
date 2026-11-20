@@ -61,9 +61,10 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    layers), which a second pass with two layers and their vias could give for the worst victims; a net that
    forks on a layer (its longest path there is the stretch); and the window's view of the matrices (its report
    shows the figures as images).
-3. **The time grid** (R-E16), before items 4 and 5 build on it. The edge response comes from 401 points at
-   fmax/400 steps, linearly interpolated: a 5 % coupler reads 3.3 % at 1 m and 25 ps. Its step from the longest
-   trace's delay, H interpolated with the delay taken out, fmax 2-3 times 1/rise, S11 to DC (for TDR).
+3. **The time grid, the rest** (R-E16). The grid holds the longest trace (`si.time_grid`, 16 samples a ripple:
+   CHANGELOG 2026-11-14), and `coupling` uses it too. Left: S to DC for a step's settled value and TDR (item 5),
+   and whether 1 / rise as fmax (the top 20 % faded) loses an edge's corner on short, fast traces: to measure
+   against a grid to 3 / rise before changing it.
 4. **Drivers and receivers.** A source impedance and a receiver's load in place of `z0` at every end (an
    unterminated receiver doubles what arrives; NEXT reflected at the driver arrives at the far end), and an eye
    for a bit pattern (the edge response is there: superposed).
