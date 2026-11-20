@@ -332,3 +332,29 @@ def test_describe_json(capsys):
     assert (opts['order']['kind'] == 'int' and opts['f0']['kind'] == 'str'
             and opts['out']['flag'] == '--out')
     assert not {'help', 'list', 'describe', 'json', 'version'} & set(opts)
+
+
+@pytest.mark.parametrize('kind,topo', [('bandpass', 'stub'),
+                                       ('lowpass', 'stepped')])
+def test_the_filter_as_a_footprint(tmp_path, kind, topo):
+    """kicad.write's <base>.kicad_mod: the copper as polygons on F.Cu, pads 1
+    and 2 at the ports (the feed's width, half a millimetre in), the ground
+    vias as plated pads 3; the origin at the filter's centre."""
+    from kicad2ems.dfsynth import kicad
+    from kicad2ems.core.importers.kicad import sexpr as sx
+    d = build(Spec(kind, topo, 2e9, 0.4e9, 'chebyshev', 5, 0.1),
+              Substrate.preset('RO4003C-0.508'))
+    kicad.write(d, str(tmp_path / 'f'))
+    t = sx.parse_sexpr((tmp_path / 'f.kicad_mod').read_text())
+    assert t[0] == 'footprint' and t[1] == 'f'
+    pads = sx.items(t, 'pad')
+    assert len(sx.items(t, 'fp_poly')) == len(d.geometry.polys)
+    assert [p[1] for p in pads[:2]] == ['1', '2']
+    assert sum(p[1] == '3' for p in pads) == len(d.geometry.vias)
+    geo = d.geometry
+    (n, x, y, rot), = [q for q in geo.ports if q[0] == 1]
+    at = sx.item(pads[0], 'at')
+    import math
+    assert float(at[1]) == pytest.approx(
+        x + 0.25 * math.cos(math.radians(rot)) - geo.W / 2, abs=1e-3)
+    assert float(at[2]) == pytest.approx(y - geo.H / 2, abs=1e-3)

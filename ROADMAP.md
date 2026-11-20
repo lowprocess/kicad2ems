@@ -391,10 +391,9 @@ Besides the study (The study, item 3), R-E26 and C16:
 ## dfsynth
 
 R-E18, in order:
-1. a `.kicad_mod` to place in one's own board;
-2. the tapped hairpin feed;
-3. combline;
-4. elliptic and cross-coupled designs.
+1. the tapped hairpin feed;
+2. combline;
+3. elliptic and cross-coupled designs.
 
 ## Docs that do not say what the code does
 

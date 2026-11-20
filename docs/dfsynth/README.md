@@ -27,6 +27,7 @@ That writes:
 |---|---|
 | `out/bpf.kicad_pcb` | the layout: KiCad 8 format, 2 layers, opens in KiCad 8 and later |
 | `out/bpf.toml` | a kicad2ems run configuration for it (`kicad2ems out/bpf.toml --solvers mom,lines`) |
+| `out/bpf.kicad_mod` | the filter as a footprint to place in your own board: its copper on F.Cu, pads 1 and 2 at the ports (the feed's width), its ground vias as plated pads 3 (GND), the origin at its centre; it needs a ground plane on the next layer down, at the substrate's height it was designed for (its description says which) |
 | `out/bpf_model.s2p`, `_model.png` | dfsynth's own circuit model of the layout |
 | `out/bpf_design.json` | spec, substrate, every dimension, the layout, the targets and the validation metrics |
 | `out/bpf_em/`, `_validation.png` | with `--validate`: kicad2ems's results, overlaid on the model (and its output, `kicad2ems_output.log`, `kicad2ems_events.jsonl`) |

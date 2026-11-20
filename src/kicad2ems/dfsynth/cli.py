@@ -312,7 +312,8 @@ def main(argv=None):
         f" IL {mm.get('passband_IL_dB', float('nan')):.2f} dB"
     )
     val.plot(design, {'model (dfsynth)': (f, s21, s11)}, base + '_model.png')
-    print(f"wrote {pcb}\nwrote {cfg}\nwrote {base}_model.s2p, {base}_model.png")
+    print(f"wrote {pcb}\nwrote {cfg}\nwrote {base}.kicad_mod (the filter as a "
+          f"footprint)\nwrote {base}_model.s2p, {base}_model.png")
     summary = {'model': mm}
 
     if a.validate:

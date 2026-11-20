@@ -10,6 +10,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **dfsynth writes the filter as a footprint (R-E18, 2026-11-20):** `<out>.kicad_mod` beside the board, to place
+  in one's own: the copper as polygons on F.Cu, pads 1 and 2 at the ports (the feed's width), the ground vias as
+  plated pads 3, the origin at the filter's centre, its substrate in the description.
 - **A variation's figures side by side (2026-11-20).** `--vary` (and `[vary]`) writes `<name>_vary.csv` and ends
   its log with a table, a line a combination and solver: each port's worst match and its dip, each transmission
   term at the band's centre and its lowest (`vary.figures`, also in `<name>_vary.json`).
