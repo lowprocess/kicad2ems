@@ -39,6 +39,7 @@ GROUND_REACH = float(os.environ.get('K2E_SEG_REACH', 1.5))  # mm: a via
 NUDGE = 1e-3      # mm: a cut port's point inside its own piece
 PAD_AREA = 0.5    # mm2: a via model's ground copper off its planes kept up to
                   # this (a ground via's pad), the rest (a pour) left out
+APART_STRIP_B = 3.0  # a stripline layer's groups: this many plane spacings
 END_MARGIN = 0.2  # mm: a via this near beyond its circle to a port: not cut
 RUN = 2.0         # mm: two nets are one layer piece where they run that far
                   # within --apart of each other (coupling.groups' run)
@@ -240,8 +241,42 @@ def _piece(m, raw, keep, ports, outline=None, vias=None):
         keepv = [vias(n, v[0], v[1]) for v, n in zip(m.vias, m.via_nets)]
         b.vias = [v for v, k in zip(m.vias, keepv) if k]
         b.via_nets = [n for n, k in zip(m.via_nets, keepv) if k]
-    b.ports = [b._port(raw, name, fp) for name, fp in ports]
+    b.ports = [_port_closing(b, raw, name, fp) for name, fp in ports]
     return b
+
+
+def _port_closing(b, raw, name, fp):
+    """Board._port on a piece; where it finds no reference copper (a port on a
+    through-hole pin, whose own ring had filled the plane's antipad on the full
+    board), the hole under it is closed with the nearest plane's copper, as if
+    the plane ran on under it, and the port made again."""
+    from shapely.geometry import Point
+    try:
+        return b._port(raw, name, fp)
+    except ValueError as e:
+        if 'no reference copper' not in str(e):
+            raise
+    lay = fp['props'].get('port.layer', 'F.Cu')
+    z = b.cu_z[lay]
+    at = Point(fp['x'], -fp['y'])
+    best = None
+    for l in b.cu_order:
+        if l == lay:
+            continue
+        for g, n in zip(b.copper.get(l, []), b.copper_nets.get(l, [])):
+            if n in b.ground_nets and g.area > 1.0:
+                key = (abs(b.cu_z[l] - z), g.distance(at))
+                if best is None or key < best[0]:
+                    best = (key, l, n, g)
+    if best is None or best[0][1] > 3.0:
+        raise ValueError(f"{name}: no reference plane near the port")
+    _, l, n, g = best
+    disc = at.buffer(g.distance(at) + 0.1)
+    b.copper[l] = list(b.copper[l]) + [disc]
+    b.copper_nets[l] = list(b.copper_nets[l]) + [n]
+    b.notes.append(f"{name}: the hole under it on {l} closed (a through-hole "
+                   "pin's)")
+    return b._port(raw, name, fp)
 
 
 def _to_dict(b, piece=None):
@@ -347,12 +382,34 @@ def pieces(m, raw, kb, nets, apart_h=None):
         or any(p.layer == l for p in m.ports)]
     ext = {p.name: p for p in m.ports}
     from .coupling import APART_H, groups as near_groups
+    half = 0.5 * m.outline.area
+    plane_layers = [l for l in m.cu_order if sum(
+        q.area for q, n in zip(m.copper.get(l, []), m.copper_nets.get(l, []))
+        if n in m.ground_nets) >= half]
+
+    def refs_of(lay):
+        """The planes next to a signal layer: the nearest below, above."""
+        z = m.cu_z[lay]
+        below = [l for l in plane_layers if m.cu_z[l] < z - 1e-9]
+        above = [l for l in plane_layers if m.cu_z[l] > z + 1e-9]
+        return ({max(below, key=lambda l: m.cu_z[l])} if below else set()) | (
+            {min(above, key=lambda l: m.cu_z[l])} if above else set())
     for lay in sig_layers:
         on = sorted({n for p, n in zip(m.copper.get(lay, []),
                                        m.copper_nets.get(lay, []))
                      if n in signal})
         h = _height(m, lay)
-        apart = APART_H * h if apart_h is None else apart_h * h
+        refs = sorted(refs_of(lay), key=lambda l: m.cu_z[l])
+        if apart_h is not None:
+            apart = apart_h * h
+        elif len(refs) == 2:
+            # stripline: its crosstalk falls as exp(-pi s / b), b the planes'
+            # spacing (under 1e-4 at 3 b); microstrip's as 1 / (s/h)^2 (20
+            # heights). At 20 heights a Thor carrier's In7 bus was one piece
+            # of 54 nets, 28k unknowns; at 3 b its largest is 20
+            apart = APART_STRIP_B * (m.cu_z[refs[1]] - m.cu_z[refs[0]])
+        else:
+            apart = APART_H * h
         grps = (near_groups(kb, lay, on, apart, RUN)
                 if len(on) > 1 and apart > 0 else [on])
         for gi, gnets in enumerate(grps):
@@ -367,12 +424,22 @@ def pieces(m, raw, kb, nets, apart_h=None):
                and (p.net not in clip
                     or not clip[p.net].contains(_pt(*p.c[:2])))]
 
-            def keep(l, n, p, lay=lay, gnets=gnets):
+            def keep(l, n, p, lay=lay, gnets=gnets, refs=refs_of(lay),
+                     done=set()):
                 if l == lay:
                     if n not in gnets:
                         return None
                     return p.difference(clip[n]) if n in clip else p
-                return p if n in m.ground_nets else None
+                # the planes next to the layer, each a whole sheet (the ideal
+                # planes the piece is solved over), the rest of the board left
+                # out (beyond them). The planes as imported: a split or
+                # perforated one is not 'solid' to mom25d, which then meshed
+                # every plane above a stripline (a Thor carrier's In7 bus:
+                # 625,819 unknowns)
+                if l in refs and n in m.ground_nets and l not in done:
+                    done.add(l)
+                    return m.outline
+                return None
             if not fps and not ports:
                 continue  # slivers of a via's ring: nothing to join
             b = _piece(m, raw, keep, fps + ports, vias=lambda n, x, y: False)

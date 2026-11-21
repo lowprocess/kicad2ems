@@ -282,6 +282,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **segment on a 10-layer board (2026-11-21, the Jetson Thor carrier).** (1) A layer piece kept every layer's ground
+  copper: a split or perforated plane is not solid to mom25d, which then meshed every plane above a stripline
+  (the carrier's In7 bus: 625,819 unknowns); a piece keeps the planes next to its layer alone, each a whole
+  sheet (28,083). (2) A stripline layer's nets are grouped at 3 plane spacings (its crosstalk falls as
+  exp(-pi s / b)), not microstrip's 20 heights (In7's bus one group of 54 nets; now its largest is 20). (3) A port
+  on a through-hole pin found no plane under it in its piece (the pin's ring had filled the antipad): the hole
+  under it is closed with the plane's copper.
 - **segment's net ends and cuts (2026-11-21).** (1) A port went on every pad a net's stretch ended on, so an ESD
   diode's stub was a 50 ohm load (USB's D701, D101), and an end on a short piece of track apart from the net's
   longest on its layer was missed (USB-C's D_N at the module): the two pads a net's own tracks and vias reach
