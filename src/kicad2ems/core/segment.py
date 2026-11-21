@@ -1276,6 +1276,10 @@ def run(a, echo=print):
             cp = plot_couplings(os.path.join(out, RESULT), os.path.join(
                 out, f"{name}_couplings.png"), raw)
             echo(f"segment: the worst couplings -> {cp}")
+            pp = plot_coupling_profiles(os.path.join(out, RESULT),
+                                        os.path.join(out, f"{name}_coupling"
+                                                     "_profiles.png"), raw)
+            echo(f"segment: where along them -> {pp}")
         except Exception as e:  # a figure never fails the run  # noqa: BLE001
             echo(f"segment: no overlay ({type(e).__name__}: {e})")
     echo(f"segment: {len(ext)} ports ({', '.join(ext)}) -> {ts} "
@@ -1776,6 +1780,259 @@ def plot_couplings(result, path, kb=None, top=12):
                 transform=lx.transAxes)
         y -= 0.075
     fig.savefig(path, dpi=110)
+    return path
+
+
+def _xs_of(kb, lay):
+    """A layer's cross-section for coupling_profile: ('microstrip', h mm, er)
+    over the next copper layer for an outer one, ('stripline', (h1, h2), er)
+    between its two neighbours for an inner one (signal layers between
+    planes); er the dielectrics' mean by thickness."""
+    st = [x for x in kb.stack_items if x['kind'] in ('copper', 'diel')]
+    cu = [i for i, x in enumerate(st) if x['kind'] == 'copper']
+    i = next(k for k in cu if st[k]['name'] == lay)
+    j = cu.index(i)
+
+    def gap(a, b):
+        ds = [x for x in st[min(a, b) + 1:max(a, b)] if x['kind'] == 'diel']
+        t = sum(x['t'] for x in ds) * 1e3
+        er = sum(x['t'] * x['er'] for x in ds) * 1e3 / t if t else 4.0
+        return t, er
+    if j == 0 or j == len(cu) - 1:
+        h, er = gap(i, cu[1] if j == 0 else cu[-2])
+        return 'microstrip', h, er
+    (h1, e1), (h2, e2) = gap(i, cu[j - 1]), gap(i, cu[j + 1])
+    return 'stripline', (h1, h2), (h1 * e1 + h2 * e2) / (h1 + h2)
+
+
+def coupling_profile(kb, victim_nets, aggressor_nets, start, step=0.1,
+                     reach=3.0):
+    """Where along a victim its coupling to an aggressor is: samples every
+    `step` mm of the victim's tracks with their distance along its route from
+    `start` ((layer, x, y), KiCad mm; through its vias and series parts), the
+    gap to the aggressor's nearest copper on that layer, and the local
+    backward-coupling coefficient Kb (what NEXT builds up from: (Cm/C +
+    Lm/L) / 4 of the two lines' cross-section at that gap, the line model's
+    field solve). dict(dist, kb, gap, layer, xy) (numpy arrays)."""
+    import heapq
+    from shapely.geometry import LineString, Point
+    from shapely.strtree import STRtree
+    from .lines.topology import _group_c
+    vt = [t for t in kb.tracks if t['net'] in victim_nets
+          and len(t['pts']) > 1]
+    at = [t for t in kb.tracks if t['net'] in aggressor_nets
+          and len(t['pts']) > 1]
+    # the victim's route as a graph: track ends, joined through its vias and
+    # series parts
+    key = lambda l, x, y: (l, round(float(x), 3), round(float(y), 3))
+    adj = {}
+
+    def link(a, b, w):
+        adj.setdefault(a, []).append((b, w))
+        adj.setdefault(b, []).append((a, w))
+    segs = []
+    for t in vt:
+        P = np.asarray(t['pts'], float)
+        for a, b in zip(P[:-1], P[1:]):
+            ka, kb_ = key(t['layer'], *a), key(t['layer'], *b)
+            L = float(np.hypot(*(b - a)))
+            link(ka, kb_, L)
+            segs.append((t, a, b, ka, kb_, L))
+    nodes = list(adj)
+    pts = np.array([[n[1], n[2]] for n in nodes]) if nodes else np.zeros((0, 2))
+    near = lambda x, y, r: [nodes[i] for i in np.flatnonzero(
+        np.hypot(pts[:, 0] - x, pts[:, 1] - y) <= r)]
+    for v in kb.vias:
+        if v.get('net') in victim_nets:
+            ns = near(v['x'], v['y'], 0.3)
+            for a in ns:
+                for b in ns:
+                    if a[0] != b[0]:
+                        link(a, b, 0.0)
+    for fp in kb.footprints:
+        pads = [pd for pd in fp.get('pads', []) if pd.get('net') in
+                victim_nets]
+        if len(fp.get('pads', [])) == 2 and len(pads) == 2:
+            ends = [min(near(*pd['xy'], 1.0) or [None], key=lambda n: (
+                n is None, 0 if n is None else math.hypot(
+                    n[1] - pd['xy'][0], n[2] - pd['xy'][1]))) for pd in pads]
+            if None not in ends:
+                link(ends[0], ends[1], float(np.hypot(*np.subtract(
+                    pads[0]['xy'], pads[1]['xy']))))
+    dist = {}
+    if nodes:
+        # the track end nearest the start on any layer (a lane leaving its
+        # connector's pad through a via has none on the pad's layer there:
+        # its far end had been taken)
+        s0 = min(nodes, key=lambda n: (round(math.hypot(
+            n[1] - start[1], n[2] - start[2]), 2), n[0] != start[0]))
+        q = [(0.0, s0)]
+        while q:
+            d, n = heapq.heappop(q)
+            if n in dist:
+                continue
+            dist[n] = d
+            for m_, w in adj.get(n, []):
+                if m_ not in dist:
+                    heapq.heappush(q, (d + w, m_))
+    by_lay = {}
+    for t in at:
+        by_lay.setdefault(t['layer'], []).append(t)
+    trees = {l: (STRtree([LineString(t['pts']) for t in ts]), ts)
+             for l, ts in by_lay.items()}
+    cache, out = {}, dict(dist=[], kb=[], gap=[], layer=[], xy=[])
+    for t, a, b, ka, kb_, L in segs:
+        if ka not in dist and kb_ not in dist:
+            continue
+        da, db_ = dist.get(ka, np.inf), dist.get(kb_, np.inf)
+        tree = trees.get(t['layer'])
+        for u in np.arange(0.5 * step, max(L, 1e-9), step) / max(L, 1e-9):
+            x = a + (b - a) * u
+            d = min(da + u * L, db_ + (1 - u) * L)
+            k, g = 0.0, np.inf
+            if tree is not None:
+                i = tree[0].nearest(Point(*x))
+                ta = tree[1][i]
+                g = (LineString(ta['pts']).distance(Point(*x))
+                     - 0.5 * (ta['width'] + t['width']))
+                if 0 < g < reach:
+                    xs, h, er = _xs_of(kb, t['layer'])
+                    ck = (t['layer'], round(t['width'], 3),
+                          round(ta['width'], 3), round(g, 2))
+                    if ck not in cache:
+                        C, Ca = _group_c(xs, (round(t['width'], 3),
+                                              round(ta['width'], 3)),
+                                         (round(g, 2),), h, er)
+                        Lm = np.linalg.inv(Ca)
+                        cache[ck] = 0.25 * (abs(C[0, 1]) / C[0, 0]
+                                            + abs(Lm[0, 1]) / Lm[0, 0])
+                    k = cache[ck]
+            out['dist'].append(d)
+            out['kb'].append(k)
+            out['gap'].append(g)
+            out['layer'].append(t['layer'])
+            out['xy'].append(x)
+    o = np.argsort(out['dist'])
+    return {k: np.asarray(v)[o] for k, v in out.items()}
+
+
+def plot_coupling_profiles(result, path, kb=None, top=4):
+    """The `top` worst-coupled channel pairs (plot_couplings's ranking), each
+    as a profile along its victim: the local backward-coupling coefficient Kb
+    (%) against the distance from the victim's near end, the layer it is on
+    shaded, with a map of where it peaks (the victim coloured by Kb, the
+    aggressor grey) and the full-wave NEXT and FEXT for the pair."""
+    import json as _json
+    import collections
+    import matplotlib
+    from matplotlib.figure import Figure
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.collections import LineCollection
+    from .importers.kicad import KiCadBoard
+    from .coupling import channels
+    res = _json.load(open(result, encoding='utf-8'))
+    rep = res['report']
+    kb = kb or KiCadBoard(res['board'])
+    mem = {}
+    for x in res['port_nets']:
+        mem.setdefault(x['net'], set()).update(x.get('nets') or [x['net']])
+    legs = {c['name']: c['legs'] for c in channels(list(mem), True)}
+    refs = collections.Counter(x['ref'] for x in res['port_nets'])
+    best = {}
+    cand = list(rep.get('pairs', [])) + [
+        dict(aggressor=w['aggressor'], victim=v['victim'],
+             next_pct=w['next_pct'], fext_pct=w['fext_pct'])
+        for v in rep.get('victims', []) for w in v.get('worst', [])]
+    for q in cand:
+        k_ = tuple(sorted((q['aggressor'], q['victim'])))
+        v = max(q['next_pct'], q['fext_pct'])
+        if k_ not in best or v > best[k_][0]:
+            best[k_] = (v, q)
+    ranked = [q for _, q in sorted(best.values(), key=lambda x: -x[0])][:top]
+    fig = Figure(figsize=(16, 4.2 * len(ranked)))
+    FigureCanvasAgg(fig)
+    gs = fig.add_gridspec(len(ranked), 2, width_ratios=[1.0, 1.9],
+                          hspace=0.45, wspace=0.12)
+    lay_col = {}
+    cm = matplotlib.colormaps['magma_r']
+    for r, q in enumerate(ranked):
+        vleg = legs.get(q['victim'], [q['victim']])[0]
+        vnets = mem.get(vleg, {vleg})
+        anets = {n for leg in legs.get(q['aggressor'], [q['aggressor']])
+                 for n in mem.get(leg, {leg})}
+        ends = [x for x in res['port_nets'] if x['net'] == vleg]
+        nearx = max(ends, key=lambda x: refs[x['ref']]) if ends else None
+        fp = next((f for f in kb.footprints if nearx and f['ref'] ==
+                   nearx['ref']), None)
+        pad = next((p for p in (fp or {}).get('pads', [])
+                    if str(p['name']) == str(nearx['pad'])), None) \
+            if nearx else None
+        start = ((nearx['layer'], *pad['xy']) if pad is not None
+                 else ('F.Cu', 0.0, 0.0))
+        pr = coupling_profile(kb, vnets, anets, start)
+        ax = fig.add_subplot(gs[r, 1])
+        k = 100 * pr['kb']
+        top_k = max(k.max() if len(k) else 0, 1e-6)
+        # the layer under each stretch, shaded
+        if len(pr['dist']):
+            edges = np.r_[0, np.flatnonzero(pr['layer'][1:] !=
+                                            pr['layer'][:-1]) + 1,
+                          len(pr['layer'])]
+            for a_, b_ in zip(edges[:-1], edges[1:]):
+                lay = pr['layer'][a_]
+                c = lay_col.setdefault(lay, matplotlib.colormaps['Pastel1'](
+                    len(lay_col) % 9))
+                ax.axvspan(pr['dist'][a_], pr['dist'][b_ - 1], color=c,
+                           alpha=0.6, lw=0)
+            ax.fill_between(pr['dist'], 0, k, color='#7a1f5c', alpha=0.85,
+                            step='mid', lw=0)
+        ax.set_xlim(0, pr['dist'].max() if len(pr['dist']) else 1)
+        ax.set_ylim(0, 1.15 * top_k)
+        ax.set_ylabel('local backward coupling Kb (%)')
+        ax.set_xlabel(f"distance along {vleg.split('/')[-1]} from its near "
+                      f"end ({nearx['ref'] if nearx else '?'}), mm")
+        ax.set_title(f"{r + 1}. {q['aggressor'].split('/')[-1]} -> "
+                     f"{q['victim'].split('/')[-1]}: full-wave NEXT "
+                     f"{q['next_pct']:.2f} %, FEXT {q['fext_pct']:.2f} % "
+                     f"({rep['rise_ps']:g} ps edge)", fontsize=10)
+        hand = [matplotlib.patches.Patch(color=c, alpha=0.6, label=l)
+                for l, c in lay_col.items()
+                if l in set(pr['layer'].tolist())]
+        ax.legend(handles=hand, fontsize=8, loc='upper right')
+        # the map: the victim coloured by Kb, round where it peaks
+        mx = fig.add_subplot(gs[r, 0])
+        # round the peak: its stretch above a quarter of it, within 15 mm
+        if len(k):
+            c0 = pr['xy'][int(np.argmax(k))]
+            hot = pr['xy'][(k >= 0.25 * top_k) & (np.hypot(
+                *(pr['xy'] - c0).T) < 7.5)]
+            span = float(np.clip(1.4 * np.ptp(hot, 0).max(), 4.0, 15.0))
+        else:
+            c0, span = np.zeros(2), 4.0
+        for t in kb.tracks:
+            if t['net'] in anets:
+                xy = np.asarray(t['pts'], float)
+                mx.plot(xy[:, 0], xy[:, 1], color='0.6', lw=1.5)
+        if len(k) > 1:
+            seg = np.stack([pr['xy'][:-1], pr['xy'][1:]], 1)
+            ok = np.hypot(*(seg[:, 1] - seg[:, 0]).T) < 0.3
+            lc = LineCollection(seg[ok], cmap=cm, norm=matplotlib.colors
+                                .Normalize(0, top_k), lw=3)
+            lc.set_array(k[:-1][ok])
+            mx.add_collection(lc)
+            fig.colorbar(lc, ax=mx, orientation='horizontal', fraction=0.05,
+                         pad=0.12, label='local Kb (%)')
+        mx.set_xlim(c0[0] - span / 2, c0[0] + span / 2)
+        mx.set_ylim(c0[1] + span / 2, c0[1] - span / 2)
+        mx.set_aspect('equal')
+        mx.set_title(f"where it peaks (aggressor grey), {span:.0f} mm",
+                     fontsize=9)
+    fig.suptitle("Where along each victim its crosstalk comes from: the local "
+                 "backward-coupling coefficient Kb at the gap to the aggressor "
+                 "(NEXT builds to Kb over a coupled stretch longer than half "
+                 "the edge, ~7 mm at 100 ps; shorter stretches give less)",
+                 fontsize=10, y=1.0)
+    fig.savefig(path, dpi=100, bbox_inches='tight')
     return path
 
 

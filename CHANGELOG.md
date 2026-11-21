@@ -10,6 +10,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **segment: where along a victim its crosstalk comes from (2026-11-21).** `<name>_coupling_profiles.png`
+  (`coupling_profile`, `plot_coupling_profiles`): for the 4 worst pairs, the local backward-coupling coefficient
+  Kb (the two lines' cross-section at the gap to the aggressor's nearest copper, the line model's field solve)
+  against the distance along the victim's route from its near end (through its vias and series parts), the
+  layer shaded, with a map of where it peaks and the pair's full-wave NEXT/FEXT. On the Thor the worst pair's
+  coupling is the last 5 mm at the USB-C connector, not its 160 mm on In7.
 - **segment: the worst couplings on the whole board (2026-11-21).** `<name>_couplings.png` (`plot_couplings`): the
   12 strongest channel pairs (both directions merged, by the larger of NEXT and FEXT) in colour over the faint
   high-speed routing, the stretch where each pair runs closest marked and numbered, with its NEXT, FEXT, gap and
