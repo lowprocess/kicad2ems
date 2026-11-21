@@ -88,7 +88,12 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    through via on PEC planes in 983 unknowns against 6,597 (S21 within 0.06 dB, the static two-plane
    capacitance within 0.8 % of meshed planes); about half the unknowns on the CM5's via models (their outer
    layers stay meshed). Left there: the RF part above 5 GHz, power planes, and a pair's shared or oval antipads
-   (a via through a slot opening, 1-2 weeks). Measured and set aside: edge cells only near the signal
+   (a via through a slot opening, 1-2 weeks). **Tried on the CM5's via1 (2026-11-21): no plane qualifies**, so
+   it meshes them all as before (6,301 unknowns): In1.Cu and In4.Cu hold each pair's two vias in one antipad, and
+   In2.Cu / In3.Cu are split planes (GND and +5V: 3 and 10 pieces in the box). On a real board's high-speed vias
+   the quick version does not apply; it needs the via-through-an-opening work and split planes. The
+   physics-based via model covers these vias now (a shared antipad and split planes are only capacitances and
+   cavities to it). Measured and set aside: edge cells only near the signal
    copper (the via models' plane edges: 10 % fewer unknowns on the fine mesh, 1 % on the coarse), and an
    aggressor's copper fine with its victims coarse (rf_coupler: between the two meshes in unknowns and in S31,
    which all three give within 0.2 dB of gfdtd; and a run per aggressor). **With `--layer-solver lines`** its layer pieces take 2 min and the via models are the
