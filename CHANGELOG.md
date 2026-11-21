@@ -492,6 +492,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **segment: series parts as joints, microstrip groups capped (2026-11-21).** A series part (an AC-coupling
+  capacitor, a resistor) is a joint between pieces: a port on each pad, joined through its own series R, L, C
+  (`series_block`), the part out of the meshes; its nets are no longer forced into one piece (a part with a pad in
+  a via's circle stays in the mesh, its nets together). Microstrip groups past 24 nets are grouped closer too,
+  down to 10 heights. The Thor carrier's largest F.Cu piece: 17k unknowns and 237 ports (90 nets chained by
+  breakouts across the board, 62 min) to 11.2k and 166.
 - **An analysis's panel opens on its few settings (2026-11-20).** Options of level `basic` are a first section,
   open, as the solvers' form has them; the rest stay in their groups, closed. pcbqs names its tools': the rail's
   rail, ground, voltage and loads; the near field's converter, input net, ground, frequency and current; the

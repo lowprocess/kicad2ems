@@ -46,6 +46,7 @@ APART_STRIP_B = 3.0  # a stripline layer's groups: this many plane spacings
 # coupled at -45 dB at most, 0.45-0.6 mm at -38
 GROUP_MAX = int(os.environ.get('K2E_SEG_GROUP_MAX', 24))
 APART_FLOOR_B = 2.0
+APART_FLOOR_H = 10.0  # ... and a microstrip layer's, in heights
 END_MARGIN = 0.2  # mm: a via this near beyond its circle to a port: not cut
 RUN = 2.0         # mm: two nets are one layer piece where they run that far
                   # within --apart of each other (coupling.groups' run)
@@ -317,19 +318,17 @@ def _piece(m, raw, keep, ports, outline=None, vias=None):
 STITCH_REACH = float(os.environ.get('K2E_SEG_STITCH', 1.0))
 
 
-def _with_chains(grps, chain):
-    """Groups that share a chain (chains: nets joined by series parts)
-    merged, in their first's place."""
-    out = []
-    for g in grps:
-        g = list(g)
-        keys = {c for n in g for c in chain.get(n, [n])}
-        hit = [i for i, h in enumerate(out)
-               if keys & {c for n in h for c in chain.get(n, [n])}]
-        for i in reversed(hit):
-            g = out.pop(i) + g
-        out.insert(hit[0] if hit else len(out), g)
-    return out
+def _together(grps, pairs):
+    """Groups merged where a pair of nets (a part left in the mesh) would be
+    split between two."""
+    grps = [list(g) for g in grps]
+    for a, b in pairs:
+        ia = next((i for i, g in enumerate(grps) if a in g), None)
+        ib = next((i for i, g in enumerate(grps) if b in g), None)
+        if ia is not None and ib is not None and ia != ib:
+            grps[min(ia, ib)] += grps[max(ia, ib)]
+            del grps[max(ia, ib)]
+    return grps
 
 
 def _capped(kb, lay, grps, apart, floor, echo=print):
@@ -489,7 +488,6 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
     from shapely.ops import unary_union
     from shapely.affinity import scale
     signal = set(nets) - set(m.ground_nets)
-    chain = chains(kb, sorted(signal))
     sref = {ref for ref, _, _ in series_links(kb, signal)}
     keep_out = [(float(pd['xy'][0]), -float(pd['xy'][1]),
                  0.5 * max(pd['geom'].bounds[2] - pd['geom'].bounds[0],
@@ -513,6 +511,37 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
             c['group'] = gi
             c['k'] = len(allcuts) + 1
             allcuts.append(c)
+    # each series part a joint: a port on each of its pads (in whichever
+    # pieces their nets are), joined through the part's own series R L C;
+    # the part out of the pieces' meshes. (Its nets had been put in one piece:
+    # a Thor carrier's F.Cu, where the AC-coupling capacitors sit, became one
+    # piece of 222 ports, 62 min)
+    k = len(allcuts)
+    valued = {q.ref for q in m.parts}
+    stay = []  # (net, net) of the parts left in the mesh: one group each
+    for fp in kb.footprints:
+        if fp['ref'] not in sref or fp['ref'] not in valued:
+            continue
+        pads = [pd for pd in fp['pads'] if pd.get('net') in signal]
+        lay = 'B.Cu' if fp.get('side') == 'B' else 'F.Cu'
+        if len(pads) != 2 or any(clip.get(pd['net']) is not None and clip[
+                pd['net']].contains(_pt(pd['xy'][0], -pd['xy'][1]))
+                for pd in pads):
+            # a pad in a via's circle: the part stays in the mesh, its two
+            # nets in one piece
+            if len(pads) == 2:
+                stay.append((pads[0]['net'], pads[1]['net']))
+            continue
+        k += 1
+        a, b = (np.asarray(pd['xy'], float) for pd in pads)
+        for pd, me, other, tag in ((pads[0], a, b, 1000), (pads[1], b, a,
+                                                           20000)):
+            d = (me - other) / (np.linalg.norm(me - other) or 1.0)
+            allcuts.append(dict(k=k, layer=lay, net=pd['net'],
+                                at=(float(me[0]), float(me[1])),
+                                out=(float(d[0]), float(d[1])), nudge=0.0,
+                                part=fp['ref'], port=f"P{tag + k}"))
+    joined = {c['part'] for c in allcuts if c.get('part')}
     out = []
     # the layers: every layer with signal copper
     # (outside the circles: a via's ring on a plane layer is the via's)
@@ -554,18 +583,21 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
             apart = APART_H * h
         grps = (near_groups(kb, lay, on, apart, RUN)
                 if len(on) > 1 and apart > 0 else [on])
-        if apart_h is None and len(refs) == 2:
+        if apart_h is None:
+            # (microstrip as well: the Thor's F.Cu breakouts within 20
+            # heights of each other chained 90 nets across the board, 237
+            # ports, 62 min)
             grps = _capped(kb, lay, grps, apart, APART_FLOOR_B * (
-                m.cu_z[refs[1]] - m.cu_z[refs[0]]), echo)
-        # nets a series part joins in one piece (the part between them)
-        grps = _with_chains(grps, chain)
+                m.cu_z[refs[1]] - m.cu_z[refs[0]]) if len(refs) == 2
+                else APART_FLOOR_H * h, echo)
+        grps = _together(grps, stay)
         for gi, gnets in enumerate(grps):
             gnets = set(gnets)
             mine = [c for c in allcuts if c['layer'] == lay
                     and c['net'] in gnets]
-            ports = [(f"P{1000 + c['k']}", _fp(f"cutL{c['k']}", c['at'],
-                                                c['out'], lay,
-                                                c.get('nudge', NUDGE)))
+            ports = [(c.get('port', f"P{1000 + c['k']}"),
+                      _fp(f"cutL{c['k']}", c['at'], c['out'], lay,
+                          c.get('nudge', NUDGE)))
                      for c in mine]
             fps = [(p.name, _port_fp(p)) for p in ext.values()
                if p.layer == lay and getattr(p, 'net', None) in gnets
@@ -592,14 +624,16 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
                 continue  # slivers of a via's ring: nothing to join
             b = _piece(m, raw, keep, fps + ports,
                        vias=_stitching(m, lay, gnets, refs))
+            b.parts = [q for q in b.parts if q.ref not in joined]
             name = _safe(lay) + (f"_g{gi + 1}" if len(grps) > 1 else '')
             out.append(dict(kind='layer', name=name, layer=lay, board=b,
-                            links=[(f"P{1000 + c['k']}", c['k'])
+                            links=[(c.get('port', f"P{1000 + c['k']}"),
+                                    c['k'])
                                    for c in mine],
                             external=[n for n, _ in fps],
                             nets=sorted(gnets), clip=clip))
     for gi, g in enumerate(groups):
-        mine = [c for c in allcuts if c['group'] == gi]
+        mine = [c for c in allcuts if c.get('group') == gi]
         gnets = {v['net'] for v in g['vias']}
         circle = g['circle']
         x0, y0, x1, y1 = circle.buffer(GROUND_REACH).bounds
@@ -691,6 +725,23 @@ def calibration_pieces(m, raw, layer, w, net):
                         f"{'whole' if length == L else 'half'}",
                         layer=layer, board=b, links=[], external=[]))
     return out
+
+
+def series_block(f, part, z0=50.0):
+    """A series part's S (nf, 2, 2) between two z0 ports: its R, L and C in
+    series (a 0 ohm link: a through)."""
+    w = 2 * np.pi * np.asarray(f, float)
+    Z = np.zeros(len(w), complex)
+    if part.R:
+        Z += part.R
+    if part.L:
+        Z += 1j * w * part.L
+    if part.C:
+        Z += 1 / (1j * w * part.C)
+    S = np.empty((len(w), 2, 2), complex)
+    S[:, 0, 0] = S[:, 1, 1] = Z / (Z + 2 * z0)
+    S[:, 0, 1] = S[:, 1, 0] = 2 * z0 / (Z + 2 * z0)
+    return S
 
 
 def unrouted(parts, allcuts, port_nets):
@@ -1017,13 +1068,19 @@ def run(a, echo=print):
         cal[key] = junction(got[0][0], got[0][1], got[1][0], got[1][1])
         echo(f"calibration: {lay}, {w:.3f} mm wide: a cut's correction "
              f"|S11| up to {np.abs(cal[key][:, 0, 0]).max():.3f}")
+    part_of = {c['k']: c['part'] for c in allcuts if c.get('part')}
+    parts_by = {q.ref: q for q in m.parts}
+    miss = sorted({r for r in part_of.values() if r not in parts_by})
+    if miss:
+        raise ValueError(f"series parts with no value in the model: {miss}")
     pairs = []
     for k, sides in links.items():
         # (sides, not ends: ends is the external ports' list, written below)
         if len(sides) != 2:
             raise ValueError(f"cut {k}: {len(sides)} sides "
                              f"({', '.join(sides)})")
-        X = cal.get(widths.get(k))
+        X = (series_block(f0, parts_by[part_of[k]]) if k in part_of
+             else cal.get(widths.get(k)))
         if X is None:
             pairs.append(tuple(sides))
             continue

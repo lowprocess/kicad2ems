@@ -250,9 +250,10 @@ def test_the_overlay_page(tmp_path):
 
 
 def test_a_lane_through_its_ac_capacitor():
-    """segment.chains / _with_chains: nets joined by a two-pad series part (an
-    AC-coupling capacitor) are one channel and one piece's; a part of three
-    pads or with a pad off the selected nets joins nothing."""
+    """segment.chains: nets joined by a two-pad series part (an AC-coupling
+    capacitor) are one channel, joined through the part's own two-port
+    (series_block); a part of three pads or with a pad off the selected nets
+    joins nothing."""
     from types import SimpleNamespace
     pad = lambda net: dict(net=net, name='1', xy=(0, 0), layers=['F.Cu'],
                            geom=None)
@@ -266,7 +267,9 @@ def test_a_lane_through_its_ac_capacitor():
     ch = SG.chains(kb, nets)
     assert ch['/a/TX0_C+'] == ['/a/TX0_C+', '/b/TX0+']
     assert ch['/c/X'] == ['/c/X'] and ch['/c/Y'] == ['/c/Y']
-    grps = SG._with_chains([['/a/TX0_C+', '/a/TX0_C-'], ['/c/X'],
-                            ['/b/TX0+', '/b/TX0-']], ch)
-    assert sorted(map(sorted, grps)) == [
-        ['/a/TX0_C+', '/a/TX0_C-', '/b/TX0+', '/b/TX0-'], ['/c/X']]
+    # the part's two-port: 100 nF a through at GHz, a 33 ohm resistor not
+    from types import SimpleNamespace as NS
+    S = SG.series_block([1e9], NS(R=None, L=None, C=100e-9))
+    assert abs(S[0, 0, 1]) > 0.9999 and abs(S[0, 0, 0]) < 1e-3
+    S = SG.series_block([1e9], NS(R=33.0, L=None, C=None))
+    assert abs(S[0, 0, 0] - 33 / 133) < 1e-12
