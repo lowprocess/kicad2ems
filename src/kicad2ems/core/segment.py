@@ -1273,6 +1273,9 @@ def run(a, echo=print):
         try:
             ov = overlay(os.path.join(out, RESULT), raw)
             echo(f"segment: overlay -> {ov['html']} (and .json, .png)")
+            cp = plot_couplings(os.path.join(out, RESULT), os.path.join(
+                out, f"{name}_couplings.png"), raw)
+            echo(f"segment: the worst couplings -> {cp}")
         except Exception as e:  # a figure never fails the run  # noqa: BLE001
             echo(f"segment: no overlay ({type(e).__name__}: {e})")
     echo(f"segment: {len(ext)} ports ({', '.join(ext)}) -> {ts} "
@@ -1650,6 +1653,129 @@ def plot_overlay(ov, kb, path, top=8):
                  f"{len(ov['via_models'])} via models (blue)", fontsize=11)
     fig.tight_layout()
     fig.savefig(path, dpi=130)
+    return path
+
+
+def plot_couplings(result, path, kb=None, top=12):
+    """The board's worst couplings on a whole-board view: every channel's
+    tracks faint, the `top` strongest channel pairs (both directions merged,
+    by the larger of NEXT and FEXT) in colour, the stretch where the two run
+    closest drawn thick, each labelled with its NEXT and FEXT (% of the
+    aggressor's swing, the report's edge). result: segment.json's path."""
+    import json as _json
+    import matplotlib
+    from matplotlib.figure import Figure
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from shapely.geometry import LineString
+    from shapely.ops import unary_union
+    from .importers.kicad import KiCadBoard
+    from .coupling import channels
+    res = _json.load(open(result, encoding='utf-8'))
+    rep = res['report']
+    kb = kb or KiCadBoard(res['board'])
+    mem = {}
+    for x in res['port_nets']:
+        mem.setdefault(x['net'], set()).update(x.get('nets') or [x['net']])
+    legs = {c['name']: c['legs'] for c in channels(list(mem), True)}
+    nets_of = lambda ch: {n for leg in legs.get(ch, [ch])
+                          for n in mem.get(leg, [leg])}
+    best = {}
+    cand = list(rep.get('pairs', [])) + [
+        dict(aggressor=w['aggressor'], victim=v['victim'],
+             next_pct=w['next_pct'], fext_pct=w['fext_pct'])
+        for v in rep.get('victims', []) for w in v.get('worst', [])]
+    for q in cand:
+        key = tuple(sorted((q['aggressor'], q['victim'])))
+        v = max(q['next_pct'], q['fext_pct'])
+        if key not in best or v > best[key][0]:
+            best[key] = (v, q)
+    ranked = sorted(best.values(), key=lambda x: -x[0])[:top]
+    lines = {}
+    for t in kb.tracks:
+        if len(t['pts']) > 1:
+            lines.setdefault(t['net'], []).append(t)
+    xs = np.vstack([np.asarray(t['pts'], float) for ts in lines.values()
+                    for t in ts])
+    w_, h_ = np.ptp(xs[:, 0]) + 10, np.ptp(xs[:, 1]) + 10
+    fig = Figure(figsize=(17, max(6.0, 12.0 * h_ / w_ + 1.2)))
+    FigureCanvasAgg(fig)
+    ax = fig.add_axes([0.03, 0.06, 0.70, 0.86])
+    lx = fig.add_axes([0.75, 0.06, 0.23, 0.86])
+    lx.axis('off')
+    for e in getattr(kb, 'edges', []) or []:
+        xy = np.asarray(getattr(e, 'coords', e), float)
+        ax.plot(xy[:, 0], xy[:, 1], color='0.7', lw=0.7)
+    every = set().union(*[nets_of(c) for c in legs]) if legs else set()
+    for n in every:
+        for t in lines.get(n, []):
+            xy = np.asarray(t['pts'], float)
+            ax.plot(xy[:, 0], xy[:, 1], color='0.85', lw=0.5)
+    # twelve that stay apart (tab10 repeats at the eleventh)
+    pal = ['#1f77b4', '#d62728', '#2ca02c', '#ff7f0e', '#9467bd', '#8c564b',
+           '#e377c2', '#17becf', '#bcbd22', '#393b79', '#7f7f7f', '#e7298a']
+    cmap = lambda i: pal[i % len(pal)]
+    rows = []
+    for k, (v, q) in enumerate(ranked):
+        col = cmap(k)
+        a, b = nets_of(q['aggressor']), nets_of(q['victim'])
+        for n in a | b:
+            for t in lines.get(n, []):
+                xy = np.asarray(t['pts'], float)
+                ax.plot(xy[:, 0], xy[:, 1], color=col, lw=1.0, alpha=0.8)
+        # where they run closest, per layer: the victim's copper within
+        # (closest gap + 0.3 mm) of the aggressor's
+        spot, gap = None, None
+        for lay in {t['layer'] for n in a for t in lines.get(n, [])}:
+            ga = [LineString(t['pts']).buffer(t['width'] / 2)
+                  for n in a for t in lines.get(n, []) if t['layer'] == lay]
+            gb = [LineString(t['pts']).buffer(t['width'] / 2)
+                  for n in b for t in lines.get(n, []) if t['layer'] == lay]
+            if not ga or not gb:
+                continue
+            ua, ub = unary_union(ga), unary_union(gb)
+            d = ua.distance(ub)
+            if gap is None or d < gap:
+                gap = d
+                spot = (ub.intersection(ua.buffer(d + 0.3)), lay)
+        if spot is not None and not spot[0].is_empty:
+            for g in getattr(spot[0], 'geoms', [spot[0]]):
+                if g.geom_type == 'Polygon':
+                    ax.fill(*g.buffer(0.25).exterior.xy, fc=col, ec='k',
+                            lw=0.8, alpha=0.95, zorder=5)
+            c = spot[0].centroid
+            # the label set off from the spot, alternately up and down
+            off = (14, 14 if k % 2 else -14)
+            ax.annotate(str(k + 1), (c.x, c.y), xytext=off,
+                        textcoords='offset points', fontsize=9,
+                        weight='bold', color='white', ha='center',
+                        va='center', zorder=7,
+                        bbox=dict(boxstyle='circle,pad=0.25', fc=col,
+                                  ec='k', lw=0.6),
+                        arrowprops=dict(arrowstyle='-', color='k', lw=0.6))
+        short = lambda n: n.split('/')[-1]
+        rows.append((col, f"{k + 1}. {short(q['aggressor'])} -> "
+                          f"{short(q['victim'])}",
+                     f"NEXT {q['next_pct']:.2f} %, FEXT {q['fext_pct']:.2f} %"
+                     + (f"; closest {gap:.2f} mm on {spot[1]}"
+                        if spot else '')))
+    ax.set_aspect('equal')
+    ax.invert_yaxis()
+    ax.set_xlabel('x (mm)')
+    ax.set_title(f"{os.path.basename(res['board'])}: the {len(ranked)} "
+                 f"worst-coupled channel pairs ({rep['rise_ps']:g} ps edge, "
+                 "% of the aggressor's swing); grey: the other high-speed "
+                 "channels", fontsize=10)
+    y = 0.98
+    for col, a1, a2 in rows:
+        lx.add_patch(matplotlib.patches.Rectangle((0.0, y - 0.022), 0.04,
+                                                  0.02, color=col,
+                                                  transform=lx.transAxes))
+        lx.text(0.06, y - 0.004, a1, fontsize=8.5, va='top',
+                transform=lx.transAxes)
+        lx.text(0.06, y - 0.03, a2, fontsize=7.5, va='top', color='0.3',
+                transform=lx.transAxes)
+        y -= 0.075
+    fig.savefig(path, dpi=110)
     return path
 
 

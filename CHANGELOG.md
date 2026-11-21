@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **segment: the worst couplings on the whole board (2026-11-21).** `<name>_couplings.png` (`plot_couplings`): the
+  12 strongest channel pairs (both directions merged, by the larger of NEXT and FEXT) in colour over the faint
+  high-speed routing, the stretch where each pair runs closest marked and numbered, with its NEXT, FEXT, gap and
+  layer.
 - **segment: big groups in overlapping windows (2026-11-21).** A layer group of more than 32
   nets (`K2E_SEG_WINDOW`) is solved as windows: cores of up to 6 nets (pairs whole, in breadth-first order across
   the bus) each with every net within the group's spacing, assembled into the group's S (`assemble`: a core
