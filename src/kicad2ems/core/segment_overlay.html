@@ -1,0 +1,398 @@
+<title>Board SI Overlay</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* layout: one screen, the board's plan filling the left, an instrument rail on
+   the right (metric and frequency, the ranked channels, the selected one's
+   figures); stacked on a phone, the plan first */
+:root {
+  --bg: #eef1f3;          /* panel paper, a cool grey leaning to the solder mask */
+  --plan: #f8faf9;        /* the plan's ground */
+  --ink: #18222b;
+  --muted: #5d6b76;
+  --line: #d4dbe0;
+  --edge: #9aa7b0;        /* board outline */
+  --copper: #b8692f;      /* aggressors, the accent */
+  --sel: #0f5f8c;         /* the selected channel */
+  --chip: #e2e7eb;
+  --good: #2f7d4f; --warn: #a86a00; --bad: #b3261e;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --text: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #151b20; --plan: #0e1317; --ink: #e3e9ed; --muted: #93a2ad; --line: #2a343c;
+  --edge: #55636d; --copper: #e08a4c; --sel: #5cb3e6; --chip: #222b32;
+  --good: #5fbf85; --warn: #e0a640; --bad: #f07067; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #151b20; --plan: #0e1317; --ink: #e3e9ed; --muted: #93a2ad; --line: #2a343c;
+  --edge: #55636d; --copper: #e08a4c; --sel: #5cb3e6; --chip: #222b32;
+  --good: #5fbf85; --warn: #e0a640; --bad: #f07067; color-scheme: dark }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--text); font-size: 14px; }
+.app { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 380px; grid-template-rows: auto minmax(0, 1fr);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px; gap: 10px 16px; box-sizing: border-box; }
+header { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; }
+h1 { font-family: var(--display); font-weight: 600; font-size: 1.35rem; margin: 0; letter-spacing: .01em; text-wrap: balance; }
+.facts { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--muted); font-size: .82rem; }
+.facts b { color: var(--ink); font-weight: 500; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.plan { position: relative; min-height: 0; min-width: 0; background: var(--plan); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+.zoom { position: absolute; right: 10px; top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.zoom button, .seg button, .chips button, .act { font: 500 .8rem var(--text); color: var(--ink); background: var(--chip);
+  border: 1px solid var(--line); border-radius: 4px; padding: 4px 9px; cursor: pointer; }
+.zoom button { width: 30px; height: 30px; padding: 0; font-size: 1rem; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--sel); outline-offset: 1px; }
+.legend { position: absolute; left: 10px; bottom: 10px; background: color-mix(in srgb, var(--plan) 88%, transparent);
+  border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; font-size: .75rem; color: var(--muted); }
+.legend .bar { width: 180px; height: 8px; border-radius: 2px; margin: 4px 0 2px; }
+.legend .ticks { display: flex; justify-content: space-between; gap: 10px; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--plan); font-size: .78rem; padding: 4px 7px;
+  border-radius: 3px; white-space: nowrap; transform: translate(10px, -130%); font-family: var(--mono); }
+.rail { min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.box { background: var(--plan); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+.lab { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg button[aria-pressed="true"], .chips button[aria-pressed="true"] { background: var(--ink); color: var(--plan); border-color: var(--ink); }
+.chips button[aria-pressed="false"] { opacity: .55; text-decoration: line-through; }
+.freq { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.freq input { flex: 1; min-width: 0; accent-color: var(--sel); }
+.freq output { font-family: var(--mono); font-variant-numeric: tabular-nums; min-width: 6.5ch; text-align: right; }
+.row2 { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-top: 8px; font-size: .8rem; }
+.row2 label { display: flex; gap: 5px; align-items: center; color: var(--muted); }
+.list { flex: 0 0 auto; height: max(240px, 40vh); display: flex; flex-direction: column; padding: 8px 0 4px; }
+.list .head { display: flex; gap: 8px; align-items: center; padding: 0 12px 6px; }
+.list input[type=search] { flex: 1; min-width: 0; font: .82rem var(--text); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 7px; }
+.rows { overflow-y: auto; min-height: 0; flex: 1; }
+.ch { display: grid; grid-template-columns: minmax(0, 1fr) 70px 64px; gap: 8px; align-items: center; width: 100%; text-align: left;
+  font: .8rem var(--text); color: var(--ink); background: none; border: 0; border-left: 3px solid transparent; padding: 4px 12px 4px 9px; cursor: pointer; }
+.ch:hover { background: var(--bg); }
+.ch[aria-current="true"] { border-left-color: var(--sel); background: var(--bg); }
+.ch .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ch .nm small { color: var(--muted); }
+.ch .meter { height: 6px; background: var(--chip); border-radius: 2px; overflow: hidden; }
+.ch .meter i { display: block; height: 100%; }
+.ch .v { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.detail h2 { font-family: var(--display); font-weight: 600; font-size: 1.05rem; margin: 0 0 2px; word-break: break-all; }
+.detail .grp { color: var(--muted); font-size: .76rem; word-break: break-all; }
+.figs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 8px 0; }
+.fig { background: var(--bg); border-radius: 4px; padding: 5px 6px; }
+.fig span { display: block; font-size: .66rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.fig b { font-family: var(--mono); font-weight: 500; font-variant-numeric: tabular-nums; font-size: .9rem; }
+svg.chart { width: 100%; height: auto; display: block; }
+svg.chart text { fill: var(--muted); font: 10px var(--mono); }
+.keyline { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .74rem; color: var(--muted); margin: 2px 0 6px; }
+.keyline i { display: inline-block; width: 14px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 4px; }
+table.agg { width: 100%; border-collapse: collapse; font-size: .78rem; }
+table.agg th { text-align: left; font-weight: 500; color: var(--muted); font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; padding: 2px 4px; }
+table.agg td { padding: 3px 4px; border-top: 1px solid var(--line); }
+table.agg td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+table.agg tr { cursor: pointer; }
+.empty { color: var(--muted); font-size: .82rem; }
+@media (max-width: 860px) {
+  .app { height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 62vh auto; }
+  .rail { overflow: visible; }
+  .list { height: 320px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="app">
+  <header>
+    <h1 id="title">Board SI overlay</h1>
+    <div class="facts" id="facts"></div>
+  </header>
+  <div class="plan" id="plan">
+    <canvas id="cv" aria-label="Board plan: the channels coloured by the chosen figure"></canvas>
+    <div class="zoom">
+      <button id="zin" title="Zoom in" aria-label="Zoom in">+</button>
+      <button id="zout" title="Zoom out" aria-label="Zoom out">&minus;</button>
+      <button id="zfit" title="Fit the board" aria-label="Fit the board">&#9635;</button>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="tip" id="tip" hidden></div>
+  </div>
+  <div class="rail">
+    <div class="box">
+      <div class="lab">Colour by</div>
+      <div class="seg" id="metrics"></div>
+      <div class="freq" id="freqrow">
+        <span class="lab" style="margin:0">at</span>
+        <input type="range" id="freq" min="0" max="0" step="1" aria-label="Frequency">
+        <output id="fout" for="freq"></output>
+      </div>
+      <div class="row2">
+        <div class="chips" id="layers" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+      </div>
+      <div class="row2">
+        <label><input type="checkbox" id="showvias" checked> via models</label>
+        <label><input type="checkbox" id="showcuts"> cuts</label>
+      </div>
+    </div>
+    <div class="box list">
+      <div class="head"><span class="lab" style="margin:0" id="rankLab">Worst first</span>
+        <input type="search" id="q" placeholder="Filter channels" aria-label="Filter channels"></div>
+      <div class="rows" id="rows" role="list"></div>
+    </div>
+    <div class="box detail" id="detail"></div>
+  </div>
+</div>
+
+<script>
+window.OVERLAY = /*OVERLAY_JSON*/null;
+</script>
+<script>
+(async function () {
+  const D = window.OVERLAY || await fetch('overlay.json').then(r => r.json());
+  const $ = id => document.getElementById(id);
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const short = n => n.split('/').filter(Boolean).pop() || n;
+  const group = n => n.split('/').filter(Boolean).slice(0, -1).join(' / ');
+  const fmt = (v, d = 2) => (v == null || !isFinite(v)) ? '–' : v.toFixed(d);
+
+  const C = D.channels.map((c, i) => Object.assign(c, { i }));
+  const F = D.curve_ghz || [];
+  const fmax = F.length ? F[F.length - 1] : D.ghz[D.ghz.length - 1];
+  const byName = Object.fromEntries(C.map(c => [c.channel, c]));
+
+  // ---- the figures a channel is coloured by ----
+  const at = (c, key, k) => c.curve ? c.curve[key][k] : null;
+  const xt = c => Math.max(c.next_sum_pct || 0, c.fext_sum_pct || 0);
+  const METRICS = {
+    il: { label: 'Insertion loss', unit: 'dB', freq: true, dec: 2,
+          val: (c, k) => { const v = at(c, 'il', k); return v == null ? -c.il_db[c.il_db.length - 1] : -v; },
+          show: v => '−' + fmt(v), note: 'loss (larger is worse)' },
+    rl: { label: 'Return loss', unit: 'dB', freq: true, dec: 1,
+          val: (c, k) => { const v = at(c, 'rl', k); return v == null ? c.rl_db[c.rl_db.length - 1] : v; },
+          show: v => fmt(v, 1), note: '|S11| (higher is worse)' },
+    xt: { label: 'Crosstalk', unit: '%', freq: false, dec: 2, val: c => xt(c),
+          show: v => fmt(v), note: `worst of NEXT, FEXT sums, ${D.rise_ps} ps edge` },
+    mc: { label: 'Mode conversion', unit: 'dB', freq: true, dec: 1,
+          val: (c, k) => { const v = c.curve && c.curve.to_common ? c.curve.to_common[k] : c.to_common_far_db; return v == null ? null : v; },
+          show: v => fmt(v, 1), note: 'differential to common, far end' },
+  };
+  let metric = 'il', fk = Math.max(0, F.length - 1), sel = null, query = '';
+  const layerOn = {};
+
+  // ---- header ----
+  const board = (D.board || '').split(/[\\/]/).pop().replace(/\.kicad_pcb$/, '');
+  $('title').textContent = board || 'Board SI overlay';
+  document.title = (board ? board + ' SI' : 'Board SI Overlay');
+  const nv = (D.via_models || []).reduce((a, v) => a + v.vias.length, 0);
+  const facts = [[C.length, 'channels']];
+  if ((D.via_models || []).length) facts.push([D.via_models.length, 'via models'], [nv, 'signal vias']);
+  if (D.layer_pieces) facts.push([D.layer_pieces, 'layer pieces']);
+  if (D.seconds) facts.push([D.seconds >= 120 ? (D.seconds / 60).toFixed(0) + ' min' : D.seconds.toFixed(0) + ' s', 'solve']);
+  if (F.length) facts.push([`${F[0]}–${fmax} GHz`, '']);
+  $('facts').innerHTML = facts.map(([v, l]) => `<span><b>${v}</b> ${l}</span>`).join('');
+
+  // ---- geometry: world = KiCad mm, y down ----
+  const tracks = [];   // {c, layer, w, pts, path}
+  let lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
+  const grow = (x, y) => { lo = [Math.min(lo[0], x), Math.min(lo[1], y)]; hi = [Math.max(hi[0], x), Math.max(hi[1], y)]; };
+  C.forEach(c => {
+    c.lo = [Infinity, Infinity]; c.hi = [-Infinity, -Infinity];
+    c.tracks.forEach(t => {
+      const p = new Path2D();
+      t.pts.forEach(([x, y], j) => { j ? p.lineTo(x, y) : p.moveTo(x, y); grow(x, y);
+        c.lo = [Math.min(c.lo[0], x), Math.min(c.lo[1], y)]; c.hi = [Math.max(c.hi[0], x), Math.max(c.hi[1], y)]; });
+      tracks.push({ c, layer: t.layer, w: t.w, pts: t.pts, path: p });
+      layerOn[t.layer] = true;
+    });
+  });
+  const outline = (D.outline || []).map(r => { const p = new Path2D(); r.forEach(([x, y], j) => { j ? p.lineTo(x, y) : p.moveTo(x, y); grow(x, y); }); return p; });
+  const LORDER = ['F.Cu', ...Array.from({ length: 30 }, (_, i) => `In${i + 1}.Cu`), 'B.Cu'];
+  const layers = Object.keys(layerOn).sort((a, b) => LORDER.indexOf(a) - LORDER.indexOf(b));
+  tracks.sort((a, b) => LORDER.indexOf(b.layer) - LORDER.indexOf(a.layer));  // bottom first
+
+  // a grid of segments for hover
+  const G = 2.0, grid = new Map();
+  tracks.forEach((t, ti) => { for (let j = 1; j < t.pts.length; j++) {
+    const [x0, y0] = t.pts[j - 1], [x1, y1] = t.pts[j];
+    for (let gx = Math.floor(Math.min(x0, x1) / G); gx <= Math.floor(Math.max(x0, x1) / G); gx++)
+      for (let gy = Math.floor(Math.min(y0, y1) / G); gy <= Math.floor(Math.max(y0, y1) / G); gy++) {
+        const k = gx + ',' + gy; if (!grid.has(k)) grid.set(k, []); grid.get(k).push([ti, j]); } } });
+
+  // ---- colour ramp (perceptual, light to deep) ----
+  const STOPS = [[0.93, 0.90, 0.55], [0.55, 0.80, 0.42], [0.13, 0.60, 0.55], [0.23, 0.33, 0.62], [0.42, 0.10, 0.45]];
+  function ramp(u) { u = Math.min(1, Math.max(0, u)); const s = u * (STOPS.length - 1), i = Math.min(STOPS.length - 2, Math.floor(s)), f = s - i;
+    const c = STOPS[i].map((a, k) => Math.round(255 * (a + (STOPS[i + 1][k] - a) * f))); return `rgb(${c})`; }
+  let span = [0, 1];
+  const value = c => METRICS[metric].val(c, fk);
+  function scale() {
+    const vs = C.map(value).filter(v => v != null && isFinite(v)).sort((a, b) => a - b);
+    if (!vs.length) { span = [0, 1]; return; }
+    const p95 = vs[Math.min(vs.length - 1, Math.floor(0.95 * (vs.length - 1)))];
+    span = [vs[0], Math.max(p95, vs[0] + 1e-9)];
+  }
+  const unit = v => (v - span[0]) / (span[1] - span[0]);
+
+  // ---- the plan ----
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  let view = { s: 1, x: 0, y: 0 }, W = 0, H = 0, dpr = 1, touched = false;
+  function fit(a = lo, b = hi, pad = 0.06) {
+    const w = (b[0] - a[0]) || 1, h = (b[1] - a[1]) || 1;
+    view.s = Math.min(W / (w * (1 + 2 * pad)), H / (h * (1 + 2 * pad)));
+    view.x = W / 2 - view.s * (a[0] + b[0]) / 2; view.y = H / 2 - view.s * (a[1] + b[1]) / 2;
+  }
+  function size() { const r = cv.getBoundingClientRect(); dpr = window.devicePixelRatio || 1; W = r.width; H = r.height;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  let queued = false; const draw = () => { if (!queued) { queued = true; requestAnimationFrame(paint); } };
+  function paint() {
+    queued = false;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    ctx.setTransform(dpr * view.s, 0, 0, dpr * view.s, dpr * view.x, dpr * view.y);
+    const px = 1 / view.s;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = css('--edge'); ctx.lineWidth = 1.2 * px; outline.forEach(p => ctx.stroke(p));
+    const agg = sel ? new Set((sel.worst || []).map(w => w.aggressor)) : null;
+    // others first, the selected and its aggressors on top
+    const pass = (filter, style) => tracks.forEach(t => { if (!layerOn[t.layer] || !filter(t)) return;
+      ctx.strokeStyle = style(t); ctx.lineWidth = Math.max(t.w, 1.4 * px); ctx.stroke(t.path); });
+    ctx.globalAlpha = sel ? 0.22 : 1;
+    pass(t => !sel || (t.c !== sel && !agg.has(t.c.channel)), t => { const v = value(t.c); return v == null ? css('--edge') : ramp(unit(v)); });
+    ctx.globalAlpha = 1;
+    if (sel) {
+      pass(t => agg.has(t.c.channel), () => css('--copper'));
+      tracks.forEach(t => { if (t.c !== sel || !layerOn[t.layer]) return;
+        ctx.strokeStyle = css('--plan'); ctx.lineWidth = Math.max(t.w, 1.4 * px) + 3 * px; ctx.stroke(t.path); });
+      pass(t => t.c === sel, () => css('--sel'));
+    }
+    if ($('showvias').checked) {
+      ctx.strokeStyle = css('--sel'); ctx.lineWidth = 1 * px; ctx.globalAlpha = 0.7;
+      (D.via_models || []).forEach(m => m.vias.forEach(v => { ctx.beginPath(); ctx.arc(v.x, v.y, Math.max(v.r, 3 * px), 0, 7); ctx.stroke(); }));
+      ctx.globalAlpha = 1;
+    }
+    if ($('showcuts').checked) {
+      ctx.strokeStyle = css('--ink'); ctx.lineWidth = 1 * px;
+      ctx.setLineDash([]); const k = 3 * px;
+      (D.cuts || []).forEach(c => { if (!c.at || (c.layer && !layerOn[c.layer])) return; const [x, y] = c.at;
+        ctx.beginPath(); ctx.moveTo(x - k, y - k); ctx.lineTo(x + k, y + k); ctx.moveTo(x - k, y + k); ctx.lineTo(x + k, y - k); ctx.stroke(); });
+    }
+  }
+  const world = (ex, ey) => { const r = cv.getBoundingClientRect(); return [(ex - r.left - view.x) / view.s, (ey - r.top - view.y) / view.s]; };
+  function hit(ex, ey) {
+    const [x, y] = world(ex, ey), tol = 6 / view.s; let best = null, bd = tol;
+    for (let gx = Math.floor((x - tol) / G); gx <= Math.floor((x + tol) / G); gx++)
+      for (let gy = Math.floor((y - tol) / G); gy <= Math.floor((y + tol) / G); gy++)
+        (grid.get(gx + ',' + gy) || []).forEach(([ti, j]) => { const t = tracks[ti]; if (!layerOn[t.layer]) return;
+          const [ax, ay] = t.pts[j - 1], [bx, by] = t.pts[j], dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+          const u = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / L)) : 0;
+          const d = Math.hypot(x - ax - u * dx, y - ay - u * dy) - t.w / 2; if (d < bd) { bd = d; best = t; } });
+    return best;
+  }
+  // pan, zoom, pick
+  let drag = null; const pts = new Map();
+  cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
+    drag = { x: e.clientX, y: e.clientY, moved: false, d: null }; });
+  cv.addEventListener('pointermove', e => {
+    if (pts.has(e.pointerId)) {
+      const prev = pts.get(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
+      if (pts.size === 2) { const [a, b] = [...pts.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+        if (drag.d) zoomAt((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, d / drag.d); drag.d = d; drag.moved = true; return; }
+      const dx = e.clientX - prev[0], dy = e.clientY - prev[1];
+      if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 4) drag.moved = true;
+      view.x += dx; view.y += dy; touched = true; draw(); $('tip').hidden = true; return;
+    }
+    const t = hit(e.clientX, e.clientY), tip = $('tip');
+    if (!t) { tip.hidden = true; cv.style.cursor = 'crosshair'; return; }
+    cv.style.cursor = 'pointer'; const r = cv.getBoundingClientRect(), v = value(t.c);
+    tip.textContent = `${short(t.c.channel)} · ${t.layer} · ${METRICS[metric].show(v)} ${METRICS[metric].unit}`;
+    tip.style.left = (e.clientX - r.left) + 'px'; tip.style.top = (e.clientY - r.top) + 'px'; tip.hidden = false;
+  });
+  const up = e => { pts.delete(e.pointerId); if (drag && !drag.moved && pts.size === 0) { const t = hit(e.clientX, e.clientY); select(t ? t.c : null); } if (!pts.size) drag = null; };
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', e => { pts.delete(e.pointerId); drag = null; });
+  cv.addEventListener('pointerleave', () => { $('tip').hidden = true; });
+  function zoomAt(ex, ey, k) { touched = true; const r = cv.getBoundingClientRect(), x = ex - r.left, y = ey - r.top;
+    view.x = x - (x - view.x) * k; view.y = y - (y - view.y) * k; view.s *= k; draw(); }
+  cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+  $('zin').onclick = () => { const r = cv.getBoundingClientRect(); zoomAt(r.left + W / 2, r.top + H / 2, 1.5); };
+  $('zout').onclick = () => { const r = cv.getBoundingClientRect(); zoomAt(r.left + W / 2, r.top + H / 2, 1 / 1.5); };
+  $('zfit').onclick = () => { touched = false; fit(); draw(); };
+  new ResizeObserver(() => { size(); if (!touched) fit(); draw(); }).observe($('plan'));
+
+  // ---- controls ----
+  $('metrics').innerHTML = Object.entries(METRICS).map(([k, m]) => `<button data-m="${k}" aria-pressed="${k === metric}">${m.label}</button>`).join('');
+  $('metrics').onclick = e => { const b = e.target.closest('button'); if (!b) return; metric = b.dataset.m; update(); };
+  const fr = $('freq'); fr.max = Math.max(0, F.length - 1); fr.value = fk;
+  fr.oninput = () => { fk = +fr.value; update(); };
+  $('layers').innerHTML = layers.map(l => `<button data-l="${l}" aria-pressed="true">${l.replace('.Cu', '')}</button>`).join('');
+  $('layers').onclick = e => { const b = e.target.closest('button'); if (!b) return; const l = b.dataset.l; layerOn[l] = !layerOn[l]; b.setAttribute('aria-pressed', layerOn[l]); draw(); };
+  $('showvias').onchange = draw; $('showcuts').onchange = draw;
+  $('q').oninput = e => { query = e.target.value.toLowerCase(); list(); };
+
+  function legend() {
+    const m = METRICS[metric], n = 3;
+    const ticks = Array.from({ length: n }, (_, i) => span[0] + (span[1] - span[0]) * i / (n - 1));
+    $('legend').innerHTML = `${m.label} (${m.unit})${m.freq && F.length ? ' at ' + F[fk] + ' GHz' : ''}<div class="bar" style="background:linear-gradient(90deg,${Array.from({ length: 9 }, (_, i) => ramp(i / 8)).join(',')})"></div>`
+      + `<div class="ticks">${ticks.map(v => `<span>${m.show(v)}</span>`).join('')}</div>`;
+  }
+  function list() {
+    const m = METRICS[metric];
+    const rows = C.filter(c => !query || c.channel.toLowerCase().includes(query))
+      .map(c => [c, value(c)]).sort((a, b) => (b[1] ?? -Infinity) - (a[1] ?? -Infinity));
+    $('rankLab').textContent = `${rows.length} channels, worst first`;
+    $('rows').innerHTML = rows.map(([c, v]) => `<button class="ch" role="listitem" data-i="${c.i}" aria-current="${c === sel}">
+      <span class="nm">${short(c.channel)} <small>${group(c.channel)}</small></span>
+      <span class="meter"><i style="width:${v == null ? 0 : Math.max(2, 100 * Math.min(1, unit(v)))}%;background:${v == null ? 'transparent' : ramp(unit(v))}"></i></span>
+      <span class="v">${v == null ? '–' : m.show(v)}</span></button>`).join('');
+  }
+  $('rows').onclick = e => { const b = e.target.closest('.ch'); if (b) select(C[+b.dataset.i], true); };
+
+  // ---- the selected channel ----
+  function chart(c) {
+    if (!c.curve || !F.length) return '<p class="empty">No curves in this result.</p>';
+    const w = 340, h = 150, l = 34, r = 8, t = 8, b = 20;
+    const series = [['il', css('--sel'), ''], ['rl', css('--copper'), ''], ['to_common', css('--muted'), '4 3']].filter(s => c.curve[s[0]]);
+    const all = series.flatMap(s => c.curve[s[0]]);
+    const ymin = Math.max(-80, Math.floor(Math.min(...all) / 10) * 10), ymax = 0;
+    const X = f => l + (w - l - r) * f / fmax, Y = v => t + (h - t - b) * (ymax - Math.max(v, ymin)) / (ymax - ymin);
+    let g = '';
+    for (let v = ymin; v <= ymax; v += (ymax - ymin > 40 ? 20 : 10)) g += `<line x1="${l}" x2="${w - r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css('--line')}"/><text x="${l - 4}" y="${Y(v) + 3}" text-anchor="end">${v}</text>`;
+    const step = fmax > 12 ? 5 : fmax > 4 ? 2 : 1;
+    for (let f = 0; f <= fmax + 1e-9; f += step) g += `<text x="${X(f)}" y="${h - 6}" text-anchor="middle">${f}</text>`;
+    g += `<line x1="${X(F[fk])}" x2="${X(F[fk])}" y1="${t}" y2="${h - b}" stroke="${css('--muted')}" stroke-dasharray="2 2"/>`;
+    series.forEach(([k, col, dash]) => { g += `<polyline fill="none" stroke="${col}" stroke-width="1.6" stroke-dasharray="${dash}" points="${c.curve[k].map((v, j) => X(F[j]).toFixed(1) + ',' + Y(v).toFixed(1)).join(' ')}"/>`; });
+    return `<div class="keyline"><span><i style="border-color:var(--sel)"></i>insertion</span><span><i style="border-color:var(--copper)"></i>return</span>${c.curve.to_common ? '<span><i style="border-color:var(--muted);border-top-style:dashed"></i>to common</span>' : ''}<span>dB against GHz</span></div>
+      <svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Insertion and return loss against frequency">${g}</svg>`;
+  }
+  function detail() {
+    const c = sel;
+    if (!c) { $('detail').innerHTML = `<div class="lab">Channel</div><p class="empty">Pick a channel on the plan or in the list to see its curves and its worst aggressors. ${METRICS[metric].note}.</p>`; return; }
+    const kk = F.length ? fk : null;
+    const il = kk != null && c.curve ? c.curve.il[kk] : c.il_db[c.il_db.length - 1];
+    const rl = kk != null && c.curve ? c.curve.rl[kk] : c.rl_db[c.rl_db.length - 1];
+    const ws = (c.worst || []);
+    $('detail').innerHTML = `<div class="lab">${c.kind === 'single' ? 'Single-ended' : 'Differential pair'} · ${[...new Set(c.tracks.map(t => t.layer))].join(', ')}</div>
+      <h2>${short(c.channel)}</h2><div class="grp">${group(c.channel)}</div>
+      <div class="figs">
+        <div class="fig"><span>IL ${F[fk] ?? fmax} GHz</span><b>${fmt(il)} dB</b></div>
+        <div class="fig"><span>RL ${F[fk] ?? fmax} GHz</span><b>${fmt(rl, 1)} dB</b></div>
+        <div class="fig"><span>NEXT Σ</span><b>${fmt(c.next_sum_pct)} %</b></div>
+        <div class="fig"><span>FEXT Σ</span><b>${fmt(c.fext_sum_pct)} %</b></div>
+      </div>${chart(c)}
+      <div class="lab" style="margin-top:8px">Worst aggressors (copper on the plan)</div>
+      ${ws.length ? `<table class="agg"><tr><th>aggressor</th><th style="text-align:right">NEXT %</th><th style="text-align:right">FEXT %</th></tr>
+        ${ws.map(w => `<tr data-n="${w.aggressor}"><td>${short(w.aggressor)}</td><td class="n">${fmt(w.next_pct, 3)}</td><td class="n">${fmt(w.fext_pct, 3)}</td></tr>`).join('')}</table>`
+        : '<p class="empty">No aggressor couples into it.</p>'}
+      <div class="row2"><button class="act" id="zto">Zoom to channel</button></div>`;
+    $('zto').onclick = () => { touched = true; fit(sel.lo, sel.hi, 0.25); draw(); };
+    $('detail').querySelectorAll('tr[data-n]').forEach(r => r.onclick = () => byName[r.dataset.n] && select(byName[r.dataset.n], true));
+  }
+  function select(c, scroll) {
+    sel = c; detail(); list(); draw();
+    if (scroll && c) { const b = $('rows').querySelector(`[data-i="${c.i}"]`); b && b.scrollIntoView({ block: 'nearest' }); }
+  }
+  function update() {
+    $('metrics').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.m === metric));
+    const m = METRICS[metric]; $('freqrow').style.opacity = m.freq && F.length ? 1 : 0.4; fr.disabled = !(m.freq && F.length);
+    $('fout').textContent = F.length ? F[fk].toFixed(2) + ' GHz' : '';
+    scale(); legend(); list(); detail(); draw();
+  }
+  // open on the worst channel by loss at the top frequency
+  update();
+  const worst = C.slice().sort((a, b) => (value(b) ?? -1) - (value(a) ?? -1))[0];
+  if (worst) select(worst);
+})();
+</script>

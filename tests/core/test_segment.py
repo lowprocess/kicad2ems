@@ -231,3 +231,19 @@ def test_the_overlay_figure(tmp_path):
     kb = SimpleNamespace(edges=[LineString([(0, 0), (5, 0), (5, -12)])])
     path = SG.plot_overlay(ov, kb, str(tmp_path / 'o.png'))
     assert os.path.getsize(path) > 10_000
+
+
+def test_the_overlay_page(tmp_path):
+    """segment.overlay_html: the page with the overlay in it (no placeholder
+    left, a '</' in a name escaped); without a path, the page that fetches
+    overlay.json."""
+    ov = dict(board='b.kicad_pcb', ghz=[10], rise_ps=100, curve_ghz=[1, 10],
+              channels=[dict(channel='/x/A</script>', kind='single',
+                             nets=['A'], il_db=[-1], rl_db=[-20], tracks=[],
+                             curve=dict(il=[-0.1, -1], rl=[-30, -20]))],
+              via_models=[], cuts=[], outline=[])
+    path = SG.overlay_html(ov, str(tmp_path / 'o.html'))
+    text = open(path, encoding='utf-8').read()
+    assert '/*OVERLAY_JSON*/' not in text and '"curve_ghz":[1,10]' in text
+    assert 'A</script>' not in text
+    assert "fetch('overlay.json')" in SG.overlay_html(ov)

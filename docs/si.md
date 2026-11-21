@@ -233,8 +233,11 @@ python -m kicad2ems.core.segment board.kicad_pcb --nets 'PCIE*,HDMI*' --out out/
   its far end's conversion to common mode, and every victim's NEXT and FEXT for a 100 ps edge (Board coupling's
   figures). `<name>_overlay.json` lays them over the board (each channel's tracks per layer with its figures, the
   via models' circles, the cuts: for the window's plan and the KiCad plugin to draw, as the line model's
-  overlay), and `<name>_overlay.png` draws the channels coloured by their worst crosstalk and by their loss at
-  the top frequency.
+  overlay), `<name>_overlay.png` draws the channels coloured by their worst crosstalk and by their loss at
+  the top frequency, and `<name>_overlay.html` is the same as one page to explore (it opens from the disk): the
+  channels coloured by insertion or return loss at a frequency on a slider, by crosstalk or by mode conversion,
+  ranked worst first, each one's curves and its worst aggressors (drawn in copper on the plan), layers toggled.
+  `segment.overlay(result)` makes all three again from a segment.json.
 - **Resumed:** a piece solved before from the same board file and settings is taken as it is (`piece.sha256` in
   its folder), so a run stopped at one piece goes on from it. `--dmax` sets mom25d's cell size.
 - **Each piece in a process of its own**, so the memory one took is free for the next. mom25d stops a piece that

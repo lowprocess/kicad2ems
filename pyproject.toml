@@ -88,6 +88,8 @@ include-package-data = false
                         "sma_launch.kicad_pro", "sma_launch-all.pos"]
 # what KiCad gets: plugin.json, the launcher, the icons
 "kicad2ems.ipc" = ["plugin/*"]
+# segment's overlay page
+"kicad2ems.core" = ["segment_overlay.html"]
 # the window's and the launcher's icon, the wand
 "kicad2ems.gui" = ["*.svg", "*.ico"]
 # the update code (GPU kernels and CPU core)

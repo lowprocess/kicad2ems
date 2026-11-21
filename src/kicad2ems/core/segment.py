@@ -830,7 +830,7 @@ def run(a, echo=print):
         _echo_report(report, echo)
         try:
             ov = overlay(os.path.join(out, RESULT), raw)
-            echo(f"segment: overlay -> {ov['json']}, {ov['png']}")
+            echo(f"segment: overlay -> {ov['html']} (and .json, .png)")
         except Exception as e:  # a figure never fails the run  # noqa: BLE001
             echo(f"segment: no overlay ({type(e).__name__}: {e})")
     echo(f"segment: {len(ext)} ports ({', '.join(ext)}) -> {ts} "
@@ -911,15 +911,21 @@ def end_ports(kb, nets):
     return specs, info
 
 
-def pairs_report(f, S, ports, port_nets, rise_ps=100.0, z0=50.0):
+CURVE_POINTS = 60  # the report's curves: about this many frequencies
+
+
+def pairs_report(f, S, ports, port_nets, rise_ps=100.0, z0=50.0,
+                 curves=CURVE_POINTS):
     """Each net's (a pair's legs: one channel, in its differential mode)
     figures from the joined S: its insertion and return loss at 1, 5 and 10
     GHz (Sdd21, Sdd11; a single net's S21, S11) and its far end's conversion to
     common mode, and every victim's NEXT and FEXT for an edge of rise_ps
     (coupling.matrix, summary: as Board coupling has them). The near (driven)
     end of each net: the footprint holding the most ports' ends (the SoC, the
-    module), else its other end. dict(channels [...], victims [...], pairs
-    [...])."""
+    module), else its other end. curves: each channel's insertion and return
+    loss and its conversion to common mode (dB) at about this many of f's
+    frequencies besides (0: none). dict(channels [...], victims [...], pairs
+    [...], curve_ghz)."""
     import collections
     from .coupling import matrix, summary, channels, modal
     refs = collections.Counter(x['ref'] for x in port_nets)
@@ -944,6 +950,10 @@ def pairs_report(f, S, ports, port_nets, rise_ps=100.0, z0=50.0):
     at = {r: i for i, r in enumerate(rows)}
     k = [int(np.argmin(abs(np.asarray(f) - g * 1e9))) for g in (1, 5, 10)]
     db = lambda x: float(20 * np.log10(max(abs(x), 1e-15)))
+    cj = (np.unique(np.linspace(0, len(f) - 1, curves).round().astype(int))
+          if curves else np.zeros(0, int))
+    dbs = lambda x: np.round(20 * np.log10(np.maximum(abs(x), 1e-15)),
+                             3).tolist()
     out = []
     for c in chans:
         m = 'se' if c['kind'] == 'single' else 'd'
@@ -955,9 +965,14 @@ def pairs_report(f, S, ports, port_nets, rise_ps=100.0, z0=50.0):
             cf = at[(c['name'], 'c', 'far')]
             row['to_common_far_db'] = max(db(Sm[j, cf, a])
                                           for j in range(len(f)))
+        if len(cj):
+            row['curve'] = dict(il=dbs(Sm[cj, b, a]), rl=dbs(Sm[cj, a, a]))
+            if c['kind'] != 'single':
+                row['curve']['to_common'] = dbs(Sm[cj, cf, a])
         out.append(row)
     return dict(ghz=[1, 5, 10], rise_ps=rise_ps, channels=out, victims=vs,
-                pairs=ps)
+                pairs=ps, curve_ghz=np.round(np.asarray(f)[cj] / 1e9,
+                                             4).tolist())
 
 
 def _end_rank(ref):
@@ -991,6 +1006,12 @@ def overlay(result, kb=None, top=8):
     rep = res.get('report')
     if not rep:
         raise ValueError("no per-channel report in the result")
+    if 'curve_ghz' not in rep:  # (a result from before the curves)
+        from .touchstone import read_touchstone
+        fq, S = read_touchstone(os.path.join(os.path.dirname(result),
+                                             res['touchstone']))
+        rep = pairs_report(fq, S, res['ports'], res['port_nets'],
+                           rep['rise_ps'])
     kb = kb or KiCadBoard(res['board'])
     from .coupling import channels
     legs = {c['name']: list(c['legs']) for c in channels(
@@ -1009,11 +1030,18 @@ def overlay(result, kb=None, top=8):
             to_common_far_db=c.get('to_common_far_db'),
             next_sum_pct=v.get('next_sum_pct'),
             fext_sum_pct=v.get('fext_sum_pct'),
-            worst=[x['aggressor'] for x in v.get('worst', [])],
-            tracks=tracks))
+            worst=v.get('worst', []),
+            curve=c.get('curve'), tracks=tracks))
     ov = dict(format=OVERLAY, version=1, board=res['board'],
               ghz=rep['ghz'], rise_ps=rep['rise_ps'], channels=chans,
-              via_models=res.get('via_models', []), cuts=res.get('cuts', []))
+              curve_ghz=rep.get('curve_ghz', []), pairs=rep.get('pairs', []),
+              outline=[np.round(np.asarray(getattr(e, 'coords', e),
+                                           float)[:, :2], 3).tolist()
+                       for e in getattr(kb, 'edges', []) or []],
+              via_models=res.get('via_models', []), cuts=res.get('cuts', []),
+              seconds=res.get('seconds'),
+              layer_pieces=sum(p.get('kind') == 'layer'
+                               for p in res.get('pieces', [])))
     stem = os.path.splitext(result)[0].rsplit(os.sep, 1)[0]
     name = os.path.splitext(os.path.basename(res['board']))[0]
     jp = os.path.join(stem, f"{name}_overlay.json")
@@ -1021,7 +1049,28 @@ def overlay(result, kb=None, top=8):
         _json.dump(ov, fh)
     pp = os.path.join(stem, f"{name}_overlay.png")
     plot_overlay(ov, kb, pp, top)
-    return dict(json=jp, png=pp)
+    hp = overlay_html(ov, os.path.join(stem, f"{name}_overlay.html"))
+    return dict(json=jp, png=pp, html=hp)
+
+
+def overlay_html(ov, path=None):
+    """The overlay as one self-contained page (segment_overlay.html with the
+    data in it: opens from the disk, no server): the board's channels
+    coloured by a figure (insertion or return loss at a frequency, crosstalk,
+    mode conversion), each channel's curves and worst aggressors. The page
+    without data (path None: its text) fetches overlay.json beside it."""
+    import json as _json
+    page = open(os.path.join(os.path.dirname(__file__),
+                             'segment_overlay.html'), encoding='utf-8').read()
+    if path is None:
+        return page
+    data = _json.dumps(ov, separators=(',', ':')).replace('</', '<\\/')
+    page = page.replace('/*OVERLAY_JSON*/null', data, 1)
+    with open(path, 'w', encoding='utf-8') as fh:
+        fh.write('<!doctype html>\n<meta charset="utf-8">\n'
+                 '<meta name="viewport" content="width=device-width, '
+                 'initial-scale=1">\n' + page)
+    return path
 
 
 def plot_overlay(ov, kb, path, top=8):
