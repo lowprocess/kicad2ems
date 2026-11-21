@@ -606,23 +606,28 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
             continue
         pads = [pd for pd in fp['pads'] if pd.get('net') in signal]
         lay = 'B.Cu' if fp.get('side') == 'B' else 'F.Cu'
-        if len(pads) != 2 or any(clip.get(pd['net']) is not None and clip[
-                pd['net']].contains(_pt(pd['xy'][0], -pd['xy'][1]))
-                for pd in pads):
-            # a pad in a via's circle: the part stays in the mesh, its two
-            # nets in one piece
-            if len(pads) == 2:
-                stay.append((pads[0]['net'], pads[1]['net']))
+        if len(pads) != 2:
             continue
+        # a pad in a via's circle: its port the via model's (a resistor's pad
+        # on a via had been left in the mesh with the via's circle round it:
+        # the Thor's PCIe C2x1 clock and DP0 AUX lanes open end to end)
+        inside = [next((gi for gi, g in enumerate(groups)
+                        if pd['net'] in {v['net'] for v in g['vias']}
+                        and g['circle'].contains(
+                            _pt(pd['xy'][0], -pd['xy'][1]))), None)
+                  for pd in pads]
         k += 1
         a, b = (np.asarray(pd['xy'], float) for pd in pads)
-        for pd, me, other, tag in ((pads[0], a, b, 1000), (pads[1], b, a,
-                                                           20000)):
+        for pd, me, other, tag, gi in ((pads[0], a, b, 1000, inside[0]),
+                                       (pads[1], b, a, 20000, inside[1])):
             d = (me - other) / (np.linalg.norm(me - other) or 1.0)
-            allcuts.append(dict(k=k, layer=lay, net=pd['net'],
-                                at=(float(me[0]), float(me[1])),
-                                out=(float(d[0]), float(d[1])), nudge=0.0,
-                                part=fp['ref'], port=f"P{tag + k}"))
+            c = dict(k=k, layer=lay, net=pd['net'],
+                     at=(float(me[0]), float(me[1])),
+                     out=(float(d[0]), float(d[1])), nudge=0.0,
+                     part=fp['ref'], port=f"P{tag + k}")
+            if gi is not None:
+                c.update(group=gi, via_only=True)
+            allcuts.append(c)
     joined = {c['part'] for c in allcuts if c.get('part')}
     out = []
     # the layers: every layer with signal copper
@@ -653,7 +658,7 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
         """The piece of layer lay's nets gnets (over its planes), or None
         where it has no ports (slivers of a via's ring)."""
         mine = [c for c in allcuts if c['layer'] == lay
-                and c['net'] in gnets]
+                and c['net'] in gnets and not c.get('via_only')]
         ports = [(c.get('port', f"P{1000 + c['k']}"),
                   _fp(f"cutL{c['k']}", c['at'], c['out'], lay,
                       c.get('nudge', NUDGE)))
@@ -753,9 +758,11 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
         circle = g['circle']
         x0, y0, x1, y1 = circle.buffer(GROUND_REACH).bounds
         bx = box(x0, y0, x1, y1)
-        ports = [(f"P{1000 + c['k']}", _fp(f"cutV{c['k']}", c['at'],
-                                            (-c['out'][0], -c['out'][1]),
-                                            c['layer'])) for c in mine]
+        ports = [(c.get('port', f"P{1000 + c['k']}"),
+                  _fp(f"cutV{c['k']}", c['at'], c['out'], c['layer'], 0.0)
+                  if c.get('via_only') else
+                  _fp(f"cutV{c['k']}", c['at'], (-c['out'][0], -c['out'][1]),
+                      c['layer'])) for c in mine]
         # the board's own ports inside its circle (a pad close to the via)
         own = [(p.name, _port_fp(p)) for p in ext.values()
                if p.net in gnets and circle.contains(_pt(*p.c[:2]))]
@@ -780,7 +787,8 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
                    (n in gnets or n in m.ground_nets)
                    and bx.buffer(-1e-6).contains(_pt(x, y)))
         out.append(dict(kind='via', name=f"via{gi + 1}", board=b,
-                        links=[(f"P{1000 + c['k']}", c['k']) for c in mine],
+                        links=[(c.get('port', f"P{1000 + c['k']}"), c['k'])
+                               for c in mine],
                         external=[n for n, _ in own], vias=g['vias']))
     del scale
     return out, allcuts

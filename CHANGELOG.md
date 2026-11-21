@@ -500,6 +500,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **segment: a series part's pad inside a via's circle (2026-11-21).** Its port is the via model's (the part a joint
+  between the via model and the layer piece); it had been left in the mesh with its pad cut off into the via
+  model, which holds no parts: the Thor's PCIe C2x1 clock and DP0 AUX lanes open end to end (0 of 184 legs open
+  now; the four pads' via models pass -0.03 to -0.19 dB at 1 GHz).
 - **segment: series parts as joints, microstrip groups capped (2026-11-21).** A series part (an AC-coupling
   capacitor, a resistor) is a joint between pieces: a port on each pad, joined through its own series R, L, C
   (`series_block`), the part out of the meshes; its nets are no longer forced into one piece (a part with a pad in
