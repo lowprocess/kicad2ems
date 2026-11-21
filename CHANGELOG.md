@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **segment: each channel's figures (2026-11-21).** A pair one channel in its differential mode: insertion and return
+  loss at 1, 5 and 10 GHz, its far end's conversion to common mode, every victim's NEXT and FEXT for a 100 ps edge
+  (Board coupling's `matrix`), in segment.json's `report`. The CM5 Minima (36 nets, 18 channels, 78 s with
+  physics-based vias): D-PHY, HDMI, PCIe 1.1-2.4 dB loss at 10 GHz, the worst victims HDMI's lanes at 0.8 % NEXT,
+  0.6 % FEXT; Ethernet at 125 MHz -0.02 dB / -41 dB, USB 2 and USB-C at 240 MHz -0.03 dB / -28 to -31 dB.
 - **A physics-based via model (2026-11-20, prototype: `kicad2ems.core.viamodel`, `segment --via-solver pbm`).**
   No mesh: the vias as chains of nodes with their capacitances to the planes (an axisymmetric electrostatic
   solve), the cavities between planes as parallel-plate Green's functions coupling every via, ground vias
@@ -277,6 +282,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **segment's net ends and cuts (2026-11-21).** (1) A port went on every pad a net's stretch ended on, so an ESD
+  diode's stub was a 50 ohm load (USB's D701, D101), and an end on a short piece of track apart from the net's
+  longest on its layer was missed (USB-C's D_N at the module): the two pads a net's own tracks and vias reach
+  that are furthest apart, connectors and modules first, the rest left open. (2) A layer piece cut every net at
+  every via circle: a pair's leg passing through its twin's circle lost its copper there with nothing joining it
+  (now each net at its own vias' circles only). (3) A via near a port is a transition still: its circle takes
+  the port in and the via model has it (a via skipped had opened HDMI's clock: -126 dB).
 - **segment's mom25d via models were solved as sheets (2026-11-20).** They asked for `--mom-planes holes` with the
   whole stack, which mom25d does not take there, and the request turned the copper's thickness off.
 - **segment.json's `port_nets` was a cut's two sides (2026-11-20)**, not the external ports' nets: the loop over the

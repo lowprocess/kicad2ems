@@ -39,6 +39,7 @@ GROUND_REACH = float(os.environ.get('K2E_SEG_REACH', 1.5))  # mm: a via
 NUDGE = 1e-3      # mm: a cut port's point inside its own piece
 PAD_AREA = 0.5    # mm2: a via model's ground copper off its planes kept up to
                   # this (a ground via's pad), the rest (a pour) left out
+END_MARGIN = 0.2  # mm: a via this near beyond its circle to a port: not cut
 RUN = 2.0         # mm: two nets are one layer piece where they run that far
                   # within --apart of each other (coupling.groups' run)
 PORT = os.environ.get('K2E_SEG_PORT', 'lumped')  # mom25d's ports in the pieces (wave where it can: its feed's
@@ -140,10 +141,18 @@ def via_groups(m, nets, gap=GAP, ends=()):
         if net in nets and net not in m.ground_nets:
             pad, anti = _pad_radius(m, x, y), _antipad(m, x, y)
             r = max(pad, anti) + gap
+            near = [math.hypot(x - ex, y - ey) for ex, ey in ends]
             # a via where its net ends at a port (a through-hole pad's own
             # barrel): no transition, the port is there
-            if any(math.hypot(x - ex, y - ey) < r for ex, ey in ends):
+            if any(dd <= pad + 0.05 for dd in near):
                 continue
+            # a transition with a port near it (USB-C's A7, 0.65 mm from its
+            # via, on the circle): the circle takes the port in, the via model
+            # has it (left out, the via had cut its line: an open leg; on the
+            # circle, its copper had been cut from under the port)
+            close = [dd for dd in near if dd < r + END_MARGIN]
+            if close:
+                r = max(r, max(close) + END_MARGIN)
             vs.append(dict(x=float(x), y=float(y), net=net, pad=pad,
                            antipad=anti, r=r))
     up = list(range(len(vs)))
@@ -261,8 +270,8 @@ def _to_dict(b, piece=None):
         if t['net'] not in nets or len(t['pts']) < 2:
             continue
         g = LineString(t['pts'])
-        if clip is not None:
-            g = g.difference(clip)
+        if clip and t['net'] in clip:
+            g = g.difference(clip[t['net']])
         for q in getattr(g, 'geoms', [g]):
             if q.geom_type == 'LineString' and q.length > 1e-6:
                 tracks.append(dict(t, pts=[list(c[:2]) for c in q.coords]))
@@ -275,8 +284,8 @@ def _to_dict(b, piece=None):
         if it['net'] not in nets:
             continue
         g = shape(it['geom'])
-        if clip is not None:
-            g = g.difference(clip)
+        if clip and it['net'] in clip:
+            g = g.difference(clip[it['net']])
         for q in getattr(g, 'geoms', [g]):
             if q.geom_type == 'Polygon' and q.area > 1e-9:
                 items.append(dict(it, geom=mapping(q)))
@@ -313,7 +322,14 @@ def pieces(m, raw, kb, nets, apart_h=None):
     signal = set(nets) - set(m.ground_nets)
     groups = via_groups(m, signal,
                         ends=[(float(p.c[0]), float(p.c[1])) for p in m.ports])
-    every = unary_union([g['circle'] for g in groups]) if groups else None
+    # each net's circles: those of the groups holding one of its vias (a trace
+    # passing through another net's circle stays whole: cut by every circle,
+    # a pair's leg through its twin's lost its copper there unjoined)
+    clip = {}
+    for g in groups:
+        for n in {v['net'] for v in g['vias']}:
+            clip.setdefault(n, []).append(g['circle'])
+    clip = {n: unary_union(cs) for n, cs in clip.items()}
     allcuts = []
     for gi, g in enumerate(groups):
         for c in cuts(kb, g, {v['net'] for v in g['vias']}):
@@ -325,8 +341,8 @@ def pieces(m, raw, kb, nets, apart_h=None):
     # (outside the circles: a via's ring on a plane layer is the via's)
     sig_layers = [
         l for l in m.cu_order
-        if any(n in signal and (every is None
-                                or p.difference(every).area > 1e-6)
+        if any(n in signal and (n not in clip
+                                or p.difference(clip[n]).area > 1e-6)
                for p, n in zip(m.copper.get(l, []), m.copper_nets.get(l, [])))
         or any(p.layer == l for p in m.ports)]
     ext = {p.name: p for p in m.ports}
@@ -347,13 +363,15 @@ def pieces(m, raw, kb, nets, apart_h=None):
                                                 c['out'], lay))
                      for c in mine]
             fps = [(p.name, _port_fp(p)) for p in ext.values()
-                   if p.layer == lay and getattr(p, 'net', None) in gnets]
+               if p.layer == lay and getattr(p, 'net', None) in gnets
+               and (p.net not in clip
+                    or not clip[p.net].contains(_pt(*p.c[:2])))]
 
             def keep(l, n, p, lay=lay, gnets=gnets):
                 if l == lay:
                     if n not in gnets:
                         return None
-                    return p.difference(every) if every is not None else p
+                    return p.difference(clip[n]) if n in clip else p
                 return p if n in m.ground_nets else None
             if not fps and not ports:
                 continue  # slivers of a via's ring: nothing to join
@@ -363,7 +381,7 @@ def pieces(m, raw, kb, nets, apart_h=None):
                             links=[(f"P{1000 + c['k']}", c['k'])
                                    for c in mine],
                             external=[n for n, _ in fps],
-                            nets=sorted(gnets), clip=every))
+                            nets=sorted(gnets), clip=clip))
     for gi, g in enumerate(groups):
         mine = [c for c in allcuts if c['group'] == gi]
         gnets = {v['net'] for v in g['vias']}
@@ -373,6 +391,9 @@ def pieces(m, raw, kb, nets, apart_h=None):
         ports = [(f"P{1000 + c['k']}", _fp(f"cutV{c['k']}", c['at'],
                                             (-c['out'][0], -c['out'][1]),
                                             c['layer'])) for c in mine]
+        # the board's own ports inside its circle (a pad close to the via)
+        own = [(p.name, _port_fp(p)) for p in ext.values()
+               if p.net in gnets and circle.contains(_pt(*p.c[:2]))]
 
         # the planes in the box: layers whose ground covers half of it; a
         # signal layer's pour left out as the layer pieces leave it (in via1
@@ -389,13 +410,13 @@ def pieces(m, raw, kb, nets, apart_h=None):
                 g = p.intersection(bx)
                 return g if l in planes or g.area <= PAD_AREA else None
             return None
-        b = _piece(m, raw, keep, ports, outline=bx,
+        b = _piece(m, raw, keep, own + ports, outline=bx,
                    vias=lambda n, x, y, bx=bx, gnets=gnets:
                    (n in gnets or n in m.ground_nets)
                    and bx.buffer(-1e-6).contains(_pt(x, y)))
         out.append(dict(kind='via', name=f"via{gi + 1}", board=b,
                         links=[(f"P{1000 + c['k']}", c['k']) for c in mine],
-                        external=[], vias=g['vias']))
+                        external=[n for n, _ in own], vias=g['vias']))
     del scale
     return out, allcuts
 
@@ -715,13 +736,22 @@ def run(a, echo=print):
     ts = os.path.join(out, f"{name}_segment.s{len(ext)}p")
     write_touchstone(ts, f0, S, 50.0,
                      comment=f"kicad2ems segment: ports {' '.join(ext)}")
+    report = None
+    if ends:
+        try:
+            report = pairs_report(f0, S, ext, ends)
+        except Exception as e:  # a figure never fails the run  # noqa: BLE001
+            echo(f"segment: no per-pair figures ({type(e).__name__}: {e})")
     res = dict(format=FORMAT, version=1, board=os.path.abspath(s.board),
-               ports=ext, port_nets=ends, touchstone=os.path.relpath(ts, out),
+               ports=ext, port_nets=ends, report=report,
+               touchstone=os.path.relpath(ts, out),
                cuts=[dict(k=c['k'], layer=c['layer'], net=c['net'],
                           at=c['at']) for c in allcuts],
                pieces=info, seconds=round(time.time() - t0, 1))
     with open(os.path.join(out, RESULT), 'w', encoding='utf-8') as fh:
         json.dump(res, fh, indent=1)
+    if report:
+        _echo_report(report, echo)
     echo(f"segment: {len(ext)} ports ({', '.join(ext)}) -> {ts} "
          f"({time.time() - t0:.0f} s)")
     return res
@@ -740,31 +770,146 @@ def _has_ports(s):
 
 
 def end_ports(kb, nets):
-    """Port specs at the ends of the nets (fnmatch patterns, comma-separated;
-    ground nets left out) that are on pads: ([spec], [dict(port, net, ref,
-    pad, layer)]), the nets' legs side by side."""
-    from .coupling import select_nets, stretches
+    """Port specs at the two ends of each net (fnmatch patterns, comma-
+    separated; ground nets left out): of the net's pads that its own tracks or
+    vias reach, the two furthest apart, so a pad off the line (an ESD diode's,
+    a connector's twin pin) is left open, not a 50 ohm load. ([spec],
+    [dict(port, net, ref, pad, layer)]), a pair's legs side by side. (The
+    stretches' ends had missed an end on a short piece of track apart from
+    the net's longest on its layer, and had made every pad end a port.)"""
+    from shapely.geometry import Point
+    from .coupling import select_nets
     from .si import _legs
     pats = [p for p in str(nets or '').split(',') if p.strip()]
     sel = [n for n in select_nets(kb, pats)
            if n.upper() not in ('GND', 'GROUND') and not n.upper().endswith(
                'GND')]
-    by_layer, _ = stretches(kb, sel, None, 0.0)
-    seen, specs, info = set(), [], []
     order = sorted(sel, key=lambda n: (min(
         (m for m in sel if m == n or _legs(m, n)), key=str), n))
+    specs, info = [], []
     for net in order:
-        for layer, es in by_layer.items():
-            for e in es.get(net, ()):
-                pad = e.get('pad')
-                if not pad or (pad[0], pad[1]) in seen:
+        ends = [(tuple(t['pts'][0]), t['layer']) for t in kb.tracks
+                if t['net'] == net] + [
+            (tuple(t['pts'][-1]), t['layer']) for t in kb.tracks
+            if t['net'] == net]
+        vias = [(v['x'], v['y']) for v in kb.vias if v.get('net') == net]
+        reached = []
+        for fp in kb.footprints:
+            for pd in fp.get('pads', []):
+                if pd.get('net') != net or pd.get('geom') is None:
                     continue
-                seen.add((pad[0], pad[1]))
-                k = len(specs) + 1
-                specs.append(f"P{k}={pad[0]}.{pad[1]}")
-                info.append(dict(port=f"P{k}", net=net, ref=pad[0],
-                                 pad=pad[1], layer=layer))
+                g = pd['geom'].buffer(1e-3)
+                hit = any(l in pd['layers'] and g.contains(Point(*xy))
+                          for xy, l in ends) or any(
+                    g.contains(Point(*xy)) for xy in vias)
+                if hit:
+                    reached.append((fp['ref'], pd['name'],
+                                    np.asarray(pd['xy'], float),
+                                    pd['layers'][0]))
+        if not reached:
+            continue
+        if len(reached) == 1:
+            pick = reached
+        else:
+            # the ends an interface runs between: connectors and modules,
+            # then ICs, then the rest (an ESD diode, a resistor), the furthest
+            # apart among those (USB-C's D101 had been further than its own
+            # connector J101)
+            best, pick = None, None
+            for i, a in enumerate(reached):
+                for b in reached[i + 1:]:
+                    key = (-(_end_rank(a[0]) + _end_rank(b[0])),
+                           float(np.hypot(*(a[2] - b[2]))))
+                    if best is None or key > best:
+                        best, pick = key, (a, b)
+        for ref, pad, _, layer in pick:
+            k = len(specs) + 1
+            specs.append(f"P{k}={ref}.{pad}")
+            info.append(dict(port=f"P{k}", net=net, ref=ref, pad=pad,
+                             layer=layer))
     return specs, info
+
+
+def pairs_report(f, S, ports, port_nets, rise_ps=100.0, z0=50.0):
+    """Each net's (a pair's legs: one channel, in its differential mode)
+    figures from the joined S: its insertion and return loss at 1, 5 and 10
+    GHz (Sdd21, Sdd11; a single net's S21, S11) and its far end's conversion to
+    common mode, and every victim's NEXT and FEXT for an edge of rise_ps
+    (coupling.matrix, summary: as Board coupling has them). The near (driven)
+    end of each net: the footprint holding the most ports' ends (the SoC, the
+    module), else its other end. dict(channels [...], victims [...], pairs
+    [...])."""
+    import collections
+    from .coupling import matrix, summary, channels, modal
+    refs = collections.Counter(x['ref'] for x in port_nets)
+    by = collections.defaultdict(list)
+    for x in port_nets:
+        by[x['net']].append(x)
+    names = {}
+    for net, xs in by.items():
+        if len(xs) != 2:
+            continue
+        xs = sorted(xs, key=lambda x: -refs[x['ref']])
+        names[xs[0]['port']] = (net, 'near')
+        names[xs[1]['port']] = (net, 'far')
+    order = [p for p in ports if p in names]
+    ix = [ports.index(p) for p in order]
+    Ss = np.asarray(S)[:, ix][:, :, ix]
+    lnames = {p: names[p] for p in order}
+    mat = matrix(f, Ss, lnames, rise_ps * 1e-12, pairs=True, z0=z0)
+    vs, ps = summary(mat)
+    chans = channels(list(dict.fromkeys(n for n, _ in lnames.values())), True)
+    Sm, rows, zref = modal(Ss, lnames, chans, z0)
+    at = {r: i for i, r in enumerate(rows)}
+    k = [int(np.argmin(abs(np.asarray(f) - g * 1e9))) for g in (1, 5, 10)]
+    db = lambda x: float(20 * np.log10(max(abs(x), 1e-15)))
+    out = []
+    for c in chans:
+        m = 'se' if c['kind'] == 'single' else 'd'
+        a, b = at[(c['name'], m, 'near')], at[(c['name'], m, 'far')]
+        row = dict(channel=c['name'], kind=c['kind'],
+                   il_db=[db(Sm[j, b, a]) for j in k],
+                   rl_db=[db(Sm[j, a, a]) for j in k])
+        if c['kind'] != 'single':
+            cf = at[(c['name'], 'c', 'far')]
+            row['to_common_far_db'] = max(db(Sm[j, cf, a])
+                                          for j in range(len(f)))
+        out.append(row)
+    return dict(ghz=[1, 5, 10], rise_ps=rise_ps, channels=out, victims=vs,
+                pairs=ps)
+
+
+def _end_rank(ref):
+    """How likely a footprint is an interface's end (0: a connector or module;
+    1: an IC; 2: anything else: protection diodes, passives, test points)."""
+    import re
+    m = re.match(r'[A-Za-z]+', str(ref))
+    head = (m.group(0) if m else '').upper()
+    if head in ('J', 'P', 'CN', 'CON', 'X', 'USB', 'MODULE', 'M', 'SW'):
+        return 0
+    if head in ('U', 'IC'):
+        return 1
+    return 2
+
+
+def _echo_report(rep, echo):
+    g = '/'.join(str(x) for x in rep['ghz'])
+    echo(f"segment: each channel at {g} GHz: insertion loss, return loss (dB)"
+         "; a pair's far-end conversion to common mode (dB, worst)")
+    for c in rep['channels']:
+        echo(f"  {c['channel']:24s} IL " + '/'.join(f"{v:6.2f}" for v in
+                                                    c['il_db'])
+             + "  RL " + '/'.join(f"{v:6.1f}" for v in c['rl_db'])
+             + (f"  to common {c['to_common_far_db']:6.1f}"
+                if 'to_common_far_db' in c else ''))
+    w = sorted(rep['victims'], key=lambda v: -max(v['next_sum_pct'],
+                                                  v['fext_sum_pct']))[:5]
+    echo(f"segment: worst victims for a {rep['rise_ps']:g} ps edge (% of the "
+         "aggressors' swing, all at once):")
+    for v in w:
+        echo(f"  {v['victim']:24s} NEXT {v['next_sum_pct']:5.2f} %, FEXT "
+             f"{v['fext_sum_pct']:5.2f} %, worst from "
+             + ', '.join(x['aggressor'] for x in v['worst']))
 
 
 def _num(name):
