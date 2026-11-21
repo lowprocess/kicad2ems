@@ -1412,7 +1412,11 @@ def end_ports(kb, nets):
             best, pick = None, None
             for i, a in enumerate(reached):
                 for b in reached[i + 1:]:
-                    key = (-(_end_rank(a[0]) + _end_rank(b[0])),
+                    # two parts first: a USB-C connector's two D+ pins
+                    # (A6, B6: the plug either way up) had been a channel's
+                    # two ends, the hub it runs to left out
+                    key = (a[0] != b[0],
+                           -(_end_rank(a[0]) + _end_rank(b[0])),
                            float(np.hypot(*(a[2] - b[2]))))
                     if best is None or key > best:
                         best, pick = key, (a, b)

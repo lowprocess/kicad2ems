@@ -510,6 +510,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **segment: a channel's ends on two parts (2026-11-21).** A USB-C connector's two D+ pins (A6, B6: the plug either
+  way up) had been a USB 2 lane's two ends, the hub it runs to left out (the Thor's USBC4_D -31 dB at 1 GHz).
 - **segment: each net cut by its own vias' circles (2026-11-21).** A net's copper was cut by the whole via
   group's circle: a track passing other nets' vias in the group (the Thor's DP1 lanes along the SoM connector's
   28-via group) was cut in and out of it, each stretch a stub to the via model's barrel (DP1.TX2 -39 dB at
