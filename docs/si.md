@@ -247,6 +247,10 @@ python -m kicad2ems.core.segment board.kicad_pcb --nets 'PCIE*,HDMI*' --out out/
   Jetson Thor carrier the run went from 4 h 19 min to 1 h 02 min (12.5 GB), every channel's loss within 0.04 dB.
 - **Series parts** (an AC-coupling capacitor, a resistor) are joints: a lane through its capacitor is one channel,
   its ports at the lane's ends, the part its own series R, L, C between the pieces.
+- **`--pour keep`** (RF boards): a layer piece keeps its layer's own ground pour beside its traces (within 3 mm,
+  voids filled, its vias kept, mom25d's signal zone on). Grounded coplanar lines need it: on a LimeRFE's RX nets
+  the return loss was up to 10 dB off without it; with it within 0.05 dB (median) of the pour solved wide on a
+  fine mesh, at 2.4x the unknowns of the traces alone. Keep the fine edge mesh with it (coarse edges: |dS| 0.08).
 - **`--layer-solver auto`**: mom25d up to 20k unknowns a piece, the line model past that. The line model's loss is
   within 0.1-0.5 dB of mom25d's on stripline, but it couples only traces within 5 heights of each other: the
   crosstalk between lanes further apart is missing, so treat its coupling figures as a lower bound.

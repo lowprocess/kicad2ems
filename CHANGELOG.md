@@ -10,6 +10,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **segment `--pour keep`: an RF board's coplanar ground (2026-11-21).** A layer piece keeps its own layer's ground
+  within 3 mm of its copper (`K2E_SEG_POUR_REACH`; the band's edge straight and simplified), the voids that do
+  not border its copper filled, the ground vias through it to its planes kept, solved with mom25d's signal zone.
+  On a LimeRFE's 11 grounded-coplanar RX nets (0.1-6 GHz), against the pour to 6 mm on a fine mesh (33,659
+  unknowns, 32 min): 14,378 unknowns and 57 s, |dS| 0.006 (return loss within 0.05 dB at the median); without
+  the pour 5,937 unknowns and 17 s but |dS| 0.137 (return loss up to 10 dB off: the line is 57 ohm without its
+  coplanar ground).
 - **segment: where along a victim its crosstalk comes from (2026-11-21).** `<name>_coupling_profiles.png`
   (`coupling_profile`, `plot_coupling_profiles`): for the 4 worst pairs, the local backward-coupling coefficient
   Kb (the two lines' cross-section at the gap to the aggressor's nearest copper, the line model's field solve)
@@ -306,6 +313,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **A board's outline from a panel's Edge.Cuts (2026-11-21).** Loose ends of the outline within 0.1 mm are joined
+  (a KiCad 4 board's hand-drawn edges met within 0.01-0.06 mm), and the face the parts are on is the board (a
+  LimeRFE panel's outline had been a 91 x 3 mm strip between its frame and the board).
 - **KiCad 4/5 boards with their copper layers renamed (2026-11-21).** A layer named as the user did ('T', 'GND',
   'C1F': KiCad 6 on keep 'F.Cu' and add the name after) is F.Cu / In<n>.Cu / B.Cu by its number, in the layer
   table and every layer field (a net of a layer's name keeps its own). A LimeRFE and a HackRF Opera Cake had

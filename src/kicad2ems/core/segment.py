@@ -329,6 +329,43 @@ def _piece(m, raw, keep, ports, outline=None, vias=None):
 
 # a stripline piece's ground vias: those within this of its copper (mm)
 STITCH_REACH = float(os.environ.get('K2E_SEG_STITCH', 1.0))
+# a layer piece's own layer's ground (an RF board's coplanar ground beside its
+# traces): 'keep' within POUR_REACH mm of its copper, voids that do not border
+# it filled, its ground vias kept, solved with mom25d's signal zone (the pour
+# beyond it in coarse cells); 'off' the planes alone. On rf_gcpw widened to
+# 19 mm pours, the whole pour in the zone: 3,929 unknowns and |dS| 0.004 of
+# the fine mesh; a 3 mm band 0.005; a 0.8 mm one (the fence on its edge)
+# 9,017 unknowns. On a LimeRFE's 11 GCPW nets (0.79 mm, 0.25 mm gaps on 20
+# mil RO4350B; 0.1-6 GHz) against the pour to 6 mm on a fine mesh (33,659
+# unknowns, 32 min): kept, 14,378 unknowns, 57 s, |dS| 0.006 (S11 within
+# 0.05 dB at the median); off, 5,937, 17 s, |dS| 0.137 (S11 up to 10 dB
+# off: the line 57 ohm without its coplanar ground). Coarse edges with it:
+# 6,464, |dS| 0.080
+POUR = os.environ.get('K2E_SEG_POUR', 'off')
+POUR_REACH = float(os.environ.get('K2E_SEG_POUR_REACH', 3.0))
+
+
+def _pour(p, near, reach):
+    """A layer's ground polygon p as a piece keeps it: within reach of the
+    piece's copper (near: its union), its holes filled but those bordering
+    that copper (a clearance round another net's pad or trace, gone from the
+    piece, would be edges to mesh)."""
+    from shapely.geometry import Polygon
+    # the band's own edge straight-joined and simplified (it is outside the
+    # signal zone; round, its arcs' vertices had made a LimeRFE piece's band
+    # edge a line of small cells)
+    band = near.buffer(reach, quad_segs=1, join_style='mitre',
+                       mitre_limit=1.5).simplify(0.2 * reach)
+    g = p.intersection(band)
+    out = []
+    for q in getattr(g, 'geoms', [g]):
+        if q.geom_type != 'Polygon' or q.is_empty:
+            continue
+        keep = [r for r in q.interiors
+                if Polygon(r).distance(near) < 0.02]
+        out.append(Polygon(q.exterior, keep))
+    from shapely.ops import unary_union
+    return unary_union(out) if out else None
 
 
 def _windows(kb, lay, nets, reach):
@@ -453,14 +490,18 @@ def _stitching(m, lay, gnets, refs):
     from shapely.geometry import Point
     from shapely.ops import unary_union
     from shapely.prepared import prep
-    if len(refs) != 2:
+    pour = POUR == 'keep'
+    if len(refs) != 2 and not (pour and refs):
         return lambda n, x, y: False
     near = [p for p, n in zip(m.copper.get(lay, []),
                               m.copper_nets.get(lay, [])) if n in gnets]
     if not near:
         return lambda n, x, y: False
-    zone = prep(unary_union(near).buffer(STITCH_REACH))
-    lo, hi = m.cu_z[refs[0]], m.cu_z[refs[1]]
+    # (with the pour kept, its vias: those through it to the planes)
+    zone = prep(unary_union(near).buffer(POUR_REACH if pour
+                                         else STITCH_REACH))
+    zs = [m.cu_z[r] for r in refs] + [m.cu_z[lay]]
+    lo, hi = min(zs), max(zs)
     ok = {(round(v[0], 4), round(v[1], 4))
           for v, n in zip(m.vias, m.via_nets)
           if n in m.ground_nets and v[3] <= lo + 1e-6 and v[4] >= hi - 1e-6
@@ -678,8 +719,17 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
                     or not clip[p.net].contains(_pt(*p.c[:2])))]
         planes = refs_of(lay)
 
+        near = None
+        if POUR == 'keep':
+            from shapely.ops import unary_union as _uu
+            near = _uu([q for q, n in zip(m.copper.get(lay, []),
+                                          m.copper_nets.get(lay, []))
+                        if n in gnets]) or None
+
         def keep(l, n, p, done=set()):
             if l == lay:
+                if n in m.ground_nets and near is not None:
+                    return _pour(p, near, POUR_REACH)
                 if n not in gnets:
                     return None
                 return p.difference(clip[n]) if n in clip else p
@@ -970,6 +1020,9 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
                 cli['mom_stack'] = 'ground'
                 echo(f"{piece['name']}: over {ref}"
                      + (" (turned over)" if d.get('turned') else ''))
+            if POUR == 'keep' and os.environ.get('K2E_SEG_POUR_ZONE',
+                                                 'on') != 'off':
+                cli['mom_zone'] = 'on'  # (the pour's far part coarse)
         else:
             # the via's whole stack in its box, every plane meshed (planes
             # 'holes' is not taken on a whole stack, and asking for it had
@@ -1100,6 +1153,9 @@ def run(a, echo=print):
     """The board in pieces, solved and joined: the external ports' S
     (Touchstone) and segment.json."""
     import time
+    global POUR
+    if getattr(a, 'pour', None):
+        POUR = a.pour
     from .config import build_settings
     from .importers.kicad import KiCadBoard
     from .pipeline import board_from_settings
@@ -2097,6 +2153,11 @@ def parser():
                    "--solver's), auto (mom25d where a piece meshes to at most "
                    f"{LAYER_MOM_MAX} unknowns, K2E_SEG_MOM_MAX, the line "
                    "model past that)")
+    p.add_argument('--pour', default=None, choices=('off', 'keep'),
+                   help="a layer piece's own layer's ground pour (an RF board's "
+                   "coplanar ground): keep (within K2E_SEG_POUR_REACH mm, 3, "
+                   "its voids filled, its vias kept, mom25d's signal zone on) "
+                   "or off (the planes alone; the default)")
     p.add_argument('--edges', default=None, choices=('fine', 'coarse'),
                    help="mom25d's mesh across the copper's edges "
                    "(--mom-edges): coarse ~7x fewer unknowns on narrow traces")
