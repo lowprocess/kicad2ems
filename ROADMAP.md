@@ -118,9 +118,12 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    mom25d, but none of the lane-to-lane coupling (it couples within 5 heights). **The run itself (2026-11-21):
    4 h 19 min and 20.9 GB with the big groups whole (the In7 bus 3 h 21 min: 106 ports), 1 h 02 min and 12.5 GB
    with them in windows** (In7: 8 windows of at most 9.8k unknowns), the 91 connected channels' insertion loss
-   within 0.04 dB of the whole groups' and each victim's worst crosstalk within 0.008 points. Left: the DP1/DP3
-   expansion lanes' losses (DP1.TX2 -39 dB at 10 GHz, DP3.TX2 -9: a meander crossing a via's circle five
-   times, the via model joining every crossing at its barrel, to look into), the remaining figures' check.
+   within 0.04 dB of the whole groups' and each victim's worst crosstalk within 0.008 points. **With every
+   connectivity fix in (2026-11-21): 59 min, 12.7 GB, all 92 channels connected end to end** (median loss
+   -0.33 / -1.05 / -2.41 dB at 1 / 5 / 10 GHz, the worst crosstalk 0.83 % NEXT), the overlay page, the worst
+   couplings and where along the victims they come from (the breakouts at connectors and ICs, not the long
+   striplines). Left: SFI_REFCLK's -3.5 dB at 1 GHz (to look at), the USB 2 lanes' stubs at 10 GHz (out of
+   their band), a check of one interface against a cut-out solved whole as on the CM5.
    The In7 bus piece (24k unknowns, 66 ports): 60 EM solves of ~70 s (the sweep at its cap, not converged).
    **Tried and set aside (2026-11-21): each entry's delay taken out before the sweep's fit** (replayed on that
    piece's S, 16 ports): 72 solves to converge without, the 80-solve cap unconverged with (2.7e-2 off; the
