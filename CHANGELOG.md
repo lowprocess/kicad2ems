@@ -15,7 +15,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   those driven, one solve a column of S; their rows by reciprocity, 0 between two undriven ports. Lumped ports
   only; the RWG basis throughout (the loads were lost in the loop/tree basis's transform). On a LimeRFE piece
   the driven columns are the full solve's to 1.7e-7, and the sweep converged in 7 solves against 28. segment's
-  windows drive their core ports alone (`K2E_SEG_EXCITE_CORE`).
+  windows drive their core ports alone (`K2E_SEG_EXCITE_CORE`): the Thor's In7 bus's 8 windows 1,103 s to 796 s
+  (11,920 s as one piece), the same agreement with the whole group (through paths within 0.047 dB).
 - **`--lean`**: no line-model preview and no figures where no solver needs them; segment's pieces use it (a small
   piece 13.3 s to 6.8 s, the same S).
 - **segment: small pieces in parallel.** Pieces of at most 8 ports and 30 mm2 of signal copper are solved

@@ -30,7 +30,7 @@ routed). Their stackups come from the projects' documents (`add_stackup.py` says
 | `K2E_SEG_GROUP_MAX` | 24 nets | a bigger group is grouped closer, down to 2 spacings (stripline) or 10 heights (microstrip), and says so |
 | stitching vias in stripline pieces | within 1 mm (`K2E_SEG_STITCH`) | without them the two ideal planes carry a parallel-plate mode: −40 to −46 dB coupling at any distance; with them −67 dB median beyond 1.5 mm |
 | windows (`K2E_SEG_WINDOW`) | groups past 32 nets | a core of ≤ 6 nets and its neighbours within the group's spacing; the Thor's In7 bus 11,920 s → 1,103 s, through paths within 0.05 dB |
-| a window's core ports driven alone (`K2E_SEG_EXCITE_CORE`) | on | mom25d `--mom-excite`: every port terminated, the core's driven; the columns equal the full solve's to 1e-7 |
+| a window's core ports driven alone (`K2E_SEG_EXCITE_CORE`) | on | mom25d `--mom-excite`: every port terminated, the core's driven; the columns equal the full solve's to 1e-7; the In7 windows 1,103 s → 796 s |
 | series parts as joints | — | an AC-coupling capacitor or resistor between pieces as its own R, L, C two-port: a lane through its capacitor is one channel |
 | `--pour keep` (RF) | off | a GCPW line's coplanar ground: without it LimeRFE's return loss was up to 10 dB off |
 | `K2E_SEG_POUR_REACH` | 1.5 mm | the pour kept this far from the piece's copper; 3 mm: \|dS\| 0.006, 1.5 mm: 0.007 against the pour to 6 mm on a fine mesh |
