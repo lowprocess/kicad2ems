@@ -516,6 +516,22 @@ class FastOperator:
         if not plan.gpu_dense:
             return None
         gpu = self._backend()
+        from .policy import gpu_fits
+        # room for it (16 N^2) beside the kept factors, the oldest-redundant
+        # dropped as for a new LU (_factor): uploaded past the free memory,
+        # the driver spilled it to the host, where a 158-port product ran
+        # 0.6 s -> 2 s -> past the driver's 10 s watchdog (a Thor carrier's
+        # layer piece: VK_ERROR_DEVICE_LOST)
+        need = 16.0 * len(Z) ** 2 + 0.4e9
+        gpu.drop_dense()
+        while (not gpu_fits(need, gpu.mem_free())
+               and any(k.M.on_gpu for k in self.st.kept)):
+            self.st.drop(gpu=True)
+            gpu.release()
+        if not gpu_fits(need, gpu.mem_free()):
+            self._once('gpu-dense', "the double-precision Z does not fit on "
+                       "the GPU: the refinement's products on the host")
+            return None
         try:
             with self.sim.log.timer('Z to the GPU', f"N={len(Z)}, double"):
                 zh = getattr(self, '_zh', None)

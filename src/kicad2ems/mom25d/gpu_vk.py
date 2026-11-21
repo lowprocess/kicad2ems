@@ -879,9 +879,18 @@ class VulkanBackend:
         return dict(self.zd.desc(), ld=self.zd.cols)
 
     def mul_dense(self, V):
-        """Z V in double precision on the GPU (Z: put_dense's; V: N x k)."""
+        """Z V in double precision on the GPU (Z: put_dense's; V: N x k),
+        SOLVE_RHS columns a submission."""
         N = self.zd.cols
         V = np.asarray(V, complex).reshape(N, -1)
+        if V.shape[1] > self.SOLVE_RHS:
+            return np.concatenate([
+                self._mul_dense(V[:, c:c + self.SOLVE_RHS])
+                for c in range(0, V.shape[1], self.SOLVE_RHS)], 1)
+        return self._mul_dense(V)
+
+    def _mul_dense(self, V):
+        N = self.zd.cols
         k = V.shape[1]
         n2 = 2 * N * k  # (as float2)
         hv, hy = self._host('dv', 8 * n2), self._host('dy', 8 * n2)
@@ -924,9 +933,26 @@ class VulkanBackend:
             out[c0:c0 + cc] = h.view(np.complex64, N * cc).reshape(cc, N)
         return out.T, self.piv.copy()
 
+    # the right-hand sides a GPU solve takes at once, and the blocks of the
+    # factor it records into one submission: a Thor carrier's 158 ports in one
+    # command buffer ran past the driver's watchdog, which reset the context
+    # (VK_ERROR_DEVICE_LOST)
+    SOLVE_RHS, SOLVE_BLOCKS = 32, 16
+
     def solve(self, R):
+        """Z^-1 R (R: host, N x k or N), on the GPU, SOLVE_RHS columns at a
+        time."""
+        R = np.asarray(R)
+        if R.ndim == 2 and R.shape[1] > self.SOLVE_RHS:
+            return np.concatenate([
+                self._solve(R[:, c:c + self.SOLVE_RHS])
+                for c in range(0, R.shape[1], self.SOLVE_RHS)], 1)
+        return self._solve(R)
+
+    def _solve(self, R):
         """Z^-1 R (R: host, N x k or N), on the GPU: U^T y = R, L^T w = y, x = P
-        w. complex64 inside, complex128 out."""
+        w. complex64 inside, complex128 out; submitted SOLVE_BLOCKS blocks at a
+        time."""
         A, Dbuf, order = self.lu
         N, nb = A.rows, self.nb
         R = np.asarray(R)
@@ -954,6 +980,8 @@ class VulkanBackend:
                               (min(rest, 65535), -(-rest // 65535), 1),
                               C_=A.desc(), X_=xa, nrhs_=k, blk_=b0, bn_=bn,
                               k_=N, fwd_=fwd)
+                if bi % self.SOLVE_BLOCKS == self.SOLVE_BLOCKS - 1:
+                    self._submit()  # (in order on the one queue)
         self._copy(self._flatdesc(X.device_address, N * k),
                    self._flatdesc(hx.address, N * k), N * k, 1)
         self.dev.wait_for_submit(self._submit())

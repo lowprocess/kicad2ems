@@ -118,6 +118,12 @@ def preview(m, mesh, title=''):
 Z_CMAP = matplotlib.colormaps['coolwarm']
 
 
+# past these, a figure shows a part: the reflections and the strongest
+# transfers of a network (plot_results), the longest paths' profiles
+# (plot_lines)
+PLOT_PORTS, PLOT_TRANSFERS, PLOT_PROFILES = 12, 24, 12
+
+
 def plot_lines(lm, m, title=''):
     """Layout map of the sections (coloured by Z0, numbered along each path) and
     the impedance profile along each path (Z0 against the distance from its
@@ -128,7 +134,12 @@ def plot_lines(lm, m, title=''):
     # the port's Z +-40 %
     norm, cmap = (TwoSlopeNorm(vcenter=z_port, vmin=0.6 * z_port,
                                vmax=1.4 * z_port), Z_CMAP)
-    npath = len(lm.paths)
+    # the profiles of the PLOT_PROFILES longest paths (a 158-port piece's 871
+    # made a figure 2,600 inches tall: 100 s)
+    shown = sorted(range(len(lm.paths)), key=lambda k: -sum(
+        e.length for e, _, _ in lm.paths[k][2]))[:PLOT_PROFILES]
+    shown = sorted(shown)
+    npath = len(shown)
     # view: the sections plus a margin (a corner of a large board stays
     # readable)
     pts = np.vstack([
@@ -190,7 +201,7 @@ def plot_lines(lm, m, title=''):
                 and (e.length >= 0.04 * span or e.kind in ('via', 'part'))):
             k, i = numbered[id(e)]
             c = np.asarray(e.pts).mean(axis=0)
-            ax.annotate((f"{i}" if npath == 1 else f"{k + 1}.{i}"), c,
+            ax.annotate((f"{i}" if len(lm.paths) == 1 else f"{k + 1}.{i}"), c,
                         xytext=(0, -11), textcoords='offset points', fontsize=7,
                         ha='center', va='center', zorder=8,
                         bbox=dict(boxstyle='round,pad=0.15', fc='white',
@@ -244,8 +255,9 @@ def plot_lines(lm, m, title=''):
         fontsize=10)
     fig.colorbar(ScalarMappable(norm=norm, cmap=cmap), ax=ax, shrink=0.9,
                  pad=0.01, label='Z0 (ohm)')
-    for k, (p, q, secs, branches) in enumerate(lm.paths):
-        px = fig.add_subplot(gs[k + 1])
+    for row, k in enumerate(shown):
+        p, q, secs, branches = lm.paths[k]
+        px = fig.add_subplot(gs[row + 1])
         zs = [e.z0 for e, _, _ in secs if e.z0]
         top = max([z_port * 1.3] + zs) * 1.08
         for i, (e, s0, _) in enumerate(secs, 1):
@@ -346,39 +358,48 @@ def plot_results(f, S, names, title, overlays=(), label='openEMS'):
     hz, unit = band_unit(f)  # a band below 1 GHz in MHz or kHz
     if log_spaced(f):        # a log sweep: its decades evenly
         ax.set_xscale('log')
+    # lower triangle incl. diagonal (reciprocal network); past PLOT_PORTS
+    # ports, the reflections and the PLOT_TRANSFERS strongest transfers alone
+    # (every one of a Thor carrier's 158-port layer piece, 12,561 curves,
+    # took 4 minutes and showed nothing)
+    pairs = [(i, j) for j in range(n) for i in range(j, n)]
+    if n > PLOT_PORTS:
+        with np.errstate(invalid='ignore'):
+            peak = {(i, j): np.nanmax(np.abs(S[:, i, j]), initial=0.0)
+                    for i, j in pairs if i != j}
+        top = sorted(peak, key=peak.get, reverse=True)[:PLOT_TRANSFERS]
+        pairs = [(i, i) for i in range(n)] + sorted(top, key=lambda p: p[::-1])
     k = 0
-    for j in range(n):
-        # lower triangle incl. diagonal (reciprocal network)
-        for i in range(j, n):
-            c = TAB10[k % 10]
-            lab = f"S({names[i]},{names[j]})"
-            k += 1
-            # not excited: nothing to show or compare
-            if not np.isfinite(S[:, i, j]).any():
-                continue
-            ax.plot(f / hz, 20 * np.log10(np.abs(S[:, i, j]) + 1e-15), color=c,
-                    lw=2.0 if i == j else 1.6, label=f"{lab} {label}")
+    for i, j in pairs:
+        c = TAB10[k % 10]
+        lab = f"S({names[i]},{names[j]})"
+        k += 1
+        # not excited: nothing to show or compare
+        if not np.isfinite(S[:, i, j]).any():
+            continue
+        ax.plot(f / hz, 20 * np.log10(np.abs(S[:, i, j]) + 1e-15), color=c,
+                lw=2.0 if i == j else 1.6, label=f"{lab} {label}")
+        for fo, So, olab, style in overlays:
+            if (i < So.shape[1] and j < So.shape[1]
+                    and np.isfinite(So[:, i, j]).any()):
+                ax.plot(
+                    fo / hz,
+                    20 * np.log10(np.abs(So[:, i, j]) + 1e-15),
+                    ls=style,
+                    color=c,
+                    lw=1.3,
+                    # ls: a dash pattern is a tuple, not a format
+                    label=f"{lab} {olab}")
+        if i == j:
+            g = S[:, i, i]
+            sax.plot(g.real, g.imag, color=c, lw=1.8,
+                     label=f"{lab} {label}")
+            sax.plot(g.real[0], g.imag[0], 'o', color=c, ms=5)
+            sax.plot(g.real[-1], g.imag[-1], 's', color=c, ms=5)
             for fo, So, olab, style in overlays:
-                if (i < So.shape[1] and j < So.shape[1]
-                        and np.isfinite(So[:, i, j]).any()):
-                    ax.plot(
-                        fo / hz,
-                        20 * np.log10(np.abs(So[:, i, j]) + 1e-15),
-                        ls=style,
-                        color=c,
-                        lw=1.3,
-                        # ls: a dash pattern is a tuple, not a format
-                        label=f"{lab} {olab}")
-            if i == j:
-                g = S[:, i, i]
-                sax.plot(g.real, g.imag, color=c, lw=1.8,
-                         label=f"{lab} {label}")
-                sax.plot(g.real[0], g.imag[0], 'o', color=c, ms=5)
-                sax.plot(g.real[-1], g.imag[-1], 's', color=c, ms=5)
-                for fo, So, olab, style in overlays:
-                    if i < So.shape[1] and np.isfinite(So[:, i, i]).any():
-                        sax.plot(So[:, i, i].real, So[:, i, i].imag, ls=style,
-                                 color=c, lw=1.3, label=f"{lab} {olab}")
+                if i < So.shape[1] and np.isfinite(So[:, i, i]).any():
+                    sax.plot(So[:, i, i].real, So[:, i, i].imag, ls=style,
+                             color=c, lw=1.3, label=f"{lab} {olab}")
     ax.set_xlabel(f"Frequency ({unit})")
     ax.set_ylabel('|S| (dB)')
     ax.set_title(
@@ -386,7 +407,16 @@ def plot_results(f, S, names, title, overlays=(), label='openEMS'):
         fontsize=10)
     ax.grid(alpha=0.3)
     n_entries = len(ax.get_legend_handles_labels()[0])
-    ax.legend(fontsize=8, ncol=2 if n_entries > 8 else 1)
+    if n > PLOT_PORTS:
+        ax.set_title(f"S-parameters: {n} reflections (thick) and the "
+                     f"{len(pairs) - n} strongest transfers", fontsize=10)
+    else:
+        ax.legend(fontsize=8, ncol=2 if n_entries > 8 else 1)
+    if n > PLOT_PORTS:
+        sax.set_title('Reflection (Smith chart)', fontsize=10)
+        fig.suptitle(title, x=0.02, ha='left', weight='bold')
+        fig.tight_layout()
+        return fig
     h, l = sax.get_legend_handles_labels()
     h += [
         Line2D([], [], ls='none', marker='o', color='0.3', ms=5),

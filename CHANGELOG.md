@@ -285,6 +285,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **mom25d on the GPU: a lost device on a 158-port piece (2026-11-21).** The double-precision Z went up to the GPU
+  beside four kept factors with no check of the room left; the driver spilled it to host memory, and a product
+  that took 0.6 s took 2 s, then ran past the driver's 10 s watchdog (VK_ERROR_DEVICE_LOST). It now drops kept
+  factors until Z fits, as a new factor does (and solves on the host where it still does not), and the GPU's
+  products and solves go 32 columns a submission.
+- **Figures of big networks.** The S-parameter figure past 12 ports draws the reflections and the 24 strongest
+  transfers (a 158-port piece's 12,561 curves took 4 minutes); the line-model figure draws the 12 longest paths'
+  profiles (871 made it 2,600 inches tall: 100 s, now 5).
 - **segment on a 10-layer board (2026-11-21, the Jetson Thor carrier).** (1) A layer piece kept every layer's ground
   copper: a split or perforated plane is not solid to mom25d, which then meshed every plane above a stripline
   (the carrier's In7 bus: 625,819 unknowns); a piece keeps the planes next to its layer alone, each a whole
