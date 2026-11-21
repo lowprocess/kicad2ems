@@ -288,6 +288,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **segment: a lane through its AC-coupling capacitor is one channel (2026-11-21).** Each net had been a channel of
+  its own, its ends at the capacitor's pads: a 50 ohm port each side of it split the lane's power (the Thor
+  carrier's USB-C TX halves at -5 to -7 dB) and read its through signal as crosstalk (DP2.TX0 "38 % FEXT from"
+  DP2.TX0_C). Nets joined by a two-pad series part (C, R, L, FB) are now one channel, its ports at the chain's
+  ends, named by the net at its best end; the part stays in the model, and such nets are kept in one piece
+  (the Thor's 158 nets: 100 parts, 88 of them capacitors).
 - **Big networks: the join and the modal S (2026-11-21).** segment's join held every frequency's S of all the
   pieces' ports side by side (the Thor carrier's ~3,500: 39 GB, killed at 24); it now goes a frequency at a time
   with the blocks as a sparse matrix and a sparse LU (the same S to 4e-15). coupling.modal's change to modes was

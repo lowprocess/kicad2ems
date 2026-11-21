@@ -261,6 +261,21 @@ def _piece(m, raw, keep, ports, outline=None, vias=None):
 STITCH_REACH = float(os.environ.get('K2E_SEG_STITCH', 1.0))
 
 
+def _with_chains(grps, chain):
+    """Groups that share a chain (chains: nets joined by series parts)
+    merged, in their first's place."""
+    out = []
+    for g in grps:
+        g = list(g)
+        keys = {c for n in g for c in chain.get(n, [n])}
+        hit = [i for i, h in enumerate(out)
+               if keys & {c for n in h for c in chain.get(n, [n])}]
+        for i in reversed(hit):
+            g = out.pop(i) + g
+        out.insert(hit[0] if hit else len(out), g)
+    return out
+
+
 def _capped(kb, lay, grps, apart, floor, echo=print):
     """Groups of more than GROUP_MAX nets grouped again at 0.8 x the spacing,
     again, down to floor (mm): couplings between nets further apart than the
@@ -418,6 +433,7 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
     from shapely.ops import unary_union
     from shapely.affinity import scale
     signal = set(nets) - set(m.ground_nets)
+    chain = chains(kb, sorted(signal))
     groups = via_groups(m, signal,
                         ends=[(float(p.c[0]), float(p.c[1])) for p in m.ports])
     # each net's circles: those of the groups holding one of its vias (a trace
@@ -478,6 +494,8 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
         if apart_h is None and len(refs) == 2:
             grps = _capped(kb, lay, grps, apart, APART_FLOOR_B * (
                 m.cu_z[refs[1]] - m.cu_z[refs[0]]), echo)
+        # nets a series part joins in one piece (the part between them)
+        grps = _with_chains(grps, chain)
         for gi, gnets in enumerate(grps):
             gnets = set(gnets)
             mine = [c for c in allcuts if c['layer'] == lay
@@ -957,6 +975,47 @@ def _has_ports(s):
         return False
 
 
+# a series part joining two nets of one channel (an AC-coupling capacitor, a
+# 0 ohm or damping resistor, a ferrite): its reference's letters
+SERIES_REFS = ('C', 'R', 'L', 'FB')
+
+
+def series_links(kb, nets):
+    """The two-pad series parts whose pads are on two of `nets` (a set):
+    [(ref, net, net)]. A Thor carrier's 158 high-speed nets had 100 (88 AC-
+    coupling capacitors, 12 resistors): each lane two nets, its ends at the
+    capacitor's pads."""
+    import re
+    out = []
+    for fp in kb.footprints:
+        pads = [p for p in fp.get('pads', []) if p.get('net')]
+        ns = {p['net'] for p in pads}
+        head = re.match(r'[A-Za-z]+', str(fp.get('ref', '')))
+        if (len(fp.get('pads', [])) == 2 and len(ns) == 2 and ns <= nets
+                and head and head.group(0).upper() in SERIES_REFS):
+            a, b = sorted(ns)
+            out.append((fp['ref'], a, b))
+    return out
+
+
+def chains(kb, nets):
+    """The nets joined by series parts (series_links) as channels: {net: its
+    chain's nets (sorted)}; a net with none is its own."""
+    up = {n: n for n in nets}
+
+    def root(n):
+        while up[n] != n:
+            up[n] = up[up[n]]
+            n = up[n]
+        return n
+    for _, a, b in series_links(kb, set(nets)):
+        up[root(a)] = root(b)
+    groups = {}
+    for n in nets:
+        groups.setdefault(root(n), []).append(n)
+    return {n: sorted(groups[root(n)]) for n in nets}
+
+
 def end_ports(kb, nets):
     """Port specs at the two ends of each net (fnmatch patterns, comma-
     separated; ground nets left out): of the net's pads that its own tracks or
@@ -972,17 +1031,24 @@ def end_ports(kb, nets):
     sel = [n for n in select_nets(kb, pats)
            if n.upper() not in ('GND', 'GROUND') and not n.upper().endswith(
                'GND')]
-    order = sorted(sel, key=lambda n: (min(
-        (m for m in sel if m == n or _legs(m, n)), key=str), n))
-    specs, info = [], []
-    for net in order:
+    # a channel is its nets joined by series parts (an AC-coupling capacitor's
+    # two sides: one lane), its ends the chain's: the parts' own pads are not
+    # ends (a port each side of the capacitor had split the lane's power,
+    # -5 to -7 dB, and read its through signal as 38 % FEXT)
+    chain = chains(kb, sel)
+    links = series_links(kb, set(sel))
+    inner = {ref for ref, _, _ in links}
+    reach = {}
+    for net in sel:
         ends = [(tuple(t['pts'][0]), t['layer']) for t in kb.tracks
                 if t['net'] == net] + [
             (tuple(t['pts'][-1]), t['layer']) for t in kb.tracks
             if t['net'] == net]
         vias = [(v['x'], v['y']) for v in kb.vias if v.get('net') == net]
-        reached = []
+        reach[net] = []
         for fp in kb.footprints:
+            if fp['ref'] in inner:
+                continue
             for pd in fp.get('pads', []):
                 if pd.get('net') != net or pd.get('geom') is None:
                     continue
@@ -991,9 +1057,24 @@ def end_ports(kb, nets):
                           for xy, l in ends) or any(
                     g.contains(Point(*xy)) for xy in vias)
                 if hit:
-                    reached.append((fp['ref'], pd['name'],
-                                    np.asarray(pd['xy'], float),
-                                    pd['layers'][0]))
+                    reach[net].append((fp['ref'], pd['name'],
+                                       np.asarray(pd['xy'], float),
+                                       pd['layers'][0], net))
+    # each chain named by the net holding its best end (a connector's): a
+    # pair's two legs then named alike (DP2.TX1+ / DP2.TX1-)
+    label = {}
+    for net in sel:
+        mem = chain[net]
+        cand = [r for n in mem for r in reach[n]]
+        label[net] = (min(cand, key=lambda r: (_end_rank(r[0]), r[4]))[4]
+                      if cand else min(mem))
+    heads = sorted({label[n] for n in sel})
+    order = sorted(heads, key=lambda n: (min(
+        (m for m in heads if m == n or _legs(m, n)), key=str), n))
+    specs, info = [], []
+    for head in order:
+        mem = [n for n in sel if label[n] == head]
+        reached = [r for n in mem for r in reach[n]]
         if not reached:
             continue
         if len(reached) == 1:
@@ -1010,11 +1091,11 @@ def end_ports(kb, nets):
                            float(np.hypot(*(a[2] - b[2]))))
                     if best is None or key > best:
                         best, pick = key, (a, b)
-        for ref, pad, _, layer in pick:
+        for ref, pad, _, layer, net in pick:
             k = len(specs) + 1
             specs.append(f"P{k}={ref}.{pad}")
-            info.append(dict(port=f"P{k}", net=net, ref=ref, pad=pad,
-                             layer=layer))
+            info.append(dict(port=f"P{k}", net=head, pad_net=net, ref=ref,
+                             pad=pad, layer=layer, nets=sorted(mem)))
     return specs, info
 
 
@@ -1123,10 +1204,16 @@ def overlay(result, kb=None, top=8):
     from .coupling import channels
     legs = {c['name']: list(c['legs']) for c in channels(
         list(dict.fromkeys(x['net'] for x in res['port_nets'])), True)}
+    # a leg's own nets (its chain through series parts: both sides of an
+    # AC-coupling capacitor)
+    mem = {}
+    for x in res['port_nets']:
+        mem.setdefault(x['net'], set()).update(x.get('nets') or [x['net']])
     vic = {v['victim']: v for v in rep['victims']}
     chans = []
     for c in rep['channels']:
-        nets = legs.get(c['channel'], [c['channel']])
+        nets = sorted({n for leg in legs.get(c['channel'], [c['channel']])
+                       for n in mem.get(leg, [leg])})
         v = vic.get(c['channel'], {})
         tracks = [dict(layer=t['layer'], net=t['net'], w=float(t['width']),
                        pts=np.round(np.asarray(t['pts'], float), 4).tolist())
