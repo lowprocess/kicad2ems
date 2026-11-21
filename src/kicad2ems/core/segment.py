@@ -47,6 +47,11 @@ APART_STRIP_B = 3.0  # a stripline layer's groups: this many plane spacings
 GROUP_MAX = int(os.environ.get('K2E_SEG_GROUP_MAX', 24))
 APART_FLOOR_B = 2.0
 APART_FLOOR_H = 10.0  # ... and a microstrip layer's, in heights
+# a group of more nets than this in overlapping windows of CORE_NETS nets and
+# their neighbours (0: none). A Thor carrier's In7 bus, 42 nets in one piece:
+# 23.8k unknowns, 66 ports, 73 min
+WINDOW_NETS = int(os.environ.get('K2E_SEG_WINDOW', 32))
+CORE_NETS = 6
 END_MARGIN = 0.2  # mm: a via this near beyond its circle to a port: not cut
 RUN = 2.0         # mm: two nets are one layer piece where they run that far
                   # within --apart of each other (coupling.groups' run)
@@ -318,6 +323,83 @@ def _piece(m, raw, keep, ports, outline=None, vias=None):
 STITCH_REACH = float(os.environ.get('K2E_SEG_STITCH', 1.0))
 
 
+def _windows(kb, lay, nets, reach):
+    """A group's windows: [(core nets, window nets)]. The nets as units (a
+    pair's legs one), ordered breadth first through who is within reach (mm)
+    of whom (along a bus: across it), cut into cores of up to CORE_NETS nets;
+    a window is its core and every net within reach of it."""
+    from shapely.geometry import LineString
+    from shapely.ops import unary_union
+    from .si import _legs
+    geo = {}
+    for t in kb.tracks:
+        if t['layer'] == lay and t['net'] in nets and len(t['pts']) > 1:
+            geo.setdefault(t['net'], []).append(
+                LineString(t['pts']).buffer(t['width'] / 2))
+    geo = {n: unary_union(g) for n, g in geo.items()}
+    units, seen = [], set()
+    for n in nets:
+        if n in seen:
+            continue
+        u = [n] + [o for o in nets if o != n and o not in seen
+                   and _legs(n, o)][:1]
+        seen.update(u)
+        units.append(u)
+    near = lambda a, b: a in geo and b in geo and geo[a].distance(
+        geo[b]) <= reach
+    adj = {i: {j for j, v in enumerate(units) if j != i and any(
+        near(a, b) for a in u for b in v)} for i, u in enumerate(units)}
+    order, done = [], set()
+    while len(done) < len(units):
+        start = min((i for i in adj if i not in done),
+                    key=lambda i: len(adj[i]))
+        queue = [start]
+        done.add(start)
+        while queue:
+            i = queue.pop(0)
+            order.append(i)
+            for j in sorted(adj[i], key=lambda j: len(adj[j])):
+                if j not in done:
+                    done.add(j)
+                    queue.append(j)
+    cores, cur = [], []
+    for i in order:
+        if cur and sum(len(units[j]) for j in cur) + len(units[i]) > CORE_NETS:
+            cores.append(cur)
+            cur = []
+        cur.append(i)
+    if cur:
+        cores.append(cur)
+    out = []
+    for c in cores:
+        win = set(c) | {j for i in c for j in adj[i]}
+        out.append(({n for i in c for n in units[i]},
+                    sorted(n for i in win for n in units[i])))
+    return out
+
+
+def assemble(wins):
+    """A group's S from its windows' [(S (nf, n, n), port names, core
+    ports)]: each core port's row from its own window; an entry two windows
+    have, their mean; one neither has, 0. (S (nf, m, m), the m ports)."""
+    names = list(dict.fromkeys(p for _, _, core in wins for p in core))
+    at = {p: i for i, p in enumerate(names)}
+    nf = wins[0][0].shape[0]
+    A = np.zeros((nf, len(names), len(names)), complex)
+    D = np.zeros((len(names), len(names)), bool)
+    for S, ns, core in wins:
+        wi = {p: i for i, p in enumerate(ns)}
+        cols = [p for p in ns if p in at]
+        J, Jw = [at[p] for p in cols], [wi[p] for p in cols]
+        for p in core:
+            A[:, at[p], J] = S[:, wi[p], Jw]
+            D[at[p], J] = True
+    both = D & D.T
+    S = np.where(both, 0.5 * (A + A.transpose(0, 2, 1)),
+                 np.where(D, A, A.transpose(0, 2, 1)))
+    return S, names
+
+
 def _together(grps, pairs):
     """Groups merged where a pair of nets (a part left in the mesh) would be
     split between two."""
@@ -349,7 +431,7 @@ def _capped(kb, lay, grps, apart, floor, echo=print):
             echo(f"segment: {lay}: a group of {len(g)} nets in {len(sub)} "
                  f"(the largest {max(map(len, sub))}) at {a:.2f} mm: their "
                  f"coupling across it left out")
-        out += sub
+        out += [(x, a) for x in sub]
     return out
 
 
@@ -565,6 +647,50 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
         above = [l for l in plane_layers if m.cu_z[l] > z + 1e-9]
         return ({max(below, key=lambda l: m.cu_z[l])} if below else set()) | (
             {min(above, key=lambda l: m.cu_z[l])} if above else set())
+    net_of_cut = {c['k']: c['net'] for c in allcuts if not c.get('part')}
+
+    def layer_piece(lay, gnets, name, refs):
+        """The piece of layer lay's nets gnets (over its planes), or None
+        where it has no ports (slivers of a via's ring)."""
+        mine = [c for c in allcuts if c['layer'] == lay
+                and c['net'] in gnets]
+        ports = [(c.get('port', f"P{1000 + c['k']}"),
+                  _fp(f"cutL{c['k']}", c['at'], c['out'], lay,
+                      c.get('nudge', NUDGE)))
+                 for c in mine]
+        fps = [(p.name, _port_fp(p)) for p in ext.values()
+               if p.layer == lay and getattr(p, 'net', None) in gnets
+               and (p.net not in clip
+                    or not clip[p.net].contains(_pt(*p.c[:2])))]
+        planes = refs_of(lay)
+
+        def keep(l, n, p, done=set()):
+            if l == lay:
+                if n not in gnets:
+                    return None
+                return p.difference(clip[n]) if n in clip else p
+            # the planes next to the layer, each a whole sheet (the ideal
+            # planes the piece is solved over), the rest of the board left
+            # out (beyond them). The planes as imported: a split or
+            # perforated one is not 'solid' to mom25d, which then meshed
+            # every plane above a stripline (a Thor carrier's In7 bus:
+            # 625,819 unknowns)
+            if l in planes and n in m.ground_nets and l not in done:
+                done.add(l)
+                return m.outline
+            return None
+        if not fps and not ports:
+            return None
+        b = _piece(m, raw, keep, fps + ports,
+                   vias=_stitching(m, lay, gnets, refs))
+        b.parts = [q for q in b.parts if q.ref not in joined]
+        return dict(kind='layer', name=name, layer=lay, board=b,
+                    links=[(c.get('port', f"P{1000 + c['k']}"), c['k'])
+                           for c in mine],
+                    part_net={c['port']: c['net'] for c in mine
+                              if c.get('part')},
+                    external=[n for n, _ in fps],
+                    nets=sorted(gnets), clip=clip)
     for lay in sig_layers:
         on = sorted({n for p, n in zip(m.copper.get(lay, []),
                                        m.copper_nets.get(lay, []))
@@ -587,51 +713,40 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
             # (microstrip as well: the Thor's F.Cu breakouts within 20
             # heights of each other chained 90 nets across the board, 237
             # ports, 62 min)
-            grps = _capped(kb, lay, grps, apart, APART_FLOOR_B * (
+            sized = _capped(kb, lay, grps, apart, APART_FLOOR_B * (
                 m.cu_z[refs[1]] - m.cu_z[refs[0]]) if len(refs) == 2
                 else APART_FLOOR_H * h, echo)
-        grps = _together(grps, stay)
+        else:
+            sized = [(g, apart) for g in grps]
+        reach = {n: a_ for g, a_ in sized for n in g}
+        grps = _together([g for g, _ in sized], stay)
         for gi, gnets in enumerate(grps):
-            gnets = set(gnets)
-            mine = [c for c in allcuts if c['layer'] == lay
-                    and c['net'] in gnets]
-            ports = [(c.get('port', f"P{1000 + c['k']}"),
-                      _fp(f"cutL{c['k']}", c['at'], c['out'], lay,
-                          c.get('nudge', NUDGE)))
-                     for c in mine]
-            fps = [(p.name, _port_fp(p)) for p in ext.values()
-               if p.layer == lay and getattr(p, 'net', None) in gnets
-               and (p.net not in clip
-                    or not clip[p.net].contains(_pt(*p.c[:2])))]
-
-            def keep(l, n, p, lay=lay, gnets=gnets, refs=refs_of(lay),
-                     done=set()):
-                if l == lay:
-                    if n not in gnets:
-                        return None
-                    return p.difference(clip[n]) if n in clip else p
-                # the planes next to the layer, each a whole sheet (the ideal
-                # planes the piece is solved over), the rest of the board left
-                # out (beyond them). The planes as imported: a split or
-                # perforated one is not 'solid' to mom25d, which then meshed
-                # every plane above a stripline (a Thor carrier's In7 bus:
-                # 625,819 unknowns)
-                if l in refs and n in m.ground_nets and l not in done:
-                    done.add(l)
-                    return m.outline
-                return None
-            if not fps and not ports:
-                continue  # slivers of a via's ring: nothing to join
-            b = _piece(m, raw, keep, fps + ports,
-                       vias=_stitching(m, lay, gnets, refs))
-            b.parts = [q for q in b.parts if q.ref not in joined]
             name = _safe(lay) + (f"_g{gi + 1}" if len(grps) > 1 else '')
-            out.append(dict(kind='layer', name=name, layer=lay, board=b,
-                            links=[(c.get('port', f"P{1000 + c['k']}"),
-                                    c['k'])
-                                   for c in mine],
-                            external=[n for n, _ in fps],
-                            nets=sorted(gnets), clip=clip))
+            if WINDOW_NETS and len(gnets) > WINDOW_NETS:
+                # a big group in overlapping windows: each a core of a few
+                # pairs and its neighbours within the group's spacing,
+                # assembled into the group's S (run: assemble)
+                wins = _windows(kb, lay, sorted(gnets),
+                                min(reach.get(n, apart) for n in gnets))
+                echo(f"segment: {name}: {len(gnets)} nets in {len(wins)} "
+                     f"windows (the largest {max(len(w) for _, w in wins)} "
+                     "nets)")
+                for wi, (core, wnets) in enumerate(wins):
+                    pc = layer_piece(lay, set(wnets), f"{name}_w{wi + 1}",
+                                     refs)
+                    if pc is None:
+                        continue
+                    pc['window_of'] = name
+                    pc['core_ports'] = [
+                        n for n, k in pc['links']
+                        if (pc['part_net'].get(n) or net_of_cut.get(k))
+                        in core] + [n for n in pc['external']
+                                    if ext[n].net in core]
+                    out.append(pc)
+                continue
+            pc = layer_piece(lay, set(gnets), name, refs)
+            if pc is not None:
+                out.append(pc)
     for gi, g in enumerate(groups):
         mine = [c for c in allcuts if c.get('group') == gi]
         gnets = {v['net'] for v in g['vias']}
@@ -1010,6 +1125,7 @@ def run(a, echo=print):
          f"{sum(p['kind'] == 'via' for p in parts)} via model(s), "
          f"{len(allcuts)} cut(s)")
     blocks, links, f0, info, cut_of = [], {}, None, [], {}
+    wins, win_links = {}, {}
     for p in parts:
         t = time.time()
         try:
@@ -1032,16 +1148,32 @@ def run(a, echo=print):
         elif len(f) != len(f0) or np.abs(f - f0).max() > 1e-3 * f0.max():
             raise ValueError(f"{p['name']}: its frequencies are not the "
                              "others'")
-        gl = [f"{p['name']}:{n}" for n in names]
-        blocks.append((S, gl))
-        for port, k in p['links']:
-            links.setdefault(k, []).append(f"{p['name']}:{port}")
-            cut_of[(p['name'], port)] = k
+        if p.get('window_of'):
+            # (a window: its group's S assembled after the pieces)
+            g = p['window_of']
+            wins.setdefault(g, []).append((S, list(names),
+                                           set(p['core_ports'])))
+            for port, k in p['links']:
+                if port in p['core_ports']:
+                    win_links.setdefault(g, []).append((port, k))
+        else:
+            gl = [f"{p['name']}:{n}" for n in names]
+            blocks.append((S, gl))
+            for port, k in p['links']:
+                links.setdefault(k, []).append(f"{p['name']}:{port}")
+                cut_of[(p['name'], port)] = k
         got = next(iter(sm.get('solved', {}).items()), (None, {}))
         info.append(dict(piece=p['name'], kind=p['kind'], ports=names,
                          seconds=round(time.time() - t, 1), solver=got[0],
                          unknowns=(got[1] or {}).get('unknowns')))
         echo(f"{p['name']}: {len(names)} ports, {time.time() - t:.0f} s")
+    for g, ws in wins.items():
+        S, names = assemble(ws)
+        blocks.append((S, [f"{g}:{n}" for n in names]))
+        for port, k in win_links.get(g, []):
+            links.setdefault(k, []).append(f"{g}:{port}")
+            cut_of[(g, port)] = k
+        echo(f"{g}: {len(names)} ports assembled from {len(ws)} windows")
     # each cut's correction, by its cross-section (layer, width): two
     # lumped ports back to back are not the trace they cut
     widths = {}

@@ -273,3 +273,42 @@ def test_a_lane_through_its_ac_capacitor():
     assert abs(S[0, 0, 1]) > 0.9999 and abs(S[0, 0, 0]) < 1e-3
     S = SG.series_block([1e9], NS(R=33.0, L=None, C=None))
     assert abs(S[0, 0, 0] - 33 / 133) < 1e-12
+
+
+def test_windows_of_a_bus_and_their_assembly():
+    """segment._windows: a bus of 8 pairs in cores of 3 pairs, each window its
+    core and the pairs within reach; assemble: each core port's row from its
+    window, an entry both windows have their mean, one neither has 0."""
+    from types import SimpleNamespace
+    tracks = []
+    for i in range(8):
+        for leg, dy in (('+', 0.0), ('-', 0.2)):
+            y = i * 1.0 + dy
+            tracks.append(dict(layer='In1.Cu', net=f'/b/L{i}{leg}', width=0.1,
+                               pts=[[0.0, y], [20.0, y]]))
+    kb = SimpleNamespace(tracks=tracks)
+    nets = sorted(t['net'] for t in tracks)
+    wins = SG._windows(kb, 'In1.Cu', nets, reach=0.85)
+    cores = [c for c, _ in wins]
+    assert sorted(n for c in cores for n in c) == nets
+    assert all(len(c) <= SG.CORE_NETS for c in cores)
+    for core, win in wins:  # a window: its core and the next pair either side
+        idx = sorted({int(n[4]) for n in core})
+        assert {int(n[4]) for n in win} == set(range(
+            max(idx[0] - 1, 0), min(idx[-1] + 2, 8)))
+    # assembly on a known symmetric S
+    rng = np.random.default_rng(0)
+    n = 6
+    S = rng.standard_normal((3, n, n)) + 1j * rng.standard_normal((3, n, n))
+    S = S + S.transpose(0, 2, 1)
+    names = [f'P{i}' for i in range(n)]
+    w1 = ([0, 1, 2, 3], {'P0', 'P1'})
+    w2 = ([2, 3, 4, 5], {'P2', 'P3', 'P4', 'P5'})
+    got, order = SG.assemble([(S[:, w][:, :, w], [names[i] for i in w], c)
+                              for w, c in (w1, w2)])
+    at = [order.index(p) for p in names]
+    G = got[:, at][:, :, at]
+    assert np.allclose(G[:, 0, 3], S[:, 0, 3])      # w1 alone
+    assert np.allclose(G[:, 2, 5], S[:, 2, 5])      # w2's
+    assert np.allclose(G[:, 0, 5], 0)               # in no window
+    assert np.allclose(G, G.transpose(0, 2, 1))
