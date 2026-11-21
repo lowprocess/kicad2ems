@@ -108,6 +108,14 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    where its circles only touch. A purpose-built trace mesher was measured first and set aside: the CM5 piece's
    unknowns are 80 % edge rings at 65 a mm of trace, and neither fewer rings (more triangles: the area limit
    splits the wider strips), coarsening nor quads lowers them; an outline simplified at 5 um saves 18 %.
+   **The Jetson AGX Thor carrier (2026-11-21, the user's scale target: 10 layers, 22k tracks, 3.3k vias)**: its 158
+   high-speed nets (79 channels, 568 ports) in 78 layer pieces and 118 via models, on this machine. On the way:
+   the layer pieces had meshed every split plane above a stripline (626k unknowns; now the two adjacent planes
+   as sheets), stripline groups at 3 plane spacings with a cap of 24 nets (the In7 bus chained 64), the stripline
+   pieces' parallel-plate mode (-45 dB coupling at any distance until the board's ground vias went in), a lost GPU
+   device at 158 ports (the double Z spilled out of VRAM), and figures of 158 ports that took 6 minutes. The line
+   model was measured as a stand-in for the biggest stripline piece and set aside: its loss within 0.1-0.5 dB of
+   mom25d, but none of the lane-to-lane coupling (it couples within 5 heights). The run itself: (being run).
 4. **mom25d iterative: AIM + GMRES (being prototyped, 2026-11-20).** The far (centroid) product by a
    precorrected FFT on a grid per layer pair (the layered tables sampled on it: no multipole expansion of the
    layered kernel needed), mom25d's exact near correction as it is, GMRES preconditioned by the near part's
