@@ -147,3 +147,21 @@ def test_excellon_tool_fields_zero_suppression_and_modal_coordinates(tmp_path):
     assert ((round(x, 4), round(y, 4), round(d, 4)) == (25.4, -12.7,
                                                         round(0.0157 * 25.4,
                                                               4)))
+
+
+def test_a_kicad4_board_s_own_copper_layer_names():
+    """KiCadBoard: a KiCad 4/5 file's copper layers named as the user did ('T',
+    'GND') are F.Cu / In<n>.Cu / B.Cu by number, in every layer field; a net
+    named like a layer keeps its name."""
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    text = '''(kicad_pcb (version 4) (host pcbnew 4.0.7)
+  (layers (0 T signal) (1 GND signal) (31 B signal) (44 Edge.Cuts user))
+  (net 0 "") (net 1 GND) (net 2 RF)
+  (segment (start 0 0) (end 5 0) (width 0.3) (layer T) (net 2))
+  (segment (start 0 1) (end 5 1) (width 0.3) (layer B) (net 1))
+  (gr_line (start -1 -1) (end 6 -1) (layer Edge.Cuts) (width 0.1))
+)'''
+    kb = KiCadBoard(text=text)
+    assert sorted((t['layer'], t['net']) for t in kb.tracks) == [
+        ('B.Cu', 'GND'), ('F.Cu', 'RF')]
+    assert kb.copper_order == ['F.Cu', 'In1.Cu', 'B.Cu']

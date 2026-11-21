@@ -46,6 +46,7 @@ class KiCadBoard(Imported):
             with open(path, encoding='utf-8') as fh:
                 text = fh.read()
         self.root = parse_sexpr(text)
+        self._canonical_layers()
         if (not (isinstance(self.root, list) and self.root
                  and self.root[0] == 'kicad_pcb')):
             raise ValueError(f"{path or 'board text'}: not a .kicad_pcb file")
@@ -73,6 +74,48 @@ class KiCadBoard(Imported):
             return it[2]
         v = str(it[1])
         return self.net_names.get(v, v)
+
+    # ---- copper layers' own names -------------------------------------------
+    COPPER_TYPES = ('signal', 'power', 'mixed', 'jumper')
+
+    def _canonical_layers(self):
+        """KiCad 4 and 5 files name a copper layer as the user did ('T',
+        'GND', 'C1F'; KiCad 6 on keep 'F.Cu' and put the user's name after
+        the type): F.Cu, In<n>.Cu, B.Cu by its number (0, n, 31), in the
+        layer table and every layer field. (A LimeRFE and a HackRF Opera Cake
+        came in with no tracks: every track on a layer named 'T' or 'C1F'.)
+        A net of the same name as a layer ('GND') is left as it is."""
+        table = sx.item(self.root, 'layers') or []
+        ren = {}
+        for l in table[1:]:
+            if not (isinstance(l, list) and len(l) > 2):
+                continue
+            num, name, typ = str(l[0]), str(l[1]), str(l[2])
+            if (name.endswith('.Cu') or typ not in self.COPPER_TYPES
+                    or not num.isdigit()):
+                continue
+            n = int(num)
+            ren[name] = ('F.Cu' if n == 0 else 'B.Cu' if n == 31 else
+                         f'In{n}.Cu' if 0 < n < 31 else name)
+            l[1] = ren[name]
+        if not ren:
+            return
+        self.notes.append("copper layers renamed to KiCad's own names: "
+                          + ', '.join(f'{a} -> {b}' for a, b in ren.items()))
+
+        def walk(node):
+            if not isinstance(node, list) or not node:
+                return
+            if node[0] in ('layer', 'layers'):
+                for i in range(1, len(node)):
+                    if isinstance(node[i], str) and node[i] in ren:
+                        node[i] = ren[node[i]]
+            for x in node:
+                if isinstance(x, list):
+                    walk(x)
+        for x in self.root[1:]:
+            if x is not table:
+                walk(x)
 
     # ---- stackup ------------------------------------------------------------
     def _stackup(self):

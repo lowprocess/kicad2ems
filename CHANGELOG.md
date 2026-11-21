@@ -306,6 +306,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **KiCad 4/5 boards with their copper layers renamed (2026-11-21).** A layer named as the user did ('T', 'GND',
+  'C1F': KiCad 6 on keep 'F.Cu' and add the name after) is F.Cu / In<n>.Cu / B.Cu by its number, in the layer
+  table and every layer field (a net of a layer's name keeps its own). A LimeRFE and a HackRF Opera Cake had
+  come in with no tracks; now 10,728 and 1,091.
 - **segment: open lanes (2026-11-21).** On the Thor carrier 29 of 92 channels came out open end to end. (1) A via in
   a connector's pad was skipped as "a port at its barrel" although its net's track left it on another layer: it
   is kept where the net's copper there is more than its ring. (2) A connector's group of via circles closed round
