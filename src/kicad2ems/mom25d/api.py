@@ -68,9 +68,11 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
                 stitching_vias='auto',
                 keep_at=(), quad_tol=35.0, coarsen=COARSEN, planes='pec',
                 stitching_pads='drop', wideband=None, cells=CELLS,
-                thickness=THICKNESS, edges='fine'):
+                thickness=THICKNESS, edges='fine', excite=None):
     """S-parameters of a board (a <name>_board.json path, or its content) on
-    `freq` (Hz).
+    `freq` (Hz). excite: the port names driven (every port terminated in its
+    reference; the rest of S by reciprocity, 0 between two undriven ports:
+    sim._sparams_terminated), None: every port.
 
     dmax (m): largest cell along the copper; layers whose metal covers more than
     half the board (planes) get plane_factor x dmax (refined near the copper of
@@ -106,6 +108,12 @@ def solve_board(board, freq, dmax=0.3e-3, plane_factor=3.0, port='auto',
         quad_tol=quad_tol, coarsen=coarsen,
         planes=planes, stitching_pads=stitching_pads, wideband=wideband,
         title=name, cells=cells, thickness=thickness, edges=edges)
+    if excite:
+        names = [p.name for p in sim.ports]
+        miss = [x for x in excite if x not in names]
+        if miss:
+            raise ValueError(f"excite: no such port(s) {', '.join(miss)}")
+        sim.excite = [names.index(x) for x in excite]
     f, S, info = solve_band(sim, fmin, fmax, points=len(freq),
                             zref=model.port_z0, max_solves=max_solves,
                             afs_tol=afs_tol, log=log, progress=progress,

@@ -366,6 +366,10 @@ CORE = [
         "exit", bool, group='output'),
     Option('no_report', False, "do not write <name>_report.html", bool,
            group='output'),
+    Option('lean', False,
+           "no line-model preview and no figures, where no solver needs them "
+           "(a segmented run's pieces: 9 of a small piece's 13 s)", bool,
+           group='output'),
     Option(
         'deembed', [],
         "move a port's reference plane along its own trace, PORT=MM "

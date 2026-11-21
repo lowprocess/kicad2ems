@@ -353,8 +353,9 @@ class Job:
             self.events.emit('file', label=label, path=path)
 
     def figure(self, fig, suffix, key, label):
-        """Save a plot as <name><suffix>, record it for the report."""
-        if fig is None:
+        """Save a plot as <name><suffix>, record it for the report (none
+        with --lean)."""
+        if fig is None or getattr(self.s, 'lean', False):
             return None
         p = save(fig, self.path(suffix))
         self.summary['images'][key] = self.rel(p)
@@ -534,11 +535,23 @@ class Job:
                      elements=len(p.pieces())) for p in m.parts
             ], notes=list(m.notes), finish=fin.name if fin else None)
 
+    def _lines_needed(self):
+        """Whether a solver or a step of the run uses the line model: the
+        line solvers, an FDTD solver, de-embedding."""
+        sv = self.s.solvers
+        names = {x.strip() for x in (sv.split(',') if isinstance(sv, str)
+                                     else sv or [])}
+        return bool(self.s.deembed or self.s.deembed_file
+                    or names - {'mom25d', 'mom'})
+
     def lines(self):
         """The transmission-line model: sections, coupled groups,
         discontinuities (and their plot). A ballpark aid and what the line
         solvers solve: whatever goes wrong here is a warning, never the end of
         the run."""
+        if getattr(self.s, 'lean', False) and not self._lines_needed():
+            self.lm = None
+            return
         try:
             from .lines.builder import build
             self.lm = lm = build(self.m, field=getattr(self.s, 'lines_field',
@@ -742,7 +755,8 @@ class Job:
         }
         self.summary['saw'] = saw_table(self.m, self.s, names, self.deviations)
         # no mesh preview: the model alone
-        if not any(self.summary['images'].get(k) for k in ('mesh', 'model')):
+        if (not getattr(self.s, 'lean', False) and not any(
+                self.summary['images'].get(k) for k in ('mesh', 'model'))):
             self.figure(preview(self.m, None, self.name), '_model.png', 'model',
                         'model')
 
@@ -969,11 +983,12 @@ class Job:
                 == self.results[self.summary['joined']['low']].names):
             overlays.append((freq, self._joined, 'joined',
                              OVERLAY_STYLES[len(others) % len(OVERLAY_STYLES)]))
-        self.figure(
-            plot_results(freq, ref.S, ref.names,
-                         f"{self.name} - {reg[done[0]].label}", overlays,
-                         label=reg[done[0]].label), f"_{done[0]}.png",
-            'sparams', 'S-parameter plot')
+        if not getattr(s, 'lean', False):
+            self.figure(
+                plot_results(freq, ref.S, ref.names,
+                             f"{self.name} - {reg[done[0]].label}", overlays,
+                             label=reg[done[0]].label), f"_{done[0]}.png",
+                'sparams', 'S-parameter plot')
         self.summary['results'] = dict(
             reference=done[0], names=ref.names, zref=ref.zref,
             excited=ref.info.get('excited', ref.names), freq_ghz=[

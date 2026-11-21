@@ -10,6 +10,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **mom25d: terminated ports, a few driven (2026-11-21).** `--mom-excite P1,P3` (`solve_board(excite=...)`,
+  `sim.excite`): every port terminated in its reference (as a lumped element on its gap or via chain) and only
+  those driven, one solve a column of S; their rows by reciprocity, 0 between two undriven ports. Lumped ports
+  only; the RWG basis throughout (the loads were lost in the loop/tree basis's transform). On a LimeRFE piece
+  the driven columns are the full solve's to 1.7e-7, and the sweep converged in 7 solves against 28. segment's
+  windows drive their core ports alone (`K2E_SEG_EXCITE_CORE`).
+- **`--lean`**: no line-model preview and no figures where no solver needs them; segment's pieces use it (a small
+  piece 13.3 s to 6.8 s, the same S).
+- **segment: small pieces in parallel.** Pieces of at most 8 ports and 30 mm2 of signal copper are solved
+  `K2E_SEG_JOBS` at a time on the CPU (the GPU off, the cores shared) beside the big ones on the GPU.
 - **segment `--pour keep`: an RF board's coplanar ground (2026-11-21).** A layer piece keeps its own layer's ground
   within 3 mm of its copper (`K2E_SEG_POUR_REACH`; the band's edge straight and simplified), the voids that do
   not border its copper filled, the ground vias through it to its planes kept, solved with mom25d's signal zone.
@@ -313,6 +323,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **segment: a piece's reference planes where its traces are (2026-11-21).** The nearest layer whose ground covers
+  half the area within 1 mm of the piece's copper, not the board-wide half (a LimeRFE's bottom RF lines over its
+  PWR layer's ground, 35 % of the board, had been referenced to the layer beyond).
+- **segment with `--pour keep`: nets grouped 1.5 mm apart** (`K2E_SEG_POUR_APART`; a LimeRFE receive piece's GCPW
+  nets 1.5 mm and more apart coupled at -68.6 dB median: the stitched ground between them) instead of 20
+  heights (10 mm on 20 mil RO4350B: 322 nets in one group), and the pour band 1.5 mm (`K2E_SEG_POUR_REACH`): that
+  piece 67 s to 27 s, |dS| 0.006 to 0.007 against the pour to 6 mm on a fine mesh. `placed()`: pieces() leaving
+  out a channel it cannot place.
 - **Zone fills saved over other nets' copper (2026-11-21).** A fill made before a track was routed (the file saved
   without a refill) is cut back from other nets' tracks, pads and vias by the zone's clearance, as KiCad's
   refill would: a LimeRFE's GND pour lay over its 30 MHz RX line, which merged into the pour (12 fills there;

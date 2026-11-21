@@ -1177,6 +1177,16 @@ class Simulation:
                     np.add.at(E[:, j], n, w)
         return E
 
+    def _port_weights(self, j):
+        """Port j's unknowns and weights: its source's (excitation) and its
+        current's (port_current) alike."""
+        p = self.ports[j]
+        if isinstance(p, ViaPort):
+            return np.atleast_1d(self.Ne + self._port_chain(p)), \
+                np.atleast_1d(float(p.sign))
+        idx, sig = self.gap[j]
+        return np.asarray(idx), sig * self.rwg.l[idx]
+
     def port_current(self, I, j):
         p = self.ports[j]
         if isinstance(p, ViaPort):
@@ -1247,6 +1257,8 @@ class Simulation:
         for p in self.ports:  # frequency-dependent reference impedance
             if getattr(p, 'zc_fn', None) is not None:
                 p.zc = float(p.zc_fn(f))
+        if getattr(self, 'excite', None) is not None:
+            return self._sparams_terminated(f, keep)
         I, n = self.currents(f, self.excitation()), len(self.ports)
         Ap, Bp = np.zeros((n, n), complex), np.zeros((n, n), complex)
         gam, resid = np.full(n, np.nan + 0j), np.zeros(n)
@@ -1315,6 +1327,40 @@ class Simulation:
             A=Ap,
             B=Bp,
             scale=scale)
+        return S
+
+    def _sparams_terminated(self, f, keep=False):
+        """S with every port terminated in its reference (fast.extra_blocks
+        adds the loads) and only the ports in self.excite driven: one solve a
+        column, S[:, j] for those, the rest of their rows by reciprocity,
+        entries between two undriven ports 0 (segment's windows need their
+        core ports' rows alone: a window's neighbours' ports had been driven
+        and thrown away, 2-3x the right-hand sides). Lumped (gap and via)
+        ports only."""
+        n = len(self.ports)
+        if any(isinstance(p, LinePort) for p in self.ports):
+            raise ValueError("excite: lumped ports only (a wave port's S needs "
+                             "every port driven)")
+        drive = sorted(set(self.excite))
+        E = self.excitation()[:, drive]
+        I = self.currents(f, E)
+        zc = np.array([p.zc for p in self.ports], float)
+        S = np.zeros((n, n), complex)
+        for c, j in enumerate(drive):
+            Ip = np.array([complex(np.atleast_1d(self.port_current(
+                I[:, c:c + 1], k))[0]) for k in range(n)])
+            emf = np.zeros(n)
+            emf[j] = 1.0
+            # a = emf / (2 sqrt zc), b = (V - zc I) / (2 sqrt zc), V = emf - zc I
+            b = (emf - 2 * zc * Ip) / (2 * np.sqrt(zc))
+            S[:, j] = b / (1.0 / (2 * np.sqrt(zc[j])))
+        undriven = [k for k in range(n) if k not in set(drive)]
+        for j in drive:  # (reciprocal: the driven ports' rows)
+            S[j, undriven] = S[undriven, j]
+        self.last = dict(f=f, I=I if keep else None, gamma=np.full(
+            n, np.nan + 0j), resid=np.zeros(n), A=None, B=None,
+            scale=np.ones(n), driven=drive)
+        self.low_span = []
         return S
 
     def sweep(self, freqs, zc=None, currents_at=None):

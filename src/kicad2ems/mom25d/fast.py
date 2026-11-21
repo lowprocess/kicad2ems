@@ -393,6 +393,14 @@ class FastOperator:
             u = sig * sim.rwg.l[idx]
             S[np.ix_(idx, idx)] = (S[np.ix_(idx, idx)].toarray()
                                    + el.Z(f) * np.outer(u, u))
+        if getattr(sim, 'excite', None) is not None:
+            # every port terminated in its reference (sim.excite: the ports
+            # driven, each solve one column of S): as a lumped element on
+            # its gap's edges, or on its via chain
+            for j, p in enumerate(sim.ports):
+                idx, u = sim._port_weights(j)
+                S[np.ix_(idx, idx)] = (S[np.ix_(idx, idx)].toarray()
+                                       + p.zc * np.outer(u, u))
         if sim.metal is not None:
             if sim._gram is None:
                 sim._gram = sparse.csr_matrix(gram_matrix(sim.rwg))
@@ -558,7 +566,12 @@ class FastOperator:
             nt=len(sim.rwg.tris), avail=available_memory(), gpu=device(gpu),
             precision=sim.precision, solver=sim.solver,
             reuse=sim.reuse != 'off', history=self.history, held=held,
-            kh2=self.kh2(f), loop_tree=getattr(sim, 'loop_tree', 'auto'),
+            kh2=self.kh2(f), loop_tree=(
+                # (terminated ports: their loads were lost in the loop/tree
+                # basis's transform, |dS| 1 at 0.1-0.6 GHz; the RWG basis
+                # gave the full sweep's S there to 1e-7)
+                'off' if getattr(sim, 'excite', None) is not None
+                else getattr(sim, 'loop_tree', 'auto')),
             lt_block=self._lt_block(), sides=s is not None and len(s.vert) > 0,
             gpu_dense=gpu is not None and gpu.dense_ok())
         if plan.why:

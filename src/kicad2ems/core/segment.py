@@ -52,6 +52,9 @@ APART_FLOOR_H = 10.0  # ... and a microstrip layer's, in heights
 # 23.8k unknowns, 66 ports, 73 min
 WINDOW_NETS = int(os.environ.get('K2E_SEG_WINDOW', 32))
 CORE_NETS = 6
+# a window's core ports alone driven (mom25d's excite; the rest of its rows
+# by reciprocity): its neighbours' ports had been driven and thrown away
+EXCITE_CORE = os.environ.get('K2E_SEG_EXCITE_CORE', 'on') != 'off'
 END_MARGIN = 0.2  # mm: a via this near beyond its circle to a port: not cut
 RUN = 2.0         # mm: two nets are one layer piece where they run that far
                   # within --apart of each other (coupling.groups' run)
@@ -327,6 +330,14 @@ def _piece(m, raw, keep, ports, outline=None, vias=None):
     return b
 
 
+# a piece's reference planes: those whose ground covers half the area within
+# this of its copper (mm)
+REF_REACH = 1.0
+# with the pour kept (POUR), a layer's nets grouped this far apart (mm): on a
+# LimeRFE's GCPW receive piece the nets 1.5 mm and more apart coupled at -68.6
+# dB median, -48.5 at most (its stitched ground between them); the microstrip
+# rule's 20 heights (10 mm on its 20 mil RO4350B) had chained 322 nets
+POUR_APART = float(os.environ.get('K2E_SEG_POUR_APART', 1.5))
 # a stripline piece's ground vias: those within this of its copper (mm)
 STITCH_REACH = float(os.environ.get('K2E_SEG_STITCH', 1.0))
 # a layer piece's own layer's ground (an RF board's coplanar ground beside its
@@ -340,9 +351,11 @@ STITCH_REACH = float(os.environ.get('K2E_SEG_STITCH', 1.0))
 # unknowns, 32 min): kept, 14,378 unknowns, 57 s, |dS| 0.006 (S11 within
 # 0.05 dB at the median); off, 5,937, 17 s, |dS| 0.137 (S11 up to 10 dB
 # off: the line 57 ohm without its coplanar ground). Coarse edges with it:
-# 6,464, |dS| 0.080
+# 6,464, |dS| 0.080. At 1.5 mm (the default since) with the nets grouped
+# POUR_APART: 6 pieces, 13.6k unknowns, 27 s, |dS| 0.007 (through paths
+# within 0.03 dB at 6 GHz, S11 0.2 dB at the median)
 POUR = os.environ.get('K2E_SEG_POUR', 'off')
-POUR_REACH = float(os.environ.get('K2E_SEG_POUR_REACH', 3.0))
+POUR_REACH = float(os.environ.get('K2E_SEG_POUR_REACH', 1.5))
 
 
 def _pour(p, near, reach):
@@ -695,11 +708,26 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
         q.area for q, n in zip(m.copper.get(l, []), m.copper_nets.get(l, []))
         if n in m.ground_nets) >= half]
 
-    def refs_of(lay):
-        """The planes next to a signal layer: the nearest below, above."""
+    gnd = {l: unary_union([q for q, n in zip(m.copper.get(l, []),
+                                             m.copper_nets.get(l, []))
+                           if n in m.ground_nets]) for l in m.cu_order}
+
+    def refs_of(lay, near=None):
+        """The planes next to a signal layer: the nearest below, above. With
+        near (a piece's copper on it): the nearest whose ground covers half of
+        the area within REF_REACH of it, where the board-wide test (half the
+        outline) would take one further off (a LimeRFE's bottom RF lines over
+        its PWR layer's ground, 35 % of the board: their reference had been
+        the layer beyond)."""
         z = m.cu_z[lay]
-        below = [l for l in plane_layers if m.cu_z[l] < z - 1e-9]
-        above = [l for l in plane_layers if m.cu_z[l] > z + 1e-9]
+        if near is not None:
+            zone = near.buffer(REF_REACH)
+            ok = [l for l in m.cu_order if l != lay and not gnd[l].is_empty
+                  and gnd[l].intersection(zone).area >= 0.5 * zone.area]
+        else:
+            ok = plane_layers
+        below = [l for l in ok if m.cu_z[l] < z - 1e-9]
+        above = [l for l in ok if m.cu_z[l] > z + 1e-9]
         return ({max(below, key=lambda l: m.cu_z[l])} if below else set()) | (
             {min(above, key=lambda l: m.cu_z[l])} if above else set())
     net_of_cut = {c['k']: c['net'] for c in allcuts if not c.get('part')}
@@ -717,14 +745,14 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
                if p.layer == lay and getattr(p, 'net', None) in gnets
                and (p.net not in clip
                     or not clip[p.net].contains(_pt(*p.c[:2])))]
-        planes = refs_of(lay)
-
-        near = None
-        if POUR == 'keep':
-            from shapely.ops import unary_union as _uu
-            near = _uu([q for q, n in zip(m.copper.get(lay, []),
-                                          m.copper_nets.get(lay, []))
-                        if n in gnets]) or None
+        mine_cu = unary_union([q for q, n in zip(m.copper.get(lay, []),
+                                                 m.copper_nets.get(lay, []))
+                               if n in gnets])
+        # (the planes under this piece's own copper)
+        planes = refs_of(lay, mine_cu if not mine_cu.is_empty else None)
+        refs = sorted(planes, key=lambda l: m.cu_z[l])
+        near = (mine_cu if POUR == 'keep' and not mine_cu.is_empty
+                else None)
 
         def keep(l, n, p, done=set()):
             if l == lay:
@@ -763,6 +791,8 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
         refs = sorted(refs_of(lay), key=lambda l: m.cu_z[l])
         if apart_h is not None:
             apart = apart_h * h
+        elif POUR == 'keep':
+            apart = POUR_APART
         elif len(refs) == 2:
             # stripline: its crosstalk falls as exp(-pi s / b), b the planes'
             # spacing (under 1e-4 at 3 b); microstrip's as 1 / (s/h)^2 (20
@@ -910,6 +940,28 @@ def calibration_pieces(m, raw, layer, w, net):
     return out
 
 
+def placed(m, raw, base, specs, ends, apart_h=None, echo=print):
+    """pieces() of model m, a channel left out (said) wherever a cut lands on
+    copper the model gives another net (two nets' copper overlapping in the
+    board file: a short, or nets renamed out of step with the tracks), the
+    model made again without it: (m, parts, cuts, specs, ends)."""
+    while True:
+        nets = set(m.sel or [n for ns in m.copper_nets.values() for n in ns])
+        try:
+            parts, allcuts = pieces(m, raw, raw, nets, apart_h, echo=echo)
+            return m, parts, allcuts, specs, ends
+        except ValueError as e:
+            leg = _channel_at(str(e), raw, ends) if ends else None
+            if leg is None:
+                raise
+            echo(f"segment: WARNING: {leg} left out: its copper overlaps "
+                 f"another net's in the board file ({str(e)[:90]})")
+            gone = {x['port'] for x in ends if x['net'] == leg}
+            specs = [q for q in specs if q.split('=')[0] not in gone]
+            ends = [x for x in ends if x['net'] != leg]
+            m, specs, ends = model_dropping(base, specs, ends, echo)
+
+
 def _channel_at(msg, kb, ends):
     """The channel (ends' 'net') whose track a piece's port error names: 'Pn
     (cutLk) at (x, y) mm is not on <layer> copper of the selected nets'. None
@@ -926,6 +978,63 @@ def _channel_at(msg, kb, ends):
                 for t in kb.tracks if t['layer'] == lay and t['net'] in of
                 and len(t['pts']) > 1), default=(None, None))
     return of.get(best[1]) if best[0] is not None and best[0] < 0.5 else None
+
+
+# small pieces solved JOBS at a time on the CPU (each with its share of the
+# cores, the GPU off) while the big ones take the GPU one at a time: a Thor
+# carrier's ~185 small pieces at ~12 s each (9 s of it previews and figures,
+# --lean now) had been one after another
+JOBS = int(os.environ.get('K2E_SEG_JOBS', max(1, min(6, (os.cpu_count() or 4)
+                                                     // 4))))
+SMALL_PORTS, SMALL_AREA = 8, 30.0  # (mm2 of signal copper)
+
+
+def _small(p):
+    """Whether a piece goes to the CPU workers (_solve_all)."""
+    if p['kind'] != 'layer':
+        return False
+    b = p['board']
+    area = sum(q.area for l, ps in b.copper.items()
+               for q, n in zip(ps, b.copper_nets[l]) if n not in b.ground_nets)
+    return len(b.ports) <= SMALL_PORTS and area < SMALL_AREA
+
+
+def _solve_all(parts, out, band, a, echo):
+    """Every piece solved: {name: (f, S, names, summary, seconds) or the
+    exception}; the small ones (_small) JOBS at a time on the CPU beside the
+    big ones, in order, on the GPU."""
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    kw = dict(thickness=a.thickness, dmax=a.dmax, layer_solver=a.layer_solver,
+              via_solver=a.via_solver, edges=a.edges)
+    res = {}
+
+    def one(p, env=None):
+        t = time.time()
+        try:
+            got = solve_piece(p, os.path.join(out, p['name']), band, a.solver,
+                              echo, env=env, **kw)
+            res[p['name']] = (*got, time.time() - t)
+        except Exception as e:  # (raised again, in order)  # noqa: BLE001
+            res[p['name']] = e
+    small = [p for p in parts if _small(p)] if JOBS > 1 else []
+    cores = max(1, (os.cpu_count() or 4) // max(JOBS, 1))
+    cpu_env = dict(MOM25D_GPU='off', MOM25D_OMP_THREADS=str(cores),
+                   OMP_NUM_THREADS=str(cores), OPENBLAS_NUM_THREADS=str(cores),
+                   MKL_NUM_THREADS=str(cores))
+    if small:
+        echo(f"segment: {len(small)} small pieces {JOBS} at a time on the "
+             f"CPU ({cores} threads each), {len(parts) - len(small)} on their "
+             "own")
+    with ThreadPoolExecutor(max_workers=max(JOBS, 1)) as pool:
+        futs = [pool.submit(one, p, cpu_env) for p in small]
+        names = {p['name'] for p in small}
+        for p in parts:
+            if p['name'] not in names:
+                one(p)
+        for f in futs:
+            f.result()
+    return res
 
 
 def chain_nets(ends):
@@ -1039,7 +1148,7 @@ def junction(fW, SW, fA, SA):
 
 def solve_piece(piece, folder, band, solver='mom25d', echo=print,
                 thickness=None, dmax=None, layer_solver=None, via_solver=None,
-                edges=None):
+                edges=None, env=None):
     """A piece's run (its board file, kicad2ems's pipeline): (S at 50 ohm,
     its ports' names, the run's summary)."""
     from .config import build_settings
@@ -1067,7 +1176,7 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
             touchstone=os.path.basename(ts))}, model=dict(
                 planes=model['planes'], vias=len(model['sig']),
                 ground_vias=len(model['gv'])))
-    cli = dict(out=folder, solvers=solver, no_report=True, **band)
+    cli = dict(out=folder, solvers=solver, no_report=True, lean=True, **band)
     if solver == 'mom25d':
         cli['mom_port'] = PORT
         if thickness:
@@ -1091,6 +1200,9 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
         cli['mom_dmax'] = dmax
     if solver == 'mom25d' and edges:
         cli['mom_edges'] = edges
+    if solver == 'mom25d' and piece.get('core_ports') and EXCITE_CORE:
+        # a window: its core ports' rows alone (assemble), driven alone
+        cli['mom_excite'] = ','.join(piece['core_ports'])
     bj = os.path.join(folder, f"{piece['name']}_board.json")
     # a piece solved before from the same board file and settings: its result
     # again (a run that stopped at a later piece is resumed where it stopped)
@@ -1131,11 +1243,11 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
             # converge on a CM5 layer piece at 1-1.5 GHz, 29k and 42k
             # unknowns; the direct solved it, 49 min): the user's own
             # thresholds kept
-            env = dict(os.environ, PYTHONUNBUFFERED='1')
-            env.setdefault('MOM25D_BLR_MIN_N', '1000000')
-            env.setdefault('MOM25D_BLR_CPU_MIN_N', '1000000')
+            penv = dict(os.environ, PYTHONUNBUFFERED='1', **(env or {}))
+            penv.setdefault('MOM25D_BLR_MIN_N', '1000000')
+            penv.setdefault('MOM25D_BLR_CPU_MIN_N', '1000000')
             p = subprocess.run(argv, stdout=log, stderr=subprocess.STDOUT,
-                               env=env)
+                               env=penv)
         if p.returncode:
             with open(os.path.join(folder, 'run.log')) as fh:
                 tail = fh.read()[-1500:]
@@ -1229,7 +1341,7 @@ def run(a, echo=print):
                                if k != 'board' or v})
     s = build_settings(base)
     raw = KiCadBoard(s.board)
-    ends = None
+    ends = specs = None
     if a.ends or not _has_ports(s):
         # no ports of its own: one on each pad where a net's tracks end
         specs, ends = end_ports(raw, a.nets or ','.join(s.nets or []))
@@ -1238,31 +1350,15 @@ def run(a, echo=print):
         base = dict(base, ports=specs, nets=['auto'])
         s = build_settings(base)
         echo(f"segment: {len(specs)} ports at the nets' ends on pads")
+    specs = specs if ends else None
     if ends:
         m, specs, ends = model_dropping(base, specs, ends, echo)
         s = build_settings(dict(base, ports=specs,
                                 nets=['auto'] + chain_nets(ends)))
     else:
         m = board_from_settings(s, log=lambda *x: None)
-    nets = set(m.sel or [n for ns in m.copper_nets.values() for n in ns])
-    while True:
-        try:
-            parts, allcuts = pieces(m, raw, raw, nets, a.apart, echo=echo)
-            break
-        except ValueError as e:
-            # a cut on copper the model gives another net (two nets' copper
-            # overlapping in the board file: a short, or nets renamed out of
-            # step with the tracks): that channel left out, said
-            leg = _channel_at(str(e), raw, ends) if ends else None
-            if leg is None:
-                raise
-            echo(f"segment: WARNING: {leg} left out: its copper overlaps "
-                 f"another net's in the board file ({str(e)[:90]})")
-            gone = {x['port'] for x in ends if x['net'] == leg}
-            specs = [q for q in specs if q.split('=')[0] not in gone]
-            ends = [x for x in ends if x['net'] != leg]
-            m, specs, ends = model_dropping(base, specs, ends, echo)
-            nets = set(m.sel or [])
+    m, parts, allcuts, specs, ends = placed(m, raw, base, specs, ends,
+                                            a.apart, echo)
     out = os.path.abspath(a.out)
     os.makedirs(out, exist_ok=True)
     band = dict(fmin=a.fmin or s.fmin, fmax=a.fmax or s.fmax,
@@ -1280,16 +1376,13 @@ def run(a, echo=print):
          f"{len(allcuts)} cut(s)")
     blocks, links, f0, info, cut_of = [], {}, None, [], {}
     wins, win_links = {}, {}
+    done = _solve_all(parts, out, band, a, echo)
     for p in parts:
-        t = time.time()
         try:
-            f, S, names, sm = solve_piece(p, os.path.join(out, p['name']),
-                                          band, a.solver, echo,
-                                          thickness=a.thickness,
-                                          dmax=a.dmax,
-                                          layer_solver=a.layer_solver,
-                                          via_solver=a.via_solver,
-                                          edges=a.edges)
+            got = done[p['name']]
+            if isinstance(got, Exception):
+                raise got
+            f, S, names, sm, dt = got
         except ValueError as e:
             raise ValueError(
                 f"piece {p['name']} ({p['kind']}"
@@ -1318,9 +1411,9 @@ def run(a, echo=print):
                 cut_of[(p['name'], port)] = k
         got = next(iter(sm.get('solved', {}).items()), (None, {}))
         info.append(dict(piece=p['name'], kind=p['kind'], ports=names,
-                         seconds=round(time.time() - t, 1), solver=got[0],
+                         seconds=round(dt, 1), solver=got[0],
                          unknowns=(got[1] or {}).get('unknowns')))
-        echo(f"{p['name']}: {len(names)} ports, {time.time() - t:.0f} s")
+        echo(f"{p['name']}: {len(names)} ports, {dt:.0f} s")
     for g, ws in wins.items():
         S, names = assemble(ws)
         blocks.append((S, [f"{g}:{n}" for n in names]))

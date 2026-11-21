@@ -427,3 +427,32 @@ def test_part_ports_are_delta_gaps_closing_to_the_parts(tmp_path, run_cli,
         S[pp] = np.asarray(
             read_touchstone(str(tmp_path / pp / 'demo_lowpass_mom25d.s2p'))[1])
     assert np.abs(S['all'] - S['none']).max() < 2e-3
+
+
+def test_terminated_ports_drive_a_few(tmp_path):
+    """sim.excite: every port terminated in its reference, only the ports named
+    driven: their columns of S as the full solve's (one solve a column), the
+    rest by reciprocity, 0 between two undriven ports (segment's windows)."""
+    pytest.importorskip('kicad2ems.mom25d._core')
+    import subprocess, sys
+    import numpy as np
+    from kicad2ems.core.config import build_settings
+    from kicad2ems.core.pipeline import board_from_settings
+    from kicad2ems.mom25d.api import build_board
+    ex = os.path.join(os.path.dirname(FILTER), 'make_rf_examples.py')
+    subprocess.check_call([sys.executable, ex, 'coupler',
+                           str(tmp_path / 'rf_coupler')],
+                          stdout=subprocess.DEVNULL)
+    m = board_from_settings(build_settings(dict(
+        board=str(tmp_path / 'rf_coupler.kicad_pcb'), ground='B.Cu')),
+        log=lambda *a: None)
+    _, sim = build_board(m.to_dict(), 1e9, 3e9, dmax=1e-3, port='via',
+                         log=lambda *a: None)
+    for f in (0.3e9, 2.4e9):  # (the loop/tree basis's band, and the RWG's)
+        sim.excite = None
+        S0 = sim.sparams(f)
+        sim.excite = [0, 2]
+        S1 = sim.sparams(f)
+        assert np.abs(S1[:, [0, 2]] - S0[:, [0, 2]]).max() < 1e-5
+        assert np.abs(S1[[0, 2]][:, [1, 3]] - S0[[0, 2]][:, [1, 3]]).max() < 1e-5
+        assert np.abs(S1[np.ix_([1, 3], [1, 3])]).max() == 0

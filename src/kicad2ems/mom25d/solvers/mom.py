@@ -12,6 +12,13 @@ import os
 import numpy as np
 
 from kicad2ems.core.options import Option, floatlist
+
+
+def _names(v):
+    """A list of port names from 'P1,P3' or a list."""
+    if isinstance(v, str):
+        return [x.strip() for x in v.split(',') if x.strip()]
+    return [str(x).strip() for x in (v or [])]
 from kicad2ems.core.solvers import Solver, Result, Deviation
 from kicad2ems.core import stop
 from kicad2ems.mom25d.thickness import (DEFAULT as THICKNESS,
@@ -137,7 +144,7 @@ def reused(runlog):
 
 def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
           finish=None, log=print, progress=None, hold=None, on_step=None,
-          keep_at=(), **mesh):
+          keep_at=(), excite=None, **mesh):
     """S-parameters of the board m on `freq` (Hz) from mom25d, as kicad2ems
     reports them: (S (nf, n, n) in m.user_ports order with differential pairs as
     (d, c) modes, names, reference impedances, info dict). dmax in mm (planes
@@ -172,6 +179,8 @@ def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
             + (f", {rough:g} um RMS rough (Hammerstad)" if rough else "")
             + (f", {finish.name} on {', '.join(sorted(metal.on))}"
                if metal.on else ""))
+    if excite:
+        kw['excite'] = list(excite)
     kw.update(metal=metal, max_solves=max_solves,
               log=lambda t: log(f"  mom25d:{t}") if 'AFS' in t else None,
               progress=progress, on_step=on_step, keep_at=keep_at)
@@ -520,6 +529,14 @@ class MoM25D(Solver):
             "unknowns to 3,899; docs/mom.md#edges for its accuracy)",
             choices=('fine', 'coarse'), name='edges', gui='MoM edge mesh',
             group=G),
+        Option(
+            'mom_excite', [],
+            "the ports driven (P1,P3; default every one): every port is "
+            "terminated in its reference and only these are excited, one "
+            "solve a column of S; their rows by reciprocity, the entries "
+            "between two others 0 (segment's windows: their core ports alone). "
+            "Lumped ports only",
+            list, conv=_names, name='excite', group=G),
         Option(
             'mom_zone', 'off',
             "experimental: mesh detail only within 0.5 mm of the signal copper "
@@ -935,6 +952,7 @@ class MoM25D(Solver):
                 finish=run_finish(run),
                 log=run.log, hold=self._held if finest else {},
                 **_mesh_kw(s, run.m), keep_at=keep if finest else [],
+                excite=getattr(s, 'mom_excite', None) or None,
                 progress=lambda k, n, f: (run.status(
                     'mom25d', dict(fraction=k / n, solves=k, f_ghz=f / 1e9)),
                     stop.check()),
