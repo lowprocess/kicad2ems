@@ -11,6 +11,7 @@ of moments) or a transmission-line model, and writes S-parameters, antenna resul
 | [Usage](usage.md) | The command line, config files, choosing solvers, every option, the output files |
 | [GUI](gui.md) | The graphical interface: settings, running, results, field views |
 | [Signal integrity](si.md) | Crosstalk between traces: NEXT and FEXT for an edge, and what in the layout makes it; a bus's coupling a layer at a time |
+| [Whole-board studies](segment-studies.md) | A large board in pieces (the Jetson Thor carrier, the LimeRFE): the settings and why, the checks, how to make each result again |
 | [KiCad plugin](kicad-plugin.md) | In KiCad's PCB editor: the impedance map of the open board, a region and ports, a simulation |
 | [Examples](examples.md) | The example boards and how the solvers compare on them |
 | [Results](postprocessing.md) | S-parameters, antenna results, field dumps, the run summary and report |

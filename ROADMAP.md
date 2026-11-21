@@ -133,6 +133,24 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    complex-symmetric LDL^T (half the memory: both would fit), single-precision products on the GPU; and the
    windows (being validated). The fit itself is ~4 min of the 73 (the SVD of a 60-sample, 4356-entry fit:
    13 s; its rows' build vectorised gained nothing).
+   **Speeding up large boards further (2026-11-21; the quick wins are in: windows' core ports alone driven,
+   `--lean` pieces, small pieces in parallel).** In order of payoff: (a) straight coupled runs as analytic
+   multi-line sections (an N-line 2-D cross-section of all the lines together, exact for TEM) with MoM only at the
+   discontinuities (breakouts, bends, vias): the Thor's In7 bus is mostly straight parallel stripline, and the
+   coupling profiles put the crosstalk at the breakouts; the line model's coupling (only within 5 heights) is
+   what to widen. (b) A complex-symmetric LDL^T factor on the GPU: half the memory and work, so at ~24k unknowns
+   the double Z and the factor fit together (the In7 piece's ~N^4.2 is that fall-back). (c) The block low-rank
+   factor's convergence below 1.5 GHz (it is off in segment's pieces): a ground plane's smooth kernel compresses
+   well. (d) Identical pieces solved once (a geometry hash up to a shift or rotation): set aside for now, the via
+   models it would mostly dedupe take a second each and no two layer pieces matched on these boards. (e) The
+   second GPU for small pieces (bus-limited for LUs). (f) Terminated ports in the loop/tree basis (their loads are
+   lost in its transform: excite runs use the RWG basis). The LimeRFE (1.5-2 h) is set by two pieces of ~27k
+   unknowns where several RF paths meet: (b) and (c) are what would bring it to an hour.
+   **LimeRFE left over:** its KiCad 4 file's nets are out of step with its tracks (84 net pairs touching the RF
+   nets overlap): re-deriving the nets from the copper's connectivity would bring back the channels the run
+   leaves out; series parts with no value (20) leave their chains open; the outline is the panel's frame (the
+   board's own edge is open at the tabs). **Segment in the window**: a study for it (the board, net patterns,
+   band, pour/edges/windows), its overlay page and figures in the results (kicad2ems-add-analysis).
 4. **mom25d iterative: AIM + GMRES (being prototyped, 2026-11-20).** The far (centroid) product by a
    precorrected FFT on a grid per layer pair (the layered tables sampled on it: no multipole expansion of the
    layered kernel needed), mom25d's exact near correction as it is, GMRES preconditioned by the near part's

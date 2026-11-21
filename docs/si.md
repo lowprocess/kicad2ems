@@ -247,6 +247,8 @@ python -m kicad2ems.core.segment board.kicad_pcb --nets 'PCIE*,HDMI*' --out out/
   Jetson Thor carrier the run went from 4 h 19 min to 1 h 02 min (12.5 GB), every channel's loss within 0.04 dB.
 - **Series parts** (an AC-coupling capacitor, a resistor) are joints: a lane through its capacitor is one channel,
   its ports at the lane's ends, the part its own series R, L, C between the pieces.
+- **The studies** made with it (the Thor carrier, the LimeRFE), every setting's measurement, and the scripts to
+  make them again: [Whole-board studies](segment-studies.md), `tools/segment_studies/`.
 - **`--pour keep`** (RF boards): a layer piece keeps its layer's own ground pour beside its traces (within 3 mm,
   voids filled, its vias kept, mom25d's signal zone on). Grounded coplanar lines need it: on a LimeRFE's RX nets
   the return loss was up to 10 dB off without it; with it within 0.05 dB (median) of the pour solved wide on a
