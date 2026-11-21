@@ -320,6 +320,13 @@ class Board:
                 "no board outline: using the copper bounding box + 1 mm")
         # ---- nets: as given, all copper, or 'auto' (the nets under the ports +
         # the ground nets) ----
+        # ('auto', and more: the nets under the ports, the ground nets and
+        # those named: segment's channels through series parts, whose middle
+        # nets have no port)
+        extra = ([n for n in nets if n != 'auto']
+                 if isinstance(nets, (list, tuple)) and 'auto' in nets else [])
+        if extra:
+            nets = ['auto']
         if nets in ('auto', ['auto'], ('auto',)):
             refs = pos_port_refs(read_pos(pos_file)) if pos_file else None
             fps = dict(raw.port_footprints(refs))
@@ -330,6 +337,7 @@ class Board:
             nets = auto_nets(raw, [(_port_layer(f), f['x'], f['y'])
                                    for fp in fps.values()
                                    for f in _legs(fp)], full)
+            nets = list(dict.fromkeys(list(nets) + extra))
             self.notes.append(f"nets (auto): {', '.join(nets)}")
         self.sel = (resolve_nets(nets, {n
                                         for _, n, _ in raw.items}

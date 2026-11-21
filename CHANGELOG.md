@@ -313,6 +313,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **Zone fills saved over other nets' copper (2026-11-21).** A fill made before a track was routed (the file saved
+  without a refill) is cut back from other nets' tracks, pads and vias by the zone's clearance, as KiCad's
+  refill would: a LimeRFE's GND pour lay over its 30 MHz RX line, which merged into the pour (12 fills there;
+  none on the Thor or CM5 boards).
+- **`nets = ['auto', ...]`**: the nets under the ports and the ground nets and those named. segment passes each
+  channel's nets: a filter's middle nets (no port of their own) and their parts had been left out of the model.
+- **segment: a channel left out, not the run**, where a port finds no reference copper (a bottom-side SAW
+  duplexer over a void in the PWR layer) or a cut lands on copper the model gives another net (two nets' copper
+  overlapping in the board file); each said.
 - **A board's outline from a panel's Edge.Cuts (2026-11-21).** Loose ends of the outline within 0.1 mm are joined
   (a KiCad 4 board's hand-drawn edges met within 0.01-0.06 mm), and the face the parts are on is the board (a
   LimeRFE panel's outline had been a 91 x 3 mm strip between its frame and the board).

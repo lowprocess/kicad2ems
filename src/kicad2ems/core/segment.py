@@ -910,6 +910,64 @@ def calibration_pieces(m, raw, layer, w, net):
     return out
 
 
+def _channel_at(msg, kb, ends):
+    """The channel (ends' 'net') whose track a piece's port error names: 'Pn
+    (cutLk) at (x, y) mm is not on <layer> copper of the selected nets'. None
+    where it is not such an error."""
+    import re
+    from shapely.geometry import LineString, Point
+    hit = re.search(r'at \(([-\d.]+), ([-\d.]+)\) mm is not on (\S+) copper',
+                    msg)
+    if not hit:
+        return None
+    pt, lay = Point(float(hit.group(1)), float(hit.group(2))), hit.group(3)
+    of = {n: x['net'] for x in ends for n in (x.get('nets') or [x['net']])}
+    best = min(((LineString(t['pts']).distance(pt), t['net'])
+                for t in kb.tracks if t['layer'] == lay and t['net'] in of
+                and len(t['pts']) > 1), default=(None, None))
+    return of.get(best[1]) if best[0] is not None and best[0] < 0.5 else None
+
+
+def chain_nets(ends):
+    """Every net of the channels end_ports made (a channel through series
+    parts: its middle nets have no port, and 'auto' alone left them and their
+    parts out of the model)."""
+    return sorted({n for x in ends for n in x.get('nets') or [x['net']]})
+
+
+def model_dropping(base, specs, ends, echo=print):
+    """The board model with ports at the channels' ends (end_ports's specs and
+    ends), a channel left out where one of its ports finds no reference copper
+    (a LimeRFE's bottom-side SAW duplexer over a void in its PWR layer): (model,
+    specs, ends), said."""
+    import re
+    from .config import build_settings
+    from .pipeline import board_from_settings
+    dropped = []
+    while True:
+        try:
+            m = board_from_settings(build_settings(dict(
+                base, ports=specs, nets=['auto'] + chain_nets(ends))),
+                log=lambda *x: None)
+            break
+        except ValueError as e:
+            hit = re.match(r'(P\d+): no reference copper', str(e))
+            leg = next((x['net'] for x in ends if hit and x['port'] ==
+                        hit.group(1)), None)
+            if leg is None:
+                raise
+            dropped.append((leg, hit.group(1)))
+            gone = {x['port'] for x in ends if x['net'] == leg}
+            specs = [q for q in specs if q.split('=')[0] not in gone]
+            ends = [x for x in ends if x['net'] != leg]
+    if dropped:
+        echo(f"segment: WARNING: {len(dropped)} channel leg(s) left out, a "
+             "port with no reference copper under it: "
+             + ', '.join(f"{n} ({p})" for n, p in dropped[:10])
+             + (' ...' if len(dropped) > 10 else ''))
+    return m, specs, ends
+
+
 def series_block(f, part, z0=50.0):
     """A series part's S (nf, 2, 2) between two z0 ports: its R, L and C in
     series (a 0 ohm link: a through)."""
@@ -1180,9 +1238,31 @@ def run(a, echo=print):
         base = dict(base, ports=specs, nets=['auto'])
         s = build_settings(base)
         echo(f"segment: {len(specs)} ports at the nets' ends on pads")
-    m = board_from_settings(s, log=lambda *x: None)
+    if ends:
+        m, specs, ends = model_dropping(base, specs, ends, echo)
+        s = build_settings(dict(base, ports=specs,
+                                nets=['auto'] + chain_nets(ends)))
+    else:
+        m = board_from_settings(s, log=lambda *x: None)
     nets = set(m.sel or [n for ns in m.copper_nets.values() for n in ns])
-    parts, allcuts = pieces(m, raw, raw, nets, a.apart, echo=echo)
+    while True:
+        try:
+            parts, allcuts = pieces(m, raw, raw, nets, a.apart, echo=echo)
+            break
+        except ValueError as e:
+            # a cut on copper the model gives another net (two nets' copper
+            # overlapping in the board file: a short, or nets renamed out of
+            # step with the tracks): that channel left out, said
+            leg = _channel_at(str(e), raw, ends) if ends else None
+            if leg is None:
+                raise
+            echo(f"segment: WARNING: {leg} left out: its copper overlaps "
+                 f"another net's in the board file ({str(e)[:90]})")
+            gone = {x['port'] for x in ends if x['net'] == leg}
+            specs = [q for q in specs if q.split('=')[0] not in gone]
+            ends = [x for x in ends if x['net'] != leg]
+            m, specs, ends = model_dropping(base, specs, ends, echo)
+            nets = set(m.sel or [])
     out = os.path.abspath(a.out)
     os.makedirs(out, exist_ok=True)
     band = dict(fmin=a.fmin or s.fmin, fmax=a.fmax or s.fmax,
