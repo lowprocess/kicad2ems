@@ -238,6 +238,13 @@ python -m kicad2ems.core.segment board.kicad_pcb --nets 'PCIE*,HDMI*' --out out/
   channels coloured by insertion or return loss at a frequency on a slider, by crosstalk or by mode conversion,
   ranked worst first, each one's curves and its worst aggressors (drawn in copper on the plan), layers toggled.
   `segment.overlay(result)` makes all three again from a segment.json.
+- **Stripline pieces** keep the board's ground vias through both planes near their copper: without them the two
+  ideal planes carry a parallel-plate mode that couples every port to every other (about -45 dB at any distance).
+  A stripline layer's nets are grouped 3 plane spacings apart; a group past 24 nets is grouped closer, down to 2
+  spacings, and the run says at what spacing couplings were left out.
+- **`--layer-solver auto`**: mom25d up to 20k unknowns a piece, the line model past that. The line model's loss is
+  within 0.1-0.5 dB of mom25d's on stripline, but it couples only traces within 5 heights of each other: the
+  crosstalk between lanes further apart is missing, so treat its coupling figures as a lower bound.
 - **Resumed:** a piece solved before from the same board file and settings is taken as it is (`piece.sha256` in
   its folder), so a run stopped at one piece goes on from it. `--dmax` sets mom25d's cell size.
 - **Each piece in a process of its own**, so the memory one took is free for the next. mom25d stops a piece that

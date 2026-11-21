@@ -40,6 +40,12 @@ NUDGE = 1e-3      # mm: a cut port's point inside its own piece
 PAD_AREA = 0.5    # mm2: a via model's ground copper off its planes kept up to
                   # this (a ground via's pad), the rest (a pour) left out
 APART_STRIP_B = 3.0  # a stripline layer's groups: this many plane spacings
+# ... a group of more nets than GROUP_MAX grouped again closer, down to this
+# many: a Thor carrier's In7 bus chained 64 nets (32.9k unknowns: hours); with
+# the board's stitching vias in, its In2 lanes 0.6-0.9 mm (2.2-3.3 b) apart
+# coupled at -45 dB at most, 0.45-0.6 mm at -38
+GROUP_MAX = int(os.environ.get('K2E_SEG_GROUP_MAX', 24))
+APART_FLOOR_B = 2.0
 END_MARGIN = 0.2  # mm: a via this near beyond its circle to a port: not cut
 RUN = 2.0         # mm: two nets are one layer piece where they run that far
                   # within --apart of each other (coupling.groups' run)
@@ -245,6 +251,57 @@ def _piece(m, raw, keep, ports, outline=None, vias=None):
     return b
 
 
+# a stripline piece's ground vias: those within this of its copper (mm)
+STITCH_REACH = float(os.environ.get('K2E_SEG_STITCH', 1.0))
+
+
+def _capped(kb, lay, grps, apart, floor, echo=print):
+    """Groups of more than GROUP_MAX nets grouped again at 0.8 x the spacing,
+    again, down to floor (mm): couplings between nets further apart than the
+    spacing that did it are left out (said)."""
+    from .coupling import groups as near_groups
+    out = []
+    for g in grps:
+        a = apart
+        sub = [g]
+        while max(map(len, sub)) > GROUP_MAX and a * 0.8 >= floor - 1e-9:
+            a *= 0.8
+            sub = [x for y in sub for x in (
+                near_groups(kb, lay, y, a, RUN) if len(y) > GROUP_MAX
+                else [y])]
+        if len(sub) > 1:
+            echo(f"segment: {lay}: a group of {len(g)} nets in {len(sub)} "
+                 f"(the largest {max(map(len, sub))}) at {a:.2f} mm: their "
+                 f"coupling across it left out")
+        out += sub
+    return out
+
+
+def _stitching(m, lay, gnets, refs):
+    """A layer piece's vias (_piece's `vias`): none over one plane; between
+    two, the ground vias through both within STITCH_REACH of the group's
+    copper. The two whole-sheet planes with nothing between them carry a
+    parallel-plate mode that every port excites and every port picks up: a
+    Thor carrier's In2 camera lanes coupled at -40 to -46 dB at 1.5 mm and
+    more, where the board's stitching vias short the planes together."""
+    from shapely.geometry import Point
+    from shapely.ops import unary_union
+    from shapely.prepared import prep
+    if len(refs) != 2:
+        return lambda n, x, y: False
+    near = [p for p, n in zip(m.copper.get(lay, []),
+                              m.copper_nets.get(lay, [])) if n in gnets]
+    if not near:
+        return lambda n, x, y: False
+    zone = prep(unary_union(near).buffer(STITCH_REACH))
+    lo, hi = m.cu_z[refs[0]], m.cu_z[refs[1]]
+    ok = {(round(v[0], 4), round(v[1], 4))
+          for v, n in zip(m.vias, m.via_nets)
+          if n in m.ground_nets and v[3] <= lo + 1e-6 and v[4] >= hi - 1e-6
+          and zone.contains(Point(v[0], v[1]))}
+    return lambda n, x, y: (round(x, 4), round(y, 4)) in ok
+
+
 def _port_closing(b, raw, name, fp):
     """Board._port on a piece; where it finds no reference copper (a port on a
     through-hole pin, whose own ring had filled the plane's antipad on the full
@@ -340,7 +397,7 @@ def _height(m, layer):
     return min((abs(z - m.cu_z[layer]) for z in zs), default=0.0)
 
 
-def pieces(m, raw, kb, nets, apart_h=None):
+def pieces(m, raw, kb, nets, apart_h=None, echo=print):
     """The board m (its own ports the external ones) in pieces (a layer's
     nets in groups further apart than apart_h heights over its plane:
     coupling.APART_H by default, 0 one piece a layer): [dict(kind
@@ -412,6 +469,9 @@ def pieces(m, raw, kb, nets, apart_h=None):
             apart = APART_H * h
         grps = (near_groups(kb, lay, on, apart, RUN)
                 if len(on) > 1 and apart > 0 else [on])
+        if apart_h is None and len(refs) == 2:
+            grps = _capped(kb, lay, grps, apart, APART_FLOOR_B * (
+                m.cu_z[refs[1]] - m.cu_z[refs[0]]), echo)
         for gi, gnets in enumerate(grps):
             gnets = set(gnets)
             mine = [c for c in allcuts if c['layer'] == lay
@@ -442,7 +502,8 @@ def pieces(m, raw, kb, nets, apart_h=None):
                 return None
             if not fps and not ports:
                 continue  # slivers of a via's ring: nothing to join
-            b = _piece(m, raw, keep, fps + ports, vias=lambda n, x, y: False)
+            b = _piece(m, raw, keep, fps + ports,
+                       vias=_stitching(m, lay, gnets, refs))
             name = _safe(lay) + (f"_g{gi + 1}" if len(grps) > 1 else '')
             out.append(dict(kind='layer', name=name, layer=lay, board=b,
                             links=[(f"P{1000 + c['k']}", c['k'])
@@ -567,11 +628,13 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
     from .pipeline import Job
     from .coupling import _over_its_plane
     os.makedirs(folder, exist_ok=True)
-    if piece['kind'] == 'layer' and layer_solver:
+    d = _to_dict(piece['board'], piece)
+    if piece['kind'] == 'layer' and layer_solver == 'auto':
+        solver = _layer_choice(piece, d, band, thickness, dmax, edges, echo)
+    elif piece['kind'] == 'layer' and layer_solver:
         solver = layer_solver
     elif piece['kind'] == 'via' and via_solver:
         solver = via_solver
-    d = _to_dict(piece['board'], piece)
     if solver == 'pbm':
         # the physics-based via model (viamodel.py): no mesh, no run
         from . import viamodel
@@ -667,6 +730,44 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
     return out
 
 
+# --layer-solver auto: mom25d up to this many unknowns, the line model past
+# them. A Thor carrier's In7 bus (64 striplines chained 3 plane spacings
+# apart, 850 mm2 of copper) meshed to 32k with coarse edges: past the GPU
+# hybrid, a matrix-free refinement of 130 ports, hours; a 15.6k piece of 158
+# ports took 14 minutes
+LAYER_MOM_MAX = int(os.environ.get('K2E_SEG_MOM_MAX', 20000))
+# ... a piece's signal copper below this (mm2) is not meshed to see: the
+# Thor's largest under it was 8k unknowns
+LAYER_SMALL = 100.0
+
+
+def _layer_choice(piece, d, band, thickness, dmax, edges, echo):
+    """A layer piece's solver for --layer-solver auto: mom25d where its mesh
+    (as it would be solved: over its plane, these edges) has at most
+    LAYER_MOM_MAX unknowns, else the line model."""
+    import copy
+    from .coupling import _over_its_plane
+    b = piece['board']
+    area = sum(q.area for l, ps in b.copper.items()
+               for q, n in zip(ps, b.copper_nets[l]) if n not in b.ground_nets)
+    if area < LAYER_SMALL:
+        return 'mom25d'
+    from kicad2ems.mom25d.api import build_board
+    dd = copy.deepcopy(d)
+    _over_its_plane(dd, piece['layer'])
+    _, sim = build_board(dd, band['fmin'] * 1e9, band['fmax'] * 1e9,
+                         dmax=(dmax or 0.5) * 1e-3,
+                         port='via' if PORT == 'lumped' else PORT,
+                         thickness=thickness or 'sides',
+                         edges=edges or 'fine', mesh_only=True,
+                         log=lambda *a: None)
+    n = sim.Ne + sim.Nv
+    pick = 'mom25d' if n <= LAYER_MOM_MAX else 'lines'
+    echo(f"{piece['name']}: {n} unknowns -> {pick}"
+         + (f" (past {LAYER_MOM_MAX})" if pick == 'lines' else ''))
+    return pick
+
+
 def _read_piece(folder, name):
     """A piece's run read back: (f, S at 50 ohm, its ports, its summary)."""
     from .touchstone import read_touchstone
@@ -715,7 +816,7 @@ def run(a, echo=print):
         echo(f"segment: {len(specs)} ports at the nets' ends on pads")
     m = board_from_settings(s, log=lambda *x: None)
     nets = set(m.sel or [n for ns in m.copper_nets.values() for n in ns])
-    parts, allcuts = pieces(m, raw, raw, nets, a.apart)
+    parts, allcuts = pieces(m, raw, raw, nets, a.apart, echo=echo)
     out = os.path.abspath(a.out)
     os.makedirs(out, exist_ok=True)
     band = dict(fmin=a.fmin or s.fmin, fmax=a.fmax or s.fmax,
@@ -751,10 +852,10 @@ def run(a, echo=print):
         for port, k in p['links']:
             links.setdefault(k, []).append(f"{p['name']}:{port}")
             cut_of[(p['name'], port)] = k
+        got = next(iter(sm.get('solved', {}).items()), (None, {}))
         info.append(dict(piece=p['name'], kind=p['kind'], ports=names,
-                         seconds=round(time.time() - t, 1),
-                         unknowns=(sm.get('solved', {}).get(a.solver) or {})
-                         .get('unknowns')))
+                         seconds=round(time.time() - t, 1), solver=got[0],
+                         unknowns=(got[1] or {}).get('unknowns')))
         echo(f"{p['name']}: {len(names)} ports, {time.time() - t:.0f} s")
     # each cut's correction, by its cross-section (layer, width): two
     # lumped ports back to back are not the trace they cut
@@ -1195,7 +1296,9 @@ def parser():
     p.add_argument('--layer-solver', default=None,
                    help="the layer pieces' solver where not --solver's: lines "
                    "(the line model: seconds; the via models stay on "
-                   "--solver's)")
+                   "--solver's), auto (mom25d where a piece meshes to at most "
+                   f"{LAYER_MOM_MAX} unknowns, K2E_SEG_MOM_MAX, the line "
+                   "model past that)")
     p.add_argument('--edges', default=None, choices=('fine', 'coarse'),
                    help="mom25d's mesh across the copper's edges "
                    "(--mom-edges): coarse ~7x fewer unknowns on narrow traces")

@@ -288,6 +288,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **segment's stripline pieces: a parallel-plate mode (2026-11-21).** A layer piece between two planes kept them as
+  whole sheets with nothing between: every port excited the plates' mode and every port picked it up, a floor of
+  -40 to -46 dB of coupling at any distance (the Thor carrier's In2 camera lanes 1.5 mm and more apart). The piece
+  now keeps the board's ground vias through both planes within 1 mm of its copper (`K2E_SEG_STITCH`): the floor
+  falls to -67 dB median, the close couplings unchanged (-32 dB at 0.12 mm), the unknowns barely (124 vias).
+- **segment: a stripline group past 24 nets** (`K2E_SEG_GROUP_MAX`) is grouped again closer, down to 2 plane
+  spacings, and says so (the Thor's In7 bus, 64 nets chained at 3 spacings, 32.9k unknowns: five groups at 0.65 mm,
+  the largest 23.8k); `--layer-solver auto` puts a piece past 20k unknowns (`K2E_SEG_MOM_MAX`) on the line model
+  (its loss agrees within 0.1-0.5 dB, but it couples only traces within 5 heights: lanes' crosstalk is lost);
+  segment.json records each piece's solver.
 - **mom25d on the GPU: a lost device on a 158-port piece (2026-11-21).** The double-precision Z went up to the GPU
   beside four kept factors with no check of the room left; the driver spilled it to host memory, and a product
   that took 0.6 s took 2 s, then ran past the driver's 10 s watchdog (VK_ERROR_DEVICE_LOST). It now drops kept
