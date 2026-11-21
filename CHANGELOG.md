@@ -10,11 +10,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
-- **segment: big groups in overlapping windows (2026-11-21, being validated).** A layer group of more than 32
+- **segment: big groups in overlapping windows (2026-11-21).** A layer group of more than 32
   nets (`K2E_SEG_WINDOW`) is solved as windows: cores of up to 6 nets (pairs whole, in breadth-first order across
   the bus) each with every net within the group's spacing, assembled into the group's S (`assemble`: a core
   port's row from its own window, an entry two windows have their mean). The Thor's In7 bus: 44 nets in 8
-  windows of at most 18.
+  windows of at most 18 (9.8k unknowns): 1,103 s against 11,920 s as one piece (106 ports), through paths
+  within 0.05 dB and return loss within 0.04 dB median at 10 GHz, couplings above -30 dB within 0.42 dB (90 %);
+  of those above -50 dB, 382 of 1,051 left out, between nets 0.86 mm apart or more (median 4.7 mm; the
+  strongest, -32 dB at 5 mm, at DP0 AUX ports whose reference is floating copper).
 - **segment's overlay (2026-11-21).** `<name>_overlay.json` (each channel's tracks with its figures, the via models,
   the cuts) and `<name>_overlay.png` (the channels coloured by their worst NEXT/FEXT and by their loss at the
   top frequency over the board's outline); segment.json records the via models and the layer pieces.
