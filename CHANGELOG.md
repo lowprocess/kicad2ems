@@ -288,6 +288,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **Big networks: the join and the modal S (2026-11-21).** segment's join held every frequency's S of all the
+  pieces' ports side by side (the Thor carrier's ~3,500: 39 GB, killed at 24); it now goes a frequency at a time
+  with the blocks as a sparse matrix and a sparse LU (the same S to 4e-15). coupling.modal's change to modes was
+  a three-operand einsum, one loop of m^2 n^2 nf (4 minutes at 160 ports, never at 568): two products now (568
+  ports' figures in 9 s). Board coupling's matrix goes through it too.
 - **segment's stripline pieces: a parallel-plate mode (2026-11-21).** A layer piece between two planes kept them as
   whole sheets with nothing between: every port excited the plates' mode and every port picked it up, a floor of
   -40 to -46 dB of coupling at any distance (the Thor carrier's In2 camera lanes 1.5 mm and more apart). The piece

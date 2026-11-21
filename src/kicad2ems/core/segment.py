@@ -83,28 +83,34 @@ def join(blocks, links):
     miss = [p for p in used if p not in at]
     if miss:
         raise ValueError(f"no such ports: {', '.join(miss)}")
+    # a frequency at a time, the blocks side by side as a sparse matrix: the
+    # dense one of every frequency (nf n^2) was 39 GB for a Thor carrier's
+    # ~3,500 ports (its pieces', their cuts' corrections), killed at 24 GB
+    from scipy import sparse
+    from scipy.sparse.linalg import splu
     n = len(names)
-    big = np.zeros((nf, n, n), complex)
-    k = 0
-    for S in Ss:
-        w = S.shape[1]
-        big[:, k:k + w, k:k + w] = S
-        k += w
     inner = [at[p] for p in used]
-    outer = [i for i in range(n) if i not in set(inner)]
-    G = np.zeros((len(inner), len(inner)))
+    isin = np.zeros(n, bool)
+    isin[inner] = True
+    outer = np.flatnonzero(~isin)
     pos = {p: j for j, p in enumerate(inner)}
-    for a, b in links:
-        G[pos[at[a]], pos[at[b]]] = G[pos[at[b]], pos[at[a]]] = 1.0
-    ii, ee = np.ix_(inner, inner), np.ix_(outer, outer)
-    S_ii, S_ee = big[:, inner][:, :, inner], big[:, outer][:, :, outer]
-    S_ie, S_ei = big[:, inner][:, :, outer], big[:, outer][:, :, inner]
-    del ii, ee
-    eye = np.eye(len(inner))
+    r = [pos[at[a]] for a, b in links] + [pos[at[b]] for a, b in links]
+    c = [pos[at[b]] for a, b in links] + [pos[at[a]] for a, b in links]
+    G = sparse.csr_matrix((np.ones(len(r)), (r, c)),
+                          shape=(len(inner), len(inner)))
+    eye = sparse.identity(len(inner), format='csc')
     out = np.empty((nf, len(outer), len(outer)), complex)
     for f in range(nf):
-        X = np.linalg.solve(eye - S_ii[f] @ G, S_ie[f])
-        out[f] = S_ee[f] + S_ei[f] @ G @ X
+        big = sparse.block_diag([sparse.csr_matrix(S[f]) for S in Ss],
+                                format='csr')
+        rows_i, rows_e = big[inner], big[outer]
+        S_ii, S_ie = rows_i[:, inner], rows_i[:, outer].toarray()
+        S_ei, S_ee = rows_e[:, inner], rows_e[:, outer].toarray()
+        if len(inner):
+            X = splu((eye - S_ii @ G).tocsc()).solve(S_ie)
+            out[f] = S_ee + S_ei @ (G @ X)
+        else:
+            out[f] = S_ee
     return out, [names[i] for i in outer]
 
 

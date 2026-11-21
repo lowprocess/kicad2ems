@@ -460,7 +460,10 @@ def modal(S, names, chans, z0=50.0):
                 M.append(v)
                 zref.append(z)
     M = np.array(M)
-    return np.einsum('ij,fjk,lk->fil', M, S, M), rows, zref
+    # M S M^T as two products (an unoptimised three-operand einsum is one
+    # loop of m^2 n^2 nf: 4 minutes at 160 ports, never at a Thor carrier's
+    # 568)
+    return M @ np.asarray(S) @ M.T, rows, zref
 
 
 def matrix(f, S, names, rise_s, pairs=True, z0=50.0):
