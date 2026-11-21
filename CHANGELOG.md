@@ -500,6 +500,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **segment: each net cut by its own vias' circles (2026-11-21).** A net's copper was cut by the whole via
+  group's circle: a track passing other nets' vias in the group (the Thor's DP1 lanes along the SoM connector's
+  28-via group) was cut in and out of it, each stretch a stub to the via model's barrel (DP1.TX2 -39 dB at
+  10 GHz). Now each net is cut and clipped by its own vias' circles; that group's model went from 92 ports to 56.
 - **segment: a series part's pad inside a via's circle (2026-11-21).** Its port is the via model's (the part a joint
   between the via model and the layer piece); it had been left in the mesh with its pad cut off into the via
   model, which holds no parts: the Thor's PCIe C2x1 clock and DP0 AUX lanes open end to end (0 of 184 legs open

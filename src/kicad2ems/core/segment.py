@@ -216,8 +216,16 @@ def via_groups(m, nets, gap=GAP, ends=(), keep_out=()):
     out = {}
     for i, v in enumerate(vs):
         out.setdefault(root(i), []).append(v)
+    # each net's own circles in the group: what its copper is cut by (a track
+    # passing another net's via in the group stays whole: cut by the group's
+    # circle, a Thor DisplayPort lane running past the SoM connector's vias
+    # was cut in and out of it five times, each stretch a stub to the via
+    # model's barrel: -39 dB)
     return [dict(vias=g, circle=_solid(unary_union(
-        [Point(v['x'], v['y']).buffer(v['r'], 64) for v in g])))
+        [Point(v['x'], v['y']).buffer(v['r'], 64) for v in g])),
+        own={n: _solid(unary_union(
+            [Point(v['x'], v['y']).buffer(v['r'], 64) for v in g
+             if v['net'] == n])) for n in {v['net'] for v in g}})
         for g in out.values()]
 
 
@@ -585,11 +593,12 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
     clip = {}
     for g in groups:
         for n in {v['net'] for v in g['vias']}:
-            clip.setdefault(n, []).append(g['circle'])
+            clip.setdefault(n, []).append(g['own'][n])
     clip = {n: unary_union(cs) for n, cs in clip.items()}
     allcuts = []
     for gi, g in enumerate(groups):
-        for c in cuts(kb, g, {v['net'] for v in g['vias']}):
+        for c in (c for n, own in sorted(g['own'].items())
+                  for c in cuts(kb, dict(circle=own), {n})):
             c['group'] = gi
             c['k'] = len(allcuts) + 1
             allcuts.append(c)
@@ -613,7 +622,7 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
         # the Thor's PCIe C2x1 clock and DP0 AUX lanes open end to end)
         inside = [next((gi for gi, g in enumerate(groups)
                         if pd['net'] in {v['net'] for v in g['vias']}
-                        and g['circle'].contains(
+                        and g['own'][pd['net']].contains(
                             _pt(pd['xy'][0], -pd['xy'][1]))), None)
                   for pd in pads]
         k += 1
@@ -765,7 +774,8 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
                       c['layer'])) for c in mine]
         # the board's own ports inside its circle (a pad close to the via)
         own = [(p.name, _port_fp(p)) for p in ext.values()
-               if p.net in gnets and circle.contains(_pt(*p.c[:2]))]
+               if p.net in gnets and g['own'][p.net].contains(
+                   _pt(*p.c[:2]))]
 
         # the planes in the box: layers whose ground covers half of it; a
         # signal layer's pour left out as the layer pieces leave it (in via1
@@ -775,9 +785,9 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
             p.intersection(bx).area for p, n in zip(ps, m.copper_nets.get(
                 l, [])) if n in m.ground_nets) >= 0.5 * bx.area}
 
-        def keep(l, n, p, circle=circle, gnets=gnets, bx=bx, planes=planes):
+        def keep(l, n, p, gnets=gnets, bx=bx, planes=planes, mine=g['own']):
             if n in gnets:
-                return p.intersection(circle)
+                return p.intersection(mine[n])
             if n in m.ground_nets:
                 g = p.intersection(bx)
                 return g if l in planes or g.area <= PAD_AREA else None
