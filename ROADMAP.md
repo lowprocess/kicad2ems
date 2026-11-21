@@ -116,6 +116,15 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    device at 158 ports (the double Z spilled out of VRAM), and figures of 158 ports that took 6 minutes. The line
    model was measured as a stand-in for the biggest stripline piece and set aside: its loss within 0.1-0.5 dB of
    mom25d, but none of the lane-to-lane coupling (it couples within 5 heights). The run itself: (being run).
+   The In7 bus piece (24k unknowns, 66 ports): 60 EM solves of ~70 s (the sweep at its cap, not converged).
+   **Tried and set aside (2026-11-21): each entry's delay taken out before the sweep's fit** (replayed on that
+   piece's S, 16 ports): 72 solves to converge without, the 80-solve cap unconverged with (2.7e-2 off; the
+   through paths' alone 8.6e-2): the set-valued AAA's poles are common to all entries, and one delay per entry
+   breaks that (and an entry is several paths' sum). The solves are the long lines' resonances. Left to try on
+   the solve's cost: the stages timed at 24k (the double Z and the factor no longer both on the GPU?), a
+   complex-symmetric LDL^T (half the memory: both would fit), single-precision products on the GPU; and the
+   windows (being validated). The fit itself is ~4 min of the 73 (the SVD of a 60-sample, 4356-entry fit:
+   13 s; its rows' build vectorised gained nothing).
 4. **mom25d iterative: AIM + GMRES (being prototyped, 2026-11-20).** The far (centroid) product by a
    precorrected FFT on a grid per layer pair (the layered tables sampled on it: no multipole expansion of the
    layered kernel needed), mom25d's exact near correction as it is, GMRES preconditioned by the near part's
