@@ -10,6 +10,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **segment's overlay (2026-11-21).** `<name>_overlay.json` (each channel's tracks with its figures, the via models,
+  the cuts) and `<name>_overlay.png` (the channels coloured by their worst NEXT/FEXT and by their loss at the
+  top frequency over the board's outline); segment.json records the via models and the layer pieces.
 - **segment: each channel's figures (2026-11-21).** A pair one channel in its differential mode: insertion and return
   loss at 1, 5 and 10 GHz, its far end's conversion to common mode, every victim's NEXT and FEXT for a 100 ps edge
   (Board coupling's `matrix`), in segment.json's `report`. The CM5 Minima (36 nets, 18 channels, 78 s with

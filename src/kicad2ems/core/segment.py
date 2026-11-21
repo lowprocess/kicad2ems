@@ -809,8 +809,17 @@ def run(a, echo=print):
             report = pairs_report(f0, S, ext, ends)
         except Exception as e:  # a figure never fails the run  # noqa: BLE001
             echo(f"segment: no per-pair figures ({type(e).__name__}: {e})")
+    # where the pieces are, for the overlay (KiCad mm, y down)
+    via_models = [dict(name=p['name'], ports=len(p['board'].ports),
+                       vias=[dict(x=v['x'], y=-v['y'], r=v['r'], net=v['net'])
+                             for v in p.get('vias', [])])
+                  for p in parts if p['kind'] == 'via']
+    layer_pieces = [dict(name=p['name'], layer=p['layer'],
+                         nets=p.get('nets', []), ports=len(p['board'].ports))
+                    for p in parts if p['kind'] == 'layer']
     res = dict(format=FORMAT, version=1, board=os.path.abspath(s.board),
                ports=ext, port_nets=ends, report=report,
+               via_models=via_models, layer_pieces=layer_pieces,
                touchstone=os.path.relpath(ts, out),
                cuts=[dict(k=c['k'], layer=c['layer'], net=c['net'],
                           at=c['at']) for c in allcuts],
@@ -819,6 +828,11 @@ def run(a, echo=print):
         json.dump(res, fh, indent=1)
     if report:
         _echo_report(report, echo)
+        try:
+            ov = overlay(os.path.join(out, RESULT), raw)
+            echo(f"segment: overlay -> {ov['json']}, {ov['png']}")
+        except Exception as e:  # a figure never fails the run  # noqa: BLE001
+            echo(f"segment: no overlay ({type(e).__name__}: {e})")
     echo(f"segment: {len(ext)} ports ({', '.join(ext)}) -> {ts} "
          f"({time.time() - t0:.0f} s)")
     return res
@@ -957,6 +971,125 @@ def _end_rank(ref):
     if head in ('U', 'IC'):
         return 1
     return 2
+
+
+OVERLAY = 'kicad2ems-segment-overlay'
+
+
+def overlay(result, kb=None, top=8):
+    """The joined board's figures laid over it: <name>_overlay.json (each
+    channel's tracks per layer, KiCad mm, with its figures: insertion and
+    return loss at the report's frequencies, its conversion to common mode, its
+    NEXT and FEXT sums as a victim; the via models' circles; the cuts) and
+    <name>_overlay.png (the board's channels coloured by the worst of NEXT and
+    FEXT, and by the insertion loss at the top frequency, the via models
+    circled, the `top` worst labelled). result: segment.json's path; kb: the
+    board (KiCadBoard), read again when None. {json, png}."""
+    import json as _json
+    from .importers.kicad import KiCadBoard
+    res = _json.load(open(result, encoding='utf-8'))
+    rep = res.get('report')
+    if not rep:
+        raise ValueError("no per-channel report in the result")
+    kb = kb or KiCadBoard(res['board'])
+    from .coupling import channels
+    legs = {c['name']: list(c['legs']) for c in channels(
+        list(dict.fromkeys(x['net'] for x in res['port_nets'])), True)}
+    vic = {v['victim']: v for v in rep['victims']}
+    chans = []
+    for c in rep['channels']:
+        nets = legs.get(c['channel'], [c['channel']])
+        v = vic.get(c['channel'], {})
+        tracks = [dict(layer=t['layer'], net=t['net'], w=float(t['width']),
+                       pts=np.round(np.asarray(t['pts'], float), 4).tolist())
+                  for t in kb.tracks if t['net'] in nets]
+        chans.append(dict(
+            channel=c['channel'], kind=c['kind'], nets=nets,
+            il_db=c['il_db'], rl_db=c['rl_db'],
+            to_common_far_db=c.get('to_common_far_db'),
+            next_sum_pct=v.get('next_sum_pct'),
+            fext_sum_pct=v.get('fext_sum_pct'),
+            worst=[x['aggressor'] for x in v.get('worst', [])],
+            tracks=tracks))
+    ov = dict(format=OVERLAY, version=1, board=res['board'],
+              ghz=rep['ghz'], rise_ps=rep['rise_ps'], channels=chans,
+              via_models=res.get('via_models', []), cuts=res.get('cuts', []))
+    stem = os.path.splitext(result)[0].rsplit(os.sep, 1)[0]
+    name = os.path.splitext(os.path.basename(res['board']))[0]
+    jp = os.path.join(stem, f"{name}_overlay.json")
+    with open(jp, 'w', encoding='utf-8') as fh:
+        _json.dump(ov, fh)
+    pp = os.path.join(stem, f"{name}_overlay.png")
+    plot_overlay(ov, kb, pp, top)
+    return dict(json=jp, png=pp)
+
+
+def plot_overlay(ov, kb, path, top=8):
+    """The overlay as a figure: two panels, the channels coloured by the worst
+    of NEXT and FEXT (%), and by the insertion loss at the top frequency
+    (dB), over the board's outline; the via models circled."""
+    from matplotlib.figure import Figure
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib import cm, colors
+    fig = Figure(figsize=(18, 8.5))
+    FigureCanvasAgg(fig)
+    edges = [np.asarray(getattr(e, 'coords', e), float)[:, :2]
+             for e in getattr(kb, 'edges', []) or []]
+    panels = (
+        ('crosstalk', lambda c: max(c['next_sum_pct'] or 0,
+                                    c['fext_sum_pct'] or 0),
+         f"worst of NEXT, FEXT from all aggressors (%, {ov['rise_ps']:g} ps "
+         "edge)", 'magma_r'),
+        ('loss', lambda c: -c['il_db'][-1],
+         f"insertion loss at {ov['ghz'][-1]:g} GHz (dB)", 'viridis_r'))
+    for k, (key, val, title, cmap) in enumerate(panels):
+        ax = fig.add_subplot(1, 2, k + 1)
+        for e in edges:
+            if e.ndim == 2 and len(e) > 1:
+                ax.plot(e[:, 0], -e[:, 1], color='0.75', lw=0.6)
+        vals = [val(c) for c in ov['channels']]
+        # (the 95th percentile: one channel far off, USB-C's stubs at 10 GHz,
+        # had washed the others out)
+        hi = max(float(np.percentile(vals, 95)) if vals else 0.0, 1e-9)
+        norm = colors.Normalize(0, hi)
+        import matplotlib
+        cmo = matplotlib.colormaps[cmap]
+        order = np.argsort(vals)
+        for i in order:
+            c = ov['channels'][i]
+            col = cmo(norm(vals[i]))
+            for t in c['tracks']:
+                xy = np.asarray(t['pts'], float)
+                ax.plot(xy[:, 0], -xy[:, 1], '-', color=col,
+                        lw=0.6 + 1.6 * min(vals[i] / hi, 1.0),
+                        solid_capstyle='round')
+        for vm in ov['via_models']:
+            for v in vm['vias']:
+                ax.add_patch(__import__('matplotlib').patches.Circle(
+                    (v['x'], -v['y']), max(v['r'], 0.3), fill=False,
+                    color='tab:blue', lw=0.5))
+        for i in order[::-1][:top]:
+            c = ov['channels'][i]
+            if not c['tracks']:
+                continue
+            xy = np.asarray(max(c['tracks'], key=lambda t: len(t['pts']))
+                            ['pts'], float)
+            m = xy[len(xy) // 2]
+            ax.annotate(f"{c['channel'].split('/')[-1]} {vals[i]:.2g}",
+                        (m[0], -m[1]), fontsize=6,
+                        bbox=dict(boxstyle='round,pad=0.15', fc='white',
+                                  ec='0.6', alpha=0.85))
+        ax.set_aspect('equal')
+        ax.set_title(title, fontsize=10)
+        fig.colorbar(cm.ScalarMappable(norm=norm, cmap=cmo), ax=ax,
+                     fraction=0.035)
+    fig.suptitle(f"{os.path.basename(ov['board'])}: {len(ov['channels'])} "
+                 f"channels, {sum(len(v['vias']) for v in ov['via_models'])} "
+                 "signal vias in "
+                 f"{len(ov['via_models'])} via models (blue)", fontsize=11)
+    fig.tight_layout()
+    fig.savefig(path, dpi=130)
+    return path
 
 
 def _echo_report(rep, echo):

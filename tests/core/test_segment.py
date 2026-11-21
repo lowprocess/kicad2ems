@@ -211,3 +211,23 @@ def test_a_physics_based_via_model(tmp_path):
     db = lambda x: 20 * np.log10(np.abs(x))
     d = db(Sm[:, 2, 0]) - db(S0[:, 2, 0])  # (the whole board's: mixed mode)
     assert np.sqrt(np.mean(d ** 2)) < 0.25
+
+
+def test_the_overlay_figure(tmp_path):
+    """segment.plot_overlay: the channels' tracks coloured by their crosstalk
+    and their loss over the board's outline, the via models circled."""
+    from types import SimpleNamespace
+    from shapely.geometry import LineString
+    ch = lambda name, x, nxt, il: dict(
+        channel=name, kind='pair', nets=[name + '_P', name + '_N'],
+        il_db=[-0.1, -1.0, il], rl_db=[-30, -20, -10], to_common_far_db=-30,
+        next_sum_pct=nxt, fext_sum_pct=nxt / 2, worst=[],
+        tracks=[dict(layer='F.Cu', net=name + '_P', w=0.1,
+                     pts=[[x, 0.0], [x, 10.0]])])
+    ov = dict(board='b.kicad_pcb', ghz=[1, 5, 10], rise_ps=100,
+              channels=[ch('A', 1.0, 0.5, -2.0), ch('B', 2.0, 0.1, -4.0)],
+              via_models=[dict(name='via1', ports=2, vias=[
+                  dict(x=1.0, y=5.0, r=0.4, net='A_P')])], cuts=[])
+    kb = SimpleNamespace(edges=[LineString([(0, 0), (5, 0), (5, -12)])])
+    path = SG.plot_overlay(ov, kb, str(tmp_path / 'o.png'))
+    assert os.path.getsize(path) > 10_000

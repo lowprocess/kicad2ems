@@ -228,6 +228,13 @@ python -m kicad2ems.core.segment board.kicad_pcb --nets 'PCIE*,HDMI*' --out out/
   its vias, the region round it on mom25d's whole stack: 24,697 unknowns, 25.5 min, 16.7 GB): its differential
   Sdd21 within 0.13 dB rms (0.36 at worst) with the meshed via models, 0.15 dB rms (0.43) with the physics-based
   ones, over 1-10 GHz; the single-ended differences are the common mode's.
+- **Each channel's figures and the overlay.** Where the ports are the nets' ends (`--ends`), segment.json's
+  `report` has each channel (a pair one, in its differential mode): insertion and return loss at 1, 5 and 10 GHz,
+  its far end's conversion to common mode, and every victim's NEXT and FEXT for a 100 ps edge (Board coupling's
+  figures). `<name>_overlay.json` lays them over the board (each channel's tracks per layer with its figures, the
+  via models' circles, the cuts: for the window's plan and the KiCad plugin to draw, as the line model's
+  overlay), and `<name>_overlay.png` draws the channels coloured by their worst crosstalk and by their loss at
+  the top frequency.
 - **Resumed:** a piece solved before from the same board file and settings is taken as it is (`piece.sha256` in
   its folder), so a run stopped at one piece goes on from it. `--dmax` sets mom25d's cell size.
 - **Each piece in a process of its own**, so the memory one took is free for the next. mom25d stops a piece that
