@@ -142,7 +142,21 @@ def _antipad(m, x, y, reach=3.0):
     return r
 
 
-def via_groups(m, nets, gap=GAP, ends=()):
+def _leaves(m, net, x, y, pad, layer):
+    """Whether net's copper at (x, y) is more than a via's ring (pad mm) on a
+    layer other than `layer`: a track leaves the via there."""
+    from shapely.geometry import Point
+    pt, ring = Point(x, y), math.pi * (pad + 0.05) ** 2 * 1.5
+    for l, ps in m.copper.items():
+        if l == layer:
+            continue
+        for g, n in zip(ps, m.copper_nets.get(l, [])):
+            if n == net and g.area > ring and g.distance(pt) < 1e-6:
+                return True
+    return False
+
+
+def via_groups(m, nets, gap=GAP, ends=(), keep_out=()):
     """The signal vias of `nets`, each with its cut radius (beyond its pad and
     the largest antipad round it, by gap mm), in groups: vias whose circles
     touch are one model. [dict(vias [dict(x, y, net, r, pad, antipad)],
@@ -154,10 +168,15 @@ def via_groups(m, nets, gap=GAP, ends=()):
         if net in nets and net not in m.ground_nets:
             pad, anti = _pad_radius(m, x, y), _antipad(m, x, y)
             r = max(pad, anti) + gap
-            near = [math.hypot(x - ex, y - ey) for ex, ey in ends]
+            near = [math.hypot(x - e[0], y - e[1]) for e in ends]
             # a via where its net ends at a port (a through-hole pad's own
-            # barrel): no transition, the port is there
-            if any(dd <= pad + 0.05 for dd in near):
+            # barrel): no transition, the port is there. Unless the net's
+            # copper leaves it on another layer than the port's (a via in a
+            # connector's pad, its track on the far side: skipped, the Thor
+            # carrier's DisplayPort lanes were open end to end)
+            at = [e for e, dd in zip(ends, near) if dd <= pad + 0.05]
+            if at and not any(_leaves(m, net, x, y, pad, e[2] if len(e) > 2
+                                      else None) for e in at):
                 continue
             # a transition with a port near it (USB-C's A7, 0.65 mm from its
             # via, on the circle): the circle takes the port in, the via model
@@ -166,6 +185,14 @@ def via_groups(m, nets, gap=GAP, ends=()):
             close = [dd for dd in near if dd < r + END_MARGIN]
             if close:
                 r = max(r, max(close) + END_MARGIN)
+            # short of a series part's pads (keep_out: (x, y, half size)): a
+            # via model is no place for an AC-coupling capacitor (a Thor
+            # carrier's DP0 AUX pair: C322's pad inside its via's circle, the
+            # capacitor split between two pieces, the lane open)
+            for kx, ky, kh in keep_out:
+                dk = math.hypot(x - kx, y - ky) - kh - 0.05
+                if dk < r:
+                    r = max(dk, pad + 0.05)
             vs.append(dict(x=float(x), y=float(y), net=net, pad=pad,
                            antipad=anti, r=r))
     up = list(range(len(vs)))
@@ -183,9 +210,18 @@ def via_groups(m, nets, gap=GAP, ends=()):
     out = {}
     for i, v in enumerate(vs):
         out.setdefault(root(i), []).append(v)
-    return [dict(vias=g, circle=unary_union(
-        [Point(v['x'], v['y']).buffer(v['r'], 64) for v in g]))
+    return [dict(vias=g, circle=_solid(unary_union(
+        [Point(v['x'], v['y']).buffer(v['r'], 64) for v in g])))
         for g in out.values()]
+
+
+def _solid(g):
+    """g without holes: a ring of circles (a connector's rows of vias) closes
+    round a gap whose edge had cut tracks with the inside on both sides (a
+    Thor camera lane's port on no copper); the gap is the via model's."""
+    from shapely.geometry import MultiPolygon, Polygon
+    parts = [Polygon(p.exterior) for p in getattr(g, 'geoms', [g])]
+    return parts[0] if len(parts) == 1 else MultiPolygon(parts)
 
 
 def cuts(kb, group, nets):
@@ -210,18 +246,38 @@ def cuts(kb, group, nets):
                     continue
                 q = np.array([h.x, h.y])
                 d = (b - a) / (np.linalg.norm(b - a) or 1.0)
-                if inside.contains(Point(*(q + d * 1e-3))):
+                flip = inside.contains(Point(*(q + d * 1e-3)))
+                if flip:
                     d = -d  # away from the via
+                # the segment's part outside: none where it only ends on the
+                # circle (a vertex on it: the next segment's crossing is the
+                # cut; counted twice, one port had pointed off the copper, a
+                # Thor carrier's camera lanes a four-port star or open)
+                if np.linalg.norm((a if flip else b) - q) < 1e-4:
+                    continue
+                # the layer piece's port clear of the circle: a track that
+                # grazes it is barely out 1 um along (a Thor camera lane's
+                # port fell inside after the clip: no copper under it)
+                room = float(np.linalg.norm((a if flip else b) - q))
+                nudge = next((s for s in (NUDGE, 5e-3, 0.02, 0.05)
+                              if s < max(room, 0.02)
+                              and inside.boundary.distance(
+                                  Point(*(q + d * s))) > 1e-4
+                              and not inside.contains(Point(*(q + d * s)))),
+                             None)
+                if nudge is None:
+                    continue  # it touches the edge (a notch's tip): no cut
                 out.append(dict(layer=t['layer'], net=t['net'],
                                 at=(float(q[0]), float(q[1])),
-                                out=(float(d[0]), float(d[1]))))
+                                out=(float(d[0]), float(d[1])), nudge=nudge))
     return out
 
 
-def _fp(name, c, d, layer):
+def _fp(name, c, d, layer, nudge=NUDGE):
     """A cut port's footprint-like dict (as region.cut_port_fps's): at KiCad
-    point c, pointing along d (KiCad) into its piece."""
-    q = np.asarray(c, float) + np.asarray(d, float) * NUDGE
+    point c (moved nudge mm along d), pointing along d (KiCad) into its
+    piece."""
+    q = np.asarray(c, float) + np.asarray(d, float) * nudge
     dm = (d[0], -d[1])
     return dict(ref=name, x=float(q[0]), y=float(q[1]),
                 rot=float(math.degrees(math.atan2(dm[1], dm[0])) % 360.0),
@@ -434,8 +490,15 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
     from shapely.affinity import scale
     signal = set(nets) - set(m.ground_nets)
     chain = chains(kb, sorted(signal))
+    sref = {ref for ref, _, _ in series_links(kb, signal)}
+    keep_out = [(float(pd['xy'][0]), -float(pd['xy'][1]),
+                 0.5 * max(pd['geom'].bounds[2] - pd['geom'].bounds[0],
+                           pd['geom'].bounds[3] - pd['geom'].bounds[1]))
+                for fp in kb.footprints if fp['ref'] in sref
+                for pd in fp['pads'] if pd.get('geom') is not None]
     groups = via_groups(m, signal,
-                        ends=[(float(p.c[0]), float(p.c[1])) for p in m.ports])
+                        ends=[(float(p.c[0]), float(p.c[1]), p.layer)
+                              for p in m.ports], keep_out=keep_out)
     # each net's circles: those of the groups holding one of its vias (a trace
     # passing through another net's circle stays whole: cut by every circle,
     # a pair's leg through its twin's lost its copper there unjoined)
@@ -501,7 +564,8 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
             mine = [c for c in allcuts if c['layer'] == lay
                     and c['net'] in gnets]
             ports = [(f"P{1000 + c['k']}", _fp(f"cutL{c['k']}", c['at'],
-                                                c['out'], lay))
+                                                c['out'], lay,
+                                                c.get('nudge', NUDGE)))
                      for c in mine]
             fps = [(p.name, _port_fp(p)) for p in ext.values()
                if p.layer == lay and getattr(p, 'net', None) in gnets
@@ -626,6 +690,44 @@ def calibration_pieces(m, raw, layer, w, net):
         out.append(dict(kind='layer', name=f"cal_{_safe(layer)}_{w:.3f}_"
                         f"{'whole' if length == L else 'half'}",
                         layer=layer, board=b, links=[], external=[]))
+    return out
+
+
+def unrouted(parts, allcuts, port_nets):
+    """The channels (port_nets' 'net') whose two end ports' pieces are not
+    joined through cuts on the channel's own nets: open end to end before
+    anything is solved (a via left out, a port on a layer its net's copper
+    does not reach). [(channel, [its ports' pieces])]."""
+    where = {}
+    for p in parts:
+        for n in p.get('external', []):
+            where[n] = p['name']
+    of_cut = {}
+    for p in parts:
+        for _, k in p.get('links', []):
+            of_cut.setdefault(k, []).append(p['name'])
+    net_of = {c['k']: c['net'] for c in allcuts}
+    by = {}
+    for x in port_nets:
+        by.setdefault(x['net'], []).append(x)
+    out = []
+    for ch, xs in by.items():
+        mem = set(xs[0].get('nets') or [ch])
+        up = {}
+
+        def root(a):
+            up.setdefault(a, a)
+            while up[a] != a:
+                up[a] = up[up[a]]
+                a = up[a]
+            return a
+        for k, ps in of_cut.items():
+            if net_of.get(k) in mem:
+                for q in ps[1:]:
+                    up[root(ps[0])] = root(q)
+        got = [where.get(x['port']) for x in xs]
+        if len(got) == 2 and (None in got or root(got[0]) != root(got[1])):
+            out.append((ch, got))
     return out
 
 
@@ -845,6 +947,14 @@ def run(a, echo=print):
     os.makedirs(out, exist_ok=True)
     band = dict(fmin=a.fmin or s.fmin, fmax=a.fmax or s.fmax,
                 points=a.points or s.points)
+    if ends:
+        bad = unrouted(parts, allcuts, ends)
+        if bad:
+            echo(f"segment: WARNING: {len(bad)} channel leg(s) with no path "
+                 "end to end through the pieces (open in the result): "
+                 + ", ".join(f"{c} ({' / '.join(map(str, g))})"
+                             for c, g in bad[:8])
+                 + (" ..." if len(bad) > 8 else ''))
     echo(f"segment: {sum(p['kind'] == 'layer' for p in parts)} layer(s), "
          f"{sum(p['kind'] == 'via' for p in parts)} via model(s), "
          f"{len(allcuts)} cut(s)")
@@ -1057,9 +1167,10 @@ def end_ports(kb, nets):
                           for xy, l in ends) or any(
                     g.contains(Point(*xy)) for xy in vias)
                 if hit:
+                    from .region import _pad_layer
                     reach[net].append((fp['ref'], pd['name'],
                                        np.asarray(pd['xy'], float),
-                                       pd['layers'][0], net))
+                                       _pad_layer(kb, pd), net))
     # each chain named by the net holding its best end (a connector's): a
     # pair's two legs then named alike (DP2.TX1+ / DP2.TX1-)
     label = {}

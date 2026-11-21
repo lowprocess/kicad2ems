@@ -288,6 +288,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **segment: open lanes (2026-11-21).** On the Thor carrier 29 of 92 channels came out open end to end. (1) A via in
+  a connector's pad was skipped as "a port at its barrel" although its net's track left it on another layer: it
+  is kept where the net's copper there is more than its ring. (2) A connector's group of via circles closed round
+  a hole, and its edge (and a notch's tip touching a track) made cuts with the inside on both sides: the holes are
+  filled and a crossing counts only where the track leaves the circle; a track vertex on the circle no longer
+  makes two cuts (the camera lanes' four-port stars). (3) A cut port is nudged clear of the circle. (4) A pad port
+  on several layers takes the layer its net's track meets it on (the longer run's). (5) A via's circle stops short
+  of a series part's pads. A check before solving (`unrouted`) names the channels with no path through the
+  pieces: 2 of 184 legs left on the Thor (a via in an AC capacitor's own pad: cuts follow tracks, not pads).
 - **segment: a lane through its AC-coupling capacitor is one channel (2026-11-21).** Each net had been a channel of
   its own, its ends at the capacitor's pads: a 50 ohm port each side of it split the lane's power (the Thor
   carrier's USB-C TX halves at -5 to -7 dB) and read its through signal as crosstalk (DP2.TX0 "38 % FEXT from"

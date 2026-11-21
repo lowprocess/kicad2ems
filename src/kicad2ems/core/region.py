@@ -154,7 +154,7 @@ def extra_port_fps(board, specs):
                     f"port on pad {ref}.{pad}: {ref} has pads "
                     f"{', '.join(sorted({str(q['name']) for q in fp['pads']}))}"
                 )
-            layer = next((l for l in q['layers'] if l.endswith('.Cu')), 'F.Cu')
+            layer = _pad_layer(board, q)
             d = _track_dir_from(board, layer, q['geom'])
             if d is None:  # no track: along the pad's longer side
                 b = q['geom'].bounds
@@ -182,6 +182,30 @@ def extra_port_fps(board, specs):
                             props={'port.layer': layer},
                             source=f"point ({x:g}, {y:g})")
     return out
+
+
+def _pad_layer(board, q):
+    """A pad's port layer: of its copper layers, the one a track of its net
+    meets it on (a through-hole pin's: the first listed had been B.Cu where
+    the lane's track came in on F.Cu: the port alone in a piece of its own, a
+    Thor carrier's DisplayPort lanes open end to end), else the first."""
+    from shapely.geometry import Point
+    cu = [l for l in q.get('layers', []) if l.endswith('.Cu')]
+    if len(cu) > 1 and q.get('geom') is not None and q.get('net'):
+        g = q['geom'].buffer(1e-3)
+        mine = [t for t in getattr(board, 'tracks', [])
+                if t.get('net') == q['net'] and t.get('layer') in cu]
+        meet = {t['layer'] for t in mine
+                if g.contains(Point(*t['pts'][0]))
+                or g.contains(Point(*t['pts'][-1]))}
+        if meet:
+            # where tracks meet it on two layers (the pin the net changes
+            # layers through), the layer of its longer run
+            run = lambda l: sum(float(np.sum(np.hypot(*np.diff(
+                np.asarray(t['pts'], float), axis=0).T)))
+                for t in mine if t['layer'] == l)
+            return max(sorted(meet), key=run)
+    return cu[0] if cu else 'F.Cu'
 
 
 def _track(d):
