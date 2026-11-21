@@ -115,7 +115,12 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    pieces' parallel-plate mode (-45 dB coupling at any distance until the board's ground vias went in), a lost GPU
    device at 158 ports (the double Z spilled out of VRAM), and figures of 158 ports that took 6 minutes. The line
    model was measured as a stand-in for the biggest stripline piece and set aside: its loss within 0.1-0.5 dB of
-   mom25d, but none of the lane-to-lane coupling (it couples within 5 heights). The run itself: (being run).
+   mom25d, but none of the lane-to-lane coupling (it couples within 5 heights). **The run itself (2026-11-21):
+   4 h 19 min and 20.9 GB with the big groups whole (the In7 bus 3 h 21 min: 106 ports), 1 h 02 min and 12.5 GB
+   with them in windows** (In7: 8 windows of at most 9.8k unknowns), the 91 connected channels' insertion loss
+   within 0.04 dB of the whole groups' and each victim's worst crosstalk within 0.008 points. Left: the DP1/DP3
+   expansion lanes' losses (DP1.TX2 -39 dB at 10 GHz, DP3.TX2 -9: a meander crossing a via's circle five
+   times, the via model joining every crossing at its barrel, to look into), the remaining figures' check.
    The In7 bus piece (24k unknowns, 66 ports): 60 EM solves of ~70 s (the sweep at its cap, not converged).
    **Tried and set aside (2026-11-21): each entry's delay taken out before the sweep's fit** (replayed on that
    piece's S, 16 ports): 72 solves to converge without, the 80-solve cap unconverged with (2.7e-2 off; the

@@ -242,6 +242,11 @@ python -m kicad2ems.core.segment board.kicad_pcb --nets 'PCIE*,HDMI*' --out out/
   ideal planes carry a parallel-plate mode that couples every port to every other (about -45 dB at any distance).
   A stripline layer's nets are grouped 3 plane spacings apart; a group past 24 nets is grouped closer, down to 2
   spacings, and the run says at what spacing couplings were left out.
+- **Big groups in windows.** A group of more than 32 nets (`K2E_SEG_WINDOW`) is solved as overlapping windows (a
+  core of a few pairs with its neighbours within the group's spacing) assembled into the group's S. On the
+  Jetson Thor carrier the run went from 4 h 19 min to 1 h 02 min (12.5 GB), every channel's loss within 0.04 dB.
+- **Series parts** (an AC-coupling capacitor, a resistor) are joints: a lane through its capacitor is one channel,
+  its ports at the lane's ends, the part its own series R, L, C between the pieces.
 - **`--layer-solver auto`**: mom25d up to 20k unknowns a piece, the line model past that. The line model's loss is
   within 0.1-0.5 dB of mom25d's on stripline, but it couples only traces within 5 heights of each other: the
   crosstalk between lanes further apart is missing, so treat its coupling figures as a lower bound.
