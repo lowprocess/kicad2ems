@@ -4,6 +4,7 @@
 #   Antmicro Baseboard for Jetson AGX Thor rev 1.1.0 (Apache-2.0)
 #   LimeRFE 1v31 (Lime Microsystems / MyriadRF)
 #   HackRF One and Opera Cake (Great Scott Gadgets, GPL-2.0)
+#   LibreVNA (jankae, GPL-3.0), ThunderScope Rev 5.3 (EEVengers, MIT)
 set -euo pipefail
 out=${1:-boards}
 mkdir -p "$out"
@@ -14,12 +15,20 @@ get() {  # repo commit path file
 THOR=507847a5f8063fcba7b4f78de358bedb68962145
 LIME=412e190d36fcab2f0a5b8902dd3e4330019df56a
 HACKRF=8540a765590bf67cade4139f6fc9513c238c7235
+LIBREVNA=e21e2fe218b7cc61dca85f3897a945711118389d
+THUNDERSCOPE=df2b845927f9aaa0bbc296d6ddcba9503024664d
 get antmicro/jetson-agx-thor-baseboard $THOR jetson-agx-thor-baseboard.kicad_pcb jetson-agx-thor-baseboard.kicad_pcb
 get antmicro/jetson-agx-thor-baseboard $THOR jetson-agx-thor-baseboard.kicad_pro jetson-agx-thor-baseboard.kicad_pro
 get myriadrf/LimeRFE $LIME hardware/1v31/KiCAD/Lime_RFE.kicad_pcb Lime_RFE_raw.kicad_pcb
 get myriadrf/LimeRFE $LIME hardware/1v31/PDF/PCB_Manufacturing_Info-LimeRFE_1v31.pdf LimeRFE_fab.pdf
 get greatscottgadgets/hackrf $HACKRF hardware/operacake/operacake.kicad_pcb operacake_raw.kicad_pcb
 get greatscottgadgets/hackrf $HACKRF hardware/hackrf-one/hackrf-one.kicad_pcb hackrf-one.kicad_pcb
+# (KiCad 9 boards with their stackups; the projects' net classes select the nets)
+get jankae/LibreVNA $LIBREVNA Hardware/Kicad/VNA.kicad_pcb librevna.kicad_pcb
+get jankae/LibreVNA $LIBREVNA Hardware/Kicad/VNA.kicad_pro librevna.kicad_pro
+TS=Hardware/Thunderscope_Rev5.3/Thunderscope_Rev5.3
+get EEVengers/ThunderScope $THUNDERSCOPE $TS.kicad_pcb thunderscope.kicad_pcb
+get EEVengers/ThunderScope $THUNDERSCOPE $TS.kicad_pro thunderscope.kicad_pro
 # the KiCad 4 boards carry no stackup: add the projects' documented ones
 here=$(dirname "$0")
 python "$here/add_stackup.py" limerfe "$out/Lime_RFE_raw.kicad_pcb" "$out/Lime_RFE.kicad_pcb"

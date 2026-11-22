@@ -9,6 +9,12 @@
                                   on F.Cu or B.Cu, power, ground, GPIO and USB
                                   nets left out: the LimeRFE's GCPW RF nets
                                   (0.79 mm), 470 of them
+  select_nets.py netclass BOARD CLASS[,CLASS...]
+                                  every net with tracks in those net classes of
+                                  the board's project (BOARD.kicad_pro beside
+                                  it: its explicit assignments and its patterns,
+                                  KiCad's wildcards * and ?): LibreVNA's RF,
+                                  ThunderScope's LVDS_ADC, PCIe, FE_50Z, ...
 """
 import collections
 import re
@@ -44,9 +50,36 @@ def rf_wide(kb, width=0.75):
     return sorted(n for n in wide if not POWER.search(n))
 
 
+def netclass(kb, classes, board):
+    """The nets with tracks that the project beside board puts in classes
+    (KiCad 7+: net_settings' netclass_assignments, then its
+    netclass_patterns in order, the first that matches)."""
+    import fnmatch
+    import json
+    import os
+    pro = os.path.splitext(board)[0] + '.kicad_pro'
+    ns = json.load(open(pro)).get('net_settings', {})
+    want = set(classes)
+    asg = {n: (c if isinstance(c, list) else [c])
+           for n, c in (ns.get('netclass_assignments') or {}).items()}
+    pats = [(p['pattern'], p['netclass'])
+            for p in ns.get('netclass_patterns', [])]
+    out = []
+    for n in sorted({t['net'] for t in kb.tracks}):
+        got = asg.get(n)
+        if got is None:
+            got = [c for pat, c in pats if fnmatch.fnmatchcase(n, pat)][:1]
+        if want & set(got):
+            out.append(n)
+    return out
+
+
 if __name__ == '__main__':
     how, board = sys.argv[1:3]
     kb = KiCadBoard(board)
-    nets = {'pairs': pairs, 'rf-wide': rf_wide}[how](kb)
+    if how == 'netclass':
+        nets = netclass(kb, sys.argv[3].split(','), board)
+    else:
+        nets = {'pairs': pairs, 'rf-wide': rf_wide}[how](kb)
     print(f"{len(nets)} nets", file=sys.stderr)
     print(','.join(nets))

@@ -123,6 +123,20 @@ leave their chains open, as on the board. Its parts' values are written `<value>
 mesh) take most of it; the rest are small. Expect 1.5–2 hours on this machine with the loop/tree basis to 1e-5; to 1e-3 (since 2026-11-22) these
 pieces solve their 1-2 GHz in under 20 s instead of 2-4 min: expect under an hour (not yet run whole).
 
+## Current maps
+
+`tools/segment_studies/current_maps.py GHZ -- <the run's own arguments>` draws a finished run's surface current, each
+layer, at one frequency, without solving its sweeps again:
+1. the network is rebuilt from the run's folder (each piece read back by its hash);
+2. each channel is driven at its first port (1 W, the other ports matched) and the waves at every cut solved;
+3. each layer piece is built again from its board file and its run's settings and solved once at that frequency
+   (its S checked against the run's: within 1e-6 to 4e-5 on the LimeRFE's high-band receive section), its currents
+   weighted by its ports' voltages.
+
+The map is |J| in dB of its 99.5th percentile, the channels' powers summed, over the selected nets' tracks; the via
+models (no mesh) are marked. On a LimeRFE section of 11 nets at 2.4 GHz it took 55 s, the coplanar ground's return
+current 20-35 dB under the lines'.
+
 ## Making a result again
 
 1. `tools/segment_studies/fetch_boards.sh boards` (the boards at the commits above, the stackups added).

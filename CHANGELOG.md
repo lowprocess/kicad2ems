@@ -10,6 +10,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **segment: surface-current maps of a finished run (2026-11-22).** `tools/segment_studies/current_maps.py GHZ --
+  <the run's arguments>`: the run's network rebuilt from its folder (no piece solved again), each channel driven at
+  its first port and the waves at every cut solved, each layer piece solved once at that frequency from its board
+  file and run settings (its S against the run's: 1e-6 to 4e-5) and weighted by its ports' voltages; |J| a layer
+  in dB, the channels' powers summed, over the tracks (PNG and the triangles' values). A LimeRFE section of 11 nets
+  at 2.4 GHz: 55 s. Also `select_nets.py netclass BOARD CLASS,...` (the project's own impedance classes) and
+  LibreVNA and ThunderScope Rev 5.3 in `fetch_boards.sh` (the next whole-board studies).
 - **mom25d: terminated ports, a few driven (2026-11-21).** `--mom-excite P1,P3` (`solve_board(excite=...)`,
   `sim.excite`): every port terminated in its reference (as a lumped element on its gap or via chain) and only
   those driven, one solve a column of S; their rows by reciprocity, 0 between two undriven ports. Lumped ports
