@@ -313,3 +313,23 @@ def test_available_sees_a_systemd_scope_cap():
     if r.returncode != 0:
         pytest.skip(f'systemd-run --user failed: {r.stderr.strip()[:100]}')
     assert float(r.stdout) <= 2 * 2 ** 30
+
+
+def test_a_budget_caps_what_is_available(monkeypatch):
+    """EMSDEV_MEM_BUDGET: the bytes a process may hold in all ('6G', '800M',
+    or a number); available() then at most that less what it holds."""
+    from kicad2ems.emsdev import memory
+    monkeypatch.delenv('EMSDEV_MEM_BUDGET', raising=False)
+    assert memory.budget() is None
+    free = memory.available()
+    monkeypatch.setenv('EMSDEV_MEM_BUDGET', '800M')
+    assert memory.budget() == 8e8
+    held = memory.held()
+    assert held and held > 1e6
+    assert memory.available() <= max(0.0, 8e8 - held) + 1e7
+    monkeypatch.setenv('EMSDEV_MEM_BUDGET', str(int(held + 2e9)))
+    assert memory.available() <= min(free, 2e9) + 1e8
+    monkeypatch.setenv('EMSDEV_MEM_BUDGET', '6G')
+    assert memory.budget() == 6e9
+    monkeypatch.setenv('EMSDEV_MEM_BUDGET', 'lots')
+    assert memory.budget() is None

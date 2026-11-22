@@ -333,6 +333,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **segment: the pieces share the memory (2026-11-22).** The LimeRFE rerun and LibreVNA were OOM-killed at a 23 GB
+  cap: a 27k-unknown piece planned its hybrid solve (24 n^2 with thick copper's sides, 17.5 GB) against what was
+  free when it started, and the six small pieces beside it on the CPU grew into the same cap. Now each piece runs
+  in a share (`EMSDEV_MEM_BUDGET`, new: the bytes a process may hold in all, `emsdev.memory.available()` then at
+  most that less what it holds): a small one up to 3 GB (`K2E_SEG_SMALL_GB`; 95 % of 461 LimeRFE, Thor and
+  ThunderScope pieces planned 2.1 GB or less), a big one the rest less 1 GB a CPU worker. A piece whose direct
+  solver does not fit its share exits before its fill (`MOM25D_NO_ROOM_EXIT`, code 75) and runs again at the end,
+  alone, with all of it; a small one starts only with room for it, and below a low mark the newest one is stopped
+  and run again at the end the same way.
+- **segment/coupling: a board turned over turned the next back (2026-11-22).** `_over_its_plane` mirrored the
+  stack's dielectrics in place, and every piece of a board shares them (`to_dict`): every second B.Cu piece
+  turned over had them turned back, its ground off its dielectric interface ("port layer B.Cu is not a metal
+  interface above the ground In4.Cu", a ThunderScope piece). A mirror-symmetric stack (LimeRFE's, Thor's) gave the
+  same heights either way. Now each turned piece mirrors its own copy.
 - **segment: two ports at one place (2026-11-22).** A track drawn twice (as a KiCad 4 file has them) crossed a via
   group's circle twice at one spot: two cut ports there, and two series parts whose pads coincide gave the same.
   Each lumped port is a via chain to the plane, so in the loop/tree basis one was a loop through the other, of no

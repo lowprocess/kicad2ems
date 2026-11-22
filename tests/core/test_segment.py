@@ -357,3 +357,87 @@ def test_windows_of_a_bus_and_their_assembly():
     assert np.allclose(G[:, 2, 5], S[:, 2, 5])      # w2's
     assert np.allclose(G[:, 0, 5], 0)               # in no window
     assert np.allclose(G, G.transpose(0, 2, 1))
+
+
+class _Proc:
+    """A piece's run standing in for its process: ends when killed."""
+
+    def __init__(self):
+        import threading
+        self.gone = threading.Event()
+
+    def kill(self):
+        self.gone.set()
+
+
+def _parts(names, small):
+    import types
+    b = types.SimpleNamespace(ports=[], copper={}, copper_nets={},
+                              ground_nets=set())
+    return [dict(name=n, kind='layer' if n in small else 'via', board=b)
+            for n in names]
+
+
+def test_a_piece_without_room_runs_again_alone(monkeypatch, tmp_path):
+    """_solve_all: a small piece runs in its share (EMSDEV_MEM_BUDGET, the GPU
+    off, MOM25D_NO_ROOM_EXIT), a big one beside them in the rest; one that
+    gives its share back (NoRoom) runs again at the end with no share and no
+    exit; the solved ones' geometry is freed."""
+    import types
+    calls = []
+
+    def fake(p, folder, band, solver, echo, env=None, started=None, **kw):
+        calls.append((p['name'], dict(env or {})))
+        if p['name'] == 's1' and env and env.get('MOM25D_NO_ROOM_EXIT'):
+            raise SG.NoRoom('its direct solver needs more than its share')
+        return (np.zeros(1), np.zeros((1, 1, 1)), ['P1'], {})
+    monkeypatch.setattr(SG, 'solve_piece', fake)
+    monkeypatch.setattr(SG, 'JOBS', 2)
+    monkeypatch.setattr(SG, '_small', lambda p: p['kind'] == 'layer')
+    a = types.SimpleNamespace(thickness=None, dmax=None, layer_solver=None,
+                              via_solver=None, edges=None, solver='mom25d')
+    parts = _parts(['s0', 's1', 'b0'], {'s0', 's1'})
+    res = SG._solve_all(parts, str(tmp_path), {}, a, echo=lambda *x: None)
+    assert sorted(res) == ['b0', 's0', 's1']
+    assert all(isinstance(v, tuple) for v in res.values())
+    first = [e for n, e in calls if n == 's0'][0]
+    assert first['MOM25D_GPU'] == 'off' and first['MOM25D_NO_ROOM_EXIT']
+    assert float(first['EMSDEV_MEM_BUDGET']) == SG.SMALL_BUDGET
+    again = [e for n, e in calls if n == 's1']
+    assert len(again) == 2 and again[-1] == {}
+    assert calls[-1][0] == 's1'
+    assert all(not hasattr(p['board'], 'copper') for p in parts)
+
+
+def test_the_newest_small_piece_is_stopped_when_memory_runs_low(
+        monkeypatch, tmp_path):
+    """The watchdog: below its low mark the newest small piece's run is
+    killed and runs again at the end, alone."""
+    import time
+    import types
+    from kicad2ems.emsdev import memory
+    level = [64e9]
+    monkeypatch.setattr(memory, 'available', lambda: level[0])
+    calls = []
+
+    def fake(p, folder, band, solver, echo, env=None, started=None, **kw):
+        calls.append(p['name'])
+        if p['name'] == 's0' and env:
+            proc = _Proc()
+            started(proc)
+            level[0] = 0.1e9                  # it fills the machine
+            assert proc.gone.wait(20)
+            level[0] = 64e9
+            started(None)
+            raise ValueError('s0: its run ended with code -9')
+        time.sleep(0.05)
+        return (np.zeros(1), np.zeros((1, 1, 1)), ['P1'], {})
+    monkeypatch.setattr(SG, 'solve_piece', fake)
+    monkeypatch.setattr(SG, 'JOBS', 2)
+    monkeypatch.setattr(SG, '_small', lambda p: p['kind'] == 'layer')
+    a = types.SimpleNamespace(thickness=None, dmax=None, layer_solver=None,
+                              via_solver=None, edges=None, solver='mom25d')
+    res = SG._solve_all(_parts(['s0', 'b0'], {'s0'}), str(tmp_path), {}, a,
+                        echo=lambda *x: None)
+    assert all(isinstance(v, tuple) for v in res.values())
+    assert calls.count('s0') == 2 and calls[-1] == 's0'

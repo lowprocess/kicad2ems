@@ -771,6 +771,14 @@ class Simulation:
                     f"({precision} precision, {plan['path']}"
                     + (f", {plan['gpu'] / 1e9:.1f} GB on the GPU" if plan['gpu']
                        else '') + f"), {avail / 1e9:.1f} GB available")
+            no_room = os.environ.get('MOM25D_NO_ROOM_EXIT')
+            if no_room and plan['path'] == 'blr' and solver == 'auto':
+                # the caller's share too small for the direct solver: given
+                # back (core.segment runs it again alone, with the rest)
+                print(f"mom25d: the direct solver needs more than this run's "
+                      f"{avail / 1e9:.1f} GB: given back (exit {no_room})",
+                      flush=True)
+                raise SystemExit(int(no_room))
             if solver == 'auto':
                 solver = plan['solver']
                 if solver == 'blr' and not plan['fits']:

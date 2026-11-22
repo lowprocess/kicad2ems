@@ -867,3 +867,22 @@ def test_two_ports_at_one_place_keep_the_loop_tree_basis_off(clean):
     assert p.basis == 'rwg' and 'two via chains' in p.why
     S = sim.sparams(1e8)
     assert np.isfinite(S).all()
+
+
+def test_a_run_without_room_gives_its_share_back(clean, monkeypatch):
+    """MOM25D_NO_ROOM_EXIT: where the direct solver does not fit the run's
+    memory (here a 1 MB budget), the run exits with that code before the fill
+    (core.segment runs it again alone) rather than taking the compressed
+    solver."""
+    from shapely.geometry import box
+    monkeypatch.setenv('EMSDEV_MEM_BUDGET', '1M')
+    monkeypatch.setenv('MOM25D_NO_ROOM_EXIT', '75')
+    st = LayerStack([Layer(0.5e-3, 4.3, 0.0)])
+    with pytest.raises(SystemExit) as e:      # (the plan: when it is set up)
+        Simulation(st, {1: [box(-4e-3, -0.5e-3, 4e-3, 0.5e-3)]}, [],
+                   dmax=0.5e-3, solver='auto', gpu='off', verbose=False)
+    assert e.value.code == 75
+    monkeypatch.delenv('MOM25D_NO_ROOM_EXIT')
+    monkeypatch.setenv('EMSDEV_MEM_BUDGET', '64G')
+    Simulation(st, {1: [box(-4e-3, -0.5e-3, 4e-3, 0.5e-3)]}, [],
+               dmax=0.5e-3, solver='auto', gpu='off', verbose=False)

@@ -360,6 +360,12 @@ def _over_its_plane(d, layer):
     cu_z = {c['name']: c['z'] for c in st['copper']}
     if cu_z.get(ref, 0.0) > cu_z.get(layer, 0.0):
         T = float(st['thickness'])
+        # its own copy: the dielectrics are the board's (to_dict shares its
+        # list), and every second piece turned over had turned them back (a
+        # ThunderScope B.Cu piece's ground off its interface, 2026-11-22; a
+        # mirror-symmetric stack hid it)
+        d['stack'] = st = dict(st, layers=[dict(lay) for lay in st['layers']],
+                               copper=[dict(c) for c in st['copper']])
         for lay in st['layers']:
             lay['z0'], lay['z1'] = T - lay['z1'], T - lay['z0']
         st['layers'].sort(key=lambda lay: lay['z0'])

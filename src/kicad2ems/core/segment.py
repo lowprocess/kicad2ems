@@ -1051,6 +1051,22 @@ def _channel_at(msg, kb, ends):
 JOBS = int(os.environ.get('K2E_SEG_JOBS', max(1, min(6, (os.cpu_count() or 4)
                                                      // 4))))
 SMALL_PORTS, SMALL_AREA = 8, 30.0  # (mm2 of signal copper)
+# the memory the pieces share (EMSDEV_MEM_BUDGET each): the run keeps
+# PARENT_ROOM; a small piece may take SMALL_BUDGET (95 % of LimeRFE's, Thor's
+# and ThunderScope's 461 pieces planned 2.1 GB or less, the plan's 0.9 GB
+# margin in it); a big one the rest less SMALL_HOLD a worker (what a small one
+# holds). A piece whose direct solver does not fit its share gives it back
+# (MOM25D_NO_ROOM_EXIT: exit NO_ROOM) and runs again at the end alone, with
+# all of it; below LOW free the newest small one is stopped for the same. A
+# LimeRFE run's 27k-unknown piece had planned 17.5 GB of a 23 GB cap with
+# six small ones beside it: OOM-killed twice (2026-11-22)
+PARENT_ROOM, SMALL_BUDGET, SMALL_HOLD = 1.5e9, float(os.environ.get(
+    'K2E_SEG_SMALL_GB', 3.0)) * 1e9, 1.0e9
+NO_ROOM = 75
+
+
+class NoRoom(Exception):
+    """A piece gave its share back (its direct solver needs more)."""
 
 
 def _small(p):
@@ -1066,43 +1082,111 @@ def _small(p):
 def _solve_all(parts, out, band, a, echo):
     """Every piece solved: {name: (f, S, names, summary, seconds) or the
     exception}; the small ones (_small) JOBS at a time on the CPU beside the
-    big ones, in order, on the GPU."""
+    big ones, in order, on the GPU, each in its share of the memory (see
+    SMALL_BUDGET); those that gave theirs back last, one at a time."""
+    import threading
     import time
+    import types
     from concurrent.futures import ThreadPoolExecutor
+    from kicad2ems.emsdev.memory import available
     kw = dict(thickness=a.thickness, dmax=a.dmax, layer_solver=a.layer_solver,
               via_solver=a.via_solver, edges=a.edges)
-    res = {}
+    res, later, lock = {}, [], threading.Lock()
+    running, stopped = {}, set()     # small ones: name -> (start, process)
+    whole = max(2e9, available() - PARENT_ROOM)
+    low = max(0.75e9, 0.04 * whole)
 
-    def one(p, env=None):
-        t = time.time()
+    def one(p, env=None, small=False, last=False):
+        t, name = time.time(), p['name']
+
+        def started(proc):
+            if small:
+                with lock:
+                    if proc is None:
+                        running.pop(name, None)
+                    else:
+                        running[name] = (time.time(), proc)
         try:
-            got = solve_piece(p, os.path.join(out, p['name']), band, a.solver,
-                              echo, env=env, **kw)
-            res[p['name']] = (*got, time.time() - t)
+            got = solve_piece(p, os.path.join(out, name), band, a.solver,
+                              echo, env=env, started=started, **kw)
+            res[name] = (*got, time.time() - t)
         except Exception as e:  # (raised again, in order)  # noqa: BLE001
-            res[p['name']] = e
+            if not last and (isinstance(e, NoRoom) or name in stopped):
+                echo(f"segment: {name}: " + ("stopped, memory low" if name in
+                                             stopped else str(e))
+                     + ": again at the end, alone")
+                with lock:
+                    later.append(p)
+                return
+            res[name] = e
         # its geometry no longer needed (run takes its ports alone): every
         # piece's board held to the end was most of the 7.6 GB a LimeRFE
         # run's process took, beside a 27k-unknown piece's 15 (a 24 GB cap)
-        import types
         p['board'] = types.SimpleNamespace(ports=list(p['board'].ports))
+
+    def admit():
+        """Wait for the room a small piece may take (or for nothing else to
+        run)."""
+        while True:
+            with lock:
+                alone = not running and not big_now[0]
+            if alone or available() >= SMALL_BUDGET / 2 + low:
+                return
+            time.sleep(1.0)
+
+    def small_one(p):
+        admit()
+        one(p, small_env, small=True)
+
+    def watch():
+        """The newest small piece stopped while memory runs low."""
+        while not done.wait(1.0):
+            if available() >= low:
+                continue
+            with lock:
+                if not running:
+                    continue
+                name, (_, proc) = max(running.items(), key=lambda kv: kv[1][0])
+                stopped.add(name)
+            proc.kill()
+            done.wait(3.0)
+
     small = [p for p in parts if _small(p)] if JOBS > 1 else []
     cores = max(1, (os.cpu_count() or 4) // max(JOBS, 1))
-    cpu_env = dict(MOM25D_GPU='off', MOM25D_OMP_THREADS=str(cores),
-                   OMP_NUM_THREADS=str(cores), OPENBLAS_NUM_THREADS=str(cores),
-                   MKL_NUM_THREADS=str(cores))
+    small_env = dict(MOM25D_GPU='off', MOM25D_OMP_THREADS=str(cores),
+                     OMP_NUM_THREADS=str(cores),
+                     OPENBLAS_NUM_THREADS=str(cores),
+                     MKL_NUM_THREADS=str(cores),
+                     EMSDEV_MEM_BUDGET=str(int(SMALL_BUDGET)),
+                     MOM25D_NO_ROOM_EXIT=str(NO_ROOM))
+    hold = min(JOBS * SMALL_HOLD, 0.4 * whole) if small else 0.0
     if small:
         echo(f"segment: {len(small)} small pieces {JOBS} at a time on the "
-             f"CPU ({cores} threads each), {len(parts) - len(small)} on their "
-             "own")
-    with ThreadPoolExecutor(max_workers=max(JOBS, 1)) as pool:
-        futs = [pool.submit(one, p, cpu_env) for p in small]
-        names = {p['name'] for p in small}
-        for p in parts:
-            if p['name'] not in names:
-                one(p)
-        for f in futs:
-            f.result()
+             f"CPU ({cores} threads each, up to {SMALL_BUDGET / 1e9:.1f} GB), "
+             f"{len(parts) - len(small)} on their own (up to "
+             f"{(whole - hold) / 1e9:.1f} GB beside them)")
+    big_now, done = [False], threading.Event()
+    dog = threading.Thread(target=watch, daemon=True)
+    dog.start()
+    try:
+        with ThreadPoolExecutor(max_workers=max(JOBS, 1)) as pool:
+            futs = [pool.submit(small_one, p) for p in small]
+            names = {p['name'] for p in small}
+            for p in parts:
+                if p['name'] in names:
+                    continue
+                busy = any(not f.done() for f in futs)
+                big_now[0] = True
+                one(p, dict(EMSDEV_MEM_BUDGET=str(int(whole - hold)),
+                            MOM25D_NO_ROOM_EXIT=str(NO_ROOM)) if busy else None)
+                big_now[0] = False
+            for f in futs:
+                f.result()
+    finally:
+        done.set()
+    # those that gave their share back: alone, with all of it
+    for p in later:
+        one(p, last=True)
     return res
 
 
@@ -1217,9 +1301,11 @@ def junction(fW, SW, fA, SA):
 
 def solve_piece(piece, folder, band, solver='mom25d', echo=print,
                 thickness=None, dmax=None, layer_solver=None, via_solver=None,
-                edges=None, env=None):
+                edges=None, env=None, started=None):
     """A piece's run (its board file, kicad2ems's pipeline): (S at 50 ohm,
-    its ports' names, the run's summary)."""
+    its ports' names, the run's summary). started: called with the run's
+    process once it starts and None once it ends. NoRoom where the run gave
+    its memory share back (env's MOM25D_NO_ROOM_EXIT)."""
     from .config import build_settings
     from .pipeline import Job
     from .coupling import _over_its_plane
@@ -1315,8 +1401,17 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
             penv = dict(os.environ, PYTHONUNBUFFERED='1', **(env or {}))
             penv.setdefault('MOM25D_BLR_MIN_N', '1000000')
             penv.setdefault('MOM25D_BLR_CPU_MIN_N', '1000000')
-            p = subprocess.run(argv, stdout=log, stderr=subprocess.STDOUT,
-                               env=penv)
+            p = subprocess.Popen(argv, stdout=log, stderr=subprocess.STDOUT,
+                                 env=penv)
+            if started:
+                started(p)
+            try:
+                p.wait()
+            finally:
+                if started:
+                    started(None)
+        if p.returncode == NO_ROOM and penv.get('MOM25D_NO_ROOM_EXIT'):
+            raise NoRoom("its direct solver needs more than its share")
         if p.returncode:
             with open(os.path.join(folder, 'run.log')) as fh:
                 tail = fh.read()[-1500:]

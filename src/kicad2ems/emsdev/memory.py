@@ -101,10 +101,46 @@ def cgroup_free(root='/sys/fs/cgroup', proc='/proc/self/cgroup'):
     return None
 
 
+def budget():
+    """EMSDEV_MEM_BUDGET: the bytes this process may hold in all (a number, or
+    with K, M or G: '6G'), a caller's share of a machine it runs several
+    processes on (core.segment's pieces); None where it is not set."""
+    v = os.environ.get('EMSDEV_MEM_BUDGET', '').strip().upper()
+    if not v:
+        return None
+    mult = dict(K=1e3, M=1e6, G=1e9).get(v[-1], 1.0)
+    try:
+        return float(v[:-1] if mult != 1.0 else v) * mult
+    except ValueError:
+        return None
+
+
+def held():
+    """Bytes this process holds now (its resident set; None where that cannot
+    be read)."""
+    try:
+        with open('/proc/self/statm', encoding='utf-8') as fh:
+            return float(int(fh.read().split()[1]) * os.sysconf('SC_PAGE_SIZE'))
+    except (OSError, ValueError, IndexError, AttributeError):
+        try:
+            import psutil
+            return float(psutil.Process().memory_info().rss)
+        except Exception:  # noqa: BLE001
+            return None
+
+
 def available():
     """Bytes of memory available to this process: MemAvailable, capped by a
     cgroup limit (Linux); what Windows reports available; else psutil's, else 8
-    GB."""
+    GB; and capped by its budget() less what it holds."""
+    avail = _available()
+    b = budget()
+    if b is not None:
+        avail = min(avail, max(0.0, b - (held() or 0.0)))
+    return float(avail)
+
+
+def _available():
     win = windows_status()
     if win:
         return win[1]

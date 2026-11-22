@@ -272,3 +272,31 @@ def test_a_layers_nets_in_groups_and_their_matrices_merged(kb):
     assert N[0, 1] == 1.0 and N[2, 2] == 2.0
     assert N[0, 2] == F[2, 1] == 0.0 and D[0, 2] == -300.0
     json.dumps(M)  # as matrix's: into coupling.json
+
+
+def test_turning_a_board_over_leaves_the_shared_stack_as_it_was():
+    """_over_its_plane mirrors a B.Cu piece's heights in its own copy: the
+    dielectrics are the board's, shared by every piece (to_dict), and the
+    second piece turned over had turned them back (a ThunderScope piece's
+    ground off its dielectric interface)."""
+    layers = [dict(name='d2', z0=0.0, z1=0.1), dict(name='d1', z0=0.1,
+                                                     z1=0.35)]
+    copper = [('B.Cu', 0.0), ('In1.Cu', 0.1), ('F.Cu', 0.35)]
+
+    def piece():
+        return dict(stack=dict(layers=layers, thickness=0.35, copper=[
+            dict(name=n, z=z, t=0.035) for n, z in copper]),
+            ports=[dict(layer='B.Cu', ref_layer='In1.Cu', z_sig=0.0,
+                        z_ref=0.1)], vias=[], notes=[])
+    for _ in range(3):
+        d = piece()
+        assert C._over_its_plane(d, 'B.Cu') == 'In1.Cu' and d['turned']
+        st = d['stack']
+        cz = {c['name']: c['z'] for c in st['copper']}
+        assert cz['B.Cu'] == pytest.approx(0.35)
+        assert cz['In1.Cu'] == pytest.approx(0.25)
+        # every copper sheet still on a dielectric interface
+        zs = {l['z0'] for l in st['layers']} | {l['z1'] for l in st['layers']}
+        assert all(min(abs(z - w) for w in zs) < 1e-12 for z in cz.values())
+    assert layers == [dict(name='d2', z0=0.0, z1=0.1),
+                      dict(name='d1', z0=0.1, z1=0.35)]
