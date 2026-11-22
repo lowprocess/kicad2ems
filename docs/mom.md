@@ -559,8 +559,8 @@ mom25d chooses how to solve from the memory available, and the log says which (`
 |---|---|---|
 | double precision on the CPU | up to 3,500 unknowns, and it fits in half the free RAM | 18 N² bytes |
 | mixed precision on the CPU | above 3,500 unknowns, no GPU: single-precision factor refined to double (about 1.3× faster); factors kept across the sweep where they fit | by its half 12 N² bytes, plus 4 N² for each factor kept; whole 24 N², plus 8 N² for each LU kept; 10 N² where that doesn't fit |
-| GPU factor, hybrid | up to 25,000 unknowns: the single-precision factor fits on the GPU, and the double-precision matrix in RAM (the refinement's); that matrix on the GPU too, the refinement's products there, where two factors still fit beside it | by its half: 12 N² bytes RAM, 4 N² GPU, with the products there 12 N² GPU; whole (the sides' loops, quad cells) 20 N² RAM, 4 N² GPU (the LU: 24 N², 8 N²), with the products there 20 N² GPU |
-| GPU factor | above 25,000 unknowns, or where the hybrid's RAM doesn't fit: the refinement is matrix-free | 10 N² bytes RAM, 4 N² bytes GPU (the LU: 8 N²) |
+| GPU factor, hybrid | up to 25,000 unknowns (45,000 by its half): the single-precision factor fits on the GPU, and the double-precision matrix in RAM (the refinement's); that matrix on the GPU too, the refinement's products there, where two factors still fit beside it | by its half: 12 N² bytes RAM, 4 N² GPU, with the products there 12 N² GPU; whole (the sides' loops, quad cells) 20 N² RAM, 4 N² GPU (the LU: 24 N², 8 N²), with the products there 20 N² GPU |
+| GPU factor | above 25,000 unknowns with the matrix whole (45,000 by its half), or where the hybrid's RAM doesn't fit: the refinement is matrix-free | 10 N² bytes RAM, 4 N² bytes GPU (the LU: 8 N²) |
 | block low-rank (BLR), compiled | from 20,000 unknowns where the hybrid does not hold the matrix (any GPU path past it, or no GPU), and wherever nothing else fits | about 3 N² bytes at most: a fifth of a single-precision matrix |
 
 Past 25,000 unknowns the hybrid's double-precision matrix costs more in memory traffic than its cheaper refinement

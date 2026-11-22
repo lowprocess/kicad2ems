@@ -52,6 +52,11 @@ GPU_MIN_N = int(os.environ.get('MOM25D_GPU_MIN_N', 3000))
 # antenna_slot (28.6k) 165 s against 139 s; antenna_vivaldi (21.9k) 148 s
 # hybrid against 171 s
 HYBRID_MAX_N = int(os.environ.get('MOM25D_HYBRID_MAX_N', 25000))
+# ... and by its half (HALF; 12 N^2 bytes on the host, the GPU's copy 8 N^2):
+# up to this many, past it as before. A LimeRFE piece (27.1k unknowns, 17
+# ports, 6 GHz, 2026-11-22): 5.9 s hybrid by the half against 17.5 s
+# matrix-free, S within 8.7e-8; the memory checks bound it below this
+HALF_HYBRID_MAX_N = int(os.environ.get('MOM25D_HALF_HYBRID_MAX_N', 45000))
 # from this many unknowns the compiled block low-rank LU where the GPU's hybrid
 # does not hold the matrix: a sweep of rf_siw (28.7k) 272 s against 520 s
 # tiled, antenna_cp_patch's (40.8k) solve 22.5 s against 30.3 s on the GPU LU,
@@ -175,8 +180,8 @@ def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
     half = half and HALF and LDL and not lt and nq == n and not sides
     host = (24.0 * n * n if lt else 12.0 * n * n if half
             else dense_bytes(n, nq))
-    hybrid = fits and (lt or (host + SPARE <= 0.8 * avail
-                              and nq <= HYBRID_MAX_N))
+    hybrid = fits and (lt or (host + SPARE <= 0.8 * avail and nq <= (
+        HALF_HYBRID_MAX_N if half else HYBRID_MAX_N)))
     zd = ((8.0 if half else 16.0) * m * m
           if hybrid and gpu_dense and GPU_DENSE else 0.0)
     if hybrid:

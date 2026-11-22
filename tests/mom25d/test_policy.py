@@ -85,7 +85,9 @@ HALF_CASES = [
     # room for it where the whole Z had none: two LDL^Ts kept
     (dict(avail=4e9), dict(dense=True, keep=2, half=True)),
     (dict(gpu=GPU), dict(rung='vulkan-c64', dense=True, half=True)),
-    (dict(gpu=GPU, n=30000), dict(dense=False, half=False)),  # matrix-free
+    # past HYBRID_MAX_N the hybrid still by its half (to HALF_HYBRID_MAX_N)
+    (dict(gpu=GPU, n=30000), dict(rung='vulkan-c64', dense=True, half=True)),
+    (dict(gpu=GPU, n=30000, sides=True), dict(dense=False, half=False)),
     (dict(gpu=GPU, gpu_dense=True, n=22000),
      dict(gpu_dense=True, keep=2, half=True)),    # (the whole Z's: not there)
     (dict(sides=True), dict(loops=True, half=False)),

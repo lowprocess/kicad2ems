@@ -579,7 +579,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   triangle with itself take one moment for both sides (the rule's and the analytic integral's had been ~1e-5
   apart, all of Z's asymmetry): Z symmetric to 6e-16, S12 = S21 to 1e-15 on the sides' regression board (its
   S moved 1.9e-9). Checked: `tests/mom25d` (RX 7800 XT, GTX 980 Ti, GPU off; new: the half's path, fallbacks,
-  extras and GPU kernels), `tools/mom25d_ldl_compare.py --what half`.
+  extras and GPU kernels), `tools/mom25d_ldl_compare.py --what half`. **The hybrid by its half past 25k
+  unknowns** (`policy.HALF_HYBRID_MAX_N`, 45,000; the whole Z's `HYBRID_MAX_N` stays 25,000): a LimeRFE piece
+  (27.1k unknowns, 17 ports) 5.9 s at 6 GHz against 17.5 s matrix-free, S within 8.7e-8; `auto` takes it rather
+  than the block low-rank solver there (the direct path was 15x faster than it on the In7 group).
 - **mom25d: the GPU's factor is a complex-symmetric LDL^T (2026-11-22; `MOM25D_LDL=off` for the LU).** MoM's Z is
   complex symmetric, so the GPU factors its lower half alone without pivoting (`mom25d/gpu_ldl.py`, the layout
   `mom25d/half.py`: block columns of 256): the CPU factors each 256 x 256 diagonal block in double (the compiled
