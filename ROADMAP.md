@@ -152,7 +152,18 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    above the loop/tree's threshold, ill-conditioned) LU takes 48 and both symmetric factors (pivoted too) fail in
    300: that band would fall back to a double factor. To trial on 10-15k pieces (the band's width), then the GPU
    kernel: the CPU's panel (its L11 D1 and the panel below), the GPU's trailing update on the lower block columns
-   alone (half the GEMMs), the factor held by block columns (half the memory). The LimeRFE (1.5-2 h) is set by two pieces of ~27k
+   alone (half the GEMMs), the factor held by block columns (half the memory). **(c) measured (2026-11-22):** the block
+   low-rank solver against the direct at fixed frequencies (`--thickness grow`, GPU off against GPU): a LimeRFE
+   piece (27k, 17 ports, pour kept) 128 / 60 / 55 s at 1 / 3 / 6 GHz against 275 / 72 / 22 s, 14.5 GB against
+   24.1; the Thor's In7 group (24.9k, 106 ports, coarse edges) failed at 1 GHz (residual 0.83 at a 1e-9
+   compression), 250 / 239 s at 5 / 10 GHz against 1,017 / 275 / 221 s, 9.7 GB against 19.2; S within 5.5e-7
+   where both converged. (Its old CM5 failure was the copper sides' dense blocks: with `grow` that piece converged.)
+   **The common bottleneck is the RWG basis's conditioning below ~1-2 GHz on these meshes:** the direct path's
+   GMRES runs to its cap there (1,017 s of the In7 group's three), the compressed factor does not precondition,
+   and a complex64 symmetric factor fails (the LDL^T trial). The loop/tree basis is taken only below (k h)^2 =
+   1e-5 and only where its dense matrix fits. Next: that band first: the loop/tree threshold raised where it fits
+   (a cheap test), then the current-and-charge (augmented EFIE) form in compressed tiles (item 1 below), which
+   would make all three paths behave at the low end. The LimeRFE (1.5-2 h) is set by two pieces of ~27k
    unknowns where several RF paths meet: (b) and (c) are what would bring it to an hour.
    **LimeRFE left over:** its KiCad 4 file's nets are out of step with its tracks (84 net pairs touching the RF
    nets overlap): re-deriving the nets from the copper's connectivity would bring back the channels the run
