@@ -559,6 +559,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **mom25d: the loop/tree basis and the sides' loops by the half too (2026-11-22).** Their transforms need the
+  whole matrix: it is filled in an anonymous mapping of its own (`half.zeros_mapped`, huge pages), transformed,
+  then compacted into its half in place and the rest given back to the system (`Half.compact`, madvise); the
+  products, the GPU's copy and the factor then the half's (kept whole where the sparse extras have an
+  antisymmetric part: transformed it would be dense). The loop/tree basis's charge matrix is built by blocks of
+  2,048 triangles straight into Z (`FastOperator.CHARGE_COLS`, the core's `charge_into` by column blocks), no
+  longer Nt x Nt (5.2 GB at 27k unknowns). A LimeRFE piece (27.1k unknowns, 17 ports) at 1 / 2 GHz: peak 19.7 GB
+  -> 16.5 GB whole (the charge matrix by blocks) -> 15.1 GB by the half, 13.1 / 10.7 s (whole 13.4 / 10.8),
+  S within 6.5e-9; the loop/tree basis's need 16 N^2 now (24 N^2 and the charge matrix before), so ~35k pieces
+  take it on this machine.
 - **mom25d: the dense double Z by its lower half (2026-11-22; `MOM25D_HALF=off` keeps it whole).** Where the
   factor is the LDL^T and nothing needs whole rows (the RWG basis without the sides' loops or quad cells), Z is
   filled straight into `half.Half`'s layout (the compiled core's `fill_far_half`, `near_into_half`; the vias'

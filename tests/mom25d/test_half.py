@@ -111,3 +111,20 @@ def test_ldl_mul_is_the_factored_matrixs_product():
     X = rng.standard_normal((300, 3)) + 0j
     assert np.abs(ldl_mul(H, X) - A @ X).max() < 1e-12 * np.abs(A @ X).max()
     assert np.abs(ldl_mul(H, X[:, 0]) - A @ X[:, 0]).max() < 1e-10
+
+
+def test_compact_of_a_mapped_matrix_gives_its_rest_back():
+    """zeros_mapped + Half.compact (complex128): pack's half, in the
+    mapping's own memory, the pages past it released (zeros if touched)."""
+    from kicad2ems.mom25d.half import zeros_mapped
+    rng = np.random.default_rng(9)
+    n, nb = 700, 64
+    A = sym(n, rng)
+    Z = zeros_mapped(n)
+    assert not Z.any()
+    Z[...] = A
+    H = Half.compact(Z, nb=nb)
+    assert H.dtype == complex and np.shares_memory(H.data, Z)
+    assert np.array_equal(H.data, Half.pack(A, dtype=complex, nb=nb).data)
+    tail = Z.reshape(-1)[-1000:]
+    assert not tail.any()          # (given back: zero pages)

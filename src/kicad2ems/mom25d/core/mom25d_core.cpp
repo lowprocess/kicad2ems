@@ -1095,14 +1095,24 @@ void tree_rows(py::array_t<cd> X, arr<int> node, arr<int> parent,
 // branch's ends: u (+1) and v (-1), the ground (g) carrying none. Mq: the G_q
 // moments between triangles (Nt x Nt).
 void charge_into(py::array_t<cd> Z, arr<cd> Mq, arr<int> tree, arr<int> u,
-                 arr<int> v, arr<double> area, int g) {
+                 arr<int> v, arr<double> area, int g, int f0) {
+    // Mq: the G_q moments between every triangle and triangles [f0, f0 + its
+    // columns) (all of them: f0 0, Nt columns): the branches' ends in that
+    // block alone added (the matrix by blocks of triangles, not whole)
     auto buf = Z.request(true);
-    const i64 ld = buf.shape[1], Nt = Mq.shape(1);
+    const i64 ld = buf.shape[1], nf = Mq.shape(1), f1 = f0 + nf;
     cd *z = static_cast<cd *>(buf.ptr);
     const cd *M = Mq.data();
     const int nt = (int)tree.shape(0);
     const int *tr = tree.data(), *pu = u.data(), *pv = v.data();
     const double *ar = area.data();
+    // the tree branches with an end in the block
+    std::vector<int> js;
+    for (int j = 0; j < nt; ++j)
+        if ((pu[j] != g && pu[j] >= f0 && pu[j] < f1) ||
+            (pv[j] != g && pv[j] >= f0 && pv[j] < f1))
+            js.push_back(j);
+    const int nj = (int)js.size();
     py::gil_scoped_release nogil;
 #pragma omp parallel for schedule(dynamic, 16)
     for (int i = 0; i < nt; ++i) {
@@ -1112,12 +1122,15 @@ void charge_into(py::array_t<cd> Z, arr<cd> Mq, arr<int> tree, arr<int> u,
         for (int ea = 0; ea < 2; ++ea) {
             const int a = ends[ea];
             if (a == g) continue;
-            const cd *Ma = M + (i64)a * Nt;
+            const cd *Ma = M + (i64)a * nf - f0;
             const double sa = sg[ea] / ar[a];
-            for (int j = 0; j < nt; ++j) {
+            for (int q = 0; q < nj; ++q) {
+                const int j = js[q];
                 cd acc = 0;
-                if (pu[j] != g) acc += Ma[pu[j]] / ar[pu[j]];
-                if (pv[j] != g) acc -= Ma[pv[j]] / ar[pv[j]];
+                if (pu[j] != g && pu[j] >= f0 && pu[j] < f1)
+                    acc += Ma[pu[j]] / ar[pu[j]];
+                if (pv[j] != g && pv[j] >= f0 && pv[j] < f1)
+                    acc -= Ma[pv[j]] / ar[pv[j]];
                 row[tr[j]] += sa * acc;
             }
         }
@@ -2820,18 +2833,19 @@ void half_c64(arr<cd> H, arr<double> d, py::array_t<cf> out, int nb) {
 // overwritten before it is read). No second matrix: the GPU LDL^T of the
 // matrix-free path (fast.py), whose Z is not needed after.
 // -----------------------------------------------------------------------------
-void compact_half(py::array_t<cf, py::array::c_style> Z, int nb) {
+template <class T>
+void compact_half_t(py::array_t<T, py::array::c_style> Z, int nb) {
     auto b = Z.request(true);
     const i64 n = b.shape[0];
     if (b.ndim != 2 || b.shape[1] != n || nb <= 0)
         throw std::invalid_argument("compact_half: Z square");
-    cf *z = (cf *)b.ptr;
+    T *z = (T *)b.ptr;
     py::gil_scoped_release nogil;
     i64 off = 0;
     for (i64 J = 0; J * nb < n; ++J) {
         const i64 j0 = J * nb, ld = n - j0, w = std::min<i64>(nb, n - j0);
         for (i64 r = j0; r < j0 + w; ++r) {
-            std::memmove(z + off, z + r * n + j0, sizeof(cf) * ld);
+            std::memmove(z + off, z + r * n + j0, sizeof(T) * ld);
             off += ld;
         }
     }
@@ -3085,8 +3099,10 @@ PYBIND11_MODULE(_core, m) {
           "Z equilibrated into half.Half's complex64 layout");
     m.def("half_c64", &half_c64,
           "a complex128 half equilibrated as a complex64 half");
-    m.def("compact_half", &compact_half,
+    m.def("compact_half", &compact_half_t<cf>,
           "a complex64 Z into half.Half's layout in its own memory");
+    m.def("compact_half", &compact_half_t<cd>,
+          "a complex128 Z into half.Half's layout in its own memory");
     m.def("ldl_diag", &ldl_diag,
           "the GPU LDL^T's diagonal block: L D L^T without pivoting and L^-1");
     m.def("scale_c64", &scale_c64,

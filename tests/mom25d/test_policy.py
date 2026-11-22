@@ -87,12 +87,17 @@ HALF_CASES = [
     (dict(gpu=GPU), dict(rung='vulkan-c64', dense=True, half=True)),
     # past HYBRID_MAX_N the hybrid still by its half (to HALF_HYBRID_MAX_N)
     (dict(gpu=GPU, n=30000), dict(rung='vulkan-c64', dense=True, half=True)),
-    (dict(gpu=GPU, n=30000, sides=True), dict(dense=False, half=False)),
+    (dict(gpu=GPU, n=30000, sides=True), dict(dense=True, half=True,
+                                             loops=True)),
+    # the sides' loops and the loop/tree basis: whole for their transforms,
+    # the half after them
+    (dict(sides=True), dict(loops=True, half=True)),
+    (dict(kh2=LOW), dict(basis='loop/tree', half=True)),
+    (dict(kh2=LOW, gpu=GPU, n=30000, nt=20000),
+     dict(basis='loop/tree', rung='vulkan-c64', half=True)),
     (dict(gpu=GPU, gpu_dense=True, n=22000),
      dict(gpu_dense=True, keep=2, half=True)),    # (the whole Z's: not there)
-    (dict(sides=True), dict(loops=True, half=False)),
     (dict(nq=8000), dict(half=False)),            # quad cells
-    (dict(kh2=LOW), dict(basis='loop/tree', half=False)),
     (dict(precision='double'), dict(rung='cpu-c128', half=False)),
     (dict(f=1.2e9, history={C64: 1e9}), dict(rung='cpu-c128', half=False)),
 ]
@@ -115,7 +120,7 @@ def test_the_half_needs_the_ldl(monkeypatch):
 
 def test_memory_plan_of_the_half(monkeypatch):
     """The half's host bytes (12 n^2 with the factor's copy) and the GPU's
-    double half (8 n^2); with sides (their loops) the whole Z's."""
+    double half (8 n^2); with sides (their loops, whole first) 16 n^2."""
     monkeypatch.setattr(policy, 'HALF', True)
     monkeypatch.setattr(policy, 'LDL', True)
     n = 20000
@@ -126,7 +131,7 @@ def test_memory_plan_of_the_half(monkeypatch):
     assert p['gpu'] == pytest.approx(GPU[1](n) + 8.0 * n * n)
     w = memory_plan(n, avail=30e9, gpu=GPU, precision='mixed',
                     solver='direct', sides=True)
-    assert w['host'] == pytest.approx(24.0 * n * n + policy.SPARE)
+    assert w['host'] == pytest.approx(16.0 * n * n + policy.SPARE)
 
 
 @pytest.mark.parametrize('kw,want', CASES)

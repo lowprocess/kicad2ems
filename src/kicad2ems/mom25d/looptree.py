@@ -243,16 +243,18 @@ class LoopTree:
         r = np.sqrt(1j * w)
         return np.where(self.is_tree, r, 1.0 / r)
 
-    def charge_into(self, Z, Mq, area):
+    def charge_into(self, Z, Mq, area, f0=0):
         """Z[tree, tree] += A_T^T Gc A_T: the potentials of the tree branches'
         charges (+1 on bu, -1 on bv, none on the ground), Gc = Mq / (area area)
-        (Mq: the G_q moments between the triangles, Nt x Nt); the compiled
-        core's."""
+        (Mq: the G_q moments between the triangles, Nt x Nt; or, its columns
+        triangles f0 .. f0 + its width, those ends' part alone: the matrix by
+        blocks of triangles); the compiled core's."""
         from . import _core
         t, u, v = self.tree, self.bu[self.tree], self.bv[self.tree]
-        _core.charge_into(Z, Mq, t.astype(np.int32), u.astype(np.int32),
-                          v.astype(np.int32), np.ascontiguousarray(area, float),
-                          int(self.G))
+        _core.charge_into(Z, np.ascontiguousarray(Mq), t.astype(np.int32),
+                          u.astype(np.int32), v.astype(np.int32),
+                          np.ascontiguousarray(area, float), int(self.G),
+                          int(f0))
         return Z
 
     def charge_operator(self, sim):

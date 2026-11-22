@@ -185,11 +185,12 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    at 8k: SciPy's wrappers hold the GIL)); (3) ~~Z stored and filled by its lower
    half~~ done for the RWG basis (2026-11-22, `half.py`, the default: the In7 group 12.6 / 8.2 s at 5 / 10 GHz in
    7.7 GB, against 22.1 / 14.6 s and 16.3 GB this morning; with it the products split between the GPU and the
-   host, and the GPU's buffers pooled); left: the loop/tree basis by its half (its transform K^T Z K needs whole
-   rows today: with the tree's rows first it can run on the half, M_tc = Z_tc + Z_tt P row by row and the loops'
-   block from P^T Z_tc and P^T M_tc a column block at a time; its charge matrix Nt x Nt built by blocks into Z,
-   not whole: then ~8 N^2 at 25k for its 24 N^2), the sides' loops on the half (a border transform of their
-   columns), the GPU's half products at one copy of each number (each is read twice today: the half saves
+   host, and the GPU's buffers pooled; the loop/tree basis and the sides' loops whole for their transforms, the
+   half after them, the charge matrix by blocks: a LimeRFE piece of 27k at 1-2 GHz 19.7 -> 15.1 GB); left: the
+   transforms on the half itself, for a peak of ~8 N^2 rather than 16 N^2 (the loop/tree basis's K^T Z K: with the
+   tree's rows first, M_tc = Z_tc + Z_tt P row by row and the loops' block from P^T Z_tc (before) and P^T M_tc
+   (after) a column block at a time, in increasing block order so no write meets a later read; the sides' loops a
+   border transform of their columns), the GPU's half products at one copy of each number (each is read twice today: the half saves
    memory, not their time); with many ports the double products are what is left of the refinement (a
    float-float product on the GPU's single precision would be ~2-3x its double); (4)
    the block low-rank solver for pieces past that, with weak admissibility or clusters along the traces tried

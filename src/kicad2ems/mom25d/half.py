@@ -113,14 +113,16 @@ class Half:
 
     @classmethod
     def compact(cls, Z, nb=NB):
-        """A complex64 Z (C order) as a Half in its own memory (the compiled
-        core's compact_half: no second matrix); Z is that Half's from then
-        on, its tail unused."""
+        """A complex64 or complex128 Z (C order) as a Half in its own memory
+        (the compiled core's compact_half: no second matrix); Z is that
+        Half's from then on, its tail unused: given back to the system where
+        Z is zeros_mapped's (madvise)."""
         from . import _core
         n = len(Z)
         _core.compact_half(Z, int(nb))
         size = int(Half.bytes(n, nb, 1))
-        return cls(n, nb, np.complex64, Z.reshape(-1)[:size])
+        _release_tail(Z, size * Z.itemsize)
+        return cls(n, nb, Z.dtype, Z.reshape(-1)[:size])
 
     def to_full(self):
         """The whole symmetric matrix (n x n, C order): for checks."""
@@ -204,6 +206,45 @@ class Half:
             if b < self.n:
                 Y[b:] += blk[:, b - a:].T @ X2[a:b]
         return Y[:, 0] if one else Y
+
+
+def zeros_mapped(n, dtype=complex):
+    """An n x n matrix of zeros in an anonymous mapping of its own (mmap: the
+    pages zero till touched), so that Half.compact can give the half it no
+    longer needs back to the system (the loop/tree basis's transform and the
+    sides' loops need the whole matrix; the solve after them its half)."""
+    import mmap
+    nbytes = max(int(n) * int(n) * np.dtype(dtype).itemsize, 1)
+    # private: MADV_DONTNEED frees its pages (a shared anonymous mapping, the
+    # default, keeps them)
+    flags = getattr(mmap, 'MAP_PRIVATE', 0) | getattr(mmap, 'MAP_ANONYMOUS', 0)
+    mm = (mmap.mmap(-1, nbytes, flags=flags) if flags
+          else mmap.mmap(-1, nbytes))
+    if hasattr(mmap, 'MADV_HUGEPAGE'):
+        # (2 MB pages: its first touch, the fill's, faulted 4 KB at a time
+        # was 2.2 s against 0.9 at 27k unknowns)
+        try:
+            mm.madvise(mmap.MADV_HUGEPAGE)
+        except OSError:
+            pass
+    return np.frombuffer(mm, dtype=dtype, count=int(n) * int(n)).reshape(n, n)
+
+
+def _release_tail(Z, keep):
+    """Past its first `keep` bytes, Z's pages back to the system where Z is
+    zeros_mapped's (MADV_DONTNEED: zeros again if touched); else nothing."""
+    import mmap
+    b = Z
+    while b is not None and not isinstance(b, mmap.mmap):
+        b = getattr(b, 'base', None)
+        if isinstance(b, memoryview):
+            b = b.obj
+    if b is None or not hasattr(b, 'madvise'):
+        return
+    page = mmap.PAGESIZE
+    start = -(-int(keep) // page) * page
+    if start < len(b) and hasattr(mmap, 'MADV_DONTNEED'):
+        b.madvise(mmap.MADV_DONTNEED, start, len(b) - start)
 
 
 def _each(items, fn, threads=None):

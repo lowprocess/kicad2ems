@@ -439,6 +439,7 @@ def test_the_gpu_ldl_path_matches_cpu(ldl, S_cpu, dense):
     from kicad2ems.mom25d import policy
     if not dense:
         ldl.setattr(policy, 'HYBRID_MAX_N', 0)
+        ldl.setattr(policy, 'HALF_HYBRID_MAX_N', 0)
     sim = make_sim('emulate')
     assert sim.fast.plan(4e9).path == ('hybrid' if dense else 'gpu-lu')
     S = sim.sparams(4e9)
@@ -456,6 +457,7 @@ def test_an_ldl_that_does_not_precondition_is_the_lu(ldl, S_cpu, dense):
     from kicad2ems.mom25d import policy
     if not dense:
         ldl.setattr(policy, 'HYBRID_MAX_N', 0)
+        ldl.setattr(policy, 'HALF_HYBRID_MAX_N', 0)
     ldl.setattr(mom25d_gpu.EmulatedBackend, 'solve_ldl',
                 lambda self, F, R: np.asarray(R, complex) * 1e-3)
     sim = make_sim('emulate')
@@ -488,6 +490,7 @@ def test_an_ldl_without_a_factor_is_the_lu(ldl, S_cpu, dense):
     basis = 'loop/tree'      # (this model's at 4 GHz)
     if not dense:
         ldl.setattr(policy, 'HYBRID_MAX_N', 0)
+        ldl.setattr(policy, 'HALF_HYBRID_MAX_N', 0)
         ldl.setattr(policy, 'LOOP_TREE_BELOW', 1e-5)
         from kicad2ems.mom25d import fast
         ldl.setattr(fast, 'LOOP_TREE_BELOW', 1e-5)
@@ -789,3 +792,56 @@ def test_vulkan_products_split_with_the_host(clean):
         assert np.abs(Y - Z @ X).max() < 1e-12 * np.abs(Z @ X).max()
     be.drop_dense()
     be.release()
+
+
+@pytest.mark.parametrize('gpu', ['off', 'emulate'])
+def test_the_loop_tree_bases_matrix_by_its_half(ldl, S_cpu, gpu):
+    """The loop/tree basis's matrix whole for its transform, then by its half
+    (Half.compact, the rest given back): the whole one's answer; its charge
+    matrix by blocks of triangles (FastOperator.CHARGE_COLS) the same to
+    rounding."""
+    from kicad2ems.mom25d import fast, policy
+    sim = make_sim(gpu)
+    p = sim.fast.plan(4e9)
+    assert p.basis == 'loop/tree' and p.half
+    S = sim.sparams(4e9)
+    assert any(r[0] == 'Z into its half' for r in sim.log.records)
+    assert np.abs(S - S_cpu).max() < 1e-6
+    ldl.setattr(fast.FastOperator, 'CHARGE_COLS', 37)
+    blocks = make_sim(gpu).sparams(4e9)
+    assert np.abs(blocks - S).max() < 1e-9
+    ldl.setattr(policy, 'HALF', False)
+    whole = make_sim(gpu)
+    assert not whole.fast.plan(4e9).half
+    assert np.abs(whole.sparams(4e9) - S).max() < 1e-6
+
+
+def test_the_sides_loops_matrix_by_its_half(ldl):
+    """The sides' loops (thick copper) on the whole Z, then its half: the
+    whole one's answer."""
+    from kicad2ems.mom25d import policy
+    from kicad2ems.mom25d.api import solve_board
+    sys.path.insert(0, __file__.rsplit('/', 1)[0])
+    from test_board import board, quiet
+    f = np.array([1e9, 3e9])
+    half = solve_board(board('thru'), f, port='via', thickness='sides',
+                       coarsen=None, log=quiet)
+    ldl.setattr(policy, 'HALF', False)
+    whole = solve_board(board('thru'), f, port='via', thickness='sides',
+                        coarsen=None, log=quiet)
+    assert np.abs(half.S - whole.S).max() < 1e-6
+
+
+def test_a_transformed_z_with_asymmetric_extras_stays_whole(ldl, S_cpu):
+    """Extras with an antisymmetric part: transformed they would not be
+    sparse, so the loop/tree basis's matrix stays whole (said); the answer
+    the whole one's."""
+    from kicad2ems.mom25d import policy
+    lossy_edges(ldl)
+    sim = make_sim('off')
+    S = sim.sparams(4e9)
+    assert sim.fast.plan(4e9).basis == 'loop/tree'
+    assert not any(r[0] == 'Z into its half' for r in sim.log.records)
+    assert any('not symmetric' in n for n in sim.log.notes)
+    ldl.setattr(policy, 'HALF', False)
+    assert np.abs(make_sim('off').sparams(4e9) - S).max() < 1e-6

@@ -34,7 +34,8 @@ from .dense import (_row_blocks, _equilibrate, _border, _loop_transform, _c64,
 from .near import (NEAR_CHUNK, NEAR_KEPT, NEAR_PAIRS, NEAR_PIECE,  # noqa: F401
                    _near_csr, near_pairs, near_sparse)
 from .tiles import Cluster, cluster_tiles, _CompiledBLR  # noqa: F401
-from .half import Half, NB as HALF_NB, ldl_factor, ldl_solve, ldl_mul
+from .half import (Half, NB as HALF_NB, ldl_factor, ldl_solve, ldl_mul,
+                   zeros_mapped)
 
 
 # bytes the via blocks kept over a sweep may take on a small board (a large
@@ -475,7 +476,8 @@ class FastOperator:
         if not (plan.dense and plan.keep):
             st.kept = []  # their memory is the new Z's
         t0 = time.time()
-        Z, B, up, A = (self._lt_system(f, E, Sx) if plan.basis == 'loop/tree'
+        Z, B, up, A = (self._lt_system(f, E, Sx, plan)
+                       if plan.basis == 'loop/tree'
                        else self._rwg_system(f, E, Sx, plan))
         half = isinstance(Z, Half)
         dsc = 1.0 / np.sqrt(np.abs(Z.diagonal() if half else np.diagonal(Z))
@@ -655,15 +657,18 @@ class FastOperator:
         operator (matrix-free) in Z's basis."""
         sim = self.sim
         Ne, Nv, N, T = sim.Ne, sim.Nv, sim.Ne + sim.Nv, sim.qT
-        if plan.half:
+        if plan.half and not plan.loops:
             return self._rwg_half(f, E, Sx)
         dt = np.complex128 if plan.dense else np.complex64
         with sim.log.timer(
                 'direct fill',
                 f"N={N}, {np.dtype(dt).name}, {self.core.num_threads()} threads"
         ):
-            # (gpu_dense: in the GPU's mapped host memory, _put_dense's)
-            Z = (self._host_matrix(N) if plan.gpu_dense else
+            # (gpu_dense: in the GPU's mapped host memory, _put_dense's; by
+            # its half after the sides' loops: a mapping of its own, its
+            # other half given back then)
+            Z = (zeros_mapped(N) if plan.half else
+                 self._host_matrix(N) if plan.gpu_dense else
                  np.zeros((N, N), dt))
             (self.core.fill_far_c64 if dt == np.complex64 else
              self.core.fill_far)(Z, self.g, self.tb, self.w)
@@ -716,8 +721,28 @@ class FastOperator:
             up0, down0 = up, down
             up = lambda X: up0(X + W @ X)
             down = lambda X: (lambda Y: Y + W.T @ Y)(down0(X))
+        if plan.half:
+            Z = self._to_half(Z, Sx)
         return Z, down(E), up, (
             lambda V: down(self.matvec_exact(up(V), Sx)))
+
+    def _to_half(self, Z, Sx):
+        """The whole double Z after its transforms (the sides' loops, the
+        loop/tree basis's) into its half in place (Half.compact, its other half
+        given back), self._Sa None; Z kept whole where the sparse extras have
+        an antisymmetric part (transformed, it would not be sparse: the half
+        would lose it)."""
+        Sa = (Sx - Sx.T) if Sx.nnz else None
+        if Sa is not None:
+            Sa.eliminate_zeros()
+            if Sa.nnz and abs(Sa).max() > 0:
+                self._once('half-asym', "the sparse extras are not symmetric: "
+                           "the matrix whole after its transforms")
+                return Z
+        with self.sim.log.timer('Z into its half', f"N={len(Z)}"):
+            H = Half.compact(Z, HALF_NB)
+        self._Sa = None
+        return H
 
     def _rwg_half(self, f, E, Sx):
         """_rwg_system's Z by its lower half (plan.half: half.Half,
@@ -1088,7 +1113,7 @@ class FastOperator:
         return self._sloops
 
     # ---- the loop/tree basis (looptree.py): low frequency -------------------
-    def _lt_system(self, f, E, Sx):
+    def _lt_system(self, f, E, Sx, plan=None):
         """The loop/tree basis's matrix (looptree.py): M = K_s^T Z_A K_s + the
         tree's charge block, Z_A filled with the tables' charge side zeroed,
         the charge block from the potentials between triangles; its
@@ -1112,7 +1137,8 @@ class FastOperator:
                 'direct fill',
                 f"N={N}, complex128, the current's part (loop/tree), "
                 f"{core.num_threads()} threads"):
-            Z = np.zeros((N, N), complex)
+            half = plan is not None and plan.half
+            Z = zeros_mapped(N) if half else np.zeros((N, N), complex)
             core.fill_far(Z, self.g, tbA, w)
         with sim.log.timer('near-field correction'):
             core.near_into_dense(Z, self.g, tbA, self.q, self.nP32, self.nQ32,
@@ -1138,14 +1164,23 @@ class FastOperator:
                 Z[a:b] *= sc[None, :]
             _row_blocks(Z, scale)
         with sim.log.timer('charge matrix', f"{Nt} triangles"):
-            Mq = core.fan_q(self.g, tb, np.arange(Nt, dtype=np.int32))
-            # (a pair once)
-            Mq[self.nP, self.nQ] += core.near_q(self.g, tb, self.q, self.nP32,
-                                                self.nQ32, w)
-            lt.charge_into(Z, Mq, sim.rwg.area)
-            del Mq
+            # by blocks of CHARGE_COLS triangles: Nt x that at a time, not
+            # Nt x Nt (5.2 GB at 27k unknowns, a quarter of the peak)
+            nq = core.near_q(self.g, tb, self.q, self.nP32, self.nQ32, w)
+            for f0 in range(0, Nt, self.CHARGE_COLS):
+                f1 = min(Nt, f0 + self.CHARGE_COLS)
+                Mq = core.fan_q(self.g, tb, np.arange(f0, f1, dtype=np.int32))
+                k = (self.nQ >= f0) & (self.nQ < f1)  # (a pair once)
+                Mq[self.nP[k], self.nQ[k] - f0] += nq[k]
+                lt.charge_into(Z, Mq, sim.rwg.area, f0)
+            del Mq, nq
+        if plan is not None and plan.half:
+            Z = self._to_half(Z, Sx)
         return (Z, sc[:, None] * lt.rows(lt.rhs(E)),
                 lambda Y: lt.from_ideal(lt.from_tree(sc[:, None] * Y)), None)
+
+    # the loop/tree basis's charge matrix built this many triangles at a time
+    CHARGE_COLS = 2048
 
     def kh2(self, f):
         """(k h)^2 at f: k in the densest dielectric, h the mesh's median edge -

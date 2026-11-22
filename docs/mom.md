@@ -547,9 +547,10 @@ frequency and those up to 1.25 × it (the log says so). `MOM25D_LDL=off` takes t
 
 <a id="half"></a>
 **The matrix by its lower half.** With the symmetric factor, the double-precision matrix itself is filled and kept
-by its lower half where nothing needs its whole rows (the RWG basis without the copper sides' loops or quad cells;
-`MOM25D_HALF=off` keeps it whole): half its memory on the host and on the GPU, the factor's single-precision copy
-made from it. With many ports the refinement's products are bound by double-precision arithmetic, which an RX
+by its lower half (`MOM25D_HALF=off` keeps it whole): in the RWG basis filled straight into it, in the loop/tree
+basis and with the copper sides' loops whole for their transforms and its half kept after them (the rest given
+back to the system); not with quad cells. Half its memory on the host and on the GPU, the factor's
+single-precision copy made from it. With many ports the refinement's products are bound by double-precision arithmetic, which an RX
 7800 XT has about as much of as 8 CPU cores: from 16 columns they are split between the two. On the Thor carrier's
 In7 group (24,872 unknowns, 106 ports) a frequency takes 8–13 s in 7.7 GB, where the LU took 15–22 s in 16 GB.
 
