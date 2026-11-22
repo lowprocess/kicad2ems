@@ -324,6 +324,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **Part values written '<value>_<package>_<part number>' (2026-11-22).** '1000pF_0402_GRM1555C1H102FA01D',
+  '0R_0402_RC0402JR-070RL': the leading value; 'NF', '0RNF', 'DNP', 'DNF' not fitted (no element, and segment
+  chains no nets through it); a ferrite bead ('FB_600R_...') as its rated impedance. And a part's element no
+  longer skipped as "bridged" by another net's copper in its gap, nor at 45 degrees by its own pads' overlap
+  along the element's axis. A LimeRFE's 15 unmodelled series parts on its RF chains (DC blocks, its filters' 1, 27,
+  91 pF, a fitted 0 ohm) checked against its BOM and now modelled; its 'NF' 0 ohm links (R90, R93, R374, R375:
+  not assembled per the BOM) open; 2 left (a 100 uH and a 2.2 uH on supply nets, their values not written).
 - **segment: a piece's reference planes where its traces are (2026-11-21).** The nearest layer whose ground covers
   half the area within 1 mm of the piece's copper, not the board-wide half (a LimeRFE's bottom RF lines over its
   PWR layer's ground, 35 % of the board, had been referenced to the layer beyond).

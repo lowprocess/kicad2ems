@@ -165,3 +165,18 @@ def test_a_kicad4_board_s_own_copper_layer_names():
     assert sorted((t['layer'], t['net']) for t in kb.tracks) == [
         ('B.Cu', 'GND'), ('F.Cu', 'RF')]
     assert kb.copper_order == ['F.Cu', 'In1.Cu', 'B.Cu']
+
+
+def test_part_values_with_package_and_part_number():
+    """parts.kind_value: '<value>_<package>_<part number>' (a LimeRFE's BOM
+    style), 'NF' / '0RNF' not fitted, a ferrite bead by its rated impedance;
+    '1nF' stays a capacitance."""
+    from kicad2ems.core.parts import kind_value, not_fitted
+    kv = lambda ref, v: kind_value(dict(ref=ref, value=v, props={}))
+    assert kv('C373', '1000pF_0402_GRM1555C1H102FA01D') == ('C', 1e-9)
+    assert kv('R272', '0R_0402_RC0402JR-070RL') == ('R', 0.0)
+    assert kv('FB8', 'FB_600R_0805_MPZ2012S601AT000') == ('R', 600.0)
+    assert kv('C253', '1nF_0603_06035C102KAT2A') == ('C', 1e-9)
+    assert kv('R90', '0RNF_0402_Yageo')[0] is None
+    assert not_fitted(dict(ref='R120', value='NF_SMD_0603', props={}))
+    assert not not_fitted(dict(ref='C253', value='1nF_0603', props={}))

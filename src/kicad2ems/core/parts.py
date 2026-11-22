@@ -21,7 +21,7 @@ import numpy as np
 
 from .units import parse_value
 
-__all__ = ['kind_value']
+__all__ = ['kind_value', 'not_fitted']
 
 # chip sizes (imperial code): body length, width, height in mm (typical EIA
 # values)
@@ -171,21 +171,48 @@ def kind_value(fp):
                 (None, f"value '{fp['value']}' not understood"))
     if dev:
         return None, None  # some other simulation model
+    words = re.split(r'[_\s]+', str(fp['value']).strip())
+    if _nf_value(fp):  # (DNP and excluded parts: find_parts says so)
+        return None, f"not fitted ('{fp['value']}')"
+    if re.match(r'^FB\d', fp['ref']):
+        # a ferrite bead: its rated impedance as a resistance (it blocks at RF:
+        # 'FB_600R_0805_MPZ2012S601AT000', '600_Ohm_@_100MHz')
+        for w in words:
+            mo = re.fullmatch(r'(\d+(?:\.\d+)?)(R|Ohm|ohm)', w)
+            if mo:
+                return 'R', float(mo.group(1))
+        return None, f"ferrite '{fp['value']}' without its impedance"
     mt = re.match(r'^([RLC])\d', fp['ref'])
     if not mt:
         return None, None
     v = parse_value(fp['value'])
     # a library's 'C_22u_16V_0603', 'R_45k3_0402': the kind's letter, then
-    # the value (all 788 R / L / C of the Jetson board)
-    if v is None:
-        words = re.split(r'[_\s]+', str(fp['value']).strip())
-        if len(words) > 1 and words[0].upper() == mt.group(1):
-            v = parse_value(words[1])
+    # the value (all 788 R / L / C of the Jetson board); or the value first,
+    # then the package and part number: '1000pF_0402_GRM1555C1H102GA01D',
+    # '0R_0402_RC0402JR-070RL' (a LimeRFE's)
+    if v is None and len(words) > 1 and words[0].upper() == mt.group(1):
+        v = parse_value(words[1])
+    if v is None and len(words) > 1:
+        v = parse_value(words[0])
     return ((mt.group(1), v) if v is not None else
             (None, f"value '{fp['value']}' not understood"))
 
 
-def _copper_gap(board, layer, axis, e1, e2, cb, w):
+def not_fitted(fp):
+    """Whether a footprint is not fitted: DNP or excluded from simulation, or
+    its value says so ('NF', '0RNF_0402_Yageo', 'NF_SMD_0603', 'DNP', 'DNF':
+    a LimeRFE's BOM marks R90, R93, R374, R375 'NF', not assembled). Case
+    matters ('1nF' is a capacitance)."""
+    return bool(fp.get('dnp') or fp.get('exclude_from_sim') or _nf_value(fp))
+
+
+def _nf_value(fp):
+    """Whether a footprint's value marks it not fitted."""
+    w = re.split(r'[_\s]+', str(fp.get('value', '')).strip())[0]
+    return bool(re.fullmatch(r'(0R)?NF|DNP|DNF|NP|NC', w))
+
+
+def _copper_gap(board, layer, axis, e1, e2, cb, w, nets=None):
     """The copper-free part of the gap between a part's pads (e1, e2 along axis,
     the part's width w about cb): tracks drawn to a pad's centre reach into the
     gap with their copper, so the element spans from where the copper of each
@@ -208,8 +235,29 @@ def _copper_gap(board, layer, axis, e1, e2, cb, w):
     if cache.get(layer, (None, None))[0] is not polys:
         cache[layer] = (polys, STRtree(polys) if polys else None)
     tree = cache[layer][1]
-    near = ([] if tree is None else
-            [polys[i] for i in tree.query(band, predicate='intersects')])
+    idx = ([] if tree is None else
+           list(tree.query(band, predicate='intersects')))
+    if nets is not None:
+        # each end where its own pad's net's copper ends; another net's copper
+        # in the gap (a pour's fill between the pads) is no bridge, nor one
+        # pad's copper alone across the band (a part at 45 degrees: a
+        # LimeRFE's DC blocks and filter capacitors had been skipped as
+        # bridged): bridged where the two nets' copper meets
+        cn = board.copper_nets.get(layer, [])
+        lo, hi = e1, e2
+        for i in idx:
+            n = cn[i] if i < len(cn) else None
+            g = polys[i].intersection(band)
+            for piece in getattr(g, 'geoms', [g]):
+                if piece.is_empty or piece.area < 1e-9:
+                    continue
+                a0, a1 = piece.bounds[axis], piece.bounds[2 + axis]
+                if n == nets[0] and a0 <= e1 + 1e-6:
+                    lo = max(lo, a1)
+                elif n == nets[1] and a1 >= e2 - 1e-6:
+                    hi = min(hi, a0)
+        return (lo, hi) if hi > lo else (e1, e1)
+    near = [polys[i] for i in idx]
     cu = unary_union([g.intersection(band) for g in near])
     lo, hi = e1, e2
     for piece in getattr(cu, 'geoms', [cu]):
@@ -349,7 +397,12 @@ def find_parts(board):
                 f"part {ref} at {fp['rot']:g} deg: its element along "
                 f"{'xy'[axis]} from pad {pads[lo]['name']}, a copper strap "
                 f"along {'xy'[b]} to pad {pads[hi]['name']}")
-        e1, e2 = _copper_gap(board, lay, axis, e1, e2, cb, w)
+        if not angled:
+            # (an angled part's pads overlap along its element's axis: its
+            # element and strap come from the pads' geometry above; trimmed
+            # here, a LimeRFE's 45-degree DC blocks read as bridged)
+            e1, e2 = _copper_gap(board, lay, axis, e1, e2, cb, w,
+                                 (pads[lo].get('net'), pads[hi].get('net')))
         if e2 - e1 <= 1e-6:
             notes.append(
                 f"part {ref} skipped: copper bridges the gap between its pads")

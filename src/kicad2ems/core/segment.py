@@ -1539,8 +1539,11 @@ def series_links(kb, nets):
     coupling capacitors, 12 resistors): each lane two nets, its ends at the
     capacitor's pads."""
     import re
+    from .parts import not_fitted
     out = []
     for fp in kb.footprints:
+        if not_fitted(fp):
+            continue  # (open: an 'NF' 0 ohm link joins nothing)
         pads = [p for p in fp.get('pads', []) if p.get('net')]
         ns = {p['net'] for p in pads}
         head = re.match(r'[A-Za-z]+', str(fp.get('ref', '')))
