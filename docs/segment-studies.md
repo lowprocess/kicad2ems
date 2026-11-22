@@ -136,7 +136,9 @@ layer, at one frequency, without solving its sweeps again:
    weighted by its ports' voltages.
 
 The map is |J| in dB of its 99.5th percentile over the selected nets' tracks (`<name>_starts.txt` lists each chain's
-start and ends); the via models (no mesh) are marked. On a LimeRFE section of 11 nets at 2.4 GHz it took 55 s, the coplanar ground's return
+start and ends); the via models (no mesh) are marked. With `--animate N` (36 by default) it also writes one cycle at
+the frequency, the instantaneous current |Re(J e^(jφ))| on a linear scale (1: the copper's 90th-percentile
+amplitude), as an MP4 and a GIF a layer. On a LimeRFE section of 11 nets at 2.4 GHz it took 55 s, the coplanar ground's return
 current 20-35 dB under the lines'.
 
 ## Making a result again

@@ -15,7 +15,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   once from its start (the end whose net reads as an input, else its first port; `--starts` by hand; 1 W each, in
   phase, the other ends matched: `--mode power` each alone, their powers summed) and the waves at every cut solved, each layer piece solved once at that frequency from its board
   file and run settings (its S against the run's: 1e-6 to 4e-5) and weighted by its ports' voltages; |J| a layer
-  in dB over the tracks (PNG, the triangles' values, the starts chosen). A LimeRFE section of 11 nets
+  in dB over the tracks (PNG, the triangles' values, the starts chosen); `--animate 36`: one cycle at the
+  frequency, the instantaneous current |Re(J e^(j phase))| on a linear scale (MP4 and GIF a layer). A LimeRFE section of 11 nets
   at 2.4 GHz: 55 s. Also `select_nets.py netclass BOARD CLASS,...` (the project's own impedance classes) and
   LibreVNA and ThunderScope Rev 5.3 in `fetch_boards.sh` (the next whole-board studies).
 - **mom25d: terminated ports, a few driven (2026-11-21).** `--mom-excite P1,P3` (`solve_board(excite=...)`,

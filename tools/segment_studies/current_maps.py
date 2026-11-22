@@ -17,6 +17,9 @@ no sweep solved again:
      percentile; one PNG a layer, and the triangles' values (npz).
 
 The via models (the physics-based ones) have no mesh: their places are marked.
+With --animate N (36 by default) also one cycle at the frequency, N frames: the
+instantaneous current |Re(J e^(j phase))| on a linear scale, 1 the copper's
+90th-percentile amplitude (MP4 and GIF).
 usage:
   current_maps.py GHZ [--channels NET,...] [--range 50] [--name lime] -- \\
                   SEGMENT ARGUMENTS (the run's own, its --out among them)
@@ -178,6 +181,10 @@ def main(argv=None):
     ap.add_argument('--starts', default='',
                     help="the chains' start ports by hand (P5,P9,...: a "
                     "chain with one of these is driven from it)")
+    ap.add_argument('--animate', type=int, default=36,
+                    help="frames of one cycle at the frequency (the "
+                    "instantaneous current, |Re(J e^(j phase))|; --mode "
+                    "together alone; 0: none): an MP4 and a GIF a layer")
     ap.add_argument('--mode', choices=('together', 'power'),
                     default='together',
                     help="together: every chain driven at once from its start "
@@ -253,16 +260,23 @@ def main(argv=None):
         Ip = Ic[:, order] @ Vp           # (unknowns, drives)
         Jx, Jy = triangle_current(sim, Ip)
         J2 = (np.abs(Jx) ** 2 + np.abs(Jy) ** 2).sum(1)
+        # (the one excitation's complex J, for the phase animation)
+        cx, cy = ((Jx[:, 0], Jy[:, 0]) if o.mode == 'together'
+                  else (None, None))
         nodes = sim.rwg.nodes[:, :2] * 1e3
         lay = {k: l for l, k in model.iface.items()}
         for k, idx in sim.tri_idx.items():
             if not len(idx) or k not in lay:
                 continue
             layers.setdefault(lay[k], []).append(
-                (nodes[sim.rwg.tris[idx]], J2[idx]))
+                (nodes[sim.rwg.tris[idx]], J2[idx],
+                 None if cx is None else cx[idx],
+                 None if cy is None else cy[idx]))
         print(f"  {name}: {sim.Ne + sim.Nv} unknowns, |dS| against the run "
               f"{dS:.1e}, {time.time() - tp:.1f} s", flush=True)
     _draw(layers, marks, res, out, o, f[fi])
+    if o.animate and o.mode == 'together':
+        _animate(layers, marks, res, out, o, f[fi])
     print(f"current maps: {time.time() - t0:.0f} s")
 
 
@@ -282,15 +296,16 @@ def _draw(layers, marks, res, out, o, ghz):
     from kicad2ems.core.importers.kicad import KiCadBoard
     kb = KiCadBoard(res['board'])
     nets = {n for p in res['port_nets'] for n in (p.get('nets') or [p['net']])}
-    alltri = np.concatenate([t for v in layers.values() for t, _ in v])
-    allj = np.concatenate([j for v in layers.values() for _, j in v])
+    alltri = np.concatenate([it[0] for v in layers.values() for it in v])
+    allj = np.concatenate([it[1] for v in layers.values() for it in v])
     w = _area(alltri)
     order = np.argsort(allj)
     cum = np.cumsum(w[order]) / w.sum()
     ref = allj[order][min(len(order) - 1, np.searchsorted(cum, 0.995))]
+    o.ref = ref                         # (the animation's scale too)
     for lay, items in sorted(layers.items()):
-        tris = np.concatenate([t for t, _ in items])
-        j2 = np.concatenate([j for _, j in items])
+        tris = np.concatenate([it[0] for it in items])
+        j2 = np.concatenate([it[1] for it in items])
         db = 10 * np.log10(np.maximum(j2, 1e-300) / ref)
         keep = db > -o.range - 10
         lo = tris[keep].reshape(-1, 2).min(0) - 3
@@ -338,6 +353,87 @@ def _draw(layers, marks, res, out, o, ghz):
         plt.close(fig)
         np.savez_compressed(png[:-4] + '.npz', tris=tris, J2=j2, ref=ref)
         print(f"current maps: {lay} -> {png}")
+
+
+def _animate(layers, marks, res, out, o, ghz):
+    """One cycle at the frequency, o.animate frames a layer: the instantaneous
+    surface current |Re(J e^(j phase))| (A/m, the vector's length) on a linear
+    scale, 1 the copper's 90th-percentile amplitude, as an MP4 (ffmpeg, where
+    there is one) and a GIF."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from matplotlib import animation
+    from matplotlib.collections import PolyCollection, LineCollection
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    kb = KiCadBoard(res['board'])
+    nets = {n for p in res['port_nets'] for n in (p.get('nets') or [p['net']])}
+    for lay, items in sorted(layers.items()):
+        if any(it[2] is None for it in items):
+            continue
+        tris = np.concatenate([it[0] for it in items])
+        jx = np.concatenate([it[2] for it in items])
+        jy = np.concatenate([it[3] for it in items])
+        j2 = np.abs(jx) ** 2 + np.abs(jy) ** 2
+        keep = 10 * np.log10(np.maximum(j2, 1e-300) / o.ref) > -o.range
+        tris, jx, jy = tris[keep], jx[keep], jy[keep]
+        # 1: the 90th percentile (by area) of the copper drawn's amplitude (a
+        # linear scale: the pads' and corners' peaks saturate)
+        a = _area(tris)
+        pk = np.sqrt(np.abs(jx) ** 2 + np.abs(jy) ** 2)
+        srt = np.argsort(pk)
+        cum = np.cumsum(a[srt]) / a.sum()
+        amp = pk[srt][min(len(srt) - 1, np.searchsorted(cum, 0.9))]
+        lo = tris.reshape(-1, 2).min(0) - 3
+        hi = tris.reshape(-1, 2).max(0) + 3
+        span = hi - lo
+        w = 12.0
+        fig, ax = plt.subplots(figsize=(w, w * span[1] / span[0] * 0.85 + 1.0)
+                               if span[0] >= span[1] else
+                               (w * span[0] / span[1] + 2.5, w), dpi=110,
+                               layout='constrained')
+        ax.set_facecolor('black')
+        segs = [np.c_[np.asarray(t['pts'])[:, 0], -np.asarray(t['pts'])[:, 1]]
+                for t in kb.tracks if t['layer'] == lay and t['net'] in nets]
+        if segs:
+            ax.add_collection(LineCollection(segs, colors='0.3', lw=0.4,
+                                             zorder=1))
+        pc = PolyCollection(tris, array=np.zeros(len(tris)), cmap='inferno',
+                            edgecolors='none', clim=(0, 1), zorder=2)
+        ax.add_collection(pc)
+        if marks:
+            mx = np.array(marks)
+            ax.plot(mx[:, 0], mx[:, 1], 'o', ms=2, mfc='none', mec='tab:cyan',
+                    mew=0.5, zorder=3)
+        ax.set_xlim(lo[0], hi[0])
+        ax.set_ylim(lo[1], hi[1])
+        ax.set_aspect('equal')
+        fig.colorbar(pc, ax=ax, shrink=0.8, label="|Re(J e^(j phase))|, of "
+                     "the copper's 90th-percentile amplitude (every chain "
+                     "driven at once from its start, 1 W each)")
+        title = ax.set_title('')
+        phases = np.linspace(0, 2 * np.pi, o.animate, endpoint=False)
+
+        def frame(i):
+            e = np.exp(1j * phases[i])
+            v = np.hypot((jx * e).real, (jy * e).real) / amp
+            pc.set_array(np.minimum(v, 1.0))
+            title.set_text(f"{os.path.basename(res['board'])}: {lay}, "
+                           f"{ghz:.4g} GHz, phase {np.degrees(phases[i]):3.0f}"
+                           " deg - instantaneous surface current")
+            return pc, title
+        ani = animation.FuncAnimation(fig, frame, frames=len(phases),
+                                      blit=False)
+        base = os.path.join(out, f"{o.name}_{lay.replace('.', '_')}_"
+                            f"{ghz:.3g}GHz_cycle")
+        if animation.writers.is_available('ffmpeg'):
+            ani.save(base + '.mp4', writer=animation.FFMpegWriter(
+                fps=12, bitrate=4000))
+            print(f"current maps: {lay} cycle -> {base}.mp4")
+        ani.save(base + '.gif', writer=animation.PillowWriter(fps=12),
+                 dpi=80)
+        plt.close(fig)
+        print(f"current maps: {lay} cycle -> {base}.gif")
 
 
 if __name__ == '__main__':
