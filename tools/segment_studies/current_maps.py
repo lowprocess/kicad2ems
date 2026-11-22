@@ -21,7 +21,8 @@ With --animate N (36 by default) also one cycle at the frequency, N frames: the
 instantaneous current |Re(J e^(j phase))| on a linear scale, 1 the copper's
 90th-percentile amplitude (MP4 and GIF).
 usage:
-  current_maps.py GHZ [--channels NET,...] [--range 50] [--name lime] -- \\
+  current_maps.py GHZ[,GHZ...] [--channels NET,...] [--range 50] [--name lime] \\
+                  [--animate 36] [--mode together|power] [--starts P1,...] -- \\
                   SEGMENT ARGUMENTS (the run's own, its --out among them)
 e.g.
   current_maps.py 2.4 -- boards/Lime_RFE.kicad_pcb --nets "$NETS" --pour keep \\
@@ -173,7 +174,7 @@ def main(argv=None):
         raise SystemExit(__doc__)
     i = argv.index('--')
     ap = argparse.ArgumentParser()
-    ap.add_argument('ghz', type=float)
+    ap.add_argument('ghz', help="GHz, comma-separated (each piece built once, solved at each)")
     ap.add_argument('--channels', default='',
                     help="channels (any of their nets), comma-separated: "
                     "every channel by default")
@@ -197,8 +198,8 @@ def main(argv=None):
     out = os.path.abspath(a.out)
     res = json.load(open(os.path.join(out, 'segment.json')))
     f = np.linspace(band['fmin'], band['fmax'], int(band['points']))
-    fi = int(np.argmin(np.abs(f - o.ghz)))
-    fhz = f[fi] * 1e9
+    fis = sorted({int(np.argmin(np.abs(f - float(g))))
+                  for g in o.ghz.split(',') if g.strip()})
     # the chains: their ports by chain (port_nets' nets), each driven from
     # its start (starts())
     want = [c.strip() for c in o.channels.split(',') if c.strip()]
@@ -218,15 +219,18 @@ def main(argv=None):
                      f"\t-> " + ', '.join(f"{q['port']} {q.get('ref', '')}"
                                            for q in ps if q['port'] != d)
                      + '\n')
-    print(f"current maps: {len(drives)} chain(s) at {f[fi]:.4g} GHz, "
+    print(f"current maps: {len(drives)} chain(s) at "
+          f"{', '.join(f'{f[i]:.4g}' for i in fis)} GHz, "
           f"{'all driven at once' if o.mode == 'together' else 'each alone'}"
           f", {len(blocks)} blocks, {len(pairs)} links", flush=True)
-    at, A, B = waves(blocks, pairs, fi, drives)
-    if o.mode == 'together':           # one excitation: every start at once
-        A, B = A.sum(1, keepdims=True), B.sum(1, keepdims=True)
     z0 = 50.0
-    V = np.sqrt(z0) * (A + B)          # each port's voltage, each drive
-    layers = {}                         # layer -> list of (xy tri, |J|^2)
+    V = {}                              # frequency index -> each port's voltage
+    for fi in fis:
+        at, A, B = waves(blocks, pairs, fi, drives)
+        if o.mode == 'together':       # one excitation: every start at once
+            A, B = A.sum(1, keepdims=True), B.sum(1, keepdims=True)
+        V[fi] = np.sqrt(z0) * (A + B)
+    layers = {fi: {} for fi in fis}     # fi -> layer -> [(xy tri, |J|^2, Jx, Jy)]
     marks = []
     for p in parts:
         name = p['name']
@@ -245,38 +249,44 @@ def main(argv=None):
             print(f"  {name}: not a block of its own (a window?): not drawn")
             continue
         Sb, ns = blk
-        Vp = V[[at[n] for n in ns]]      # (its ports, drives)
-        if not np.abs(Vp).max() > 1e-9:
+        cols = [at[n] for n in ns]
+        if not max(np.abs(V[fi][cols]).max() for fi in fis) > 1e-9:
             continue                     # (no drive reaches it)
         tp = time.time()
-        model, sim, _ = piece_sim(folder, name, fhz)
+        model, sim, _ = piece_sim(folder, name, f[fis[0]] * 1e9)
         sim.reuse = 'off'
         sp = [q.name for q in sim.ports]
         order = [sp.index(n.split(':', 1)[1]) for n in ns]
-        Ic = sim.currents(fhz, sim.excitation())  # every port's 1 V solution
-        # (its S at this frequency again, against the one the join read)
-        Sg = sim.sparams(fhz)[np.ix_(order, order)]
-        dS = np.abs(Sg - Sb[fi]).max()
-        Ip = Ic[:, order] @ Vp           # (unknowns, drives)
-        Jx, Jy = triangle_current(sim, Ip)
-        J2 = (np.abs(Jx) ** 2 + np.abs(Jy) ** 2).sum(1)
-        # (the one excitation's complex J, for the phase animation)
-        cx, cy = ((Jx[:, 0], Jy[:, 0]) if o.mode == 'together'
-                  else (None, None))
         nodes = sim.rwg.nodes[:, :2] * 1e3
         lay = {k: l for l, k in model.iface.items()}
-        for k, idx in sim.tri_idx.items():
-            if not len(idx) or k not in lay:
-                continue
-            layers.setdefault(lay[k], []).append(
-                (nodes[sim.rwg.tris[idx]], J2[idx],
-                 None if cx is None else cx[idx],
-                 None if cy is None else cy[idx]))
-        print(f"  {name}: {sim.Ne + sim.Nv} unknowns, |dS| against the run "
-              f"{dS:.1e}, {time.time() - tp:.1f} s", flush=True)
-    _draw(layers, marks, res, out, o, f[fi])
-    if o.animate and o.mode == 'together':
-        _animate(layers, marks, res, out, o, f[fi])
+        dS = 0.0
+        for fi in fis:
+            fhz = f[fi] * 1e9
+            Ic = sim.currents(fhz, sim.excitation())  # every port's 1 V one
+            # (its S at this frequency again, against the one the join read)
+            Sg = sim.sparams(fhz)[np.ix_(order, order)]
+            dS = max(dS, np.abs(Sg - Sb[fi]).max())
+            Ip = Ic[:, order] @ V[fi][cols]           # (unknowns, drives)
+            Jx, Jy = triangle_current(sim, Ip)
+            J2 = (np.abs(Jx) ** 2 + np.abs(Jy) ** 2).sum(1)
+            # (the one excitation's complex J, for the phase animation)
+            cx, cy = ((Jx[:, 0], Jy[:, 0]) if o.mode == 'together'
+                      else (None, None))
+            for k, idx in sim.tri_idx.items():
+                if not len(idx) or k not in lay:
+                    continue
+                layers[fi].setdefault(lay[k], []).append(
+                    (nodes[sim.rwg.tris[idx]], J2[idx],
+                     None if cx is None else cx[idx],
+                     None if cy is None else cy[idx]))
+        del sim, model
+        print(f"  {name}: |dS| against the run {dS:.1e}, "
+              f"{time.time() - tp:.1f} s", flush=True)
+    for fi in fis:
+        if layers[fi]:
+            _draw(layers[fi], marks, res, out, o, f[fi])
+            if o.animate and o.mode == 'together':
+                _animate(layers[fi], marks, res, out, o, f[fi])
     print(f"current maps: {time.time() - t0:.0f} s")
 
 
