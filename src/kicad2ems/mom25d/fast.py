@@ -485,6 +485,13 @@ class FastOperator:
                 return X
         if not (plan.dense and plan.keep):
             st.kept = []  # their memory is the new Z's
+        if plan.rung == 'cpu-c128':
+            # (the rung after mixed precision failed: no memory check had
+            # chosen it; a LimeRFE piece of 27k unknowns grew past its share)
+            n = self.sim.Ne + self.sim.Nv
+            self._room(16.0 * n * n + SPARE,
+                       f"the double-precision LU at {f / 1e9:.4g} GHz "
+                       f"({n:,} unknowns, mixed precision having failed)")
         t0 = time.time()
         Z, B, up, A = (self._lt_system(f, E, Sx, plan)
                        if plan.basis == 'loop/tree'
@@ -1103,6 +1110,24 @@ class FastOperator:
                     sim, 'sides', None) is not None else
                 'the edges of thick copper' if getattr(
                     sim, 'edge', None) is not None else '')
+
+    @staticmethod
+    def _room(need, what):
+        """MemoryError where `what` needs more than there is (rather than the
+        machine running out mid-fill); with MOM25D_NO_ROOM_EXIT set, that exit
+        instead (the run's share given back: core.segment runs it again
+        alone)."""
+        import os
+        avail = available_memory()
+        if need <= 0.9 * avail:
+            return
+        msg = f"{what} needs ~{need / 1e9:.1f} GB, {avail / 1e9:.1f} GB available"
+        code = os.environ.get('MOM25D_NO_ROOM_EXIT')
+        if code:
+            print(f"mom25d: {msg}: given back (exit {code})", flush=True)
+            raise SystemExit(int(code))
+        raise MemoryError(msg + ": a coarser --mom-dmax, or the board in "
+                          "smaller pieces")
 
     def _coincident_chains(self):
         """Whether two via chains (vias, lumped ports) share their place and

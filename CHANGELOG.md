@@ -342,6 +342,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   solver does not fit its share exits before its fill (`MOM25D_NO_ROOM_EXIT`, code 75) and runs again at the end,
   alone, with all of it; a small one starts only with room for it, and below a low mark the newest one is stopped
   and run again at the end the same way.
+- **mom25d: a broken factor no longer runs a piece out of memory (2026-11-22).** The LimeRFE rerun's 27k-unknown
+  piece ran at 4.6 GB in its share for 15 minutes, then grew to 20 GB within three and was OOM-killed: GMRES had
+  gone on to its cap on NaN (a complex64 factor without pivoting broken down; `den` NaN in the Givens rotation),
+  and the rung after it, the double-precision LU, had no memory check. Now GMRES stops at the first non-finite
+  step (the steps before kept, the fallbacks at once), and the double rung checks its 16 n^2 first:
+  `MemoryError`, or with `MOM25D_NO_ROOM_EXIT` its share given back. In core.segment a piece killed by a signal
+  runs again at the end alone too, and each piece's process raises its own `oom_score_adj` (800) so the kernel
+  kills a piece rather than the study (with systemd's `OOMPolicy=continue`: its default had stopped the whole
+  scope).
 - **segment/coupling: a board turned over turned the next back (2026-11-22).** `_over_its_plane` mirrored the
   stack's dielectrics in place, and every piece of a board shares them (`to_dict`): every second B.Cu piece
   turned over had them turned back, its ground off its dielectric interface ("port layer B.Cu is not a metal

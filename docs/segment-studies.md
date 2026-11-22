@@ -36,13 +36,18 @@ routed). Their stackups come from the projects' documents (`add_stackup.py` says
 | `K2E_SEG_POUR_REACH` | 1.5 mm | the pour kept this far from the piece's copper; 3 mm: \|dS\| 0.006, 1.5 mm: 0.007 against the pour to 6 mm on a fine mesh |
 | `K2E_SEG_POUR_APART` | 1.5 mm | with the pour kept, GCPW nets 1.5 mm and more apart coupled at −68.6 dB median (−48.5 at worst) |
 | small pieces in parallel (`K2E_SEG_JOBS`) | cores / 4, at most 6 | pieces of ≤ 8 ports and < 30 mm² of signal copper on the CPU beside the big ones on the GPU; each `--lean` |
+| a small piece's memory (`K2E_SEG_SMALL_GB`) | 3 GB | its share (`EMSDEV_MEM_BUDGET`); a big one gets the rest less 1 GB a CPU worker. A piece whose direct solver does not fit its share, one killed (out of memory) or one the watchdog stopped (free memory low) runs again at the end, alone, with all of it |
+
+`OOMPolicy=continue` in the commands below: systemd's default for a scope stops every process in it when the kernel
+kills one, and a piece's process (its `oom_score_adj` raised) is the one it kills; the study then runs that piece
+again at the end.
 
 ## The Thor carrier (10 layers, 288 nets)
 
 ```
 tools/segment_studies/fetch_boards.sh boards
 NETS=$(python tools/segment_studies/select_nets.py pairs boards/jetson-agx-thor-baseboard.kicad_pcb)
-systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 \
+systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 -p OOMPolicy=continue \
   python -m kicad2ems.core.segment boards/jetson-agx-thor-baseboard.kicad_pcb --nets "$NETS" \
   --edges coarse --via-solver pbm --thickness grow --dmax 0.5 --fmin 0.1 --fmax 10 --points 201 --out seg
 ```
@@ -87,7 +92,7 @@ That run predates the core-port excitation, `--lean` and the parallel small piec
 
 ```
 NETS=$(python tools/segment_studies/select_nets.py rf-wide boards/Lime_RFE.kicad_pcb)
-systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 \
+systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 -p OOMPolicy=continue \
   python -m kicad2ems.core.segment boards/Lime_RFE.kicad_pcb --nets "$NETS" --pour keep --thickness grow \
   --fmin 0.1 --fmax 6 --points 201 --out lime
 ```

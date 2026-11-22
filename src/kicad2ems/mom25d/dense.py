@@ -208,6 +208,13 @@ def gmres_batched(A, B, M=None, x0=None, rtol=1e-6, restart=30, maxiter=10,
                 H[i, j] = hij = np.einsum('nk,nk->k', V[i].conj(), Wv)
                 Wv = Wv - V[i] * hij
             H[j + 1, j] = hn = np.linalg.norm(Wv, axis=0)
+            if not np.isfinite(H[:j + 2, j][:, live]).all():
+                # inf or NaN from the preconditioner (a factor without
+                # pivoting broken down) or the operator: no step more, the
+                # steps before kept (a LimeRFE piece's GMRES had run on to
+                # its cap on NaN, then its fallbacks past its memory)
+                last[live], stalled = j - 1, True
+                break
             V[j + 1] = Wv / np.where(hn > 0, hn, 1)
             for i in range(j):  # apply previous Givens rotations
                 H[i, j], H[i + 1, j] = (cs[i] * H[i, j] + sn[i] * H[i + 1, j],

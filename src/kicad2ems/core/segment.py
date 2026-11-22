@@ -1069,6 +1069,23 @@ class NoRoom(Exception):
     """A piece gave its share back (its direct solver needs more)."""
 
 
+class Killed(ValueError):
+    """A piece's run ended by a signal (the kernel's OOM killer, its
+    oom_score_adj raised: _victim)."""
+
+
+def _victim():
+    """(In a piece's process, before it runs:) the OOM killer's first choice
+    over the run that started it: raising one's own score needs no
+    privilege. A LimeRFE run's systemd scope had stopped the whole study when
+    the kernel killed one piece (OOMPolicy=stop, its default)."""
+    try:
+        with open('/proc/self/oom_score_adj', 'w') as fh:
+            fh.write('800')
+    except OSError:
+        pass
+
+
 def _small(p):
     """Whether a piece goes to the CPU workers (_solve_all)."""
     if p['kind'] != 'layer':
@@ -1111,10 +1128,12 @@ def _solve_all(parts, out, band, a, echo):
                               echo, env=env, started=started, **kw)
             res[name] = (*got, time.time() - t)
         except Exception as e:  # (raised again, in order)  # noqa: BLE001
-            if not last and (isinstance(e, NoRoom) or name in stopped):
-                echo(f"segment: {name}: " + ("stopped, memory low" if name in
-                                             stopped else str(e))
-                     + ": again at the end, alone")
+            if not last and (isinstance(e, (NoRoom, Killed))
+                             or name in stopped):
+                echo(f"segment: {name}: " + (
+                    "stopped, memory low" if name in stopped else
+                    "killed (out of memory?)" if isinstance(e, Killed)
+                    else str(e)) + ": again at the end, alone")
                 with lock:
                     later.append(p)
                 return
@@ -1402,7 +1421,9 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
             penv.setdefault('MOM25D_BLR_MIN_N', '1000000')
             penv.setdefault('MOM25D_BLR_CPU_MIN_N', '1000000')
             p = subprocess.Popen(argv, stdout=log, stderr=subprocess.STDOUT,
-                                 env=penv)
+                                 env=penv, preexec_fn=(
+                                     _victim if sys.platform.startswith(
+                                         'linux') else None))
             if started:
                 started(p)
             try:
@@ -1412,6 +1433,9 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
                     started(None)
         if p.returncode == NO_ROOM and penv.get('MOM25D_NO_ROOM_EXIT'):
             raise NoRoom("its direct solver needs more than its share")
+        if p.returncode and p.returncode < 0:
+            raise Killed(f"{piece['name']}: its run ended by signal "
+                         f"{-p.returncode}")
         if p.returncode:
             with open(os.path.join(folder, 'run.log')) as fh:
                 tail = fh.read()[-1500:]

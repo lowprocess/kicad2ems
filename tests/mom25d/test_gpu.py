@@ -886,3 +886,42 @@ def test_a_run_without_room_gives_its_share_back(clean, monkeypatch):
     monkeypatch.setenv('EMSDEV_MEM_BUDGET', '64G')
     Simulation(st, {1: [box(-4e-3, -0.5e-3, 4e-3, 0.5e-3)]}, [],
                dmax=0.5e-3, solver='auto', gpu='off', verbose=False)
+
+
+def test_gmres_stops_on_a_broken_preconditioner():
+    """A preconditioner giving NaN (a factor without pivoting broken down):
+    GMRES stops at once, the columns unconverged and finite, rather than on to
+    its cap (each step an exact product on a large piece)."""
+    from kicad2ems.mom25d.dense import gmres_batched
+    rng = np.random.default_rng(0)
+    A = np.eye(40) * 4 + rng.standard_normal((40, 40)) * 0.1
+    B = rng.standard_normal((40, 2)) + 0j
+    calls = [0]
+
+    def Mbad(R):
+        calls[0] += 1
+        return np.full_like(R, np.nan)
+    out = {}
+    X, it = gmres_batched(lambda V: A @ V, B, Mbad, restart=30, maxiter=10,
+                          out=out)
+    assert calls[0] == 1 and np.isfinite(X).all()
+    assert (out['rel'] > 0.5).all()
+    X, it = gmres_batched(lambda V: A @ V, B, None, restart=30, maxiter=10,
+                          out=out)
+    assert (out['rel'] < 1e-6).all()
+
+
+def test_the_double_rung_checks_its_room(monkeypatch):
+    """FastOperator._room: MemoryError where the double LU would not fit (the
+    rung after mixed precision failed had none), the exit where the run's
+    share may be given back."""
+    from kicad2ems.mom25d import fast
+    monkeypatch.setattr(fast, 'available_memory', lambda: 4e9)
+    fast.FastOperator._room(3e9, 'a small one')
+    monkeypatch.delenv('MOM25D_NO_ROOM_EXIT', raising=False)
+    with pytest.raises(MemoryError, match='needs ~20.0 GB, 4.0 GB'):
+        fast.FastOperator._room(20e9, 'the double LU')
+    monkeypatch.setenv('MOM25D_NO_ROOM_EXIT', '75')
+    with pytest.raises(SystemExit) as e:
+        fast.FastOperator._room(20e9, 'the double LU')
+    assert e.value.code == 75

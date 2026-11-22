@@ -390,22 +390,25 @@ def test_a_piece_without_room_runs_again_alone(monkeypatch, tmp_path):
         calls.append((p['name'], dict(env or {})))
         if p['name'] == 's1' and env and env.get('MOM25D_NO_ROOM_EXIT'):
             raise SG.NoRoom('its direct solver needs more than its share')
+        if p['name'] == 'b1' and [n for n, _ in calls].count('b1') == 1:
+            raise SG.Killed('b1: its run ended by signal 9')
         return (np.zeros(1), np.zeros((1, 1, 1)), ['P1'], {})
     monkeypatch.setattr(SG, 'solve_piece', fake)
     monkeypatch.setattr(SG, 'JOBS', 2)
     monkeypatch.setattr(SG, '_small', lambda p: p['kind'] == 'layer')
     a = types.SimpleNamespace(thickness=None, dmax=None, layer_solver=None,
                               via_solver=None, edges=None, solver='mom25d')
-    parts = _parts(['s0', 's1', 'b0'], {'s0', 's1'})
+    parts = _parts(['s0', 's1', 'b0', 'b1'], {'s0', 's1'})
     res = SG._solve_all(parts, str(tmp_path), {}, a, echo=lambda *x: None)
-    assert sorted(res) == ['b0', 's0', 's1']
+    assert sorted(res) == ['b0', 'b1', 's0', 's1']
     assert all(isinstance(v, tuple) for v in res.values())
     first = [e for n, e in calls if n == 's0'][0]
     assert first['MOM25D_GPU'] == 'off' and first['MOM25D_NO_ROOM_EXIT']
     assert float(first['EMSDEV_MEM_BUDGET']) == SG.SMALL_BUDGET
     again = [e for n, e in calls if n == 's1']
     assert len(again) == 2 and again[-1] == {}
-    assert calls[-1][0] == 's1'
+    # (killed, b1: again at the end too)
+    assert sorted(n for n, _ in calls[-2:]) == ['b1', 's1']
     assert all(not hasattr(p['board'], 'copper') for p in parts)
 
 
@@ -441,3 +444,14 @@ def test_the_newest_small_piece_is_stopped_when_memory_runs_low(
                         echo=lambda *x: None)
     assert all(isinstance(v, tuple) for v in res.values())
     assert calls.count('s0') == 2 and calls[-1] == 's0'
+
+
+def test_a_piece_process_is_the_oom_killers_first_choice():
+    """_victim (a piece's preexec): its oom_score_adj raised above the run's,
+    so the kernel kills a piece, not the study."""
+    if not os.path.exists('/proc/self/oom_score_adj'):
+        pytest.skip('no oom_score_adj')
+    out = subprocess.run(
+        [sys.executable, '-c', 'print(open("/proc/self/oom_score_adj").read())'],
+        preexec_fn=SG._victim, capture_output=True, text=True).stdout
+    assert int(out) == 800
