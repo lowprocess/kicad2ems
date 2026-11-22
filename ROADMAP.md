@@ -192,9 +192,16 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    (after) a column block at a time, in increasing block order so no write meets a later read; the sides' loops a
    border transform of their columns), the GPU's half products at one copy of each number (each is read twice today: the half saves
    memory, not their time); with many ports the double products are what is left of the refinement (a
-   float-float product on the GPU's single precision would be ~2-3x its double); (4)
-   the block low-rank solver for pieces past that, with weak admissibility or clusters along the traces tried
-   (on long traces and pours its factor is 50-84 % of the dense complex64: little compression). The LimeRFE (1.5-2 h) is set by two pieces of ~27k
+   float-float product on the GPU's single precision would be ~2-3x its double); (4) ~~the block low-rank solver
+   for pieces past that, with weak admissibility or clusters along the traces tried~~ done (2026-11-22: its GMRES
+   operator the compressed matrix in double to 1e-8, or the dense half; weak admissibility the default; the In7
+   group 221 -> 19 s, a LimeRFE piece's pour 59 -> 19 s, factors 4-8 % of dense complex64; tiles by connected
+   copper tried, no better: CHANGELOG). Left in it: the operator on a pour (71 % of dense complex128 at 1e-8: its
+   neighbouring tiles' ranks; the near tiles kept in complex64 would halve it, or a strong-admissibility
+   operator over H-matrix clusters), its tiles by the half (Z is symmetric: the tiles above the diagonal alone,
+   half the operator's and the factor's assembly), the factor on the GPU (its tiles' GEMMs), and its size at
+   45-100k unknowns (not yet run: no piece that large here; the near field's sparse build and its 2.5 s
+   operator assembly grow as N^2). The LimeRFE (1.5-2 h) is set by two pieces of ~27k
    unknowns where several RF paths meet: (b) and (c) are what would bring it to an hour.
    **LimeRFE left over:** its KiCad 4 file's nets are out of step with its tracks (84 net pairs touching the RF
    nets overlap): re-deriving the nets from the copper's connectivity would bring back the channels the run

@@ -330,7 +330,12 @@ class Simulation:
         # solver='blr' preconditioner settings: 1e-3 left antenna_cp_patch
         # (40.8k unknowns) unsolved (GMRES 500 iterations), 1e-5 solves it in 7;
         # eta 0.3 against 0.7: less memory, as fast (fast._solve_blr)
-        self.blr_tol, self.blr_tile, self.blr_eta = 1e-5, 512, 0.3
+        # (blr_eta < 0: every off-diagonal tile compressed, weak
+        # admissibility: the In7 group's factor 4 % of dense complex64 for
+        # 23 % at eta 0.3, a LimeRFE piece with its pour 8 % for 84 %, 28 s
+        # for 59; blr_tiles 'copper': tiles.cluster_groups)
+        self.blr_tol, self.blr_tile, self.blr_eta = 1e-5, 512, -1.0
+        self.blr_tiles = 'geometric'
         # 'auto' | 'off': the CPU's complex64 LU kept for the next frequencies
         self.reuse = 'auto'
         # 'auto' | 'on' | 'off': the direct

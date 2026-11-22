@@ -72,6 +72,16 @@ BLR_TOL_MIN = 1e-9       # ... down to this
 # a block low-rank solve whose GMRES ends above this residual is an error, not
 # an answer
 BLR_GIVE_UP = 1e-2
+# the block low-rank solve's operator (GMRES's products): the equilibrated
+# matrix compressed in double to this, every off-diagonal tile tried (weak
+# admissibility). The In7 group (24.9k unknowns, 106 ports, 5 GHz): the exact
+# matrix-free products 215 s of a 221 s solve; compressed to 1e-10 29 s (73 %
+# of complex128 dense), 1e-9 25 s (43 %), 1e-8 20 s (18 %, |dS| 7.5e-7 against
+# the direct), 1e-7 17 s (7 %, 1.1e-5), 1e-6 (2e-4). A LimeRFE piece's pour
+# compresses less (71 % at 1e-8): the dense half where it is smaller
+BLR_OP_TOL = 1e-8
+# ... in at most this share of the free memory (less the factor's)
+BLR_OP_ROOM = 0.6
 
 
 # a kept factorisation: its frequency, M (HostLU, GpuLU, _CompiledBLR), the
@@ -1255,6 +1265,44 @@ class FastOperator:
             return M
         return raw
 
+    def _blr_operator(self, f, tiles, boxes, dZx, dsc, Sx):
+        """The block low-rank solve's GMRES operator (the equilibrated matrix):
+        compressed in double to BLR_OP_TOL, its tiles at most the dense
+        half's bytes and what memory leaves (BLR_OP_ROOM of the free less
+        the factor's estimate); past that the dense half where it fits; else
+        None (the exact matrix-free products)."""
+        sim, N = self.sim, len(dsc)
+        room = (BLR_OP_ROOM * available_memory() - 3.0 * N * N
+                - 2.0 * SPARE)
+        half = Half.bytes(N, HALF_NB, 16)
+        budget = min(half, room)
+        if budget <= 0:
+            self._once('blr-op', "BLR operator: no room for it; the exact "
+                       "matrix-free products")
+            return None
+        with sim.log.timer('BLR operator', f"N={N}, {len(tiles)} tiles, "
+                           f"tolerance {BLR_OP_TOL:g}, complex128"):
+            op = _CompiledBLR(self, tiles, boxes, dZx, dsc, BLR_OP_TOL, -1.0,
+                              double=True, factor=False, max_bytes=budget)
+        if not op.over:
+            sim.log.note(
+                f"BLR operator: {op.memory / 2 ** 20:.0f} MB "
+                f"({100 * op.memory / (16 * N * N):.0f}% of complex128 "
+                f"dense), {op.stats['lowrank']} low-rank tiles, mean rank "
+                f"{op.stats['rank_sum'] / max(1, op.stats['lowrank']):.0f}")
+            return op.matvec
+        del op
+        if half > room or sim.Ne + sim.Nv != N:
+            self._once('blr-op', "BLR operator: compressed it would not fit; "
+                       "the exact matrix-free products")
+            return None
+        self._once('blr-op', "BLR operator: compressed it would outgrow the "
+                   "matrix's dense half: that instead")
+        H, *_ = self._rwg_half(f, np.zeros((N, 0)), Sx)
+        d, Sa = dsc[:, None], self._Sa
+        return ((lambda V: d * H.matvec(d * V)) if Sa is None else
+                (lambda V: d * (lambda X: H.matvec(X) + Sa @ X)(d * V)))
+
     def _solve_blr(self, f, E):
         """Block low-rank LU preconditioner + GMRES with the exact matrix-free
         operator (no stored Z)."""
@@ -1270,7 +1318,12 @@ class FastOperator:
             return X
         st.kept, t_fresh = [], time.time()
         dZx = (self.dZ + Sx[:Ne, :Ne]).tocsr()
-        tiles, boxes = cluster_tiles(self._points(), tile)
+        pts = self._points()
+        if getattr(sim, 'blr_tiles', 'geometric') == 'copper':
+            from .tiles import cluster_groups, components
+            tiles, boxes = cluster_groups(pts, components(sim, pts), tile)
+        else:
+            tiles, boxes = cluster_tiles(pts, tile)
         raw = self._raw_entry(dZx)
         # low frequency, and no room for the loop/tree basis's dense matrix: the
         # factor in double precision, its compression a hundredth of (k h)^2
@@ -1299,6 +1352,14 @@ class FastOperator:
         for t in tiles:
             diag[t] = np.diagonal(raw(t, t))
         dsc = 1.0 / np.sqrt(np.abs(diag) + 1e-300)
+        # GMRES's operator: the matrix itself compressed in double at
+        # BLR_OP_TOL (its tiles as assembled, not factored; on the In7 group,
+        # 24.9k unknowns, 106 ports, the exact matrix-free products were 215 s
+        # of a 221 s solve: the far field's kernels each product), except at
+        # low frequency, where the loops' part of an entry is below that
+        A = lambda V: dsc[:, None] * self.matvec_exact(dsc[:, None] * V, Sx)
+        if not low and getattr(sim, 'blr_op', 'compressed') == 'compressed':
+            A = self._blr_operator(f, tiles, boxes, dZx, dsc, Sx) or A
         # tighter after a factor that did not precondition
         tol = min(tol, getattr(self, '_blr_tol', tol))
         while True:
@@ -1325,10 +1386,8 @@ class FastOperator:
                 # the ports' columns together (gmres_batched): one pass of the
                 # far kernel a product for all of them (rf_siw, 28.7k unknowns,
                 # 2 ports: 11.6 s column by column, 5.0 s together)
-                Y, ok, rel = self._refine(
-                    lambda V: dsc[:, None] * self.matvec_exact(
-                        dsc[:, None] * V, Sx), dsc[:, None] * E, blr, 50,
-                    10, BLR_STALL)
+                Y, ok, rel = self._refine(A, dsc[:, None] * E, blr, 50, 10,
+                                          BLR_STALL)
             sim.log.note(f"BLR: GMRES iterations per port {list(self.iters)}")
             if ok or tol <= (1e-4 * self.kh2(f) if low else BLR_TOL_MIN):
                 break

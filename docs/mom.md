@@ -641,13 +641,18 @@ whose solves stall. `policy.memory_plan` applies the same rules to a whole run, 
 the GUI's estimate.
 
 <a id="blr"></a>
-**The block low-rank solver** (`fast.FastOperator._solve_blr`, the compiled core's `BLRFactor`) never holds the matrix. The
-unknowns are cut into tiles of about 500 by a geometric cluster tree. A pair of tiles whose clusters are further
-apart than a third of the larger one's size is compressed to a low-rank product (adaptive cross approximation,
-then QR and SVD); the rest are dense. The tiles are factored in single precision, the low-rank updates
-recompressed as they go, on every core (BLAS and LAPACK are SciPy's). The factor preconditions GMRES on the exact
-operator, so S is the direct solver's to about 1e-6, and across a sweep one frequency's factor serves the next as
-the LU's does. From 20,000 unknowns mom25d takes it wherever the GPU's hybrid does not hold the matrix:
+**The block low-rank solver** (`fast.FastOperator._solve_blr`, the compiled core's `BLRFactor`) never holds the matrix
+whole. The unknowns are cut into tiles of about 500 by a geometric cluster tree. Every pair of tiles but the
+diagonal's is tried as a low-rank product (adaptive cross approximation, then QR and SVD; neighbours too, weak
+admissibility: `sim.blr_eta` 0.3 compresses only tiles further apart than 0.3 of the larger's size); the rest are
+dense. The tiles are factored in single precision, the low-rank updates recompressed as they go, on every core
+(BLAS and LAPACK are SciPy's). The factor preconditions GMRES on the matrix itself, assembled the same way in double
+precision to 1e-8 and not factored (where that would be larger than the matrix's dense half, as on a ground pour,
+the dense half; where neither fits, the exact products recomputed each time), so S is the direct solver's to about
+1e-6, and across a sweep one frequency's factor serves the next as the LU's does. On the Thor carrier's In7 group
+(24,872 unknowns, 106 ports) a frequency takes 19 s, the factor 185 MB and the operator 1.7 GB; it took 221 s
+with every product recomputed. From 20,000 unknowns mom25d takes it wherever the GPU's hybrid does not hold the
+matrix:
 
 | Board, unknowns | BLR | the path it replaces |
 |---|---|---|

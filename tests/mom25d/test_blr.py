@@ -64,7 +64,8 @@ def test_a_smaller_eta_compresses_more_tiles_to_the_same_answer():
     eta compresses tiles nearer each other, the answer the same (GMRES's).
     (Compressing the tiles beside the diagonal too, eta < 0, leaves no
     preconditioner on tiles of 128: GMRES did not converge in 500
-    iterations.)"""
+    iterations; at the defaults, tiles of 512 to 1e-5, it is the default:
+    sim.blr_eta -1.)"""
     pytest.importorskip('kicad2ems.mom25d._core')
     f = 4e9
     ref = _sim('direct').sparams(f)
@@ -197,3 +198,96 @@ def test_the_near_field_built_a_piece_at_a_time_is_the_whole(monkeypatch):
         scale = abs(ref).max()
         assert abs(got - ref).max() < 1e-12 * scale, f
         assert np.allclose(qc, qref, rtol=1e-12, atol=0)
+
+
+def _equilibrated(sim, f):
+    """The block low-rank solve's pieces at f: its operator's inputs and the
+    equilibrated dense matrix."""
+    from kicad2ems.mom25d.fast import cluster_tiles
+    fo = sim.fast
+    fo.setup(f, mode='sparse')
+    Sx = fo.extra_blocks(f)
+    Ne = sim.Ne
+    dZx = (fo.dZ + Sx[:Ne, :Ne]).tocsr()
+    tiles, boxes = cluster_tiles(fo._points(), 128)
+    N = Ne + sim.Nv
+    allu = np.arange(N)
+    Z = fo._raw_entry(dZx)(allu, allu)
+    dsc = 1.0 / np.sqrt(np.abs(np.diagonal(Z)))
+    return fo, tiles, boxes, dZx, dsc, Z * dsc[:, None] * dsc[None, :]
+
+
+def test_the_blr_operator_is_the_matrix():
+    """The tiles assembled and not factored (factor=False, every
+    off-diagonal tile tried): the equilibrated matrix's products to its
+    tolerance, in less than a dense complex128 matrix; past a byte budget
+    the assembly stops (over)."""
+    pytest.importorskip('kicad2ems.mom25d._core')
+    from kicad2ems.mom25d.fast import _CompiledBLR
+    sim = _sim()
+    fo, tiles, boxes, dZx, dsc, Zs = _equilibrated(sim, 4e9)
+    N = len(dsc)
+    x = np.random.default_rng(4).standard_normal((N, 3)) + 0j
+    for tol, err in ((1e-8, 1e-7), (1e-4, 1e-3)):
+        op = _CompiledBLR(fo, tiles, boxes, dZx, dsc, tol, -1.0, double=True,
+                          factor=False)
+        assert not op.over and op.stats['lowrank'] > 0
+        got = np.linalg.norm(op.matvec(x) - Zs @ x) / np.linalg.norm(Zs @ x)
+        assert got < err, tol
+        assert op.memory < 16.0 * N * N
+    op = _CompiledBLR(fo, tiles, boxes, dZx, dsc, 1e-8, -1.0, double=True,
+                      factor=False, max_bytes=1e5)
+    assert op.over
+
+
+@pytest.mark.parametrize('case', ['compressed', 'half', 'exact'])
+def test_the_blr_solves_operator(monkeypatch, case):
+    """GMRES's operator in the block low-rank solve: compressed (BLR_OP_TOL),
+    the dense half where compressed it would be larger (a tolerance it
+    hardly compresses at), the exact matrix-free products where neither fits
+    (BLR_OP_ROOM); each the direct solver's answer."""
+    pytest.importorskip('kicad2ems.mom25d._core')
+    from kicad2ems.mom25d import fast
+    f = 4e9
+    ref = _sim('direct').sparams(f)
+    if case == 'compressed':  # (this small model's is larger than its half)
+        monkeypatch.setattr(fast.Half, 'bytes',
+                            staticmethod(lambda n, nb=256, itemsize=8: 1e12))
+    if case == 'half':
+        monkeypatch.setattr(fast, 'BLR_OP_TOL', 1e-15)
+    if case == 'exact':
+        monkeypatch.setattr(fast, 'BLR_OP_ROOM', 0.0)
+    sim = _sim()
+    sim.blr_tile = 128
+    S = sim.sparams(f)
+    assert np.abs(S - ref).max() < 1e-6
+    notes = ' '.join(sim.log.notes)
+    assert ('BLR operator: compressed it would outgrow' in notes) == (
+        case == 'half')
+    assert ('the exact matrix-free products' in notes) == (case == 'exact')
+    assert (any(r[0] == 'BLR operator' for r in sim.log.records)
+            == (case != 'exact'))
+
+
+def test_tiles_by_copper_split_no_piece_with_another():
+    """tiles.components / cluster_groups: every unknown in one tile, a
+    tile no more than the size asked; a piece of copper at least half a tile
+    in tiles of its own; the solve with them (blr_tiles 'copper') the direct
+    solver's."""
+    pytest.importorskip('kicad2ems.mom25d._core')
+    from kicad2ems.mom25d.tiles import cluster_groups, components
+    sim = _sim()
+    pts = sim.fast._points()
+    comp = components(sim, pts)
+    assert len(np.unique(comp)) >= 2      # (the strip, the plane)
+    tiles, boxes = cluster_groups(pts, comp, 128)
+    allu = np.sort(np.concatenate(tiles))
+    assert np.array_equal(allu, np.arange(len(pts)))
+    assert max(len(t) for t in tiles) <= 128
+    big = [c for c in np.unique(comp) if (comp == c).sum() >= 64]
+    for t in tiles:
+        if any(comp[t[0]] == c for c in big):
+            assert len(np.unique(comp[t])) == 1
+    ref = _sim('direct').sparams(4e9)
+    sim.blr_tiles, sim.blr_tile = 'copper', 128
+    assert np.abs(sim.sparams(4e9) - ref).max() < 1e-6

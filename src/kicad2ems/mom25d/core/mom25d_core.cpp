@@ -1397,11 +1397,17 @@ public:
     // w: the far kernel; nptr / nidx / nval: the near correction and the extra
     // blocks (CSR, Ne x Ne); B (Ne x Nv), C (Nv x Nv): the via rows and
     // columns; dsc: the equilibration; atol: the compression's absolute
-    // tolerance (on the equilibrated matrix); max_rank: 0 for half a tile
+    // tolerance (on the equilibrated matrix); max_rank: 0 for half a tile;
+    // factor_it: false keeps the tiles as assembled, the matrix itself for
+    // matvec (the block low-rank solve's operator at a tight tolerance:
+    // GMRES's products without the far field's kernels each time)
     BLRFactorT(arr<int> order, arr<int> start, arr<uint8_t> far, py::dict geom,
                py::dict tabs, double w, arr<i64> nptr, arr<int> nidx,
                arr<cd> nval, arr<cd> B, arr<cd> C, arr<double> dsc, double atol,
-               int max_rank) : atol_(atol) {
+               int max_rank, bool factor_it, double max_bytes)
+        : atol_(atol), factored_(factor_it) {
+        // max_bytes > 0: the tiles' bytes at most; past them the assembly
+        // stops (stats' "over": the caller's exact products then)
         using namespace blrk;
         lapack<Sc>();
         MeshHold mh(geom); TabHold th(tabs);
@@ -1437,6 +1443,7 @@ public:
                 std::vector<Sc> U, V;
 #pragma omp for schedule(dynamic, 1)
                 for (i64 p = 0; p < (i64)nb * nb; ++p) {
+                    if (over_.load(std::memory_order_relaxed)) continue;
                     const int I = (int)(p / nb), J = (int)(p % nb);
                     const int m = st[I + 1] - st[I], n = st[J + 1] - st[J];
                     const int *rows = ord + st[I], *cols = ord + st[J];
@@ -1552,6 +1559,16 @@ public:
                         T.kind = 'D'; T.D.resize((size_t)m * n);
                         for (size_t q = 0; q < M.size(); ++q) T.D[q] = Sc(M[q]);
                     }
+                    if (max_bytes > 0) {
+                        // past the budget, or (a tenth of the tiles in)
+                        // heading there at the rate so far
+                        const double h = (double)(held_ += T.bytes());
+                        const double k = (double)(++done_);
+                        const double all = (double)nb * nb;
+                        if (h > max_bytes ||
+                            (k >= 0.1 * all && h * all / k > 1.1 * max_bytes))
+                            over_ = true;
+                    }
                 }
             }
             t_assemble_ = blrk::wall() - t0;
@@ -1561,9 +1578,73 @@ public:
             }
             bytes0_ = bytes();
             t0 = blrk::wall();
-            factor(max_rank);
+            if (over_) {           // (its tiles given back: not an operator)
+                T_.clear();
+                T_.shrink_to_fit();
+                factored_ = false;
+                return;
+            }
+            if (factored_) factor(max_rank);
             t_factor_ = blrk::wall() - t0;
         }
+    }
+
+    // the matrix as assembled (factor_it false) times R (N, or N x m), the
+    // original numbering: a tile row's products a thread's
+    py::array_t<cd>
+    matvec(py::array_t<cd, py::array::c_style | py::array::forcecast> R) {
+        using namespace blrk;
+        if (factored_)
+            throw std::logic_error("BLRFactor.matvec: the tiles are factored");
+        const bool vec = R.ndim() == 1;
+        const int nr = vec ? 1 : (int)R.shape(1);
+        if (R.shape(0) != N_)
+            throw std::invalid_argument("BLRFactor.matvec: R must have N rows");
+        const cd *r = R.data();
+        py::array_t<cd> out =
+            vec ? py::array_t<cd>(N_) : py::array_t<cd>({N_, nr});
+        cd *o = out.mutable_data();
+        const int nb = nb_;
+        {
+            py::gil_scoped_release nogil;
+            std::vector<std::vector<Sc>> x(nb);
+            for (int k = 0; k < nb; ++k) {
+                const int m = start_[k + 1] - start_[k];
+                x[k].resize((size_t)m * nr);
+                for (int i = 0; i < m; ++i)
+                    for (int c = 0; c < nr; ++c)
+                        x[k][i + (size_t)c * m] =
+                            Sc(r[(size_t)order_[start_[k] + i] * nr + c]);
+            }
+#pragma omp parallel
+            {
+                std::vector<Sc> acc, tmp;
+#pragma omp for schedule(dynamic, 1)
+                for (int I = 0; I < nb; ++I) {
+                    const int m = start_[I + 1] - start_[I];
+                    acc.assign((size_t)m * nr, Sc(0));
+                    for (int J = 0; J < nb; ++J) {
+                        const Tile<Sc> &T = T_[(size_t)I * nb + J];
+                        if (T.kind == 'D')
+                            gemm('N', 'N', m, nr, T.n, Sc(1), T.D.data(), m,
+                                 x[J].data(), T.n, Sc(1), acc.data(), m);
+                        else if (T.kind == 'L' && T.r) {
+                            tmp.assign((size_t)T.r * nr, Sc(0));
+                            gemm('N', 'N', T.r, nr, T.n, Sc(1), T.V.data(),
+                                 T.r, x[J].data(), T.n, Sc(0), tmp.data(),
+                                 T.r);
+                            gemm('N', 'N', m, nr, T.r, Sc(1), T.U.data(), m,
+                                 tmp.data(), T.r, Sc(1), acc.data(), m);
+                        }
+                    }
+                    for (int i = 0; i < m; ++i)
+                        for (int c = 0; c < nr; ++c)
+                            o[(size_t)order_[start_[I] + i] * nr + c] =
+                                cd(acc[i + (size_t)c * m]);
+                }
+            }
+        }
+        return out;
     }
 
     // the approximate inverse: R (N, or N x m) in the original numbering
@@ -1634,6 +1715,7 @@ public:
         d["bytes"] = (double)bytes(); d["bytes_assembled"] = (double)bytes0_;
         d["seconds_assemble"] = t_assemble_; d["seconds_factor"] = t_factor_;
         d["singular"] = singular_;
+        d["over"] = (bool)over_;
         return d;
     }
 
@@ -1807,6 +1889,9 @@ private:
     }
 
     int N_ = 0, nb_ = 0; double atol_ = 0, t_assemble_ = 0, t_factor_ = 0;
+    bool factored_ = true;
+    std::atomic<bool> over_{false};
+    std::atomic<size_t> held_{0}, done_{0};
     std::vector<int> order_, start_;
     std::vector<blrk::Tile<Sc>> T_;
     std::vector<std::vector<Sc>> LU_;
@@ -3059,9 +3144,11 @@ PYBIND11_MODULE(_core, m) {
                                "(fast.solve_blr's), complex64")
         .def(py::init<arr<int>, arr<int>, arr<uint8_t>, py::dict, py::dict,
                       double, arr<i64>, arr<int>, arr<cd>, arr<cd>, arr<cd>,
-                      arr<double>, double, int>())
+                      arr<double>, double, int, bool, double>())
         .def("solve", &BLRFactorT<cf>::solve,
              "the approximate inverse applied to R (N or N x m)")
+        .def("matvec", &BLRFactorT<cf>::matvec,
+             "the tiles as assembled (factor_it false) times R")
         .def("stats", &BLRFactorT<cf>::stats);
     py::class_<BLRFactorT<cd>>(
         m, "BLRFactor128",
@@ -3069,9 +3156,12 @@ PYBIND11_MODULE(_core, m) {
         "far apart for a complex64 factor (low frequency)")
         .def(py::init<arr<int>, arr<int>, arr<uint8_t>, py::dict, py::dict,
                       double, arr<i64>, arr<int>, arr<cd>, arr<cd>, arr<cd>,
-                      arr<double>, double, int>())
+                      arr<double>, double, int, bool, double>())
         .def("solve", &BLRFactorT<cd>::solve,
              "the approximate inverse applied to R (N or N x m)")
+        .def("matvec", &BLRFactorT<cd>::matvec,
+             "the tiles as assembled (factor_it false) times R: the solve's "
+             "operator")
         .def("stats", &BLRFactorT<cd>::stats);
     m.def("num_threads", &num_threads);
     m.def("near_pairs", &near_pairs, "near triangle pairs (sorted by p, q)");

@@ -37,6 +37,62 @@ def cluster_tiles(pts, tile):
     return [c.idx for c in tiles], [(c.lo, c.hi) for c in tiles]
 
 
+def components(sim, pts):
+    """The connected piece of copper of each unknown (cluster_tiles's
+    groups): the mesh's triangles joined through their RWG edges, an edge its
+    triangles' piece, the other unknowns (via chains, holes, slots, sides:
+    pts past the edges) their nearest edge's."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    r = sim.rwg
+    Nt, Ne = len(r.tris), sim.Ne
+    g = coo_matrix((np.ones(Ne), (r.tp, r.tm)), shape=(Nt, Nt))
+    _, tri = connected_components(g, directed=False)
+    comp = np.empty(len(pts), np.int64)
+    comp[:Ne] = tri[r.tp]
+    if len(pts) > Ne:
+        from scipy.spatial import cKDTree
+        _, near = cKDTree(pts[:Ne]).query(pts[Ne:])
+        comp[Ne:] = comp[:Ne][near]
+    return comp
+
+
+def cluster_groups(pts, comp, tile):
+    """cluster_tiles with each group (comp: a connected piece of copper, an
+    unknown's group) bisected on its own, so that no tile spans two pieces
+    (a tile of several parallel traces is near every tile of each); groups
+    smaller than a tile packed together in the order of their centres (a
+    group tree: bisection of the groups' centres), as cluster_tiles's
+    leaves. Measured (2026-11-22, the Thor's In7 group, 24.9k unknowns, 5
+    GHz, every off-diagonal tile compressed): no better than the geometric
+    tiles: the factor 7 % of dense complex64 against 4 %, 3.6 GMRES
+    iterations against 5.3, the operator at 1e-8 27 % of complex128 dense
+    against 18 %, |dS| 6.4e-6 against 7.5e-7; sim.blr_tiles = 'copper'
+    takes it."""
+    groups = [np.flatnonzero(comp == c) for c in np.unique(comp)]
+    cent = np.array([pts[g].mean(0) for g in groups])
+    # the groups in a geometric order: bisect their centres
+    order = Cluster(np.arange(len(groups)), cent, 1)
+
+    def leaves(c):
+        return [c] if not c.kids else leaves(c.kids[0]) + leaves(c.kids[1])
+    seq = [int(c.idx[0]) for c in leaves(order)]
+    tiles, small = [], []
+    for gi in seq:
+        g = groups[gi]
+        if len(g) >= tile // 2:
+            tiles += [c.idx for c in leaves(Cluster(g, pts, tile))]
+        else:
+            if sum(len(x) for x in small) + len(g) > tile:
+                tiles.append(np.concatenate(small))
+                small = []
+            small.append(g)
+    if small:
+        tiles.append(np.concatenate(small))
+    boxes = [(pts[t].min(0), pts[t].max(0)) for t in tiles]
+    return tiles, boxes
+
+
 class _CompiledBLR:
     """The compiled core's BLRFactor (core/mom25d_core.cpp): solve, memory,
     stats; the tiles in elimination order, the pairs compressed where their
@@ -47,7 +103,8 @@ class _CompiledBLR:
 
     on_gpu, device_bytes = False, 0
 
-    def __init__(self, fo, tiles, boxes, dZx, dsc, tol, eta, double=False):
+    def __init__(self, fo, tiles, boxes, dZx, dsc, tol, eta, double=False,
+                 factor=True, max_bytes=0.0):
         lo, hi = (np.array([b[0]
                             for b in boxes]), np.array([b[1] for b in boxes]))
         gap = np.linalg.norm(
@@ -68,10 +125,18 @@ class _CompiledBLR:
             self.f = make(order, start, far.astype(np.uint8), fo.g, fo.tb, fo.w,
                           dZx.indptr.astype(np.int64),
                           dZx.indices.astype(np.int32), c(dZx.data, complex), B,
-                          C, c(dsc, float), float(tol), 0)
+                          C, c(dsc, float), float(tol), 0, bool(factor),
+                          float(max_bytes))
         self.stats = self.f.stats()
         self.memory = self.nbytes = self.stats['bytes']
+        self.over = bool(self.stats.get('over', False))  # (past max_bytes)
 
     def __call__(self, b):
         with _one_blas_thread():
             return self.f.solve(np.ascontiguousarray(b, complex))
+
+    def matvec(self, X):
+        """The tiles as assembled times X (factor False: the matrix itself,
+        equilibrated, at the compression's tolerance)."""
+        with _one_blas_thread():
+            return self.f.matvec(np.ascontiguousarray(X, complex))

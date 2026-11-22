@@ -559,6 +559,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **mom25d: the block low-rank solver 3-11x faster in a fifth to a tenth of its factor's memory (2026-11-22).**
+  GMRES's products were the exact matrix-free operator (the far field's kernels recomputed each product: 215 s of
+  a 221 s solve on the Thor's In7 group, 24.9k unknowns, 106 ports, 5 GHz). Now its operator is the matrix
+  itself, assembled as the factor's tiles are, in double to `BLR_OP_TOL` 1e-8 and not factored (`BLRFactor128(...,
+  factor_it=False)`, `matvec`); where it would outgrow the matrix's dense half (its assembly stops early, a byte
+  budget) the dense half, where neither fits the exact products, and at low frequency the exact ones (the loops'
+  part of an entry is below 1e-8). The factor compresses every off-diagonal tile (weak admissibility:
+  `sim.blr_eta` -1, was 0.3). At 5 / 6 GHz: the In7 group 221 -> 19.3 s, factor 1,076 -> 185 MB (23 -> 4 % of
+  dense complex64), operator 1.7 GB (18 % of dense complex128); a LimeRFE piece with its ground pour (27.1k, 17
+  ports) 59 -> 19.0 s, factor 4.7 GB -> 429 MB (84 -> 8 %), the dense half as the operator; S within 7.5e-7 and
+  1.3e-7 of the direct solve's (12.5 and 8.3 s there). The operator at 1e-10 / 1e-9 / 1e-7 / 1e-6: 73 / 43 / 7 / 4 %
+  of dense complex128, |dS| 2e-7 / 6e-7 / 1.1e-5 / 2e-4. **Tried and not taken: tiles by connected copper**
+  (`tiles.cluster_groups`, `sim.blr_tiles = 'copper'`: no tile spanning two traces): on the In7 group the factor 7 %
+  against 4 %, 3.6 GMRES iterations against 5.3, the operator 27 % against 18 %, |dS| 6.4e-6 against 7.5e-7.
 - **mom25d: the loop/tree basis and the sides' loops by the half too (2026-11-22).** Their transforms need the
   whole matrix: it is filled in an anonymous mapping of its own (`half.zeros_mapped`, huge pages), transformed,
   then compacted into its half in place and the rest given back to the system (`Half.compact`, madvise); the
