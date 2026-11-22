@@ -298,7 +298,10 @@ CHANGELOG has their numbers):**
    the GPU, and a first run at 45-100k unknowns.
 6. **Straight coupled runs as analytic multi-line sections** with MoM at the discontinuities only (item (a) of
    the large boards below): the largest gain on bus-heavy boards, a modelling change.
-7. Small: the GPU LDL^T's solve at one right-hand side (16 ms against the LU's 12.6 at 20k: its diagonal block's
+7. Small: a test-isolation fault, not today's: with `tests/core/test_segment.py` run first in one session, the
+   kicad2ems CLI's tests then lack mom25d's dump options ("unrecognized arguments: --mom-near"; CI runs the folders
+   apart, so it never meets it): the solver registry built in an import order that leaves them out. Also the GPU
+   LDL^T's solve at one right-hand side (16 ms against the LU's 12.6 at 20k: its diagonal block's
    product one workgroup), the host LDL^T as fast as LAPACK's LU (1.8 s against 1.6 at 8k), the policy's host
    bytes for the whole Z's hybrid with the LDL^T (24 N^2 counted, 20 N^2 used).
 

@@ -845,3 +845,25 @@ def test_a_transformed_z_with_asymmetric_extras_stays_whole(ldl, S_cpu):
     assert any('not symmetric' in n for n in sim.log.notes)
     ldl.setattr(policy, 'HALF', False)
     assert np.abs(make_sim('off').sparams(4e9) - S).max() < 1e-6
+
+
+def test_two_ports_at_one_place_keep_the_loop_tree_basis_off(clean):
+    """Two via chains at one place (two ports there: a segment cut doubled):
+    in the loop/tree basis one is a loop through the other, its row zero; the
+    plan takes the RWG basis, says why, and solves (0.1 GHz)."""
+    from shapely.geometry import box, Point
+    st = LayerStack([Layer(0.2e-3, 4.3, 0.02), Layer(0.2e-3, 4.3, 0.02)])
+    w, L = 0.35e-3, 8e-3
+    geo2 = [box(-L / 2, -w / 2, L / 2, w / 2), Point(L / 2, 0).buffer(0.25e-3)]
+    geo1 = [box(-L / 2, -2e-3, L / 2 + 1e-3,
+                2e-3).difference(Point(L / 2, 0).buffer(0.5e-3))]
+    sim = Simulation(st, {1: geo1, 2: geo2}, [
+        ViaPort(Via(-L / 2, 0, 1, 2, 0.1e-3)),
+        ViaPort(Via(-L / 2, 0, 1, 2, 0.1e-3)),
+        ViaPort(Via(L / 2, 0, 0, 2, 0.1e-3))
+    ], dmax=0.4e-3, dmax_layer={1: 0.6e-3}, w_ref={2: w, 1: 1e-3},
+        solver='direct', precision='mixed', gpu='off', verbose=False)
+    p = sim.fast.plan(1e8)
+    assert p.basis == 'rwg' and 'two via chains' in p.why
+    S = sim.sparams(1e8)
+    assert np.isfinite(S).all()

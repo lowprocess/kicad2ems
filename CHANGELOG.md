@@ -333,6 +333,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **segment: two ports at one place (2026-11-22).** A track drawn twice (as a KiCad 4 file has them) crossed a via
+  group's circle twice at one spot: two cut ports there, and two series parts whose pads coincide gave the same.
+  Each lumped port is a via chain to the plane, so in the loop/tree basis one was a loop through the other, of no
+  impedance and no charge: the matrix singular (four LimeRFE pieces, "the direct solve at 0.1 GHz is not
+  finite"). Now one cut a crossing (`cuts`: same net, layer, place to 1 um and direction), one port where two parts'
+  pads meet, joined to both through an ideal junction (`node_block`, `nodes`), and mom25d keeps the loop/tree basis
+  off where two via chains coincide (the RWG basis solves them; `FastOperator._coincident_chains`). A run frees
+  each piece's geometry once it is solved or read back (most of the 7.6 GB a LimeRFE run's process held beside a
+  27k-unknown piece's 15 GB: the run had met its 24 GB cap, OOM-killed at 36 min).
 - **Part values written '<value>_<package>_<part number>' (2026-11-22).** '1000pF_0402_GRM1555C1H102FA01D',
   '0R_0402_RC0402JR-070RL': the leading value; 'NF', '0RNF', 'DNP', 'DNF' not fitted (no element, and segment
   chains no nets through it); a ferrite bead ('FB_600R_...') as its rated impedance. And a part's element no

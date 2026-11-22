@@ -39,6 +39,32 @@ def test_join_is_the_cascade_and_the_two_port_connection():
         SG.join([(M, ['m0', 'm1', 'm2'])], [('m0', 'm1'), ('m1', 'm2')])
 
 
+def test_a_node_joins_the_parts_at_one_place():
+    """node_block: an ideal junction (S11 -1/3, S21 2/3 for three ports,
+    lossless); nodes: a port two links share becomes a junction with their
+    other sides, every port then in one link, and the network joins: a 1-port
+    on a line shared with another line is their tee."""
+    from kicad2ems.core.deembed import abcd_to_s, line_abcd
+    J = SG.node_block(3, 2)
+    assert np.allclose(J[0], np.full((3, 3), 2 / 3) - np.eye(3))
+    assert np.allclose(np.einsum('fij,fik->fjk', J.conj(), J), np.eye(3))
+    f = np.linspace(1e9, 3e9, 2)
+    A = abcd_to_s(line_abcd(50.0, 3.0, 0.01, f), 50.0)
+    B = abcd_to_s(line_abcd(50.0, 3.0, 0.02, f), 50.0)
+    load = np.zeros((2, 1, 1), complex)         # a matched end
+    blocks = [(A, ['a1', 'a2']), (B, ['b1', 'b2']), (load, ['x'])]
+    pairs = SG.nodes(blocks, [('a2', 'x'), ('b1', 'x')], 2,
+                     echo=lambda *a: None)
+    used = [p for pr in pairs for p in pr]
+    assert len(used) == len(set(used)) and len(blocks) == 4
+    S, names = SG.join(blocks, pairs)
+    assert sorted(names) == ['a1', 'b2']
+    # matched lines into a matched tee: |S21| = 2/3, |S11| = 1/3
+    i, j = names.index('a1'), names.index('b2')
+    assert np.allclose(np.abs(S[:, j, i]), 2 / 3)
+    assert np.allclose(np.abs(S[:, i, i]), 1 / 3)
+
+
 def _example(tmp, name):
     subprocess.check_call([sys.executable,
                            os.path.join(ROOT, 'examples', 'make_rf_examples.py'),
@@ -122,6 +148,25 @@ def test_a_via_transition_in_pieces_is_the_whole_board(tmp_path):
     f3, S3 = read_touchstone(str(tmp_path / 'hyb' / res['touchstone']))
     d = db(S3[:, 1, 0]) - db(S0[:, 1, 0])
     assert np.abs(d).max() < 0.3 and np.sqrt(np.mean(d ** 2)) < 0.1
+
+
+def test_a_track_drawn_twice_is_one_cut(tmp_path):
+    """A track drawn twice (a KiCad 4 file's) crosses a via's circle twice at
+    one place: one cut (two ports there were two coincident via chains, the
+    loop/tree basis's matrix singular)."""
+    from kicad2ems.core.config import build_settings
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.pipeline import board_from_settings
+    _example(tmp_path, 'msvia')
+    s = build_settings(dict(board=str(tmp_path / 'rf_msvia.kicad_pcb'),
+                            nets=['RF', 'GND']))
+    m = board_from_settings(s, log=lambda *x: None)
+    kb = KiCadBoard(s.board)
+    (g,) = SG.via_groups(m, {'RF'})
+    n0 = len(SG.cuts(kb, g, {'RF'}))
+    assert n0 >= 2
+    kb.tracks += [dict(t) for t in kb.tracks if t['net'] == 'RF']
+    assert len(SG.cuts(kb, g, {'RF'})) == n0
 
 
 def test_a_layer_pieces_tracks_end_at_the_via_circles(tmp_path):

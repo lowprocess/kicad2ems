@@ -1095,12 +1095,30 @@ class FastOperator:
         """Why the loop/tree basis cannot be used here, or ''."""
         sim = self.sim
         return ('quad cells' if sim.qT is not None else
+                'two via chains at one place (two ports there?)'
+                if self._coincident_chains() else
                 'holes of PEC planes (frills)' if sim.frills else
                 'openings of PEC planes (slots)' if getattr(sim, 'slots', None)
                 else 'the sides of thick copper' if getattr(
                     sim, 'sides', None) is not None else
                 'the edges of thick copper' if getattr(
                     sim, 'edge', None) is not None else '')
+
+    def _coincident_chains(self):
+        """Whether two via chains (vias, lumped ports) share their place and
+        layers: in the loop/tree basis one is a loop through the other, of no
+        impedance and no charge, its row zero (the matrix singular: four
+        LimeRFE pieces with a cut doubled, 2026-11-22); the RWG basis solves
+        them. Once a mesh."""
+        if not hasattr(self, '_coinc'):
+            seen, self._coinc = set(), False
+            for v, kb, kt in getattr(self.sim, 'chains', ()):
+                key = (round(v.x * 1e6), round(v.y * 1e6), kb, kt)
+                if key in seen:
+                    self._coinc = True
+                    break
+                seen.add(key)
+        return self._coinc
 
     def _side_loops(self):
         """sides.Sides.loops' W of the simulation's sides, once; None

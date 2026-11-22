@@ -284,9 +284,20 @@ def cuts(kb, group, nets):
                              None)
                 if nudge is None:
                     continue  # it touches the edge (a notch's tip): no cut
-                out.append(dict(layer=t['layer'], net=t['net'],
-                                at=(float(q[0]), float(q[1])),
-                                out=(float(d[0]), float(d[1])), nudge=nudge))
+                c = dict(layer=t['layer'], net=t['net'],
+                         at=(float(q[0]), float(q[1])),
+                         out=(float(d[0]), float(d[1])), nudge=nudge)
+                # the same crossing again (a track drawn twice, as a KiCad 4
+                # file has them): one cut. Two ports at one place are two
+                # coincident via chains, a loop of no impedance: the loop/tree
+                # basis's matrix singular (four LimeRFE pieces at 0.1 GHz,
+                # 2026-11-22)
+                if any(o['layer'] == c['layer'] and o['net'] == c['net']
+                       and math.hypot(o['at'][0] - q[0], o['at'][1] - q[1])
+                       < 1e-3 and o['out'][0] * d[0] + o['out'][1] * d[1]
+                       > 0.999 for o in out):
+                    continue
+                out.append(c)
     return out
 
 
@@ -690,6 +701,16 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
                      part=fp['ref'], port=f"P{tag + k}")
             if gi is not None:
                 c.update(group=gi, via_only=True)
+            # a pad where another part's pad is (footprints on top of each
+            # other, on one net): one port there, both parts joined to it
+            # (run: a junction); two ports at one place had made the piece's
+            # matrix singular (a LimeRFE piece, 2026-11-22)
+            twin = next((o for o in allcuts if o.get('part')
+                         and o['net'] == c['net'] and o['layer'] == lay
+                         and math.hypot(o['at'][0] - me[0],
+                                        o['at'][1] - me[1]) < 1e-3), None)
+            if twin is not None:
+                c['port'] = twin['port']
             allcuts.append(c)
     joined = {c['part'] for c in allcuts if c.get('part')}
     out = []
@@ -737,10 +758,10 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
         where it has no ports (slivers of a via's ring)."""
         mine = [c for c in allcuts if c['layer'] == lay
                 and c['net'] in gnets and not c.get('via_only')]
-        ports = [(c.get('port', f"P{1000 + c['k']}"),
-                  _fp(f"cutL{c['k']}", c['at'], c['out'], lay,
-                      c.get('nudge', NUDGE)))
-                 for c in mine]
+        ports = _unique([(c.get('port', f"P{1000 + c['k']}"),
+                          _fp(f"cutL{c['k']}", c['at'], c['out'], lay,
+                              c.get('nudge', NUDGE)))
+                         for c in mine])
         fps = [(p.name, _port_fp(p)) for p in ext.values()
                if p.layer == lay and getattr(p, 'net', None) in gnets
                and (p.net not in clip
@@ -847,11 +868,13 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
         circle = g['circle']
         x0, y0, x1, y1 = circle.buffer(GROUND_REACH).bounds
         bx = box(x0, y0, x1, y1)
-        ports = [(c.get('port', f"P{1000 + c['k']}"),
-                  _fp(f"cutV{c['k']}", c['at'], c['out'], c['layer'], 0.0)
-                  if c.get('via_only') else
-                  _fp(f"cutV{c['k']}", c['at'], (-c['out'][0], -c['out'][1]),
-                      c['layer'])) for c in mine]
+        ports = _unique([(c.get('port', f"P{1000 + c['k']}"),
+                          _fp(f"cutV{c['k']}", c['at'], c['out'], c['layer'],
+                              0.0)
+                          if c.get('via_only') else
+                          _fp(f"cutV{c['k']}", c['at'],
+                              (-c['out'][0], -c['out'][1]), c['layer']))
+                         for c in mine])
         # the board's own ports inside its circle (a pad close to the via)
         own = [(p.name, _port_fp(p)) for p in ext.values()
                if p.net in gnets and g['own'][p.net].contains(
@@ -882,6 +905,47 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
                         external=[n for n, _ in own], vias=g['vias']))
     del scale
     return out, allcuts
+
+
+def _unique(ports):
+    """A piece's (name, footprint) ports, each name once (a port two parts'
+    pads share: _joints' twin)."""
+    seen, out = set(), []
+    for n, fp in ports:
+        if n not in seen:
+            seen.add(n)
+            out.append((n, fp))
+    return out
+
+
+def node_block(n, nf):
+    """An ideal n-port junction (a node: equal voltages, the currents summing
+    to zero) at one reference impedance: S = 2/n - I, (nf, n, n)."""
+    S = np.full((n, n), 2.0 / n) - np.eye(n)
+    return np.repeat(S[None].astype(complex), nf, axis=0)
+
+
+def nodes(blocks, pairs, nf, echo=print):
+    """pairs with each port in several of them (two parts' pads at one place,
+    one port: a node) joined to their other sides through an ideal junction
+    (node_block, appended to blocks): every port in one pair at most."""
+    pairs = list(pairs)
+    used = {}
+    for i, pr in enumerate(pairs):
+        for j, x in enumerate(pr):
+            used.setdefault(x, []).append((i, j))
+    for x, at in used.items():
+        if len(at) < 2:
+            continue
+        jn = [f"node{x}:{q}" for q in range(len(at) + 1)]
+        blocks.append((node_block(len(jn), nf), jn))
+        for q, (i, j) in enumerate(at, 1):
+            pr = list(pairs[i])
+            pr[j] = jn[q]
+            pairs[i] = tuple(pr)
+        pairs.append((x, jn[0]))
+        echo(f"segment: {x} joins {len(at)} parts' pads (a junction)")
+    return pairs
 
 
 def _pt(x, y):
@@ -1017,6 +1081,11 @@ def _solve_all(parts, out, band, a, echo):
             res[p['name']] = (*got, time.time() - t)
         except Exception as e:  # (raised again, in order)  # noqa: BLE001
             res[p['name']] = e
+        # its geometry no longer needed (run takes its ports alone): every
+        # piece's board held to the end was most of the 7.6 GB a LimeRFE
+        # run's process took, beside a 27k-unknown piece's 15 (a 24 GB cap)
+        import types
+        p['board'] = types.SimpleNamespace(ports=list(p['board'].ports))
     small = [p for p in parts if _small(p)] if JOBS > 1 else []
     cores = max(1, (os.cpu_count() or 4) // max(JOBS, 1))
     cpu_env = dict(MOM25D_GPU='off', MOM25D_OMP_THREADS=str(cores),
@@ -1466,6 +1535,7 @@ def run(a, echo=print):
         xa, xb = f"cut{k}:a", f"cut{k}:b"
         blocks.append((X, [xa, xb]))
         pairs += [(sides[0], xa), (xb, sides[1])]
+    pairs = nodes(blocks, pairs, len(f0), echo)
     S, names = join(blocks, pairs)
     ext = [n.split(':', 1)[1] for n in names]
     order = sorted(range(len(ext)), key=lambda i: _num(ext[i]))
