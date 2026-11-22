@@ -356,6 +356,14 @@ struct DMat {
 };
 uniform DMat Zd_;
 uniform Mat C_;
+// the double Z by its lower half (half.Half; gpu_ldl.HalfDev, 16-byte numbers)
+struct DHalf {
+    double2* bc[MAXBLK];
+    int n, nb;
+};
+uniform DHalf Hd_;
+uniform float2* hp_;
+uniform int j0_, w_, ld_;
 uniform double2* V_;
 uniform double2* Y_;
 uniform double* dsc_;
@@ -407,10 +415,138 @@ void zgemv(uint3 lid: SV_GroupThreadID, uint3 gid: SV_GroupID)
     }
 }
 
+double2 zmul(double2 z, double2 v)
+{
+    return double2(fma(z.x, v.x, -z.y * v.y), fma(z.x, v.y, z.y * v.x));
+}
+
+// zhalf_rows: Y = the half's stored part times V: y_r = sum_(j >= j0) Z[r, j]
+// v_j for DR rows r of one block (DR divides nb) and DC right-hand sides, a
+// workgroup of 64 (zgemv's)
+[shader("compute")] [numthreads(64, 1, 1)]
+void zhalf_rows(uint3 lid: SV_GroupThreadID, uint3 gid: SV_GroupID)
+{
+    const int t = (int)lid.x, r0 = (int)gid.x * DR, c0 = (int)gid.y * DC;
+    const int n = Hd_.n, nb = Hd_.nb, J = r0 / nb, j0 = J * nb, ld = n - j0;
+    double2 acc[DR][DC];
+    for (int a = 0; a < DR; a++)
+        for (int c = 0; c < DC; c++)
+            acc[a][c] = double2(0.0, 0.0);
+    double2* base = Hd_.bc[J];
+    for (int j = j0 + t; j < n; j += 64) {
+        double2 v[DC];
+        for (int c = 0; c < DC; c++)
+            v[c] = c0 + c < k_ ? V_[(int64_t)(c0 + c) * n + j]
+                               : double2(0.0, 0.0);
+        for (int a = 0; a < DR; a++) {
+            const int r = r0 + a;
+            const double2 z = r < n ? base[(int64_t)(r - j0) * ld + (j - j0)]
+                                    : double2(0.0, 0.0);
+            for (int c = 0; c < DC; c++) {
+                acc[a][c].x = fma(z.x, v[c].x, fma(-z.y, v[c].y, acc[a][c].x));
+                acc[a][c].y = fma(z.x, v[c].y, fma(z.y, v[c].x, acc[a][c].y));
+            }
+        }
+    }
+    for (int a = 0; a < DR; a++)
+        for (int c = 0; c < DC; c++)
+            part[a * DC + c][t] = acc[a][c];
+    GroupMemoryBarrierWithGroupSync();
+    for (int w = 32; w > 0; w >>= 1) {
+        if (t < w)
+            for (int q = 0; q < DR * DC; q++)
+                part[q][t] += part[q][t + w];
+        GroupMemoryBarrierWithGroupSync();
+    }
+    if (t < DR * DC) {
+        const int r = r0 + t / DC, c = c0 + t % DC;
+        if (r < n && c < k_)
+            Y_[(int64_t)c * n + r] = part[t][0];
+    }
+}
+
+// zhalf_cols: the mirror of the stored part below the diagonal blocks, y_r +=
+// sum_(c < j0(r)) Z[c, r] v_c: a thread a row r (the half's reads coalesced
+// across the rows), DC2 right-hand sides, a workgroup 256 rows and at most
+// HCH of the blocks before them (gid.z: which), each block's v_c through
+// shared memory; its sums into P_ (chunk, column, row), zhalf_sum adds them.
+// (A workgroup all its rows' blocks, a triangle of them, was 3x the stored
+// rows' kernel: the last row groups' work alone, on a CU's 4 double FMAs a
+// clock.)
+#define DC2 8
+#define HB 256
+#define HCH 8
+groupshared double2 vs[HB][DC2];
+uniform double2* P_;
+uniform int nch_;
+
+[shader("compute")] [numthreads(256, 1, 1)]
+void zhalf_cols(uint3 lid: SV_GroupThreadID, uint3 gid: SV_GroupID)
+{
+    const int t = (int)lid.x, r0 = (int)gid.x * 256, r = r0 + t;
+    const int cc = (int)gid.y * DC2, ch = (int)gid.z;
+    const int n = Hd_.n, nb = Hd_.nb;
+    const int Jr = min(r, n - 1) / nb;
+    const int Jend = min(min(r0 + 255, n - 1) / nb, (ch + 1) * HCH);
+    double2 acc[DC2];
+    for (int q = 0; q < DC2; q++) acc[q] = double2(0.0, 0.0);
+    for (int Jc = ch * HCH; Jc < Jend; Jc++) {
+        const int j0 = Jc * nb, ld = n - j0, w = min(nb, n - j0);
+        GroupMemoryBarrierWithGroupSync();
+        for (int q = t; q < HB * DC2; q += 256) {
+            const int cl = q % HB, c = q / HB;
+            vs[cl][c] = (cl < w && cc + c < k_)
+                            ? V_[(int64_t)(cc + c) * n + j0 + cl]
+                            : double2(0.0, 0.0);
+        }
+        GroupMemoryBarrierWithGroupSync();
+        if (r < n && Jc < Jr) {
+            double2* col = Hd_.bc[Jc] + (r - j0);
+            for (int c8 = 0; c8 < w; c8 += 8) {
+                double2 z[8];
+                [unroll] for (int u = 0; u < 8; u++)
+                    z[u] = c8 + u < w ? col[(int64_t)(c8 + u) * ld]
+                                      : double2(0.0, 0.0);
+                [unroll] for (int u = 0; u < 8; u++)
+                    for (int q = 0; q < DC2; q++)
+                        acc[q] += zmul(z[u], vs[c8 + u][q]);
+            }
+        }
+    }
+    if (r < n)
+        for (int q = 0; q < DC2; q++)
+            if (cc + q < k_)
+                P_[((int64_t)ch * k_ + cc + q) * n + r] = acc[q];
+}
+
+// Y += the chunks' sums (zhalf_cols's P_), a thread a (row, column)
+[shader("compute")] [numthreads(256, 1, 1)]
+void zhalf_sum(uint3 tid: SV_DispatchThreadID)
+{
+    const int64_t t = (int64_t)tid.x + (int64_t)tid.y * 65535 * 256;
+    if (t >= (int64_t)n_ * k_) return;
+    double2 s = double2(0.0, 0.0);
+    for (int ch = 0; ch < nch_; ch++) s += P_[(int64_t)ch * n_ * k_ + t];
+    Y_[t] += s;
+}
+
+// to_c64_hh: block column J of the LDL^T's half (hp_) from the double half's
+// (Hd_, the same layout), equilibrated by dsc
+uniform int jb_;
+
+[shader("compute")] [numthreads(256, 1, 1)]
+void to_c64_hh(uint3 tid: SV_DispatchThreadID)
+{
+    const int64_t t = (int64_t)tid.x + (int64_t)tid.y * 65535 * 256;
+    if (t >= (int64_t)w_ * ld_) return;
+    const int r = (int)(t % ld_), c = (int)(t / ld_);
+    const double2 z = Hd_.bc[jb_][t];
+    const double s = dsc_[j0_ + c] * dsc_[j0_ + r];
+    hp_[t] = float2((float)(z.x * s), (float)(z.y * s));
+}
+
 // to_c64_half: block column J of the LDL^T's half (hp_, ld ld_ = n - j0_,
 // w_ columns) from Z's rows j0_ .. j0_ + w_, their columns from j0_
-uniform float2* hp_;
-uniform int j0_, w_, ld_;
 
 [shader("compute")] [numthreads(256, 1, 1)]
 void to_c64_half(uint3 tid: SV_DispatchThreadID)
@@ -436,7 +572,19 @@ void to_c64(uint3 tid: SV_DispatchThreadID)
         float2((float)(z.x * s), (float)(z.y * s));
 }
 '''
-DNAMES = ('zgemv', 'to_c64', 'to_c64_half')
+DNAMES = ('zgemv', 'to_c64', 'to_c64_half', 'zhalf_rows', 'zhalf_cols',
+          'zhalf_cols4', 'zhalf_sum', 'to_c64_hh')
+
+
+def _with_cols4(src):
+    """DSOURCE with zhalf_cols again for 4 right-hand sides a thread
+    (zhalf_cols4: at k <= 4 the 8-wide one's double FMAs half wasted)."""
+    a = src.index('[shader("compute")] [numthreads(256, 1, 1)]\nvoid zhalf_cols(')
+    b = src.index('// Y += the chunks\' sums')
+    body = (src[a:b].replace('zhalf_cols(', 'zhalf_cols4(')
+            .replace('DC2', 'DC4').replace('vs[', 'vs4['))
+    return (src[:b] + '#define DC4 4\ngroupshared double2 vs4[HB][DC4];\n'
+            + body + src[b:])
 DR = DC = 4
 
 
@@ -487,6 +635,13 @@ class _Mat:
             be._buffer(8 * self.rows * min(self.per, self.cols - i * self.per))
             for i in range(nbuf)
         ]
+        self._be = be
+
+    def __del__(self):  # (its buffers to the backend's pool: VulkanBackend)
+        try:
+            self._be._recycle(self.bufs)
+        except Exception:  # noqa: BLE001  (interpreter shutdown)
+            pass
 
     def desc(self, r0=0, c0=0):
         b = ([x.device_address for x in self.bufs] + [0] *
@@ -534,7 +689,7 @@ class VulkanBackend:
                 self.dev.link_program([mod], [mod.entry_point(n)]))
             for n in NAMES
         }
-        self.enc, self._tmp, self._hosts = None, {}, {}
+        self.enc, self._tmp, self._hosts, self._pool = None, {}, {}, []
         self.zd, self._dk = None, None
         from .fast import cap_blas_threads
         cap_blas_threads()  # the panels' LAPACK on the fast cores
@@ -542,8 +697,11 @@ class VulkanBackend:
 
     # ---- the interface mom25d.gpu's backends share --------------------------
     def mem_free(self):
+        """The device's free memory, and the pool's buffers (idle: _buffer
+        takes them before it allocates)."""
         f = self.info.free()
-        return float(f) if f is not None else 0.9 * float(self.info.total or 0)
+        f = float(f) if f is not None else 0.9 * float(self.info.total or 0)
+        return f + float(sum(sz for sz, _ in self._pool))
 
     def mem_total(self):
         return self.info.total
@@ -569,16 +727,61 @@ class VulkanBackend:
         self._tmp = {}
 
     # ---- device plumbing ----------------------------------------------------
+    # buffers of at least POOL_MIN bytes go back to the backend's pool when
+    # their matrix goes (_Mat, gpu_ldl.HalfDev): slangpy releases a freed
+    # buffer only later (when an allocation runs short, it seemed), and the
+    # driver's free memory counts it as used till then: after a 24.9k-unknown
+    # solve 7.4 GB of a 16 GB card looked taken, and the next frequency's plan
+    # left the double Z on the host. Each frequency asks for the same sizes:
+    # the pool's are taken first, and mem_free counts them free
+    POOL_MIN = 1 << 24
+
     def _buffer(self, nbytes, data=None):
-        try:
-            b = self.dev.create_buffer(size=max(-(-int(nbytes) // 16) * 16, 16),
-                                       usage=self.usage)
-        except Exception as e:
-            raise MemoryError(
-                f"mom25d: a {nbytes / 1e9:.2f} GB GPU buffer: {e}")
+        need = max(-(-int(nbytes) // 16) * 16, 16)
+        b = self._take(need) if need >= self.POOL_MIN else None
+        if b is None:
+            try:
+                b = self.dev.create_buffer(size=need, usage=self.usage)
+            except Exception as e:
+                if not self._pool:
+                    raise MemoryError(
+                        f"mom25d: a {nbytes / 1e9:.2f} GB GPU buffer: {e}")
+                self._pool = []  # (theirs given back first)
+                import gc
+                gc.collect()
+                try:
+                    b = self.dev.create_buffer(size=need, usage=self.usage)
+                except Exception as e2:
+                    raise MemoryError(
+                        f"mom25d: a {nbytes / 1e9:.2f} GB GPU buffer: {e2}")
         if data is not None:
             b.copy_from_numpy(np.ascontiguousarray(data).view(np.uint8).ravel())
         return b
+
+    def _take(self, need):
+        """A pooled buffer of at least need bytes and not much more (the
+        smallest that fits), or None."""
+        fit = [i for i, (sz, _) in enumerate(self._pool)
+               if need <= sz <= need + max(need // 4, 1 << 24)]
+        if not fit:
+            return None
+        i = min(fit, key=lambda i: self._pool[i][0])
+        return self._pool.pop(i)[1]
+
+    def _recycle(self, bufs):
+        """Buffers given back (their matrix gone) into the pool, the oldest
+        dropped past the device's memory."""
+        for b in bufs:
+            if b.size >= self.POOL_MIN:
+                self._pool.append((int(b.size), b))
+        cap = 0.9 * float(self.info.total or 0)
+        while self._pool and sum(sz for sz, _ in self._pool) > cap:
+            self._pool.pop(0)
+
+    def drop_pool(self):
+        """Give the pool's buffers back to slangpy (for another user of the
+        device)."""
+        self._pool = []
 
     def _work(self, name, nbytes):
         """A work buffer kept across the panels (grown as needed)."""
@@ -854,8 +1057,10 @@ class VulkanBackend:
         """Whether the double-precision kernels compiled (shaderFloat64)."""
         if self._dk is None:
             try:
+                from .gpu_ldl import MAXBLK
                 mod = self.dev.load_module_from_source(
-                    'mom25d_dense', f"#define TABLE {TABLE}\n" + DSOURCE)
+                    'mom25d_dense', f"#define TABLE {TABLE}\n#define MAXBLK "
+                    f"{MAXBLK}\n" + _with_cols4(DSOURCE))
                 for n in DNAMES:
                     self.k[n] = self.dev.create_compute_pipeline(
                         self.dev.link_program([mod], [mod.entry_point(n)]))
@@ -886,6 +1091,14 @@ class VulkanBackend:
         else:
             self._upload(self.zd, np.ascontiguousarray(Z).view(np.complex64))
 
+    def put_dense_half(self, H):
+        """The double Z by its lower half (a host half.Half, complex128) onto
+        the GPU for mul_dense and factor_dense_ldl, until drop_dense: 8 N^2
+        bytes."""
+        from . import gpu_ldl
+        self.drop_dense()
+        self.zd = gpu_ldl.upload(self, H)
+
     def drop_dense(self):
         if self.zd is not None:
             self._submit(wait=True)
@@ -894,31 +1107,70 @@ class VulkanBackend:
     def _zdesc(self):
         return dict(self.zd.desc(), ld=self.zd.cols)
 
-    def mul_dense(self, V):
-        """Z V in double precision on the GPU (Z: put_dense's; V: N x k),
-        SOLVE_RHS columns a submission."""
-        N = self.zd.cols
-        V = np.asarray(V, complex).reshape(N, -1)
-        if V.shape[1] > self.SOLVE_RHS:
-            return np.concatenate([
-                self._mul_dense(V[:, c:c + self.SOLVE_RHS])
-                for c in range(0, V.shape[1], self.SOLVE_RHS)], 1)
-        return self._mul_dense(V)
+    def _zn(self):
+        """put_dense's (or put_dense_half's) Z's unknowns."""
+        return self.zd.n if hasattr(self.zd, 'groups') else self.zd.cols
 
-    def _mul_dense(self, V):
-        N = self.zd.cols
+    def mul_dense(self, V, host=None, share=1.0):
+        """Z V in double precision on the GPU (Z: put_dense's or
+        put_dense_half's; V: N x k), SOLVE_RHS columns a submission. host:
+        a function giving Z X on the host: the last (1 - share) of the
+        columns are its, computed while the GPU runs the rest (both hold Z;
+        with many columns the products are bound by double arithmetic, which
+        an RX 7800 XT has about as much of as 8 P-cores). Returns Y, and the
+        seconds (host's, and the GPU's beyond them) where host is given."""
+        N = self._zn()
+        V = np.asarray(V, complex).reshape(N, -1)
+        k = V.shape[1]
+        kg = k if host is None else int(round(np.clip(share, 0.0, 1.0) * k))
+        hs = [self._mul_start(V[:, c:min(kg, c + self.SOLVE_RHS)], i)
+              for i, c in enumerate(range(0, kg, self.SOLVE_RHS))]
+        t = time.perf_counter()
+        Yh = host(V[:, kg:]) if kg < k else None
+        th = time.perf_counter() - t
+        Yg = [self._mul_finish(h) for h in hs]
+        tw = time.perf_counter() - t - th
+        Y = np.concatenate(Yg + ([np.asarray(Yh, complex)] if Yh is not None
+                                 else []), 1) if k else np.zeros((N, 0), complex)
+        return Y if host is None else (Y, th, tw)
+
+    def _mul_start(self, V, i):
+        """Record and submit Z V (V: N x k <= SOLVE_RHS) through the mapped
+        host buffers of chunk i: (submission, its result's buffer)."""
+        N = self._zn()
         k = V.shape[1]
         n2 = 2 * N * k  # (as float2)
-        hv, hy = self._host('dv', 8 * n2), self._host('dy', 8 * n2)
+        hv, hy = self._host(f'dv{i}', 8 * n2), self._host(f'dy{i}', 8 * n2)
         hv.view(np.complex128, N * k).reshape(k, N)[...] = V.T
         Vd, Yd = self._work('dv', 8 * n2), self._work('dy', 8 * n2)
         self._copy(self._flatdesc(hv.address, n2),
                    self._flatdesc(Vd.device_address, n2), n2, 1)
-        self._run('zgemv', (-(-N // DR), -(-k // DC), 1), Zd_=self._zdesc(),
-                  V_=Vd.device_address, Y_=Yd.device_address, n_=N, k_=k)
+        if hasattr(self.zd, 'groups'):  # (the half: its rows, their mirror)
+            kw = dict(Hd_=self.zd.desc(), V_=Vd.device_address,
+                      Y_=Yd.device_address, n_=N, k_=k)
+            self._run('zhalf_rows', (-(-N // DR), -(-k // DC), 1), **kw)
+            # the mirror in chunks of 8 blocks (every row group's chunks
+            # written, the ones it has none of as zeros), then their sum
+            nblk = -(-N // self.zd.nb)
+            nch = max(1, -(-(nblk - 1) // 8))
+            P = self._work('dp', 16 * nch * N * min(k, self.SOLVE_RHS))
+            w = 4 if k <= 4 else 8
+            self._run('zhalf_cols4' if w == 4 else 'zhalf_cols',
+                      (-(-N // 256), -(-k // w), nch), P_=P.device_address,
+                      nch_=nch, **kw)
+            self._run('zhalf_sum', self._flat(N * k), P_=P.device_address,
+                      nch_=nch, **kw)
+        else:
+            self._run('zgemv', (-(-N // DR), -(-k // DC), 1),
+                      Zd_=self._zdesc(), V_=Vd.device_address,
+                      Y_=Yd.device_address, n_=N, k_=k)
         self._copy(self._flatdesc(Yd.device_address, n2),
                    self._flatdesc(hy.address, n2), n2, 1)
-        self.dev.wait_for_submit(self._submit())
+        return self._submit(), hy, N, k
+
+    def _mul_finish(self, h):
+        sid, hy, N, k = h
+        self.dev.wait_for_submit(sid)
         return hy.view(np.complex128, N * k).reshape(k, N).T.copy()
 
     def factor_dense(self, dsc):
@@ -954,15 +1206,23 @@ class VulkanBackend:
         half made on the GPU (to_c64_half: nothing more uploaded)."""
         from . import gpu_ldl
         self.release()
-        N, t0 = self.zd.cols, time.perf_counter()
+        N, t0 = self._zn(), time.perf_counter()
         gpu_ldl.kernels(self)
         dev = gpu_ldl.HalfDev(self, N, self.nb)
         d = self._buffer(8 * N, np.ascontiguousarray(dsc, np.float64))
+        half = hasattr(self.zd, 'groups')
+        if half and self.zd.nb != self.nb:
+            raise ValueError("the double half's blocks are not the GPU's")
         for J in range(len(dev.j0)):
             w, ld = int(dev.w[J]), int(dev.ld[J])
-            self._run('to_c64_half', self._flat(w * ld), Zd_=self._zdesc(),
-                      dsc_=d.device_address, hp_=dev.at(J),
+            kw = dict(dsc_=d.device_address, hp_=dev.at(J),
                       j0_=int(dev.j0[J]), w_=w, ld_=ld)
+            if half:
+                self._run('to_c64_hh', self._flat(w * ld), Hd_=self.zd.desc(),
+                          jb_=J, **kw)
+            else:
+                self._run('to_c64_half', self._flat(w * ld),
+                          Zd_=self._zdesc(), **kw)
         return gpu_ldl._factor(self, dev, t0)
 
     def solve_ldl(self, F, R):

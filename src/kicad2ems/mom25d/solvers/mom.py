@@ -872,9 +872,10 @@ class MoM25D(Solver):
             pairs = len(near_pairs(sim)[0])
         except Exception:  # (an estimate never stops the run)  # noqa: BLE001
             pairs = 0
+        from kicad2ems.mom25d.sim import _has_verticals
         plan = memory_plan(n, None, device(be), nv=int(sim.Nv),
                            gpu_dense=bool(be is not None and be.dense_ok()),
-                           pairs=pairs)
+                           pairs=pairs, sides=_has_verticals(sim))
         # the CPU LU scales with the cores, a GPU's not
         lu = LU_N3 * REF_CORES / (os.cpu_count() or 1)
         lu = dict(hybrid=LU_GPU_N3).get(plan['path'], lu)

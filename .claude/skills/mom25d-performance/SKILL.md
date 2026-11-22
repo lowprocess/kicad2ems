@@ -74,6 +74,15 @@ Reference (RX 7800 XT, 2026-11-22): 7k 0.108 s, 14k 0.485 s, 20k 1.23 s; solves 
 frequencies on a board. A kernel that works on RADV can hang on NVIDIA's driver: run the Vulkan tests with
 `EMSDEV_VULKAN_DEVICE=1` (the 980 Ti) too after touching the shaders (a pointer formed below its buffer hung it).
 
+## The half (the dense Z by its lower half, the default where it applies)
+
+`policy.HALF` (`MOM25D_HALF=off`): plan.half; the RWG basis without the sides' loops or quads. Compare with
+`tools/mom25d_ldl_compare.py BOARD.json GHZ --what half`. Its GPU products (`mul_dense` on `put_dense_half`'s
+copy) read each number twice: no faster than the whole Z's, half the memory; from `policy.SPLIT_MIN` columns
+`FastOperator._products` splits them with the host. slangpy frees GPU buffers late and the driver's free
+memory counts them used: the backend pools large buffers (`_pool`, counted by `mem_free`) — check
+`b.mem_free()` between solves when a later frequency's plan differs from the first's.
+
 ## Memory
 
 `policy.memory_plan(n, avail, gpu, precision, solver, n_lu, nv, gpu_dense, interp, pairs)` → host/GPU bytes

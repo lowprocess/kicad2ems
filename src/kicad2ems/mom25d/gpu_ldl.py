@@ -356,6 +356,13 @@ class HalfDev:
                 off += int(size[J])
             self.groups.append((a, b, buf))
         self.nbytes = float(size.sum())
+        self._be = be
+
+    def __del__(self):  # (its buffers to the backend's pool)
+        try:
+            self._be._recycle(self.bufs)
+        except Exception:  # noqa: BLE001  (interpreter shutdown)
+            pass
 
     def desc(self):
         return {'bc': list(self.addr) + [0] * (MAXBLK - len(self.addr)),
@@ -392,17 +399,18 @@ def _copy(be, src, lds, dst, ldd, m, n):
 
 
 def upload(be, H, chunk=1 << 28):
-    """H (a host half.Half, complex64) onto the device: HalfDev. Its flat
-    array in pieces of 256 MB through two mapped host buffers, each buffer's
-    block columns contiguous on both sides."""
+    """H (a host half.Half, complex64, or complex128: the double Z's) onto the
+    device: HalfDev. Its flat array in pieces of 256 MB through two mapped
+    host buffers, each buffer's block columns contiguous on both sides."""
     kernels(be)
-    dev = HalfDev(be, H.n, H.nb)
+    k = H.data.itemsize // 8               # (float2s a number)
+    dev = HalfDev(be, H.n, H.nb, itemsize=8 * k)
     data = H.data.view(np.complex64)
     per = chunk // 8
     hs = [be._host(f'hup{i}', chunk) for i in (0, 1)]
     subs, j = [None, None], 0
     for a, b, buf in dev.groups:
-        lo, hi = int(H.off[a]), int(H.off[b])
+        lo, hi = k * int(H.off[a]), k * int(H.off[b])
         base = dev.addr[a]
         for s in range(lo, hi, per):
             e, i = min(hi, s + per), j % 2

@@ -77,8 +77,16 @@ class EmulatedBackend:
     def drop_dense(self):
         self.zd = None
 
-    def mul_dense(self, V):
-        return self.zd @ V
+    def mul_dense(self, V, host=None, share=1.0):
+        from .half import Half
+        if host is not None:  # (the split: the host's columns its)
+            k = V.shape[1]
+            kg = int(round(share * k))
+            Y = np.concatenate([self.mul_dense(V[:, :kg]),
+                                np.asarray(host(V[:, kg:]), complex)], 1)
+            return Y, 1e-3, 0.0
+        return (self.zd.matvec(V) if isinstance(self.zd, Half)
+                else self.zd @ V)
 
     def factor_dense(self, dsc):
         self.factor((dsc[:, None] * self.zd * dsc).astype(np.complex64))
@@ -103,7 +111,16 @@ class EmulatedBackend:
 
     def factor_dense_ldl(self, dsc):
         from .half import Half
+        if isinstance(self.zd, Half):  # (put_dense_half's)
+            from . import _core
+            H = Half(self.zd.n, self.zd.nb, np.complex64, 'empty')
+            _core.half_c64(self.zd.data, np.ascontiguousarray(dsc, float),
+                           H.data, self.zd.nb)
+            return self.factor_ldl(H)
         return self.factor_ldl(Half.pack(self.zd, dsc, nb=self.nb))
+
+    def put_dense_half(self, H):
+        self.zd = H
 
     def solve_ldl(self, F, R):
         from .half import ldl_solve

@@ -74,6 +74,17 @@ GPU_DENSE = os.environ.get('MOM25D_GPU_DENSE', 'on') != 'off'
 # (2026-11-22, the factor alone): 7k 0.108 s against the LU's 0.175, 14k
 # 0.485 / 0.883, 20k 1.23 / 2.29
 LDL = os.environ.get('MOM25D_LDL', 'on') != 'off'
+# the dense double Z kept by its lower half (half.py: 8 N^2 bytes, not 16, and
+# half the traffic of its products) where the factor is the LDL^T and nothing
+# needs whole rows (the RWG basis without the sides' loops or quad cells; the
+# loop/tree basis's transform does): MOM25D_HALF=off keeps it whole
+HALF = os.environ.get('MOM25D_HALF', 'on') != 'off'
+# the refinement's products with the double Z on the GPU split with the host
+# (which holds Z too) from this many columns: with many the products are bound
+# by double arithmetic, an RX 7800 XT's about the same as 8 P-cores' (the
+# double half at 20k, 106 columns: GPU 0.76 s, host 0.80, split 0.46);
+# MOM25D_SPLIT_MIN=0 never splits
+SPLIT_MIN = int(os.environ.get('MOM25D_SPLIT_MIN', 16))
 # host bytes besides the solver's matrices
 SPARE = 0.9e9
 PATHS = {('cpu-c128', True): 'double', ('vulkan-c64', True): 'hybrid',
@@ -89,7 +100,8 @@ class SolvePlan:
     solved on the host (where the GPU's solves failed). keep: LUs kept after
     the solve (a matrix-free one keeps its own alone). loops: the sides'
     verticals as loops (T^T Z T). why: why not the loop/tree basis.
-    gpu_dense: the dense Z on the GPU too, the products there."""
+    gpu_dense: the dense Z on the GPU too, the products there. half: the
+    dense Z by its lower half (half.Half), the factor an LDL^T of it."""
     basis: str = 'rwg'
     rung: str = 'cpu-c128'
     dense: bool = True
@@ -98,6 +110,7 @@ class SolvePlan:
     loops: bool = False
     why: str = ''
     gpu_dense: bool = False
+    half: bool = False
 
     @property
     def path(self):
@@ -126,7 +139,8 @@ def dense_bytes(n, nq):
 
 def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
            solver='direct', reuse=True, history=None, held=None, kh2=1.0,
-           loop_tree='auto', lt_block='', sides=False, gpu_dense=False):
+           loop_tree='auto', lt_block='', sides=False, gpu_dense=False,
+           half=True):
     """The SolvePlan at f. n: unknowns, nq: in the LU (fewer with quads), nt:
     triangles. avail: host bytes free. gpu: None, or (free bytes, need:
     unknowns -> a factor's bytes, optionally a kept factor's bytes: device()).
@@ -136,7 +150,8 @@ def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
     (host, GPU) bytes of the LUs kept, theirs to give back}. kh2: (k h)^2 at
     f. loop_tree: 'auto', 'on', 'off'. lt_block: why the loop/tree basis
     cannot be used (quads, holes). sides: the sides of thick copper have
-    verticals. gpu_dense: the GPU can hold the double Z (GPU_DENSE)."""
+    verticals. gpu_dense: the GPU can hold the double Z (GPU_DENSE). half:
+    the half may be taken (False: the operator gave it up, fast.py)."""
     nq, history = nq or n, history or {}
     basis, why = 'rwg', ''
     if loop_tree == 'on' or (loop_tree == 'auto' and kh2 < LOOP_TREE_BELOW):
@@ -156,18 +171,22 @@ def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
     if precision == 'double' or near('cpu-c64'):
         loops = sides and not lt and precision == 'mixed'
         return SolvePlan(basis, 'cpu-c128', loops=loops, why=why)
-    host = 24.0 * n * n if lt else dense_bytes(n, nq)
+    # the half: the double Z's 8 n^2 and the factor's complex64 4 n^2
+    half = half and HALF and LDL and not lt and nq == n and not sides
+    host = (24.0 * n * n if lt else 12.0 * n * n if half
+            else dense_bytes(n, nq))
     hybrid = fits and (lt or (host + SPARE <= 0.8 * avail
                               and nq <= HYBRID_MAX_N))
-    zd = 16.0 * m * m if hybrid and gpu_dense and GPU_DENSE else 0.0
+    zd = ((8.0 if half else 16.0) * m * m
+          if hybrid and gpu_dense and GPU_DENSE else 0.0)
     if hybrid:
         # (a kept factor's bytes: gpu[2], the backend's; an LU's 8 m^2)
         per = gpu[2](m) if len(gpu) > 2 else 8.0 * m * m
         room = (0.9 * gpu[0] - 0.4e9 - zd) // per
         if room < 2 and zd:  # the LUs kept rather than Z
             zd, room = 0.0, (0.9 * gpu[0] - 0.4e9) // per
-    elif not fits:
-        room = (0.8 * avail - host - SPARE) // (8.0 * m * m)
+    elif not fits:   # (a host factor: the LDL^T's 4 m^2 with the half)
+        room = (0.8 * avail - host - SPARE) // ((4.0 if half else 8.0) * m * m)
     else:  # the GPU's LU, the refinement matrix-free
         room = 0
     keep = int(min(REUSE_KEEP, max(room, 0))) if reuse else 0
@@ -175,11 +194,13 @@ def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
     rung = 'vulkan-c64' if fits and (hybrid or not dense) else 'cpu-c64'
     gf = rung == 'vulkan-c64' and near('vulkan-c64')
     return SolvePlan(basis, 'cpu-c64' if gf else rung, dense, gf, keep,
-                     sides and not lt and dense, why, gpu_dense=bool(zd))
+                     sides and not lt and dense, why, gpu_dense=bool(zd),
+                     half=half and dense)
 
 
 def memory_plan(n, avail=None, gpu=None, precision='auto', solver='auto',
-                n_lu=None, nv=0, gpu_dense=True, interp=True, pairs=0):
+                n_lu=None, nv=0, gpu_dense=True, interp=True, pairs=0,
+                sides=False):
     """How the solver of n unknowns runs and the memory it needs: dict(solver,
     precision, path, host, gpu, fits) (bytes). gpu: None or (free bytes, need:
     unknowns -> an LU's bytes), the backend's own estimate (device()). path:
@@ -194,7 +215,8 @@ def memory_plan(n, avail=None, gpu=None, precision='auto', solver='auto',
     kernels; GPU_DENSE), the host's the via blocks kept for the sweep's
     interpolation (nv via unknowns, interp: on; blocks.Anchors: up to a double
     Z, or ANCHOR_ROOM) and the near field's (pairs: near triangle pairs;
-    near_bytes)."""
+    near_bytes). sides: the sides of thick copper have verticals (their
+    loops keep Z whole: no half)."""
     if avail is None:
         from kicad2ems.emsdev.memory import available
         avail = available()
@@ -208,12 +230,14 @@ def memory_plan(n, avail=None, gpu=None, precision='auto', solver='auto',
         precision = ('mixed' if m > (GPU_MIN_N if fits_gpu else MIXED_MIN_N)
                      or 18.0 * n * n + SPARE > 0.5 * avail else 'double')
     plan = choose(np.inf, n, m, avail=avail, gpu=gpu, precision=precision,
-                  loop_tree='off', gpu_dense=gpu_dense)
+                  loop_tree='off', gpu_dense=gpu_dense, sides=sides)
     p = plan.path
-    host = {'double': 18.0, 'hybrid': 24.0}.get(p, 10.0) * n * n + SPARE
+    host = ((12.0 + 4.0 * (plan.keep if p == 'cpu-mixed' else 0)) * n * n
+            if plan.half else
+            {'double': 18.0, 'hybrid': 24.0}.get(p, 10.0) * n * n) + SPARE
     host += anchor_bytes(n, nv) if interp else 0.0
     dev = gpu[1](m) if p in ('hybrid', 'gpu-lu') else 0.0
-    dev += 16.0 * m * m if plan.gpu_dense else 0.0
+    dev += (8.0 if plan.half else 16.0) * m * m if plan.gpu_dense else 0.0
     fits = host <= 0.8 * avail
     if solver == 'auto':
         # (quad cells: the direct solver's alone)

@@ -3,6 +3,8 @@
 //   fill_far      : centroid-rule (far-field) entries for all edge pairs,
 //                   added to a dense Z (complex128 or complex64),
 //                   triangle-parallel, a kernel row a triangle
+//   fill_far_half : the same into half.Half's layout (each row from its
+//                   block's start)
 //   fold_far      : far_block of every row with some columns, a triangle at
 //                   a time (mom25d.sides' folds)
 //   far_block     : the same for arbitrary row / column edge lists (ACA
@@ -35,7 +37,8 @@
 //                   (the GPU LU's input)
 //   pack_half     : D Z D into half.Half's complex64 layout (the GPU
 //                   LDL^T's input)
-//   compact_half  : a complex64 Z into that layout in place
+//   compact_half  : a complex64 Z into that layout in place; half_c64: a
+//                   complex128 half equilibrated as a complex64 one
 //   ldl_diag      : a diagonal block's L D L^T without pivoting and L^-1
 //                   (the GPU LDL^T's host part, gpu_ldl.py)
 //   blend         : s (F0 + sum c[k] D[k]), one pass (blocks.py)
@@ -258,6 +261,78 @@ void fill_far_t(py::array_t<T> Z, py::dict geom, py::dict tabs, double w) {
                     for (int n = 0; n < Ne; ++n) {
                         const cd v = wx * Rx[n] + wy * Ry[n] - q * Rq[n];
                         row[n] += T(cd(-v.imag(), v.real()));
+                    }
+                    lock[m].store(0, std::memory_order_release);
+                }
+            }
+        }
+    }
+}
+
+// fill_far into half.Half's layout (Zh: its flat complex128 array; rowptr,
+// c0: Half.rows()): the same triangle rows, each edge's row from its block's
+// start on (half the writes; the kernels as many)
+void fill_far_half(py::array_t<cd> Zh, arr<i64> rowptr, arr<i64> c0,
+                   py::dict geom, py::dict tabs, double w) {
+    MeshHold mh(geom); TabHold th(tabs);
+    const Mesh &g = mh.m; const Tables &tb = th.t;
+    cd *z = Zh.mutable_data();
+    const i64 *rp = rowptr.data(), *cz = c0.data();
+    const int Ne = g.Ne, Nt = g.Nt;
+    if (rowptr.shape(0) < Ne || c0.shape(0) < Ne)
+        throw std::invalid_argument("fill_far_half: rowptr, c0 per row");
+    std::vector<double> ha(2 * (size_t)Ne), hx(2 * (size_t)Ne),
+        hy(2 * (size_t)Ne);
+    for (int n = 0; n < Ne; ++n) {
+        const int p0 = g.ep[n], p1 = g.em[n];
+        ha[2 * n] = g.ap[n] * g.area[p0];
+        ha[2 * n + 1] = g.am[n] * g.area[p1];
+        hx[2 * n] = g.cent[2 * p0] - g.vp[2 * n];
+        hy[2 * n] = g.cent[2 * p0 + 1] - g.vp[2 * n + 1];
+        hx[2 * n + 1] = g.cent[2 * p1] - g.vm[2 * n];
+        hy[2 * n + 1] = g.cent[2 * p1 + 1] - g.vm[2 * n + 1];
+    }
+    std::unique_ptr<std::atomic<char>[]> lock(new std::atomic<char>[Ne]());
+    {
+        py::gil_scoped_release nogil;
+#pragma omp parallel
+        {
+            std::vector<cd> GA(Nt), GQ(Nt), Rx(Ne), Ry(Ne), Rq(Ne);
+#pragma omp for schedule(dynamic, 8)
+            for (int p = 0; p < Nt; ++p) {
+                // the lowest column this triangle's rows keep
+                i64 lo = Ne;
+                for (int s = 0; s < 3; ++s) {
+                    const int m = g.te[3 * p + s];
+                    if (m >= 0) lo = std::min(lo, cz[m]);
+                }
+                if (lo >= Ne) continue;
+                for (int q = 0; q < Nt; ++q)
+                    tb.kern(g.lt[p], g.lt[q], dist(g.cent, p, q), GA[q],
+                            GQ[q]);
+                for (int n = (int)lo; n < Ne; ++n) {
+                    const int p0 = g.ep[n], p1 = g.em[n];
+                    const cd a0 = ha[2 * n] * GA[p0],
+                             a1 = ha[2 * n + 1] * GA[p1];
+                    Rx[n] = hx[2 * n] * a0 + hx[2 * n + 1] * a1;
+                    Ry[n] = hy[2 * n] * a0 + hy[2 * n + 1] * a1;
+                    Rq[n] = ha[2 * n] * GQ[p0] + ha[2 * n + 1] * GQ[p1];
+                }
+                for (int s = 0; s < 3; ++s) {
+                    const int m = g.te[3 * p + s];
+                    if (m < 0) continue;
+                    const double a = g.ta[3 * p + s] * g.area[p],
+                                 wx = w * a * (g.cent[2 * p] -
+                                               g.tv[6 * p + 2 * s]),
+                                 wy = w * a * (g.cent[2 * p + 1] -
+                                               g.tv[6 * p + 2 * s + 1]),
+                                 q = 4.0 * a / w;
+                    const i64 cm = cz[m];
+                    cd *row = z + rp[m];           // (column cm first)
+                    while (lock[m].exchange(1, std::memory_order_acquire)) {}
+                    for (int n = (int)cm; n < Ne; ++n) {
+                        const cd v = wx * Rx[n] + wy * Ry[n] - q * Rq[n];
+                        row[n - cm] += cd(-v.imag(), v.real());
                     }
                     lock[m].store(0, std::memory_order_release);
                 }
@@ -629,6 +704,9 @@ py::tuple offplane_pairs(arr<double> nodes, arr<int> tris, arr<double> P6,
 // -----------------------------------------------------------------------------
 struct NearOut { int mode; void *Z; size_t ld; bool single; const cd *x; cd *y;
                  int *ri, *ci; cd *vv; cd *qcorr;
+                 // mode 0 into half.Half's layout (rowptr non-null): row m's
+                 // column n >= c0[m] at rowptr[m] + n - c0[m]
+                 const i64 *rowptr = nullptr, *c0 = nullptr;
                  // stat: the analytic parts' geometry, 2 x 6 a pair (NEAR_STAT)
                  double *stat; bool stat_ready; };
 
@@ -736,6 +814,15 @@ void near_core(const Mesh &g, const Tables &tb, const double *nodes,
             Msy -= ga * cqy;
             Mrr -= ga * (cpx * cqx + cpy * cqy); Mq -= gq;
         }
+        // a triangle with itself: the observation and source moments one
+        // (the rule over p for the one, the analytic integral for the other:
+        // ~1e-5 apart, all of Z's asymmetry; the Galerkin entry is
+        // symmetric, and half.Half keeps one of the two)
+        if (p == q) {
+            const cd ax = 0.5 * (Mox + Msx), ay = 0.5 * (Moy + Msy);
+            Mox = Msx = ax;
+            Moy = Msy = ay;
+        }
         if (o.qcorr) o.qcorr[i] = Mq;
         // the charge moments alone (near_q)
         if (o.mode == 3) continue;
@@ -755,7 +842,11 @@ void near_core(const Mesh &g, const Tables &tb, const double *nodes,
                            (vx * wx + vy * wy) * M0;
                 cd val = am_ * an * (jw * Acomb + 4.0 * Mq * inv_jw);
                 if (o.mode == 0) {
-                    if (o.single)
+                    if (o.rowptr) {
+                        if (en >= o.c0[em_])
+                            atomic_add((cd *)o.Z + o.rowptr[em_] + en -
+                                           o.c0[em_], val);
+                    } else if (o.single)
                         atomic_add((cf *)o.Z + (size_t)em_ * o.ld + en, val);
                     else atomic_add((cd *)o.Z + (size_t)em_ * o.ld + en, val);
                 } else if (o.mode == 1) {
@@ -806,6 +897,36 @@ py::array_t<cd> near_into_dense(py::array Z, py::dict geom, py::dict tabs,
     o.single = (buf.itemsize == 8);
     o.qcorr = qc.mutable_data();
     near_stat(quad, (int)P.shape(0), o);
+    {
+        py::gil_scoped_release nogil;
+        near_core(mh.m, th.t, nodes.data(), tris.data(), P3.data(), W3.data(),
+                  P6.data(), W6.data(), P.data(), Q.data(), n, w, o);
+    }
+    return qc;
+}
+
+// mode 0 into half.Half's layout (Zh: its flat complex128 array; rowptr, c0:
+// Half.rows()): the entries a row keeps, each from its own pair (the pairs come
+// in both orders)
+py::array_t<cd> near_into_half(py::array_t<cd> Zh, arr<i64> rowptr,
+                               arr<i64> c0, py::dict geom, py::dict tabs,
+                               py::dict quad, arr<int> P, arr<int> Q,
+                               double w) {
+    MeshHold mh(geom); TabHold th(tabs);
+    arr<double> nodes(quad["nodes"]), P3(quad["P3"]), W3(quad["W3"]),
+        P6(quad["P6"]), W6(quad["W6"]);
+    arr<int> tris(quad["tris"]);
+    const int n = (int)P.shape(0);
+    if (rowptr.shape(0) < mh.m.Ne || c0.shape(0) < mh.m.Ne)
+        throw std::invalid_argument("near_into_half: rowptr, c0 per row");
+    py::array_t<cd> qc(n);
+    NearOut o{};
+    o.mode = 0;
+    o.Z = Zh.mutable_data();
+    o.rowptr = rowptr.data();
+    o.c0 = c0.data();
+    o.qcorr = qc.mutable_data();
+    near_stat(quad, n, o);
     {
         py::gil_scoped_release nogil;
         near_core(mh.m, th.t, nodes.data(), tris.data(), P3.data(), W3.data(),
@@ -2664,6 +2785,35 @@ void pack_half_t(py::array_t<T, py::array::c_style> Z, arr<double> d,
 }
 
 // -----------------------------------------------------------------------------
+// half_c64: a complex128 half (half.Half's flat array, n x n by blocks of nb)
+// times d[i] d[j] as a complex64 half of the same layout, one pass (the
+// factor's input from the half double Z)
+// -----------------------------------------------------------------------------
+void half_c64(arr<cd> H, arr<double> d, py::array_t<cf> out, int nb) {
+    const i64 n = d.shape(0), nblk = (n + nb - 1) / nb;
+    std::vector<i64> off(nblk + 1, 0);
+    for (i64 J = 0; J < nblk; ++J)
+        off[J + 1] = off[J] + std::min<i64>(nb, n - J * nb) * (n - J * nb);
+    if (H.size() != off[nblk] || out.size() != off[nblk])
+        throw std::invalid_argument("half_c64: not the half's size");
+    const cd *h = H.data();
+    const double *dd = d.data();
+    cf *o = out.mutable_data();
+    py::gil_scoped_release nogil;
+#pragma omp parallel for schedule(static)
+    for (i64 r = 0; r < n; ++r) {
+        const i64 J = r / nb, j0 = J * nb, ld = n - j0;
+        const i64 a = off[J] + (r - j0) * ld;
+        const double dr = dd[r];
+        for (i64 c = 0; c < ld; ++c) {
+            const double s = dr * dd[j0 + c];
+            o[a + c] = cf((float)(h[a + c].real() * s),
+                          (float)(h[a + c].imag() * s));
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
 // compact_half: a complex64 Z (n x n, C order) into half.Half's layout in its
 // own memory, from its start: row r's columns from its block's start moved to
 // their place in order (a row's place never past its own start, so nothing is
@@ -2870,6 +3020,8 @@ PYBIND11_MODULE(_core, m) {
     m.def("fill_far", &fill_far_t<cd>, "far-field entries into a complex128 Z");
     m.def("fill_far_c64", &fill_far_t<cf>,
           "far-field entries into a complex64 Z");
+    m.def("fill_far_half", &fill_far_half,
+          "far-field entries into half.Half's complex128 layout");
     m.def("far_block", &far_block);
     m.def("fold_far", &fold_far);
     m.def("matvec_far", &matvec_far);
@@ -2878,6 +3030,8 @@ PYBIND11_MODULE(_core, m) {
     m.def("offplane_pairs", &offplane_pairs);
     m.def("near_into_dense", &near_into_dense);
     m.def("near_matvec", &near_matvec);
+    m.def("near_into_half", &near_into_half,
+          "the near correction into half.Half's layout");
     m.def("near_coo", &near_coo);
     m.def("near_q", &near_q, "the near pairs' G_q moment corrections alone");
     m.def("tree_cols", &tree_cols,
@@ -2929,6 +3083,8 @@ PYBIND11_MODULE(_core, m) {
           "Z equilibrated into half.Half's complex64 layout");
     m.def("pack_half", &pack_half_t<cf>,
           "Z equilibrated into half.Half's complex64 layout");
+    m.def("half_c64", &half_c64,
+          "a complex128 half equilibrated as a complex64 half");
     m.def("compact_half", &compact_half,
           "a complex64 Z into half.Half's layout in its own memory");
     m.def("ldl_diag", &ldl_diag,

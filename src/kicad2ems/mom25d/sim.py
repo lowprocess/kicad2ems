@@ -747,7 +747,8 @@ class Simulation:
                            gpu_dense=bool(be is not None
                                           and getattr(be, 'dense_ok',
                                                       lambda: False)()),
-                           interp=getattr(self, 'interp', 'auto') != 'off')
+                           interp=getattr(self, 'interp', 'auto') != 'off',
+                           sides=_has_verticals(self))
         self.plan, self.precision, precision = (plan, plan['precision'],
                                                 plan['precision'])
         if solver in ('auto', 'direct'):
@@ -1531,3 +1532,10 @@ def coupled_stripline_cohn(w, s, b, er):
     ke = np.tanh(a) * np.tanh(c); ko = np.tanh(a) / np.tanh(c)
     Z = lambda k: 30 * np.pi / np.sqrt(er) * ellipk(1 - k ** 2) / ellipk(k ** 2)
     return Z(ke), Z(ko)
+
+
+def _has_verticals(sim):
+    """Whether sim's sides of thick copper have verticals (their loops keep the
+    dense Z whole: policy.memory_plan's sides)."""
+    sd = getattr(sim, 'sides', None)
+    return sd is not None and len(getattr(sd, 'vert', ())) > 0

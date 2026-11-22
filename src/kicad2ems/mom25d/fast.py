@@ -34,6 +34,7 @@ from .dense import (_row_blocks, _equilibrate, _border, _loop_transform, _c64,
 from .near import (NEAR_CHUNK, NEAR_KEPT, NEAR_PAIRS, NEAR_PIECE,  # noqa: F401
                    _near_csr, near_pairs, near_sparse)
 from .tiles import Cluster, cluster_tiles, _CompiledBLR  # noqa: F401
+from .half import Half, NB as HALF_NB, ldl_factor, ldl_solve, ldl_mul
 
 
 # bytes the via blocks kept over a sweep may take on a small board (a large
@@ -476,7 +477,9 @@ class FastOperator:
         t0 = time.time()
         Z, B, up, A = (self._lt_system(f, E, Sx) if plan.basis == 'loop/tree'
                        else self._rwg_system(f, E, Sx, plan))
-        dsc = 1.0 / np.sqrt(np.abs(np.diagonal(Z)).astype(float) + 1e-300)
+        half = isinstance(Z, Half)
+        dsc = 1.0 / np.sqrt(np.abs(Z.diagonal() if half else np.diagonal(Z))
+                            .astype(float) + 1e-300)
         d = dsc[:, None]
         B = d * B
         if plan.rung == 'cpu-c128':
@@ -494,8 +497,14 @@ class FastOperator:
                 # the double Z as filled, equilibrated in its products and in
                 # its complex64 copy (_c64): scaled in place it was two passes
                 # over it, 0.19 s of a 3.5 s solve at 12.3k unknowns
-                A = ((lambda V: d * G.mul_dense(d * V)) if G is not None else
-                     (lambda V: d * (box[0] @ (d * V))))
+                host = (box[0].matvec if half else
+                        (lambda X, Z=box[0]: Z @ X))
+                prod = ((lambda X: self._products(G, host, X))
+                        if G is not None else host)
+                Sa = self._Sa if half else None
+                # (with the sparse extras' antisymmetric rest, the half's)
+                A = ((lambda V: d * prod(d * V)) if Sa is None else
+                     (lambda V: d * (lambda X: prod(X) + Sa @ X)(d * V)))
                 k = st.nearest(f, plan.loops, gpu=not plan.gpu_factor)
                 if k is not None:
                     # Z^-1 ~ D0 Z0s^-1 D0: Zs^-1 ~ (D0 / D) Z0s^-1 (D0 / D)
@@ -518,6 +527,27 @@ class FastOperator:
             return self.solve(f, E)
         return up(dsc[:, None] * Y)
 
+    def _products(self, G, host, X):
+        """Z X with the GPU's copy of Z (G.mul_dense), its last columns the
+        host's at once from policy.SPLIT_MIN columns, the GPU's share
+        (self._share) moved towards the two rates measured."""
+        from . import policy
+        X = np.asarray(X)
+        k = X.shape[1] if X.ndim == 2 else 1
+        if X.ndim == 1 or not policy.SPLIT_MIN or k < policy.SPLIT_MIN:
+            return G.mul_dense(X)
+        sh = getattr(self, '_share', 0.6)
+        Y, th, tw = G.mul_dense(X, host=host, share=sh)
+        kg = int(round(sh * k))
+        kh = k - kg
+        if kg and kh and th > 0:
+            # (the GPU finished within the host's time: at least that fast)
+            tg = th + tw if tw > 2e-3 else 0.8 * th
+            rg, rh = kg / tg, kh / th
+            self._share = float(np.clip(0.5 * sh + 0.5 * rg / (rg + rh),
+                                        0.2, 0.9))
+        return Y
+
     def _put_dense(self, plan, Z):
         """The backend holding a copy of the double Z for the refinement's
         products (plan.gpu_dense; the GPU's LU made from it), or None: the
@@ -531,7 +561,8 @@ class FastOperator:
         # the driver spilled it to the host, where a 158-port product ran
         # 0.6 s -> 2 s -> past the driver's 10 s watchdog (a Thor carrier's
         # layer piece: VK_ERROR_DEVICE_LOST)
-        need = 16.0 * len(Z) ** 2 + 0.4e9
+        half = isinstance(Z, Half)
+        need = (Z.nbytes if half else 16.0 * len(Z) ** 2) + 0.4e9
         gpu.drop_dense()
         while (not gpu_fits(need, gpu.mem_free())
                and any(k.M.on_gpu for k in self.st.kept)):
@@ -542,11 +573,16 @@ class FastOperator:
                        "the GPU: the refinement's products on the host")
             return None
         try:
-            with self.sim.log.timer('Z to the GPU', f"N={len(Z)}, double"):
-                zh = getattr(self, '_zh', None)
-                gpu.put_dense(Z, zh if zh is not None and Z.flags.c_contiguous
-                              and Z.ctypes.data == zh.array.ctypes.data
-                              else None)
+            with self.sim.log.timer('Z to the GPU', f"N={len(Z) if not half else Z.n}"
+                                    f", double{', its half' if half else ''}"):
+                if half:
+                    gpu.put_dense_half(Z)
+                else:
+                    zh = getattr(self, '_zh', None)
+                    gpu.put_dense(Z, zh if zh is not None
+                                  and Z.flags.c_contiguous
+                                  and Z.ctypes.data == zh.array.ctypes.data
+                                  else None)
             return gpu
         except Exception as e:  # (out of device memory)
             gpu.drop_dense()
@@ -574,7 +610,8 @@ class FastOperator:
                 'off' if getattr(sim, 'excite', None) is not None
                 else getattr(sim, 'loop_tree', 'auto')),
             lt_block=self._lt_block(), sides=s is not None and len(s.vert) > 0,
-            gpu_dense=gpu is not None and gpu.dense_ok())
+            gpu_dense=gpu is not None and gpu.dense_ok(),
+            half=not getattr(self, '_half_off', False))
         if plan.why:
             self._once('lt', f"loop/tree basis not used at {f / 1e9:.4g} GHz "
                        f"((k h)^2 = {self.kh2(f):.1e}): {plan.why}")
@@ -618,6 +655,8 @@ class FastOperator:
         operator (matrix-free) in Z's basis."""
         sim = self.sim
         Ne, Nv, N, T = sim.Ne, sim.Nv, sim.Ne + sim.Nv, sim.qT
+        if plan.half:
+            return self._rwg_half(f, E, Sx)
         dt = np.complex128 if plan.dense else np.complex64
         with sim.log.timer(
                 'direct fill',
@@ -680,6 +719,34 @@ class FastOperator:
         return Z, down(E), up, (
             lambda V: down(self.matvec_exact(up(V), Sx)))
 
+    def _rwg_half(self, f, E, Sx):
+        """_rwg_system's Z by its lower half (plan.half: half.Half,
+        complex128): the far fill and the near field each row from its block's
+        start (the compiled core's fill_far_half, near_into_half), the vias'
+        border, the sparse extras' symmetric part (their antisymmetric rest,
+        self._Sa, the products'). No quad cells, no sides' loops (policy:
+        they need whole rows)."""
+        sim = self.sim
+        N = sim.Ne + sim.Nv
+        with sim.log.timer(
+                'direct fill', f"N={N}, complex128, its lower half, "
+                f"{self.core.num_threads()} threads"):
+            H = Half(N, HALF_NB, complex)
+            rp, c0 = H.rows()
+            self.core.fill_far_half(H.data, rp, c0, self.g, self.tb, self.w)
+        with sim.log.timer('near-field correction'):
+            self.dZ_exact = None
+            self._qcorr = self.core.near_into_half(
+                H.data, rp, c0, self.g, self.tb, self.q, self.nP32,
+                self.nQ32, self.w)
+            self._near_kept()
+        self._vias(f)
+        if sim.Nv:
+            H.border(self.B, self.C)
+        self._ready = None
+        self._Sa = H.add_sparse(Sx) if Sx.nnz else None
+        return H, np.asarray(E), (lambda X: X), None
+
     def _updown(self):
         """(up, down): currents from the quad cells' to the edges', and the
         excitation from the edges' to the cells' (T, T^T; or none)."""
@@ -701,6 +768,8 @@ class FastOperator:
         raises), downloaded for gpu_factor; there an LDL^T (_ldl) where it
         factors without pivoting, else an LU. None: a matrix-free plan's Z
         compacted for an LDL^T that then failed (the frequency again)."""
+        if isinstance(Z, Half):
+            return self._factor_half(plan, Z, dsc)
         sim, n = self.sim, len(Z)
         c64 = lambda: Z if Z.dtype == np.complex64 else _c64(Z, dsc)
         if plan.on_gpu:
@@ -716,7 +785,6 @@ class FastOperator:
                         if gpu.zd is not None:  # (_put_dense's: Z there)
                             F = gpu.factor_dense_ldl(dsc)
                         else:
-                            from .half import Half
                             if Z.dtype == np.complex64 and not plan.dense:
                                 # the matrix-free plan's Z (equilibrated, not
                                 # needed after) into the half in its own
@@ -762,6 +830,74 @@ class FastOperator:
                     gpu.release()
         with sim.log.timer('LU factor', f"N={n}, complex64"):
             return HostLU(_lu(c64()))
+
+    def _factor_half(self, plan, H, dsc):
+        """_factor of the half double Z (plan.half): its complex64 half's
+        LDL^T, on the GPU where the plan asks (from the GPU's copy of the
+        half where _put_dense made one), else the host's (half.ldl_factor);
+        where the LDL^T has no factor or failed near this frequency, the LU
+        of its whole complex64 copy (8 N^2 bytes more, for that solve)."""
+        sim, n = self.sim, H.n
+
+        def c64():
+            Hc = Half(n, H.nb, np.complex64, 'empty')
+            self.core.half_c64(H.data, np.ascontiguousarray(dsc, float),
+                               Hc.data, H.nb)
+            return Hc
+        ok = self.f > RETRY * self.history.get((plan.basis, 'ldl'), 0.0)
+        gpu = self._backend() if plan.on_gpu else None
+        if gpu is not None:
+            if ok and hasattr(gpu, 'factor_ldl'):
+                while (not gpu.fits_ldl(n)
+                       and any(k.M.on_gpu for k in self.st.kept)):
+                    self.st.drop(gpu=True)
+                    gpu.release()
+                with sim.log.timer('LDL^T factor (GPU)', f"N={n}, {gpu.name}"):
+                    try:
+                        F = (gpu.factor_dense_ldl(dsc) if gpu.zd is not None
+                             else gpu.factor_ldl(c64()))
+                        M = GpuLDL(gpu, F)
+                        return M.to_host() if plan.gpu_factor else M
+                    except (ZeroDivisionError, FloatingPointError) as e:
+                        self._failed(plan.basis, 'ldl', self.f)
+                        sim.log.note(
+                            f"the GPU's LDL^T has no factor without pivoting "
+                            f"at {self.f / 1e9:.4g} GHz ({e}): the LU up to "
+                            f"{RETRY * self.f / 1e9:.4g} GHz")
+                    except Exception as e:  # driver, device memory
+                        self._failed(plan.basis, 'ldl', np.inf)
+                        sim.log.note(f"the GPU's LDL^T failed ({type(e).__name__}"
+                                     f": {e}) - its LU from here")
+                    finally:
+                        gpu.release()
+            while (not gpu.fits(n)
+                   and any(k.M.on_gpu for k in self.st.kept)):
+                self.st.drop(gpu=True)
+                gpu.release()
+            with sim.log.timer('LU factor (GPU)', f"N={n}, {gpu.name}, the "
+                               "half's whole copy"):
+                try:
+                    gpu.factor(c64().to_full())
+                    M = GpuLU(gpu, n)
+                    return M.to_host() if plan.gpu_factor else M
+                except Exception as e:
+                    sim.log.note(f"GPU LU failed ({type(e).__name__}: {e}) - "
+                                 "factoring on the CPU")
+                finally:
+                    gpu.release()
+        elif ok:
+            with sim.log.timer('LDL^T factor', f"N={n}, complex64"):
+                try:
+                    return HostLDL(ldl_factor(c64()))
+                except (ZeroDivisionError, FloatingPointError) as e:
+                    self._failed(plan.basis, 'ldl', self.f)
+                    sim.log.note(
+                        f"the LDL^T has no factor without pivoting at "
+                        f"{self.f / 1e9:.4g} GHz ({e}): the LU up to "
+                        f"{RETRY * self.f / 1e9:.4g} GHz")
+        with sim.log.timer('LU factor', f"N={n}, complex64, the half's whole "
+                           "copy"):
+            return HostLU(_lu(c64().to_full()))
 
     def _ladder(self, f, plan, box, A, B, dsc, t0):
         """A fresh complex64 LU of box's Z (equilibrated; a matrix-free
@@ -830,6 +966,37 @@ class FastOperator:
         if not box:
             return None
         Z, M = box.pop(), None  # (M's memory: the double LU's)
+        if isinstance(Z, Half):
+            # the half's own LDL^T in double, in place; where that has no
+            # factor, the frequency again (its plan the double LU's now)
+            Z.scale(dsc)
+            with sim.log.timer('LDL^T factor', f"N={len(dsc)}, complex128"):
+                try:
+                    F = ldl_factor(Z)
+                except (ZeroDivisionError, FloatingPointError) as e:
+                    sim.log.note(f"the double LDL^T has no factor ({e}): the "
+                                 "frequency again, its Z whole")
+                    return None
+            Sa = self._Sa
+            if Sa is None:
+                return ldl_solve(F, B)
+            # the extras' antisymmetric rest is not in the half: GMRES on the
+            # factor's own products (Z is the factor now) and the rest's,
+            # the factor preconditioning
+            d = dsc[:, None]
+            with sim.log.timer('refinement (GMRES, the double factor)'):
+                Y, ok, rel = self._refine(
+                    lambda V: ldl_mul(F, V) + d * (Sa @ (d * V)), B,
+                    lambda R: ldl_solve(F, R), MIXED_MAX_ITER, 1,
+                    timed=False)
+            if ok:
+                return Y
+            # the rest too large for the half's factors: Z whole from here
+            self._half_off = True
+            sim.log.note(f"the sparse extras' antisymmetric part is too large "
+                         f"for the half (residual {rel:.1e} at {f / 1e9:.4g} "
+                         "GHz): Z whole from here, this frequency again")
+            return None
         _equilibrate(Z, dsc)
         with sim.log.timer('LU factor', f"N={len(dsc)}"):
             return _lu_solve(_lu(Z), B)

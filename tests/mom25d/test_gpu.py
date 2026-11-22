@@ -581,3 +581,211 @@ def test_far_field_of_several_excitations_at_once_is_each_ones():
         e1, p1 = far_field(sim, I[:, c], f, th, ph)
         assert np.allclose(Et[c], e1, rtol=1e-12, atol=1e-14 * np.abs(e1).max())
         assert np.allclose(Ep[c], p1, rtol=1e-12, atol=1e-14 * np.abs(p1).max())
+
+
+# ---- the dense double Z by its lower half (policy.HALF, half.py) -----------
+def fills(sim):
+    return [r[2] for r in sim.log.records if r[0] == 'direct fill']
+
+
+@pytest.fixture
+def half(ldl):
+    """ldl, with the dense Z by its lower half where it can be (the
+    default), and the RWG basis at 4 GHz."""
+    from kicad2ems.mom25d import fast, policy
+    ldl.setattr(policy, 'HALF', True)
+    ldl.setattr(policy, 'LOOP_TREE_BELOW', 1e-5)
+    ldl.setattr(fast, 'LOOP_TREE_BELOW', 1e-5)
+    return ldl
+
+
+@pytest.mark.parametrize('gpu,dense', [('off', False), ('emulate', False),
+                                       ('emulate', True)])
+def test_the_half_is_the_whole_zs_answer(half, S_cpu, gpu, dense):
+    """The half (filled by its rows from their blocks' start, the near field
+    and the vias' border into it; its LDL^T, on the GPU or the host; its
+    products, on the GPU's copy with gpu_dense) against the whole Z's LU:
+    S to the refinement's tolerance."""
+    from kicad2ems.mom25d import policy
+    half.setattr(policy, 'GPU_DENSE', dense)
+    sim = make_sim(gpu)
+    p = sim.fast.plan(4e9)
+    assert p.half and p.gpu_dense == dense
+    S = sim.sparams(4e9)
+    assert 'its lower half' in fills(sim)[0]
+    assert np.abs(S - S_cpu).max() < 1e-6
+    moved = [r[2] for r in sim.log.records if r[0] == 'Z to the GPU']
+    assert bool(moved) == dense and (not dense or 'its half' in moved[0])
+    half.setattr(policy, 'HALF', False)
+    whole = make_sim(gpu)
+    assert not whole.fast.plan(4e9).half
+    assert np.abs(whole.sparams(4e9) - S).max() < 1e-6
+
+
+def test_a_half_whose_ldl_does_not_precondition_is_the_lu(half, S_cpu):
+    """The host's LDL^T of the half too weak: the LU of its whole complex64
+    copy, up to RETRY x f; the answer the CPU's."""
+    from kicad2ems.mom25d import fast
+    half.setattr(fast.HostLDL, '__call__',
+                 lambda self, R: np.asarray(R, complex) * 1e-3)
+    sim = make_sim('off')
+    S = sim.sparams(4e9)
+    assert np.abs(S - S_cpu).max() < 1e-6
+    assert sim.fast.history == {('rwg', 'ldl'): 4e9}
+    assert [r[2] for r in lus(sim)] == ["N=1747, complex64, the half's whole "
+                                        "copy"]
+
+
+def test_a_half_whose_factors_do_not_precondition_is_solved_in_double(
+        half, S_cpu):
+    """Neither the LDL^T nor the LU in complex64: the half's own LDL^T in
+    double, in place (no whole Z); the next frequency near it the double
+    LU's, whole."""
+    from kicad2ems.mom25d import fast
+    half.setattr(fast.HostLDL, '__call__',
+                 lambda self, R: np.asarray(R, complex) * 1e-3)
+    half.setattr(fast.HostLU, '__call__',
+                 lambda self, R: np.asarray(R, complex) * 1e-3)
+    sim = make_sim('off')
+    S = sim.sparams(4e9)
+    assert np.abs(S - S_cpu).max() < 1e-6
+    assert any(r[0] == 'LDL^T factor' and 'complex128' in r[2]
+               for r in sim.log.records)
+    assert ('rwg', 'cpu-c64') in sim.fast.history
+    sim.reuse = 'off'
+    assert not sim.fast.plan(4.5e9).half
+
+
+def lossy_edges(clean):
+    """The extras with an asymmetric metal loss: each edge its own surface
+    impedance times the Gram matrix (diag(zs) G: what a finish that differs
+    between two edges of a triangle would give)."""
+    from scipy import sparse
+    from kicad2ems.mom25d import fast
+    from kicad2ems.mom25d.base import gram_matrix
+    real = fast.FastOperator.extra_blocks
+
+    def lossy(self, f):
+        S = real(self, f).tolil()
+        sim = self.sim
+        Ne = sim.Ne
+        zs = (1 + 1j) * np.random.default_rng(0).uniform(0.01, 1.0, Ne)
+        G = sparse.csr_matrix(gram_matrix(sim.rwg))
+        S[:Ne, :Ne] = S[:Ne, :Ne] + sparse.diags(zs) @ G
+        return S.tocsr()
+    clean.setattr(fast.FastOperator, 'extra_blocks', lossy)
+
+
+def test_a_halfs_asymmetric_extras_are_its_products(half):
+    """Sparse extras that are not symmetric: their symmetric part in the
+    half, the rest in its products; the answer the whole Z's."""
+    from kicad2ems.mom25d import policy
+    lossy_edges(half)
+    sim = make_sim('off')
+    S = sim.sparams(4e9)
+    assert sim.fast._Sa is not None and sim.fast.plan(5e9).half
+    assert not any('did not' in n for n in sim.log.notes)
+    half.setattr(policy, 'HALF', False)
+    assert np.abs(make_sim('off').sparams(4e9) - S).max() < 1e-6
+
+
+def test_a_half_that_cannot_hold_its_extras_is_given_up(half):
+    """The double fallback's refinement with the extras' rest failing (here:
+    the factor's products broken, the complex64 factors too weak): the half
+    given up for that operator, the frequency solved whole."""
+    from kicad2ems.mom25d import fast, policy
+    lossy_edges(half)
+    for M in (fast.HostLDL, fast.HostLU):
+        half.setattr(M, '__call__',
+                     lambda self, R: np.asarray(R, complex) * 1e-3)
+    half.setattr(fast, 'ldl_mul', lambda F, V: np.asarray(V) * 0)
+    sim = make_sim('off')
+    S = sim.sparams(4e9)
+    assert sim.fast._half_off and not sim.fast.plan(6e9).half
+    assert any('too large for the half' in n for n in sim.log.notes)
+    half.setattr(policy, 'HALF', False)
+    assert np.abs(make_sim('off').sparams(4e9) - S).max() < 1e-6
+
+
+@vulkan
+@pytest.mark.parametrize('max_buffer', [None, 128 * 1024])
+def test_vulkan_double_half_products_and_factor(clean, max_buffer):
+    """The double Z's half on the GPU: its products (the stored rows', then
+    their mirror's) NumPy's to round-off, over many buffers too; the LDL^T
+    made from it, equilibrated there, the one of the host's complex64
+    half."""
+    from kicad2ems.mom25d import _core, gpu_vk
+    from kicad2ems.mom25d.half import Half
+    clean.setenv('MOM25D_VK_NB', '64')
+    if max_buffer:
+        clean.setattr(gpu_vk, 'MAX_BUFFER', max_buffer)
+    be = gpu_vk.VulkanBackend()
+    if not be.dense_ok():
+        pytest.skip('no shaderFloat64')
+    rng = np.random.default_rng(6)
+    N = 301
+    Z = rng.standard_normal((N, N)) + 1j * rng.standard_normal((N, N))
+    Z = Z + Z.T + 4 * np.sqrt(N) * np.eye(N)
+    H = Half.pack(Z, dtype=complex, nb=be.nb)
+    be.put_dense_half(H)
+    assert not max_buffer or len(be.zd.bufs) > 4
+    for k in (1, 3, 9, 33):
+        V = rng.standard_normal((N, k)) + 1j * rng.standard_normal((N, k))
+        Y = Z @ V
+        assert np.abs(be.mul_dense(V) - Y).max() < 1e-13 * np.abs(Y).max()
+    dsc = 1 / np.sqrt(np.abs(np.diagonal(Z)))
+    G = be.download_ldl(be.factor_dense_ldl(dsc))
+    Hc = Half(N, be.nb, np.complex64, 'empty')
+    _core.half_c64(H.data, dsc, Hc.data, be.nb)
+    R = be.download_ldl(be.factor_ldl(Hc))
+    assert np.abs(G.data - R.data).max() < 1e-6 * np.abs(R.data).max()
+    be.drop_dense()
+    be.release()
+
+
+@pytest.mark.parametrize('half_z', [False, True])
+def test_the_products_split_with_the_host(clean, half_z):
+    """FastOperator._products: from SPLIT_MIN columns the GPU's copy of Z
+    takes the first of them and the host the rest, the share moved by their
+    rates; the product the whole one's."""
+    from kicad2ems.mom25d import policy
+    from kicad2ems.mom25d.half import Half
+    clean.setattr(policy, 'SPLIT_MIN', 4)
+    sim = make_sim('emulate')
+    gpu = mom25d_gpu.get_backend('emulate')
+    rng = np.random.default_rng(1)
+    n = 300
+    Z = rng.standard_normal((n, n)) + 1j * rng.standard_normal((n, n))
+    Z = Z + Z.T
+    H = Half.pack(Z, dtype=complex, nb=64)
+    if half_z:
+        gpu.put_dense_half(H)
+    else:
+        gpu.put_dense(Z)
+    host = H.matvec if half_z else (lambda X: Z @ X)
+    for k in (1, 3, 10, 40):
+        X = rng.standard_normal((n, k)) + 1j * rng.standard_normal((n, k))
+        assert np.abs(sim.fast._products(gpu, host, X) - Z @ X).max() < 1e-10
+    assert 0.2 <= sim.fast._share <= 0.9
+    gpu.drop_dense()
+
+
+@vulkan
+def test_vulkan_products_split_with_the_host(clean):
+    from kicad2ems.mom25d import gpu_vk
+    from kicad2ems.mom25d.half import Half
+    be = gpu_vk.VulkanBackend()
+    if not be.dense_ok():
+        pytest.skip('no shaderFloat64')
+    rng = np.random.default_rng(2)
+    n = 700
+    Z = rng.standard_normal((n, n)) + 1j * rng.standard_normal((n, n))
+    Z = Z + Z.T
+    H = Half.pack(Z, dtype=complex, nb=be.nb)
+    be.put_dense_half(H)
+    X = rng.standard_normal((n, 70)) + 1j * rng.standard_normal((n, 70))
+    for share in (0.0, 0.3, 1.0):
+        Y, th, tw = be.mul_dense(X, host=H.matvec, share=share)
+        assert np.abs(Y - Z @ X).max() < 1e-12 * np.abs(Z @ X).max()
+    be.drop_dense()
+    be.release()

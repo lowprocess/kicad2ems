@@ -28,7 +28,7 @@ preconditions as the LU does on mom25d's boards).
 import numpy as np
 from scipy.linalg import blas, lapack, solve_triangular
 
-__all__ = ['Half', 'ldl_factor', 'ldl_solve', 'ldl_small', 'NB']
+__all__ = ['Half', 'ldl_factor', 'ldl_solve', 'ldl_mul', 'ldl_small', 'NB']
 
 NB = 256   # the GPU's panel width (gpu_vk.NB): one layout for both
 
@@ -132,6 +132,45 @@ class Half:
             Z[a:b, a:] = blk
             Z[b:, a:b] = blk[:, b - a:].T
         return Z
+
+    def diagonal(self):
+        """Z's diagonal (a copy)."""
+        rp, c0 = self.rows()
+        return self.data[rp + np.arange(self.n) - c0].copy()
+
+    def border(self, B, C):
+        """The via (and holes', sides') rows and columns: Z[:Ne, Ne:] = B,
+        Z[Ne:, :Ne] = B^T, Z[Ne:, Ne:] = C, where the half keeps them (B: Ne
+        x Nv, C: Nv x Nv; Ne = n - Nv)."""
+        Ne = self.n - B.shape[1]
+        for J in range(self.nblk):
+            a, b = int(self.j0[J]), int(self.j0[J] + self.w[J])
+            blk = self.block(J)
+            re = min(b, Ne)
+            if a < re:                      # edge rows: their via columns
+                blk[:re - a, Ne - a:] = B[a:re]
+            ra = max(a, Ne)
+            if ra < b:                      # via rows: B^T, then C
+                if a < Ne:
+                    blk[ra - a:, :Ne - a] = B[a:Ne, ra - Ne:b - Ne].T
+                c = max(Ne, a)
+                blk[ra - a:, c - a:] = C[ra - Ne:b - Ne, c - Ne:]
+        return self
+
+    def add_sparse(self, S):
+        """Z += S's symmetric part (S + S^T) / 2 where the half keeps it;
+        returns the rest, (S - S^T) / 2 (sparse; None where S is
+        symmetric): the products' to add (matvec does not)."""
+        from scipy import sparse
+        S = sparse.csr_matrix(S)
+        Sy = ((S + S.T) * 0.5).tocoo()
+        rp, c0 = self.rows()
+        k = Sy.col >= c0[Sy.row]
+        np.add.at(self.data, rp[Sy.row[k]] + Sy.col[k] - c0[Sy.row[k]],
+                  Sy.data[k].astype(self.dtype))
+        Sa = ((S - S.T) * 0.5).tocsr()
+        Sa.eliminate_zeros()
+        return Sa if Sa.nnz and abs(Sa).max() > 0 else None
 
     def scale(self, d, threads=None):
         """In place: entry (i, j) times d[i] d[j]."""
@@ -276,6 +315,34 @@ def ldl_solve(H, B):
         Y[a:a + w] = solve_triangular(P[:w, :w], Y[a:a + w], lower=True,
                                       trans='T', unit_diagonal=True,
                                       check_finite=False)
+    Y = Y.astype(complex)
+    return Y[:, 0] if one else Y
+
+
+def ldl_mul(H, X):
+    """L D L^T X with ldl_factor's H: the factored matrix's products from its
+    factor (the double fallback's, whose Z the factor overwrote), X n or n x
+    k, in the factor's precision, complex128 out."""
+    X = np.asarray(X)
+    one = X.ndim == 1
+    X2 = np.array(X.reshape(H.n, -1), H.dtype)
+    T = np.empty_like(X2)
+    for k in range(H.nblk):                      # T = L^T X
+        a, w = int(H.j0[k]), int(H.w[k])
+        P = H.block(k).T
+        T[a:a + w] = np.tril(P[:w, :w], -1).T @ X2[a:a + w] + X2[a:a + w]
+        if a + w < H.n:
+            T[a:a + w] += P[w:].T @ X2[a + w:]
+    dg = np.concatenate([np.diagonal(H.block(k)[:, :int(H.w[k])])
+                         for k in range(H.nblk)])
+    T *= dg[:, None]
+    Y = np.zeros_like(T)                         # Y = L T
+    for k in range(H.nblk):
+        a, w = int(H.j0[k]), int(H.w[k])
+        P = H.block(k).T
+        Y[a:a + w] += np.tril(P[:w, :w], -1) @ T[a:a + w] + T[a:a + w]
+        if a + w < H.n:
+            Y[a + w:] += P[w:] @ T[a:a + w]
     Y = Y.astype(complex)
     return Y[:, 0] if one else Y
 

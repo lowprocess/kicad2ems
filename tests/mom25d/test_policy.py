@@ -8,6 +8,12 @@ from kicad2ems.mom25d import policy
 from kicad2ems.mom25d.policy import RETRY, choose, memory_plan
 
 GPU = (16e9, lambda n: 8.0 * n * n + 0.4e9)  # a 16 GB card, Vulkan's LU
+
+
+@pytest.fixture(autouse=True)
+def whole_z(monkeypatch):
+    """The tables below are the whole Z's rules (HALF_CASES the half's)."""
+    monkeypatch.setattr(policy, 'HALF', False)
 N = 10000
 LOW = 0.1 * policy.LOOP_TREE_BELOW
 C64, VK = ('rwg', 'cpu-c64'), ('rwg', 'vulkan-c64')
@@ -69,6 +75,56 @@ CASES = [
     (dict(gpu=GPU, gpu_dense=True, avail=4e9), dict(gpu_dense=False)),
     (dict(gpu_dense=True), dict(gpu_dense=False)),  # (no GPU)
 ]
+
+
+# the dense double Z by its lower half (policy.HALF: 12 n^2 bytes on the host
+# with the factor's complex64 copy, a host factor's 4 n^2, the GPU's double
+# half 8 n^2), where nothing needs whole rows
+HALF_CASES = [
+    (dict(), dict(rung='cpu-c64', dense=True, keep=4, half=True)),
+    # room for it where the whole Z had none: two LDL^Ts kept
+    (dict(avail=4e9), dict(dense=True, keep=2, half=True)),
+    (dict(gpu=GPU), dict(rung='vulkan-c64', dense=True, half=True)),
+    (dict(gpu=GPU, n=30000), dict(dense=False, half=False)),  # matrix-free
+    (dict(gpu=GPU, gpu_dense=True, n=22000),
+     dict(gpu_dense=True, keep=2, half=True)),    # (the whole Z's: not there)
+    (dict(sides=True), dict(loops=True, half=False)),
+    (dict(nq=8000), dict(half=False)),            # quad cells
+    (dict(kh2=LOW), dict(basis='loop/tree', half=False)),
+    (dict(precision='double'), dict(rung='cpu-c128', half=False)),
+    (dict(f=1.2e9, history={C64: 1e9}), dict(rung='cpu-c128', half=False)),
+]
+
+
+@pytest.mark.parametrize('kw,want', HALF_CASES)
+def test_choose_the_half(monkeypatch, kw, want):
+    monkeypatch.setattr(policy, 'HALF', True)
+    monkeypatch.setattr(policy, 'LDL', True)
+    kw = dict(dict(f=1e9, n=N, avail=30e9, nt=2 * N), **kw)
+    p = choose(kw.pop('f'), kw.pop('n'), **kw)
+    assert {k: getattr(p, k) for k in want} == want, p
+
+
+def test_the_half_needs_the_ldl(monkeypatch):
+    monkeypatch.setattr(policy, 'HALF', True)
+    monkeypatch.setattr(policy, 'LDL', False)
+    assert not choose(1e9, N, avail=30e9).half
+
+
+def test_memory_plan_of_the_half(monkeypatch):
+    """The half's host bytes (12 n^2 with the factor's copy) and the GPU's
+    double half (8 n^2); with sides (their loops) the whole Z's."""
+    monkeypatch.setattr(policy, 'HALF', True)
+    monkeypatch.setattr(policy, 'LDL', True)
+    n = 20000
+    p = memory_plan(n, avail=30e9, gpu=GPU, precision='mixed',
+                    solver='direct')
+    assert p['path'] == 'hybrid'
+    assert p['host'] == pytest.approx(12.0 * n * n + policy.SPARE)
+    assert p['gpu'] == pytest.approx(GPU[1](n) + 8.0 * n * n)
+    w = memory_plan(n, avail=30e9, gpu=GPU, precision='mixed',
+                    solver='direct', sides=True)
+    assert w['host'] == pytest.approx(24.0 * n * n + policy.SPARE)
 
 
 @pytest.mark.parametrize('kw,want', CASES)

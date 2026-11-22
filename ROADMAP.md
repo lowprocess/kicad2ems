@@ -182,8 +182,16 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    double Z, which (3) halves and puts on the GPU; left in it: one right-hand side's GPU solve 30 % slower than
    the LU's (the diagonal block's product a single workgroup), the policy's host bytes still the LU's 24 N^2
    for the hybrid (20 N^2 with it), a host LDL^T as fast as LAPACK's LU (`half.ldl_factor`, 1.8 s against 1.6
-   at 8k: SciPy's wrappers hold the GIL)); (3) Z stored and filled by its lower
-   half (the loop/tree basis's ~20 GB at 25k is its dense double matrices: half, so ~35k pieces would fit it); (4)
+   at 8k: SciPy's wrappers hold the GIL)); (3) ~~Z stored and filled by its lower
+   half~~ done for the RWG basis (2026-11-22, `half.py`, the default: the In7 group 12.6 / 8.2 s at 5 / 10 GHz in
+   7.7 GB, against 22.1 / 14.6 s and 16.3 GB this morning; with it the products split between the GPU and the
+   host, and the GPU's buffers pooled); left: the loop/tree basis by its half (its transform K^T Z K needs whole
+   rows today: with the tree's rows first it can run on the half, M_tc = Z_tc + Z_tt P row by row and the loops'
+   block from P^T Z_tc and P^T M_tc a column block at a time; its charge matrix Nt x Nt built by blocks into Z,
+   not whole: then ~8 N^2 at 25k for its 24 N^2), the sides' loops on the half (a border transform of their
+   columns), the GPU's half products at one copy of each number (each is read twice today: the half saves
+   memory, not their time); with many ports the double products are what is left of the refinement (a
+   float-float product on the GPU's single precision would be ~2-3x its double); (4)
    the block low-rank solver for pieces past that, with weak admissibility or clusters along the traces tried
    (on long traces and pours its factor is 50-84 % of the dense complex64: little compression). The LimeRFE (1.5-2 h) is set by two pieces of ~27k
    unknowns where several RF paths meet: (b) and (c) are what would bring it to an hour.

@@ -559,6 +559,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **mom25d: the dense double Z by its lower half (2026-11-22; `MOM25D_HALF=off` keeps it whole).** Where the
+  factor is the LDL^T and nothing needs whole rows (the RWG basis without the sides' loops or quad cells), Z is
+  filled straight into `half.Half`'s layout (the compiled core's `fill_far_half`, `near_into_half`; the vias'
+  border and the sparse extras' symmetric part into it, their antisymmetric rest in the products), its products
+  by blocks (`Half.matvec`; on the GPU `zhalf_rows` and `zhalf_cols`, the mirror in chunks of 8 blocks), the
+  factor's complex64 half made from it (`half_c64`, on the GPU `to_c64_hh`); the host's factor the LDL^T too
+  (`half.ldl_factor`), the LU of a whole complex64 copy where it fails, the double fallback the half's own LDL^T
+  in place (refined on the factor's products where the extras have an antisymmetric rest; where that fails the
+  half is given up for the run). 12 N^2 bytes on the host for the LU's 24, 8 N^2 on the GPU for the double Z.
+  **With it:** the refinement's products split between the GPU's copy and the host's from 16 columns
+  (`policy.SPLIT_MIN`: with many ports both are bound by double arithmetic, about equal on an RX 7800 XT and 8
+  P-cores; 25k unknowns, 106 columns: 1.17 s GPU, 1.3 s host, 0.7 s split), and the GPU's large buffers pooled
+  for the next frequency (`VulkanBackend._pool`: slangpy releases a freed buffer late and the driver counts it
+  used till then; after a 24.9k solve 7.4 GB of the 16 GB looked taken and the next plan left Z on the host).
+  The Thor carrier's In7 group (24.9k unknowns, 106 ports): 12.6 / 8.2 s at 5 / 10 GHz, peak 7.7 GB, against
+  14.8 / 10.9 s and 13.9 GB whole with the LDL^T and 22.1 / 14.6 s and 16.3 GB with this morning's LU; S within
+  5.7e-8 of the whole Z's. A LimeRFE piece (11.8k, CPU) 9.0 -> 6.1 s at 6 GHz (3.3e-6). The near pairs of a
+  triangle with itself take one moment for both sides (the rule's and the analytic integral's had been ~1e-5
+  apart, all of Z's asymmetry): Z symmetric to 6e-16, S12 = S21 to 1e-15 on the sides' regression board (its
+  S moved 1.9e-9). Checked: `tests/mom25d` (RX 7800 XT, GTX 980 Ti, GPU off; new: the half's path, fallbacks,
+  extras and GPU kernels), `tools/mom25d_ldl_compare.py --what half`.
 - **mom25d: the GPU's factor is a complex-symmetric LDL^T (2026-11-22; `MOM25D_LDL=off` for the LU).** MoM's Z is
   complex symmetric, so the GPU factors its lower half alone without pivoting (`mom25d/gpu_ldl.py`, the layout
   `mom25d/half.py`: block columns of 256): the CPU factors each 256 x 256 diagonal block in double (the compiled

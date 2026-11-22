@@ -101,3 +101,13 @@ def test_compact_is_pack_in_place(n, nb):
     B = A.copy()
     H = Half.compact(B, nb=nb)
     assert np.shares_memory(H.data, B) and np.array_equal(H.data, ref.data)
+
+
+def test_ldl_mul_is_the_factored_matrixs_product():
+    from kicad2ems.mom25d.half import ldl_mul
+    rng = np.random.default_rng(7)
+    A = sym(300, rng)
+    H = ldl_factor(Half.pack(A, dtype=complex, nb=64))
+    X = rng.standard_normal((300, 3)) + 0j
+    assert np.abs(ldl_mul(H, X) - A @ X).max() < 1e-12 * np.abs(A @ X).max()
+    assert np.abs(ldl_mul(H, X[:, 0]) - A @ X[:, 0]).max() < 1e-10

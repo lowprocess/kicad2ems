@@ -585,17 +585,19 @@ def test_thickness_sides_blocks_regression():
     thru line's S at 1 and 3 GHz to rounding (|dS| 2e-4 when the folds' sheet
     halves moved to the strips' rules, S11 and S22 then 7e-8 apart, 3e-6
     before; 3.1e-4 when the plates became cells, 3.7e-5 with the far pairs'
-    one point)."""
+    one point; 1.9e-9 when a triangle's self pair took one moment for its
+    observation and source sides, 2026-11-22, S12 and S21 since one to
+    1e-15, 4.5e-12 apart before)."""
     from kicad2ems.mom25d.api import solve_board
     ref = np.array([
-        [[-0.023419026931206 - 0.011101619618805j,
-          0.428131744765157 - 0.903341494770705j],
-         [0.428131744760677 - 0.903341494761251j,
-          -0.023419093575523 - 0.011101479000908j]],
-        [[-0.007360752204506 - 0.029354780507208j,
-          -0.969880444941582 + 0.241425036966921j],
-         [-0.969880444850060 + 0.241425036944147j,
-          -0.007364246566856 - 0.029353910714720j]]])
+        [[-0.023419027273286 - 0.011101619788941j,
+          0.428131745011487 - 0.903341494637211j],
+         [0.428131745011486 - 0.903341494637210j,
+          -0.023419093917589 - 0.011101479171072j]],
+        [[-0.007360751726429 - 0.029354778684176j,
+          -0.969880445141955 + 0.241425036202045j],
+         [-0.969880445141973 + 0.241425036202049j,
+          -0.007364246088464 - 0.029353908891770j]]])
     S = solve_board(board('thru'), np.array([1e9, 3e9]), port='via',
                     thickness='sides', coarsen=None, log=quiet).S
     assert np.abs(S - ref).max() < 1e-9
