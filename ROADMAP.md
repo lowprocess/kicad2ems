@@ -144,7 +144,15 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    well. (d) Identical pieces solved once (a geometry hash up to a shift or rotation): set aside for now, the via
    models it would mostly dedupe take a second each and no two layer pieces matched on these boards. (e) The
    second GPU for small pieces (bus-limited for LUs). (f) Terminated ports in the loop/tree basis (their loads are
-   lost in its transform: excite runs use the RWG basis). The LimeRFE (1.5-2 h) is set by two pieces of ~27k
+   lost in its transform: excite runs use the RWG basis). **(b) prepared (2026-11-22):** `mom25d/ldl.py` (a blocked
+   complex-symmetric LDL^T without pivoting, NumPy: the reference) and `tools/mom25d_ldl_trial.py` (a piece's
+   equilibrated matrix at fixed frequencies, captured where the direct solve factors it, factored in complex64 as
+   LU / LAPACK's Bunch-Kaufman / LDL^T and each used as GMRES's preconditioner). On a 2.7k LimeRFE piece: at 0.3 GHz
+   (the loop/tree basis) and 6 GHz both LDL^T and LU converge in 1 and 5 iterations; at 1 GHz (the RWG basis just
+   above the loop/tree's threshold, ill-conditioned) LU takes 48 and both symmetric factors (pivoted too) fail in
+   300: that band would fall back to a double factor. To trial on 10-15k pieces (the band's width), then the GPU
+   kernel: the CPU's panel (its L11 D1 and the panel below), the GPU's trailing update on the lower block columns
+   alone (half the GEMMs), the factor held by block columns (half the memory). The LimeRFE (1.5-2 h) is set by two pieces of ~27k
    unknowns where several RF paths meet: (b) and (c) are what would bring it to an hour.
    **LimeRFE left over:** its KiCad 4 file's nets are out of step with its tracks (84 net pairs touching the RF
    nets overlap): re-deriving the nets from the copper's connectivity would bring back the channels the run

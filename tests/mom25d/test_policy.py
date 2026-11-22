@@ -180,3 +180,17 @@ def test_the_block_low_rank_plan_counts_its_via_blocks_and_says_when_it_does_not
     tight = memory_plan(n, avail=0.9 * a['host'], solver='blr', nv=nv,
                         interp=False)
     assert tight['path'] == 'blr' and not tight['fits']
+
+
+def test_ldl_without_pivoting_solves_a_symmetric_system():
+    """mom25d.ldl: L D L^T of a complex-symmetric, diagonally strong matrix
+    (as an equilibrated MoM matrix is) solves it as LU does, by blocks."""
+    import numpy as np
+    from kicad2ems.mom25d import ldl
+    rng = np.random.default_rng(3)
+    n = 300
+    A = rng.standard_normal((n, n)) + 1j * rng.standard_normal((n, n))
+    A = 0.05 * (A + A.T) + np.diag(1 + 0.3j + rng.standard_normal(n) * 0.1)
+    b = rng.standard_normal((n, 3)) + 0j
+    x = ldl.solve(ldl.factor(A.copy(), nb=64), b)
+    assert np.abs(x - np.linalg.solve(A, b)).max() < 1e-10
