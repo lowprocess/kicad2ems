@@ -280,6 +280,28 @@ taken back); nothing below may fix a panel in place. Left:
 
 ## mom25d: speed (2026-11-19)
 
+**Next, in order (2026-11-22, after the GPU's LDL^T, the dense Z by its half and the block low-rank operator;
+CHANGELOG has their numbers):**
+1. **End-to-end runs of the segment studies with them** (the Thor carrier, the LimeRFE; then LibreVNA and
+   ThunderScope as further large boards): today's numbers are single fresh solves at fixed frequencies; a sweep
+   reuses LDL^T factors and half matrices across frequencies and runs small pieces in parallel.
+2. **The refinement's double products with many ports**, now the largest part of a many-port solve (4-7 s of the
+   In7 group's 8-12 s a frequency): a float-float product on the GPU's single precision (~2-3x its double), and
+   the GPU's half read once a number (each is read twice today: the half saves memory, not time there).
+3. **The sides' loops on the half itself** (thick copper's default `sides`: its peak is 16 N^2 during the
+   transform, 8 N^2 after): a border transform of the verticals' columns.
+4. **The loop/tree basis's transform on the half itself** (16 N^2 -> ~8 N^2 at low frequency, ~40k pieces): the
+   tree's rows first, M_tc = Z_tc + Z_tt P row by row, the loops' block from P^T Z_tc (before) and P^T M_tc
+   (after) a column block at a time, in increasing block order.
+5. **The block low-rank solver, the rest:** its operator on a pour (71 % of dense complex128 at 1e-8: the near
+   tiles in complex64 would halve it), its tiles above the diagonal alone (Z is symmetric), the factor's GEMMs on
+   the GPU, and a first run at 45-100k unknowns.
+6. **Straight coupled runs as analytic multi-line sections** with MoM at the discontinuities only (item (a) of
+   the large boards below): the largest gain on bus-heavy boards, a modelling change.
+7. Small: the GPU LDL^T's solve at one right-hand side (16 ms against the LU's 12.6 at 20k: its diagonal block's
+   product one workgroup), the host LDL^T as fast as LAPACK's LU (1.8 s against 1.6 at 8k), the policy's host
+   bytes for the whole Z's hybrid with the LDL^T (24 N^2 counted, 20 N^2 used).
+
 The Solver Matrix's 45 boards went from 24.7 to under 9 min on 2026-11-18/19 (CHANGELOG.md: the sweep's fit, the
 plates as cells, `--mom-coarsen 2`, the sides' blocks, the via and side blocks interpolated over frequency, the
 GPU's double products). Measured and left, roughly in order of what they would save:
