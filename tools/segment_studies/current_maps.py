@@ -4,15 +4,17 @@ no sweep solved again:
   1. the run's network rebuilt from its folder (kicad2ems.core.segment.run on
      the same arguments: every piece solved before is read back, by its hash;
      its join is caught before it writes anything);
-  2. each channel driven at its first port (1 W incident, every other port
-     matched), the waves at every cut of the joined network, at one frequency;
+  2. every chain driven at once from its start (the port whose net reads as
+     an input, else its first; 1 W incident each, in phase, every other port
+     matched: one excitation), the waves at every cut of the joined network,
+     at one frequency (--mode power: each chain alone, their maps' powers
+     summed);
   3. each mom25d layer piece built again from its board file and its run's own
      settings and solved at that frequency once (every port's 1 V gap source
      at once; its S checked against the run's), its currents those solutions
      weighted by its ports' voltages, sqrt(z0) (a + b);
-  4. |J| (A/m) on its triangles, the channels' powers summed (each channel on
-     its own: no interference between them on the map), drawn over the board,
-     in dB of the largest; one PNG a layer, and the triangles' values (npz).
+  4. |J| (A/m) on its triangles, drawn over the board in dB of its 99.5th
+     percentile; one PNG a layer, and the triangles' values (npz).
 
 The via models (the physics-based ones) have no mesh: their places are marked.
 usage:
@@ -25,6 +27,7 @@ e.g.
 import argparse
 import json
 import os
+import re
 import sys
 import time
 
@@ -129,6 +132,20 @@ def piece_sim(folder, name, f):
     return model, sim, [p.name for p in m.ports]
 
 
+# a port whose net reads as a chain's start (its input): IN as a word of
+# the net's last name (RF_IN, /IN, TXIN, LNA_IN) and no OUT
+_IN = re.compile(r'(^|[_/\-.])(RF_?)?(TX|RX)?_?IN([_\d]|$)|IN$', re.I)
+
+
+def starts(ps):
+    """The port a chain is driven from (its port_nets entries ps): the one
+    whose net reads as an input, else the lowest-numbered."""
+    num = lambda p: int(''.join(c for c in p['port'] if c.isdigit()) or 0)
+    ins = [p for p in ps if _IN.search(p['net'].rsplit('/', 1)[-1])
+           and 'OUT' not in p['net'].upper()]
+    return min(ins or ps, key=num)['port']
+
+
 def triangle_current(sim, I):
     """J (A/m) at each triangle's centroid, x and y (Nt x k complex each),
     from the RWG coefficients I (N x k; the via chains' rows left out)."""
@@ -158,6 +175,14 @@ def main(argv=None):
                     help="channels (any of their nets), comma-separated: "
                     "every channel by default")
     ap.add_argument('--range', type=float, default=50.0, help="dB shown")
+    ap.add_argument('--starts', default='',
+                    help="the chains' start ports by hand (P5,P9,...: a "
+                    "chain with one of these is driven from it)")
+    ap.add_argument('--mode', choices=('together', 'power'),
+                    default='together',
+                    help="together: every chain driven at once from its start "
+                    "(in phase, its other ends matched: one excitation); "
+                    "power: each chain on its own, their powers summed")
     ap.add_argument('--name', default='current')
     o = ap.parse_args(argv[:i])
     t0 = time.time()
@@ -167,19 +192,31 @@ def main(argv=None):
     f = np.linspace(band['fmin'], band['fmax'], int(band['points']))
     fi = int(np.argmin(np.abs(f - o.ghz)))
     fhz = f[fi] * 1e9
-    # the channels: their ports by chain (port_nets' nets), the first driven
+    # the chains: their ports by chain (port_nets' nets), each driven from
+    # its start (starts())
     want = [c.strip() for c in o.channels.split(',') if c.strip()]
     chans = {}
     for p in res['port_nets']:
         key = tuple(p.get('nets') or [p['net']])
         if want and not any(w in key for w in want):
             continue
-        chans.setdefault(key, []).append(p['port'])
-    drives = [min(ps, key=lambda x: int(''.join(c for c in x if c.isdigit())
-                                         or 0)) for ps in chans.values()]
-    print(f"current maps: {len(drives)} channel(s) at {f[fi]:.4g} GHz, "
-          f"{len(blocks)} blocks, {len(pairs)} links", flush=True)
+        chans.setdefault(key, []).append(p)
+    hand = {x.strip() for x in o.starts.split(',') if x.strip()}
+    drives = [next((p['port'] for p in ps if p['port'] in hand), None)
+              or starts(ps) for ps in chans.values()]
+    with open(os.path.join(out, f"{o.name}_starts.txt"), 'w') as fh:
+        for ps, d in zip(chans.values(), drives):
+            p = next(q for q in ps if q['port'] == d)
+            fh.write(f"{d}\t{p['net']}\t{p.get('ref', '')}.{p.get('pad', '')}"
+                     f"\t-> " + ', '.join(f"{q['port']} {q.get('ref', '')}"
+                                           for q in ps if q['port'] != d)
+                     + '\n')
+    print(f"current maps: {len(drives)} chain(s) at {f[fi]:.4g} GHz, "
+          f"{'all driven at once' if o.mode == 'together' else 'each alone'}"
+          f", {len(blocks)} blocks, {len(pairs)} links", flush=True)
     at, A, B = waves(blocks, pairs, fi, drives)
+    if o.mode == 'together':           # one excitation: every start at once
+        A, B = A.sum(1, keepdims=True), B.sum(1, keepdims=True)
     z0 = 50.0
     V = np.sqrt(z0) * (A + B)          # each port's voltage, each drive
     layers = {}                         # layer -> list of (xy tri, |J|^2)
@@ -285,8 +322,12 @@ def _draw(layers, marks, res, out, o, ghz):
         ax.set_ylim(lo[1], hi[1])
         ax.set_aspect('equal')
         fig.colorbar(pc, ax=ax, shrink=0.6, label="|J|, dB of the 99.5th "
-                     "percentile (every channel driven at its first port, 1 W, "
-                     "the others matched; powers summed)")
+                     "percentile " + (
+                         "(every chain driven at once from its start, 1 W "
+                         "each, in phase; its other ends matched)"
+                         if o.mode == 'together' else
+                         "(each chain driven alone from its start, 1 W, the "
+                         "others matched; powers summed)"))
         ax.set_title(f"{os.path.basename(res['board'])}: {lay}, {ghz:.4g} GHz "
                      "- surface current")
         ax.set_xlabel('x (mm)')
