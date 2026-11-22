@@ -537,14 +537,22 @@ LAPACK while the GPU updates the rest, the two overlapping. On an RX 7800 XT it 
 against 2.11 s for CuPy's rocSOLVER on the same card (the CuPy backend, retired on 2026-11-18), with LAPACK's pivots
 and accuracy. `kicad2ems --check` and the GUI's Solvers window show the GPU mom25d will use.
 
+<a id="gpu-ldl"></a>
+**The symmetric factor.** MoM's matrix is complex symmetric, so by default the GPU factors only its lower half, as
+L D Lᵀ without pivoting (`gpu_ldl.py`; the half by block columns of 256, `half.py`): the CPU factors each 256 × 256
+diagonal block, the GPU the rest. It is half an LU's work and GPU memory: on an RX 7800 XT 14,000 unknowns in
+0.49 s against the LU's 0.88, 20,000 in 1.2 s against 2.3, and its solves with many right-hand sides about twice
+as fast. Where it has no factor without pivoting, or does not precondition the refinement, the LU factors that
+frequency and those up to 1.25 × it (the log says so). `MOM25D_LDL=off` takes the LU always.
+
 mom25d chooses how to solve from the memory available, and the log says which (`memory: direct solver needs ...`):
 
 | Path | When | Memory for N unknowns |
 |---|---|---|
 | double precision on the CPU | up to 3,500 unknowns, and it fits in half the free RAM | 18 N² bytes |
 | mixed precision on the CPU | above 3,500 unknowns, no GPU: single-precision LU refined to double (about 1.3× faster); LUs kept across the sweep where they fit | 24 N² bytes, plus 8 N² for each LU kept; 10 N² where that doesn't fit |
-| GPU LU, hybrid | up to 25,000 unknowns: the single-precision matrix fits on the GPU, and its double-precision copy in RAM (the refinement's); that copy on the GPU too, the refinement's products there, where two LUs still fit beside it | 24 N² bytes RAM, 8 N² bytes GPU; with the products there 16 N² RAM, 24 N² GPU |
-| GPU LU | above 25,000 unknowns, or where the hybrid's RAM doesn't fit: the refinement is matrix-free | 10 N² bytes RAM, 8 N² bytes GPU |
+| GPU factor, hybrid | up to 25,000 unknowns: the single-precision factor fits on the GPU, and the double-precision matrix in RAM (the refinement's); that matrix on the GPU too, the refinement's products there, where two factors still fit beside it | 20 N² bytes RAM, 4 N² bytes GPU (the LU: 24 N², 8 N²); with the products there 16 N² RAM, 20 N² GPU |
+| GPU factor | above 25,000 unknowns, or where the hybrid's RAM doesn't fit: the refinement is matrix-free | 10 N² bytes RAM, 4 N² bytes GPU (the LU: 8 N²) |
 | block low-rank (BLR), compiled | from 20,000 unknowns where the hybrid does not hold the matrix (any GPU path past it, or no GPU), and wherever nothing else fits | about 3 N² bytes at most: a fifth of a single-precision matrix |
 
 Past 25,000 unknowns the hybrid's double-precision matrix costs more in memory traffic than its cheaper refinement

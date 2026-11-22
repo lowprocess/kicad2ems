@@ -176,8 +176,13 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    4-17 against 3-16 (fewer than LU on F_Cu_g24); half the factor's bytes. The weak band (the RWG basis at ~1
    GHz) is the loop/tree basis's now. **Next, in order:** (1) ~~the loop/tree threshold raised~~ done (1e-3,
    2026-11-22: `tests/mom25d` 314 with the GPU on and off, the example boards swept both ways within 2.9e-6, at
-   fixed frequencies within 4e-8; `tools/mom25d_threshold_compare.sh`; CHANGELOG); (2) the GPU LDL^T factor (the CPU's panel, the GPU's trailing update on the lower
-   block columns, the factor by block columns: half its memory and flops); (3) Z stored and filled by its lower
+   fixed frequencies within 4e-8; `tools/mom25d_threshold_compare.sh`; CHANGELOG); (2) ~~the GPU LDL^T factor~~ done
+   (2026-11-22, `gpu_ldl.py`, the GPU's default: the factor 1.6-1.9x the LU's from 7k to 20k, the In7 group's
+   solves 22.1 -> 15.1 s at 5 GHz; its refinement's products, 9.1 s of the 15.1, are now what costs: the host's
+   double Z, which (3) halves and puts on the GPU; left in it: one right-hand side's GPU solve 30 % slower than
+   the LU's (the diagonal block's product a single workgroup), the policy's host bytes still the LU's 24 N^2
+   for the hybrid (20 N^2 with it), a host LDL^T as fast as LAPACK's LU (`half.ldl_factor`, 1.8 s against 1.6
+   at 8k: SciPy's wrappers hold the GIL)); (3) Z stored and filled by its lower
    half (the loop/tree basis's ~20 GB at 25k is its dense double matrices: half, so ~35k pieces would fit it); (4)
    the block low-rank solver for pieces past that, with weak admissibility or clusters along the traces tried
    (on long traces and pours its factor is 50-84 % of the dense complex64: little compression). The LimeRFE (1.5-2 h) is set by two pieces of ~27k

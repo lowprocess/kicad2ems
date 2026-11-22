@@ -3,7 +3,8 @@ GPU self-check for mom25d:  python tools/mom25d/gpu_selfcheck.py [--backend
 vulkan|emulate] [--n 8192]
 
 1. reports the detected GPU / backend and free VRAM
-2. complex64 LU + solve on the GPU vs SciPy on the CPU (accuracy and speed)
+2. complex64 LU + solve on the GPU vs SciPy on the CPU (accuracy and speed),
+   and the complex-symmetric LDL^T (gpu_ldl.py, the solver's default factor)
 3. a small mom25d model solved with and without the GPU (S-parameters must
    agree)
 """
@@ -39,6 +40,7 @@ print(
 
 # ---- 2. LU accuracy and speed -----------------------------------------------
 rng = np.random.default_rng(1)
+bad = False
 for n in sorted({min(a.n, nmax), min(a.n // 2, nmax)}):
     if n < 256:
         continue
@@ -62,6 +64,22 @@ for n in sorted({min(a.n, nmax), min(a.n // 2, nmax)}):
         f"{tc / tg:5.1f}x")
     if res > 1e-4:
         print("  WARNING: residual too large - the GPU LU result looks wrong")
+        bad = True
+    if hasattr(gpu, 'factor_ldl'):
+        from kicad2ems.mom25d.half import Half
+        S_ = A + A.T                     # (complex symmetric)
+        H = Half.pack(S_, nb=getattr(gpu, 'nb', 256))
+        t = time.perf_counter(); F = gpu.factor_ldl(H)
+        tl = time.perf_counter() - t
+        x = gpu.solve_ldl(F, b)
+        del F
+        gpu.release()
+        rl = (np.linalg.norm(S_.astype(complex) @ x - b) / np.linalg.norm(b))
+        print(f"          GPU LDL^T {tl:7.3f} s ({4 / 3 * n ** 3 / tl / 1e9:6.0f}"
+              f" GFLOP/s), residual {rl:.1e}")
+        if rl > 1e-4:
+            print("  WARNING: residual too large - the GPU LDL^T looks wrong")
+            bad = True
 
 # ---- 3. a small simulation, GPU vs CPU --------------------------------------
 if not a.skip_sim:
@@ -90,7 +108,8 @@ if not a.skip_sim:
         t = time.perf_counter()
         S[g] = sim.sparams(5e9)
         dt = (time.perf_counter() - t)
-        lu = {s: v for s, v in sim.log.totals().items() if s.startswith('LU')}
+        lu = {s: v for s, v in sim.log.totals().items()
+              if s.startswith(('LU', 'LDL'))}
         print(f"simulation gpu={g:5s}: N={sim.Ne + sim.Nv}, {dt:.1f} s, "
               + ", ".join(f"{k} {v:.2f} s" for k, v in lu.items()))
     d = np.abs(S['off'] - S[a.backend]).max()
@@ -99,4 +118,6 @@ if not a.skip_sim:
     # 1.2e-6; Mesa's llvmpipe: 5.0e-7)
     print(f"max |S_gpu - S_cpu| = {d:.1e}  "
           + ("OK" if d < 1e-5 else "MISMATCH"))
-    sys.exit(0 if d < 1e-5 else 1)  # (CI runs it on lavapipe)
+    sys.exit(0 if d < 1e-5 and not bad else 1)  # (CI runs it on lavapipe)
+
+sys.exit(1 if bad else 0)

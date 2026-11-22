@@ -33,6 +33,11 @@
 //                   layer's strip triangles (slots.py)
 //   scale_c64     : D Z D (equilibration) as a complex64 copy, one pass
 //                   (the GPU LU's input)
+//   pack_half     : D Z D into half.Half's complex64 layout (the GPU
+//                   LDL^T's input)
+//   compact_half  : a complex64 Z into that layout in place
+//   ldl_diag      : a diagonal block's L D L^T without pivoting and L^-1
+//                   (the GPU LDL^T's host part, gpu_ldl.py)
 //   blend         : s (F0 + sum c[k] D[k]), one pass (blocks.py)
 //   loop_transform: T^T Z T for T = I + W, W in a few columns (the sides'
 //                   loops, sides.Sides.loops)
@@ -54,6 +59,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include <complex>
+#include <cstring>
 #include <cmath>
 #include <vector>
 #include <algorithm>
@@ -2621,6 +2627,153 @@ py::array_t<cf> scale_c64(py::array_t<cd, py::array::c_style> Z,
 }
 
 // -----------------------------------------------------------------------------
+// pack_half: Z (n x n, complex128 or complex64, C order) times d[i] d[j] into
+// out, half.Half's layout of complex64 (block row J's rows [J nb, ..), their
+// columns from J nb, one after another): the GPU LDL^T's input, in one pass
+// (Z's upper half by rows: the lower by block columns)
+// -----------------------------------------------------------------------------
+template <class T>
+void pack_half_t(py::array_t<T, py::array::c_style> Z, arr<double> d,
+                 py::array_t<cf> out, int nb) {
+    auto b = Z.request();
+    const i64 n = b.shape[0];
+    if (b.shape[1] != n || d.shape(0) != n || nb <= 0)
+        throw std::invalid_argument("pack_half: Z square, d its size");
+    const i64 nblk = (n + nb - 1) / nb;
+    std::vector<i64> off(nblk + 1, 0);
+    for (i64 J = 0; J < nblk; ++J)
+        off[J + 1] = off[J] + std::min<i64>(nb, n - J * nb) * (n - J * nb);
+    if (out.size() != off[nblk])
+        throw std::invalid_argument("pack_half: out is not the half's size");
+    const T *z = (const T *)b.ptr;
+    const double *dd = d.data();
+    cf *o = out.mutable_data();
+    py::gil_scoped_release nogil;
+#pragma omp parallel for schedule(static)
+    for (i64 r = 0; r < n; ++r) {
+        const i64 J = r / nb, j0 = J * nb, ld = n - j0;
+        cf *dst = o + off[J] + (r - j0) * ld;
+        const T *src = z + r * n;
+        const double dr = dd[r];
+        for (i64 c = j0; c < n; ++c) {
+            const double s = dr * dd[c];
+            dst[c - j0] = cf((float)(src[c].real() * s),
+                             (float)(src[c].imag() * s));
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// compact_half: a complex64 Z (n x n, C order) into half.Half's layout in its
+// own memory, from its start: row r's columns from its block's start moved to
+// their place in order (a row's place never past its own start, so nothing is
+// overwritten before it is read). No second matrix: the GPU LDL^T of the
+// matrix-free path (fast.py), whose Z is not needed after.
+// -----------------------------------------------------------------------------
+void compact_half(py::array_t<cf, py::array::c_style> Z, int nb) {
+    auto b = Z.request(true);
+    const i64 n = b.shape[0];
+    if (b.ndim != 2 || b.shape[1] != n || nb <= 0)
+        throw std::invalid_argument("compact_half: Z square");
+    cf *z = (cf *)b.ptr;
+    py::gil_scoped_release nogil;
+    i64 off = 0;
+    for (i64 J = 0; J * nb < n; ++J) {
+        const i64 j0 = J * nb, ld = n - j0, w = std::min<i64>(nb, n - j0);
+        for (i64 r = j0; r < j0 + w; ++r) {
+            std::memmove(z + off, z + r * n + j0, sizeof(cf) * ld);
+            off += ld;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// ldl_diag: the GPU LDL^T's diagonal block on the host (gpu_ldl.py): A (w x w,
+// complex64, any strides; its lower triangle) factored A = L D L^T without
+// pivoting in double, and L^-1; out (complex64, column major, ld w): pack =
+// L below the diagonal with D on it, linvt = (L^-1)^T, dinv = 1 / D, linv =
+// L^-1. Real and imaginary parts apart, so the inner loops vectorise. Raises
+// ZeroDivisionError on a zero pivot.
+// -----------------------------------------------------------------------------
+void ldl_diag(py::array_t<cf> A, py::array_t<cf> pack, py::array_t<cf> linvt,
+              py::array_t<cf> dinv, py::array_t<cf> linv) {
+    auto a = A.unchecked<2>();
+    const int w = (int)a.shape(0);
+    if (a.shape(1) != w || pack.size() < (py::ssize_t)w * w ||
+        linvt.size() < (py::ssize_t)w * w || dinv.size() < w ||
+        linv.size() < (py::ssize_t)w * w)
+        throw std::invalid_argument("ldl_diag: A square, the outputs w x w");
+    std::vector<double> re((size_t)w * w), im((size_t)w * w);
+    for (int j = 0; j < w; ++j)
+        for (int i = j; i < w; ++i) {
+            re[i + (size_t)j * w] = a(i, j).real();
+            im[i + (size_t)j * w] = a(i, j).imag();
+        }
+    std::vector<double> dr(w), di(w), lr(w), li(w);
+    bool zero = false;
+    {
+        py::gil_scoped_release nogil;
+        for (int p = 0; p < w && !zero; ++p) {
+            double *cr = &re[(size_t)p * w], *ci = &im[(size_t)p * w];
+            const double xr = cr[p], xi = ci[p], m = xr * xr + xi * xi;
+            if (m == 0) { zero = true; break; }
+            dr[p] = xr; di[p] = xi;
+            const double ir = xr / m, ii = -xi / m;          // 1 / d
+            for (int i = p + 1; i < w; ++i) {
+                lr[i] = cr[i]; li[i] = ci[i];                // l d
+                const double r = cr[i] * ir - ci[i] * ii,
+                             q = cr[i] * ii + ci[i] * ir;
+                cr[i] = r; ci[i] = q;                        // l
+            }
+            for (int j = p + 1; j < w; ++j) {
+                double *yr = &re[(size_t)j * w], *yi = &im[(size_t)j * w];
+                const double br = lr[j], bi = li[j];
+                for (int i = j; i < w; ++i) {
+                    yr[i] -= cr[i] * br - ci[i] * bi;
+                    yi[i] -= cr[i] * bi + ci[i] * br;
+                }
+            }
+        }
+    }
+    if (zero) throw py::value_error("LDL^T: a zero pivot");
+    // X = L^-1, a column at a time: X[:, j] = e_j minus L's columns
+    std::vector<double> xr((size_t)w * w, 0.0), xi((size_t)w * w, 0.0);
+    {
+        py::gil_scoped_release nogil;
+        for (int j = 0; j < w; ++j) {
+            double *ur = &xr[(size_t)j * w], *ui = &xi[(size_t)j * w];
+            ur[j] = 1.0;
+            for (int k = j; k < w; ++k) {
+                const double br = ur[k], bi = ui[k];
+                if (br == 0.0 && bi == 0.0) continue;
+                const double *cr = &re[(size_t)k * w], *ci = &im[(size_t)k * w];
+                for (int i = k + 1; i < w; ++i) {
+                    ur[i] -= cr[i] * br - ci[i] * bi;
+                    ui[i] -= cr[i] * bi + ci[i] * br;
+                }
+            }
+        }
+    }
+    cf *pk = pack.mutable_data(), *lt = linvt.mutable_data(),
+       *dv = dinv.mutable_data(), *lv = linv.mutable_data();
+    for (int j = 0; j < w; ++j) {
+        for (int i = 0; i < w; ++i) {
+            const size_t q = i + (size_t)j * w;
+            pk[q] = i > j ? cf((float)re[q], (float)im[q])
+                    : i == j ? cf((float)dr[j], (float)di[j]) : cf(0.0f);
+            lv[q] = i >= j ? cf((float)xr[q], (float)xi[q]) : cf(0.0f);
+            const size_t t = j + (size_t)i * w;          // (L^-1)^T
+            lt[q] = j >= i ? cf((float)xr[t], (float)xi[t]) : cf(0.0f);
+        }
+        const double m = dr[j] * dr[j] + di[j] * di[j];
+        dv[j] = cf((float)(dr[j] / m), (float)(-di[j] / m));
+    }
+    for (int j = 0; j < w; ++j)
+        if (!std::isfinite(dv[j].real()) || !std::isfinite(dv[j].imag()))
+            throw py::value_error("LDL^T: a non-finite factor");
+}
+
+// -----------------------------------------------------------------------------
 // G_q (centroid rule, singular parts added) x area_t x area_f between every
 // triangle t and fan triangle f
 // -----------------------------------------------------------------------------
@@ -2772,6 +2925,14 @@ PYBIND11_MODULE(_core, m) {
     m.def("loop_transform", &loop_transform,
           "Z <- T^T Z T in place, T = I + W in a few columns");
     m.def("blend", &blend, "out = s (F0 + sum c[k] D[k]), one pass");
+    m.def("pack_half", &pack_half_t<cd>,
+          "Z equilibrated into half.Half's complex64 layout");
+    m.def("pack_half", &pack_half_t<cf>,
+          "Z equilibrated into half.Half's complex64 layout");
+    m.def("compact_half", &compact_half,
+          "a complex64 Z into half.Half's layout in its own memory");
+    m.def("ldl_diag", &ldl_diag,
+          "the GPU LDL^T's diagonal block: L D L^T without pivoting and L^-1");
     m.def("scale_c64", &scale_c64,
           "D Z D as a complex64 copy; in place too (Z <- D Z D) where asked",
           py::arg("Z"), py::arg("d"), py::arg("inplace") = true);

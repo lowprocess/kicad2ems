@@ -18,7 +18,7 @@ plans), `dense.py` (LU, GMRES), `near.py` (near-field pairs), `tiles.py` (block 
 3. **Benchmark on GPU device 0** (RX 7800 XT). Device 1 (GTX 980 Ti) is bus-limited.
 4. **Repeat timings 2–3×**; differences under ~2 % are noise. The first call compiles kernels.
 5. **Check accuracy with every speed change**: max |ΔS| against the old path at fixed frequencies, and
-   `tests/mom25d` (309 tests, ~80 s with `-n 4`; run with and without `MOM25D_GPU=off`).
+   `tests/mom25d` (343 tests, ~100 s with `-n 4`; run with and without `MOM25D_GPU=off`).
 6. CI builds the core with `MOM25D_ARCH=-march=x86-64-v2` (no FMA); some numerical edge cases only show
    with that build — rebuild that way to reproduce a CI-only failure, then rebuild native.
 
@@ -56,6 +56,23 @@ Reference (RX 7800 XT, 2026-11-20): 7k 0.175 s, 14k 0.883 s, 20k 2.29 s. The upd
 ~11.7 TFLOP/s at k=256. First ~60 % of steps are GPU-bound, the tail CPU-panel-bound. Knobs:
 `MOM25D_VK_NB` (panel width, 256 best), `MOM25D_VK_GT` (GEMM tile, 6 on AMD, 4 elsewhere).
 `b.download()` gives (lu, piv) to check factors bit-for-bit between variants.
+
+## The Vulkan LDL^T on its own (the GPU's default factor)
+
+```python
+from kicad2ems.mom25d import gpu_ldl
+from kicad2ems.mom25d.half import Half
+Z = Z + Z.T                             # symmetric
+F = b.factor_ldl(Half.pack(Z)); F = b.factor_ldl(Half.pack(Z))
+print(b.stats)                          # seconds, cpu (diagonal blocks), wait, steps
+rate = 8 * N**3 / 6 / b.stats['seconds'] / 1e12
+X = b.solve_ldl(F, R)                   # R: N x k
+```
+
+Reference (RX 7800 XT, 2026-11-22): 7k 0.108 s, 14k 0.485 s, 20k 1.23 s; solves at 20k 16 / 17 / 30 ms for 1 /
+8 / 32 right-hand sides. `tools/mom25d_ldl_compare.py BOARD.json GHZ,...` compares it with the LU at fixed
+frequencies on a board. A kernel that works on RADV can hang on NVIDIA's driver: run the Vulkan tests with
+`EMSDEV_VULKAN_DEVICE=1` (the 980 Ti) too after touching the shaders (a pointer formed below its buffer hung it).
 
 ## Memory
 

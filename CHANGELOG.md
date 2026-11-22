@@ -559,6 +559,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **mom25d: the GPU's factor is a complex-symmetric LDL^T (2026-11-22; `MOM25D_LDL=off` for the LU).** MoM's Z is
+  complex symmetric, so the GPU factors its lower half alone without pivoting (`mom25d/gpu_ldl.py`, the layout
+  `mom25d/half.py`: block columns of 256): the CPU factors each 256 x 256 diagonal block in double (the compiled
+  core's `ldl_diag`, 0.5 ms), the GPU forms the panel's W = A21 L11^-T and L21 and updates each later block
+  column from its own start (`syrk_half`), with look-ahead; the solves run on the GPU (the forward update a
+  thread a row, the backward right-looking, 64 columns a workgroup through shared memory). Half an LU's work
+  and GPU memory; the LU, pivoted, where it has no factor or does not precondition (that frequency and up to
+  1.25 x it; a matrix-free plan's frequency filled again). The factor on an RX 7800 XT: 7k unknowns 0.108 s
+  against the LU's 0.175, 14k 0.485 / 0.883, 20k 1.23 / 2.29; its solves at 20k 30 ms against 60 for 32
+  right-hand sides, 17 / 21 for 8, 16 / 12.6 for one. The Thor carrier's In7 group (24.9k unknowns, 106 ports,
+  fixed frequencies): 22.1 -> 15.1 s at 5 GHz, 14.6 -> 10.1 s at 10 GHz, peak 16.3 -> 13.9 GB, S within 5.9e-7
+  of the LU's; antenna_patch (14k) 1.6 -> 1.2 s a solve (1.4e-8), a LimeRFE piece (11.8k) 3.2 -> 1.6 s at 6 GHz
+  (5.3e-6), demo_transition 2.9e-8 (`tools/mom25d_ldl_compare.py`: the two factors at fixed frequencies).
+  The matrix-free path's complex64 Z goes into the half in its own memory (`Half.compact`: no second matrix),
+  the hybrid's double Z into a complex64 half (4 N^2 bytes, not the LU's 8 N^2 copy). Checked: `tests/mom25d`
+  (343, on the RX 7800 XT, the GTX 980 Ti and with the GPU off; 33 new: the LDL^T's path and fallbacks on the
+  emulated backend, the Vulkan factor against `half.ldl_factor` over many buffers, `half.py`, `Half.compact`;
+  the Vulkan tests and `tools/mom25d/gpu_selfcheck.py`, which checks the LDL^T now, on lavapipe too). On the 980 Ti
+  (NVIDIA's driver 580) the trailing update first hung: a column's pointer formed below its buffer and indexed
+  from there, which RADV took.
 - **mom25d: the loop/tree basis to (k h)^2 = 1e-3 (2026-11-22; was 1e-5; `MOM25D_LOOP_TREE_BELOW`).** The RWG
   basis's badly conditioned band (about 1-2 GHz on fine meshes) now goes to the loop/tree basis where its dense
   matrices fit. The Thor carrier's In7 group (24.9k unknowns, 106 ports): 16 / 15 / 16 / 13.5 s at 1 / 2 / 5 /

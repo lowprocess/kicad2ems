@@ -13,7 +13,9 @@ Backends (force one with MOM25D_GPU=vulkan|emulate|off; 'auto' is Vulkan):
   vulkan   slangpy on any Vulkan GPU (gpu_vk.py): a hybrid LU, the panels on
            the CPU (LAPACK), the updates on the GPU. LU in place: VRAM ~ 8 N^2
            bytes (16 GB: ~41k unknowns). On an RX 7800 XT it factors faster
-           than rocSOLVER from N = 4096.
+           than rocSOLVER from N = 4096. The complex-symmetric LDL^T
+           (gpu_ldl.py, factor_ldl: the solver's default, policy.LDL) on the
+           lower half alone: ~4 N^2 bytes, half the work.
   emulate  NumPy stand-in with the same interface (tests / development without
            a GPU).
 """
@@ -80,6 +82,35 @@ class EmulatedBackend:
 
     def factor_dense(self, dsc):
         self.factor((dsc[:, None] * self.zd * dsc).astype(np.complex64))
+
+    # the LDL^T (gpu_ldl.py's interface): the host's factor of the half
+    nb = 256
+
+    def vram_needed_ldl(self, N):
+        from .half import Half
+        return Half.bytes(N, self.nb) + 0.4e9
+
+    def fits_ldl(self, N, extra=0.0):
+        from .policy import gpu_fits
+        return gpu_fits(self.vram_needed_ldl(N), self.mem_free() + extra)
+
+    def factor_ldl(self, H):
+        from .half import Half, ldl_factor
+        F = Half(H.n, H.nb, H.dtype, H.data.copy())
+        ldl_factor(F)
+        F.device_bytes = F.nbytes
+        return F
+
+    def factor_dense_ldl(self, dsc):
+        from .half import Half
+        return self.factor_ldl(Half.pack(self.zd, dsc, nb=self.nb))
+
+    def solve_ldl(self, F, R):
+        from .half import ldl_solve
+        return ldl_solve(F, R)
+
+    def download_ldl(self, F):
+        return F
 
 
 class _Host:

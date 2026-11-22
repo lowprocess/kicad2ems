@@ -29,7 +29,8 @@ from .policy import LOOP_TREE_BELOW, RETRY, REUSE_KEEP, SPARE, choose, device
 from .threads import (fast_cores, cap_blas_threads, cap_core_threads,  # noqa: F401
                       _one_blas_thread)
 from .dense import (_row_blocks, _equilibrate, _border, _loop_transform, _c64,
-                    _lu, HostLU, GpuLU, _lu_solve, gmres_batched)
+                    _lu, HostLU, GpuLU, GpuLDL, HostLDL, _lu_solve,
+                    gmres_batched)
 from .near import (NEAR_CHUNK, NEAR_KEPT, NEAR_PAIRS, NEAR_PIECE,  # noqa: F401
                    _near_csr, near_pairs, near_sparse)
 from .tiles import Cluster, cluster_tiles, _CompiledBLR  # noqa: F401
@@ -585,14 +586,19 @@ class FastOperator:
         if gpu is not None and plan.rung != 'blr':
             n = sim.Ne + sim.Nv if plan.basis == 'loop/tree' else (
                 sim.qT.shape[1] if sim.qT is not None else sim.Ne + sim.Nv)
-            how = {'hybrid': "complex64 LU there, double-precision refinement "
+            how = {'hybrid': "complex64 factor there, double-precision "
+                   "refinement "
                    + ("products there too" if plan.gpu_dense
                       else "on the host"),
-                   'gpu-lu': "complex64 LU there, the refinement matrix-free"}
+                   'gpu-lu': "complex64 factor there, the refinement "
+                   "matrix-free"}
+            from . import policy
+            sym = policy.LDL and hasattr(gpu, 'vram_needed_ldl')
+            need = (gpu.vram_needed_ldl if sym else gpu.vram_needed)(n)
             self._once('gpu', (
                 f"GPU: {gpu.device} via {gpu.name}, {gpu.mem_free() / 1e9:.1f}"
-                f" GB free, LU needs ~{gpu.vram_needed(n) / 1e9:.1f} GB: "
-                + how.get(plan.path, "factoring on the CPU")))
+                f" GB free, {'LDL^T' if sym else 'LU'} needs ~{need / 1e9:.1f}"
+                " GB: " + how.get(plan.path, "factoring on the CPU")))
         return plan
 
     def _once(self, key, note):
@@ -681,14 +687,61 @@ class FastOperator:
         return (((lambda X: X), (lambda X: X)) if T is None else
                 ((lambda X: T @ X), (lambda X: np.asarray(T.T @ X))))
 
+    def _ldl(self, plan, gpu):
+        """Whether the GPU's factor is the complex-symmetric LDL^T
+        (policy.LDL, the backend's, not failed near this frequency): the
+        LU's otherwise."""
+        from . import policy
+        return (policy.LDL and hasattr(gpu, 'factor_ldl')
+                and self.f > RETRY * self.history.get((plan.basis, 'ldl'), 0.0))
+
     def _factor(self, plan, Z, dsc):
-        """plan's fresh complex64 LU of Z equilibrated by dsc (a complex64 Z
-        is so already): on the GPU where it asks (the host's where that
-        raises), downloaded for gpu_factor."""
+        """plan's fresh complex64 factor of Z equilibrated by dsc (a complex64
+        Z is so already): on the GPU where it asks (the host's where that
+        raises), downloaded for gpu_factor; there an LDL^T (_ldl) where it
+        factors without pivoting, else an LU. None: a matrix-free plan's Z
+        compacted for an LDL^T that then failed (the frequency again)."""
         sim, n = self.sim, len(Z)
         c64 = lambda: Z if Z.dtype == np.complex64 else _c64(Z, dsc)
         if plan.on_gpu:
             gpu = self._backend()
+            if self._ldl(plan, gpu):
+                while (not gpu.fits_ldl(n)
+                       and any(k.M.on_gpu for k in self.st.kept)):
+                    self.st.drop(gpu=True)
+                    gpu.release()
+                gone = False
+                with sim.log.timer('LDL^T factor (GPU)', f"N={n}, {gpu.name}"):
+                    try:
+                        if gpu.zd is not None:  # (_put_dense's: Z there)
+                            F = gpu.factor_dense_ldl(dsc)
+                        else:
+                            from .half import Half
+                            if Z.dtype == np.complex64 and not plan.dense:
+                                # the matrix-free plan's Z (equilibrated, not
+                                # needed after) into the half in its own
+                                # memory: no second matrix
+                                H, gone = Half.compact(Z, nb=gpu.nb), True
+                            else:
+                                H = Half.pack(Z, dsc, nb=gpu.nb)
+                            F = gpu.factor_ldl(H)
+                            del H
+                        M = GpuLDL(gpu, F)
+                        return M.to_host() if plan.gpu_factor else M
+                    except (ZeroDivisionError, FloatingPointError) as e:
+                        self._failed(plan.basis, 'ldl', self.f)
+                        sim.log.note(
+                            f"the GPU's LDL^T has no factor without pivoting "
+                            f"at {self.f / 1e9:.4g} GHz ({e}): the LU up to "
+                            f"{RETRY * self.f / 1e9:.4g} GHz")
+                    except Exception as e:  # driver, device memory
+                        self._failed(plan.basis, 'ldl', np.inf)
+                        sim.log.note(f"the GPU's LDL^T failed ({type(e).__name__}"
+                                     f": {e}) - its LU from here")
+                    finally:
+                        gpu.release()
+                if gone:  # (Z is the half's now: the frequency filled again)
+                    return None
             while (not gpu.fits(n)
                    and any(k.M.on_gpu for k in self.st.kept)):
                 self.st.drop(gpu=True)  # room for the new one
@@ -722,14 +775,33 @@ class FastOperator:
         M = self._factor(plan, box[0], dsc)
         if not plan.dense:
             box.clear()  # (in the LU, or uploaded)
+        if M is None:  # (a matrix-free LDL^T that failed with Z compacted)
+            return None
         while True:
+            ldl = isinstance(M, (GpuLDL, HostLDL))
             with sim.log.timer('refinement (GMRES, ' + (
                     'dense double)' if plan.dense else 'exact matvec)')):
                 Y, ok, rel = self._refine(A, B, M, MIXED_MAX_ITER, 1,
                                           FRESH_STALL if M.on_gpu else None,
                                           timed)
-            sim.log.note(f"mixed precision{' (GPU)' if M.on_gpu else ''}: "
+            sim.log.note(f"mixed precision{' (GPU' if M.on_gpu else ''}"
+                         f"{', LDL^T' if ldl else ''}"
+                         f"{')' if M.on_gpu else ''}: "
                          f"GMRES iterations per port {self.iters}")
+            if not ok and ldl:
+                # the symmetric factor without pivoting does not precondition
+                # here: the LU, pivoted, up to RETRY x f (a matrix-free plan's
+                # Z is gone: its solve again, refilled)
+                self._failed(plan.basis, 'ldl', f)
+                sim.log.note(
+                    f"the LDL^T did not precondition at {f / 1e9:.4g} GHz "
+                    f"(residual {rel:.1e}) - the LU up to "
+                    f"{RETRY * f / 1e9:.4g} GHz")
+                M = None
+                if not box:
+                    return None
+                M, timed = self._factor(plan, box[0], dsc), False
+                continue
             if ok or not M.on_gpu:
                 break
             sim.log.note(

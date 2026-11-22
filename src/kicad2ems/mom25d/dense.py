@@ -124,6 +124,34 @@ class GpuLU:
         return HostLU(self._with(self.gpu.download))
 
 
+class GpuLDL:
+    """A complex64 LDL^T on the GPU (gpu_ldl.LDLFactor, the backend's
+    factor_ldl): M(R) = Z^-1 R there; to_host() downloads it."""
+    on_gpu, nbytes = True, 0
+
+    def __init__(self, gpu, F):
+        self.gpu, self.F = gpu, F
+        self.device_bytes = F.device_bytes
+
+    def __call__(self, R):
+        return self.gpu.solve_ldl(self.F, R)
+
+    def to_host(self):
+        return HostLDL(self.gpu.download_ldl(self.F))
+
+
+class HostLDL:
+    """An LDL^T on the host (half.ldl_factor's half.Half): M(R) = Z^-1 R."""
+    on_gpu, device_bytes = False, 0
+
+    def __init__(self, H):
+        self.H, self.nbytes = H, H.nbytes
+
+    def __call__(self, R):
+        from .half import ldl_solve
+        return ldl_solve(self.H, R)
+
+
 def _lu_solve(lu, R):
     """Z^-1 R with _lu's factor (trans=1), in the factor's precision; complex128
     out."""

@@ -68,6 +68,12 @@ BLR_CPU_MIN_N = int(os.environ.get('MOM25D_BLR_CPU_MIN_N', 13000))
 # precision (the refinement's: a GMRES iteration's cost), where that leaves
 # room for two LUs: MOM25D_GPU_DENSE=off keeps them on the host
 GPU_DENSE = os.environ.get('MOM25D_GPU_DENSE', 'on') != 'off'
+# the GPU's factor complex-symmetric where it can be (gpu_ldl.py: LDL^T without
+# pivoting, half an LU's work and memory; the LU where it fails or does not
+# precondition, up to RETRY x f): MOM25D_LDL=off for the LU always. RX 7800 XT
+# (2026-11-22, the factor alone): 7k 0.108 s against the LU's 0.175, 14k
+# 0.485 / 0.883, 20k 1.23 / 2.29
+LDL = os.environ.get('MOM25D_LDL', 'on') != 'off'
 # host bytes besides the solver's matrices
 SPARE = 0.9e9
 PATHS = {('cpu-c128', True): 'double', ('vulkan-c64', True): 'hybrid',
@@ -123,8 +129,10 @@ def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
            loop_tree='auto', lt_block='', sides=False, gpu_dense=False):
     """The SolvePlan at f. n: unknowns, nq: in the LU (fewer with quads), nt:
     triangles. avail: host bytes free. gpu: None, or (free bytes, need:
-    unknowns -> an LU's bytes). precision: the run's ('double', 'mixed').
-    history: {(basis, rung): the highest f it failed at}. held: {basis:
+    unknowns -> a factor's bytes, optionally a kept factor's bytes: device()).
+    precision: the run's ('double', 'mixed').
+    history: {(basis, rung): the highest f it failed at} (rung 'ldl': the
+    GPU's LDL^T, fast.py's). held: {basis:
     (host, GPU) bytes of the LUs kept, theirs to give back}. kh2: (k h)^2 at
     f. loop_tree: 'auto', 'on', 'off'. lt_block: why the loop/tree basis
     cannot be used (quads, holes). sides: the sides of thick copper have
@@ -140,7 +148,7 @@ def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
     near = lambda rung: f <= RETRY * history.get((basis, rung), 0.0)
     h_host, h_gpu = (held or {}).get(basis, (0.0, 0.0))
     avail += h_host
-    gpu = gpu and (gpu[0] + h_gpu, gpu[1])
+    gpu = gpu and (gpu[0] + h_gpu,) + tuple(gpu[1:])
     if solver == 'blr' and not lt:
         return SolvePlan(basis, 'blr', dense=False, keep=int(reuse), why=why)
     m = n if lt else nq
@@ -153,9 +161,11 @@ def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
                               and nq <= HYBRID_MAX_N))
     zd = 16.0 * m * m if hybrid and gpu_dense and GPU_DENSE else 0.0
     if hybrid:
-        room = (0.9 * gpu[0] - 0.4e9 - zd) // (8.0 * m * m)
+        # (a kept factor's bytes: gpu[2], the backend's; an LU's 8 m^2)
+        per = gpu[2](m) if len(gpu) > 2 else 8.0 * m * m
+        room = (0.9 * gpu[0] - 0.4e9 - zd) // per
         if room < 2 and zd:  # the LUs kept rather than Z
-            zd, room = 0.0, (0.9 * gpu[0] - 0.4e9) // (8.0 * m * m)
+            zd, room = 0.0, (0.9 * gpu[0] - 0.4e9) // per
     elif not fits:
         room = (0.8 * avail - host - SPARE) // (8.0 * m * m)
     else:  # the GPU's LU, the refinement matrix-free
@@ -273,6 +283,17 @@ def anchor_bytes(n, nv):
                max(16.0 * n * n, ANCHOR_ROOM))
 
 
-def device(b):
-    """choose's and memory_plan's gpu for backend b (None: None)."""
-    return None if b is None else (b.mem_free(), b.vram_needed)
+def device(b, ldl=None):
+    """choose's and memory_plan's gpu for backend b (None: None): (free
+    bytes, a factor's need, a kept factor's bytes), the LDL^T's where it is
+    taken (LDL, and the backend has it)."""
+    if b is None:
+        return None
+    if ldl is None:
+        ldl = LDL
+    if ldl and hasattr(b, 'vram_needed_ldl'):
+        from .half import Half
+        nb = getattr(b, 'nb', 256)
+        return (b.mem_free(), b.vram_needed_ldl,
+                lambda m: Half.bytes(m, nb) + 8.0 * m * nb + 8.0 * m)
+    return (b.mem_free(), b.vram_needed, lambda m: 8.0 * m * m)

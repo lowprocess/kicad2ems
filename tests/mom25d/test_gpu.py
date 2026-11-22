@@ -72,10 +72,22 @@ def S_cpu():
 
 @pytest.fixture
 def clean(monkeypatch):
+    """The GPU's factor the LU (this module's ladder is the LU's: the
+    LDL^T's tests set policy.LDL themselves, ldl)."""
+    from kicad2ems.mom25d import policy
     monkeypatch.delenv('MOM25D_GPU', raising=False)
+    monkeypatch.setattr(policy, 'LDL', False)
     mom25d_gpu._cache.clear()
     yield monkeypatch
     mom25d_gpu._cache.clear()
+
+
+@pytest.fixture
+def ldl(clean):
+    """clean, with the GPU's factor the LDL^T where it can be (the default)."""
+    from kicad2ems.mom25d import policy
+    clean.setattr(policy, 'LDL', True)
+    return clean
 
 
 def test_the_gpu_path_matches_cpu(clean, S_cpu):
@@ -402,12 +414,157 @@ def test_the_double_z_on_the_gpu_and_freed(clean, S_cpu):
 
 
 @vulkan
-def test_vulkan_backend_matches_cpu(clean, S_cpu):
+@pytest.mark.parametrize('sym', [False, True])
+def test_vulkan_backend_matches_cpu(clean, S_cpu, sym):
+    from kicad2ems.mom25d import policy
+    clean.setattr(policy, 'LDL', sym)
     sim = make_sim('vulkan')
     S = sim.sparams(4e9)
-    assert any(r[0] == 'LU factor (GPU)'
-               for r in sim.log.records), "GPU path not taken"
+    name = 'LDL^T factor (GPU)' if sym else 'LU factor (GPU)'
+    assert any(r[0] == name for r in sim.log.records), "GPU path not taken"
     assert np.abs(S - S_cpu).max() < 1e-6
+
+
+# ---- the LDL^T (gpu_ldl.py; the emulated backend's: half.py's) -------------
+def ldls(sim):
+    return [r for r in sim.log.records if r[0] == 'LDL^T factor (GPU)']
+
+
+@pytest.mark.usefixtures('rwg_at_4ghz')
+@pytest.mark.parametrize('dense', [True, False])
+def test_the_gpu_ldl_path_matches_cpu(ldl, S_cpu, dense):
+    """The GPU's factor the LDL^T, the hybrid's (the double Z there, its
+    complex64 half made from it) and the GPU's alone (the refinement
+    matrix-free): the CPU's answer."""
+    from kicad2ems.mom25d import policy
+    if not dense:
+        ldl.setattr(policy, 'HYBRID_MAX_N', 0)
+    sim = make_sim('emulate')
+    assert sim.fast.plan(4e9).path == ('hybrid' if dense else 'gpu-lu')
+    S = sim.sparams(4e9)
+    assert len(ldls(sim)) == 1 and not lus(sim)
+    assert np.abs(S - S_cpu).max() < 1e-6
+    assert any('(GPU, LDL^T)' in n for n in sim.log.notes)
+
+
+@pytest.mark.usefixtures('rwg_at_4ghz')
+@pytest.mark.parametrize('dense', [True, False])
+def test_an_ldl_that_does_not_precondition_is_the_lu(ldl, S_cpu, dense):
+    """An LDL^T too weak to precondition (here: a wrong one): the LU instead,
+    on the GPU, and up to RETRY x f straight away; above it the LDL^T again.
+    A matrix-free plan's Z is gone: the frequency filled again."""
+    from kicad2ems.mom25d import policy
+    if not dense:
+        ldl.setattr(policy, 'HYBRID_MAX_N', 0)
+    ldl.setattr(mom25d_gpu.EmulatedBackend, 'solve_ldl',
+                lambda self, F, R: np.asarray(R, complex) * 1e-3)
+    sim = make_sim('emulate')
+    S = sim.sparams(4e9)
+    assert np.abs(S - S_cpu).max() < 1e-6
+    assert sim.fast.history == {('rwg', 'ldl'): 4e9}
+    assert len(ldls(sim)) == 1 and [r[0] for r in lus(sim)] == [
+        'LU factor (GPU)']
+    fills = [r for r in sim.log.records if r[0] == 'direct fill']
+    assert len(fills) == (1 if dense else 2)
+    assert any('the LDL^T did not precondition at 4 GHz' in n
+               for n in sim.log.notes)
+    sim.reuse = 'off'
+    sim.sparams(4.5e9)
+    assert len(ldls(sim)) == 1 and len(lus(sim)) == 2
+    sim.sparams(5.5e9)
+    assert len(ldls(sim)) == 2
+
+
+@pytest.mark.parametrize('dense', [True, False])
+def test_an_ldl_without_a_factor_is_the_lu(ldl, S_cpu, dense):
+    """A zero pivot (no factor without pivoting): the GPU's LU, said. The
+    matrix-free plan's Z went into the half in place (Half.compact): the
+    frequency filled again for the LU."""
+    from kicad2ems.mom25d import policy
+    def zero(self, *a):
+        raise ZeroDivisionError('LDL^T: a zero pivot')
+    ldl.setattr(mom25d_gpu.EmulatedBackend, 'factor_ldl', zero)
+    ldl.setattr(mom25d_gpu.EmulatedBackend, 'factor_dense_ldl', zero)
+    basis = 'loop/tree'      # (this model's at 4 GHz)
+    if not dense:
+        ldl.setattr(policy, 'HYBRID_MAX_N', 0)
+        ldl.setattr(policy, 'LOOP_TREE_BELOW', 1e-5)
+        from kicad2ems.mom25d import fast
+        ldl.setattr(fast, 'LOOP_TREE_BELOW', 1e-5)
+        basis = 'rwg'
+    sim = make_sim('emulate')
+    S = sim.sparams(4e9)
+    assert np.abs(S - S_cpu).max() < 1e-6
+    assert [r[0] for r in lus(sim)] == ['LU factor (GPU)']
+    assert any('has no factor without pivoting' in n for n in sim.log.notes)
+    assert sim.fast.history == {(basis, 'ldl'): 4e9}
+    fills = [r for r in sim.log.records if r[0] == 'direct fill']
+    assert len(fills) == (1 if dense else 2)
+
+
+def test_the_ldl_off_is_the_lu(ldl, S_cpu):
+    from kicad2ems.mom25d import policy
+    ldl.setattr(policy, 'LDL', False)
+    sim = make_sim('emulate')
+    S = sim.sparams(4e9)
+    assert not ldls(sim) and len(lus(sim)) == 1
+    assert np.abs(S - S_cpu).max() < 1e-6
+
+
+@vulkan
+@pytest.mark.parametrize('N,max_buffer', [(300, None), (300, 64 * 1024),
+                                          (64, None), (1000, None)])
+def test_vulkan_ldl_matches_the_hosts(clean, N, max_buffer):
+    """The GPU's LDL^T against half.ldl_factor: the same factor (complex64
+    round-off), the GPU's solves (one and several right-hand sides), the
+    factor downloaded; a last block narrower than the rest, one block alone,
+    and (max_buffer) the block columns over many buffers."""
+    from kicad2ems.mom25d import gpu_vk
+    from kicad2ems.mom25d.half import Half, ldl_factor, ldl_solve
+    clean.setenv('MOM25D_VK_NB', '64')
+    if max_buffer:
+        clean.setattr(gpu_vk, 'MAX_BUFFER', max_buffer)
+    be = gpu_vk.VulkanBackend()
+    rng = np.random.default_rng(4)
+    Z = rng.standard_normal((N, N)) + 1j * rng.standard_normal((N, N))
+    Z = Z + Z.T + 4 * np.sqrt(N) * np.eye(N)
+    F = be.factor_ldl(Half.pack(Z, nb=be.nb))
+    if max_buffer:
+        assert len(F.dev.bufs) > 4
+    ref = ldl_factor(Half.pack(Z, nb=be.nb))
+    got = be.download_ldl(F)
+    assert np.abs(got.data - ref.data).max() < 1e-5 * np.abs(ref.data).max()
+    R = rng.standard_normal((N, 3)) + 1j * rng.standard_normal((N, 3))
+    x = np.linalg.solve(Z, R)
+    assert np.abs(be.solve_ldl(F, R) - x).max() < 1e-5 * np.abs(x).max()
+    assert np.abs(be.solve_ldl(F, R[:, 0]) - x[:, 0]).max() < (
+        1e-5 * np.abs(x).max())
+    assert np.abs(ldl_solve(got, R) - x).max() < 1e-5 * np.abs(x).max()
+    if be.dense_ok():
+        # from the double Z on the GPU, equilibrated there (its buffers as
+        # they are: the double Z's table has 32)
+        clean.setattr(gpu_vk, 'MAX_BUFFER', 2 ** 31)
+        be.put_dense(Z)
+        dsc = 1 / np.sqrt(np.abs(np.diagonal(Z)))
+        G = be.download_ldl(be.factor_dense_ldl(dsc))
+        H = be.download_ldl(be.factor_ldl(Half.pack(Z, dsc, nb=be.nb)))
+        assert np.abs(G.data - H.data).max() < 1e-5 * np.abs(H.data).max()
+        be.drop_dense()
+    be.release()
+
+
+@vulkan
+def test_vulkan_ldl_zero_pivot_raises(clean):
+    from kicad2ems.mom25d import gpu_vk
+    from kicad2ems.mom25d.half import Half
+    clean.setenv('MOM25D_VK_NB', '64')
+    be = gpu_vk.VulkanBackend()
+    N = 200
+    Z = np.eye(N, dtype=complex)
+    Z[70, 70] = 0           # (the second block's)
+    with pytest.raises(ZeroDivisionError, match='block of 64'):
+        be.factor_ldl(Half.pack(Z, nb=be.nb))
+    be.release()
 
 
 def test_far_field_of_several_excitations_at_once_is_each_ones():

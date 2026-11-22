@@ -407,6 +407,22 @@ void zgemv(uint3 lid: SV_GroupThreadID, uint3 gid: SV_GroupID)
     }
 }
 
+// to_c64_half: block column J of the LDL^T's half (hp_, ld ld_ = n - j0_,
+// w_ columns) from Z's rows j0_ .. j0_ + w_, their columns from j0_
+uniform float2* hp_;
+uniform int j0_, w_, ld_;
+
+[shader("compute")] [numthreads(256, 1, 1)]
+void to_c64_half(uint3 tid: SV_DispatchThreadID)
+{
+    const int64_t t = (int64_t)tid.x + (int64_t)tid.y * 65535 * 256;
+    if (t >= (int64_t)w_ * ld_) return;
+    const int r = (int)(t % ld_), c = (int)(t / ld_);
+    const double2 z = drow(j0_ + c)[j0_ + r];
+    const double s = dsc_[j0_ + c] * dsc_[j0_ + r];
+    hp_[t] = float2((float)(z.x * s), (float)(z.y * s));
+}
+
 [shader("compute")] [numthreads(256, 1, 1)]
 void to_c64(uint3 tid: SV_DispatchThreadID)
 {
@@ -420,7 +436,7 @@ void to_c64(uint3 tid: SV_DispatchThreadID)
         float2((float)(z.x * s), (float)(z.y * s));
 }
 '''
-DNAMES = ('zgemv', 'to_c64')
+DNAMES = ('zgemv', 'to_c64', 'to_c64_half')
 DR = DC = 4
 
 
@@ -915,6 +931,47 @@ class VulkanBackend:
         self._run('to_c64', self._flat(N * N), Zd_=self._zdesc(),
                   C_=A.desc(), dsc_=d.device_address, n_=N)
         self._factor(A, t0)
+
+    # ---- the complex-symmetric LDL^T (gpu_ldl.py) ---------------------------
+    def vram_needed_ldl(self, N):
+        """The LDL^T's half matrix, its work arrays, 0.4 GB besides."""
+        from .gpu_ldl import vram_needed
+        return vram_needed(N, self.nb)
+
+    def fits_ldl(self, N, extra=0.0):
+        from .policy import gpu_fits
+        return gpu_fits(self.vram_needed_ldl(N), self.mem_free() + extra)
+
+    def factor_ldl(self, H):
+        """The LDL^T of a host half.Half (complex64, equilibrated): a
+        gpu_ldl.LDLFactor (raises ZeroDivisionError / FloatingPointError
+        where it has no factor without pivoting)."""
+        from . import gpu_ldl
+        return gpu_ldl.factor(self, H)
+
+    def factor_dense_ldl(self, dsc):
+        """factor_ldl of put_dense's Z equilibrated by dsc, its complex64
+        half made on the GPU (to_c64_half: nothing more uploaded)."""
+        from . import gpu_ldl
+        self.release()
+        N, t0 = self.zd.cols, time.perf_counter()
+        gpu_ldl.kernels(self)
+        dev = gpu_ldl.HalfDev(self, N, self.nb)
+        d = self._buffer(8 * N, np.ascontiguousarray(dsc, np.float64))
+        for J in range(len(dev.j0)):
+            w, ld = int(dev.w[J]), int(dev.ld[J])
+            self._run('to_c64_half', self._flat(w * ld), Zd_=self._zdesc(),
+                      dsc_=d.device_address, hp_=dev.at(J),
+                      j0_=int(dev.j0[J]), w_=w, ld_=ld)
+        return gpu_ldl._factor(self, dev, t0)
+
+    def solve_ldl(self, F, R):
+        from . import gpu_ldl
+        return gpu_ldl.solve(self, F, R)
+
+    def download_ldl(self, F):
+        from . import gpu_ldl
+        return gpu_ldl.download(self, F)
 
     # ---- solves and the factor on the host ----------------------------------
     def download(self, chunk=1 << 28):
