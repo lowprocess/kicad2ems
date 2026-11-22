@@ -113,17 +113,23 @@ the pour's area costs little, its edges and vias do.
 **Left out, by the run itself (said in its log):** channels whose port has no reference copper (two legs of a
 bottom-side SAW duplexer over a void in the PWR layer), and channels whose copper overlaps another net's in the file
 (the 30 MHz RX line over a relay's pad; 84 net pairs touching the RF nets overlap: a KiCad 4 file whose nets were
-renamed out of step with its tracks); series parts with no value (20, mostly not fitted) leave their chains open.
+renamed out of step with its tracks); series parts not fitted ('NF', '0RNF' in their value: R90, R93, R374, R375, not assembled per the BOM)
+leave their chains open, as on the board. Its parts' values are written `<value>_<package>_<part number>`
+(`1000pF_0402_GRM1555C1H102FA01D`), its ferrite beads `FB_600R_...` (600 ohm); checked against
+`hardware/1v31/BOM/Lime_RFE_1v31.xls`, every series part on its RF chains is modelled but two on supply nets
+(a 100 uH and a 2.2 uH with no value in the file).
 
 **Time:** two pieces where several paths meet (about 27k unknowns each: 140–200 mm² of wide RF copper on the fine
-mesh) take most of it; the rest are small. Expect 1.5–2 hours on this machine.
+mesh) take most of it; the rest are small. Expect 1.5–2 hours on this machine with the loop/tree basis to 1e-5; to 1e-3 (since 2026-11-22) these
+pieces solve their 1-2 GHz in under 20 s instead of 2-4 min: expect under an hour (not yet run whole).
 
 ## Making a result again
 
 1. `tools/segment_studies/fetch_boards.sh boards` (the boards at the commits above, the stackups added).
 2. The commands above; `K2E_SEG_*` as in the settings table to reproduce a variant.
 3. The checks: `compare_results.py` between two runs, `coupling_vs_gap.py` on a piece, `gcpw_pour_study.py`,
-   `afs_delay_replay.py`; the terminated-port solve is a test (`tests/mom25d/test_kicad2ems.py`,
+   `afs_delay_replay.py`; `tools/mom25d_ldl_trial.py PIECE_board.json 0.3,1,2,3,6 --zone --lt-below 1e-3` (a
+   symmetric factor as the preconditioner; a piece's board file is in its folder under the run's output); the terminated-port solve is a test (`tests/mom25d/test_kicad2ems.py`,
    `test_terminated_ports_drive_a_few`).
 
 Timings are this machine's (RX 7800 XT, i7-13700K class CPU, 31 GB); the ROADMAP has what would make them shorter.

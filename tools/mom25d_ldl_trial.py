@@ -62,10 +62,16 @@ def main():
     ap.add_argument('--edges', default='fine')
     ap.add_argument('--zone', action='store_true')
     ap.add_argument('--dmax', type=float, default=0.5)
+    ap.add_argument('--lt-below', type=float, default=None,
+                    help="the loop/tree basis's threshold in (k h)^2 "
+                    "(policy.LOOP_TREE_BELOW, 1e-5 by default)")
     ap.add_argument('--basis', default='auto', choices=('auto', 'rwg'),
                     help="auto: the loop/tree basis where mom25d would take it "
                     "(low frequency, room for it), as a run does; rwg: never")
     a = ap.parse_args()
+    if a.lt_below is not None:
+        from kicad2ems.mom25d import policy
+        policy.LOOP_TREE_BELOW = F.LOOP_TREE_BELOW = a.lt_below
     kw = dict(dmax=a.dmax * 1e-3, port='via', thickness=a.thickness,
               edges=a.edges, log=lambda *x, **k: None)
     if a.zone:

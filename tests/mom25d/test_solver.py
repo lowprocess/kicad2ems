@@ -678,6 +678,7 @@ def test_a_wideband_stack_is_its_constant_stack_at_each_frequency():
                            Layer(0.3e-3, 3.5, 0.004)], solver)).max() > 0.01)
 
 
+@pytest.mark.usefixtures('rwg_at_4ghz')
 def test_the_via_blocks_between_the_frequencies_filled():
     """A sweep's via and sides blocks (mom25d.blocks): its first seven
     frequencies' are filled and kept, the frequencies between them take the
@@ -720,6 +721,7 @@ def test_the_via_blocks_between_the_frequencies_filled():
     assert np.abs(S - S0).max() < 1e-5
 
 
+@pytest.mark.usefixtures('rwg_at_4ghz')
 def test_core_matches_numpy_and_solvers_agree(monkeypatch):
     """The compiled core's far field against the NumPy reference, and
     direct/mixed/BLR agreement."""

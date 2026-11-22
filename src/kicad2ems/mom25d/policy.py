@@ -31,7 +31,12 @@ REUSE_KEEP = 4
 # (the via transition: ~100 MHz), its double LU loses S11's digits below ~1e-13
 # (~10 kHz: 3 %, 1 kHz: its sign). The via transition from 100 kHz to 100 MHz:
 # 37 s in the RWG basis (6 of 7 solves falling back to double), 7 s
-LOOP_TREE_BELOW = 1e-5
+# (1e-3 since 2026-11-22: 1e-5 had left the RWG basis's ill-conditioned band,
+# ~1-2 GHz on fine meshes, to the RWG basis: the Thor carrier's In7 group, 24.9k
+# unknowns, 106 ports, 208 / 238 s at 1 / 2 GHz in it against 16 / 15 s in the
+# loop/tree basis, which was no slower at 5 / 10 GHz (16 / 13.5 against 20 /
+# 13.6 s), S within 1.4e-5; it is taken only where its dense matrices fit)
+LOOP_TREE_BELOW = float(os.environ.get('MOM25D_LOOP_TREE_BELOW', 1e-3))
 # above this, 'auto' precision is mixed
 MIXED_MIN_N = 3500
 # ... and above this many in the LU (after quads) with a GPU: 1.5-1.9x a solve

@@ -163,7 +163,24 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    and a complex64 symmetric factor fails (the LDL^T trial). The loop/tree basis is taken only below (k h)^2 =
    1e-5 and only where its dense matrix fits. Next: that band first: the loop/tree threshold raised where it fits
    (a cheap test), then the current-and-charge (augmented EFIE) form in compressed tiles (item 1 below), which
-   would make all three paths behave at the low end. The LimeRFE (1.5-2 h) is set by two pieces of ~27k
+   would make all three paths behave at the low end. **The loop/tree basis higher up (2026-11-22, measured):** with
+   its threshold at 3e-4 / 1 (`policy.LOOP_TREE_BELOW`, 1e-5), where its dense matrices fit: the Thor's In7 group
+   (24.9k, 106 ports) 16 / 15 / 16 / 13.5 s at 1 / 2 / 5 / 10 GHz against the RWG basis's 208 / 238 / 20 / 13.6 s;
+   a LimeRFE piece (27k, 17 ports) 17 / 14 s at 1 / 2 GHz against 129 / 130 s; GMRES 1-2 iterations a port; S
+   within 1e-6-1.4e-5; peak 20 GB on both (its dense matrices: what limits it). (A correction: the direct path's
+   275 / 221 s at 5 / 10 GHz in the BLR comparison came from a process the BLR run had shared; on its own 20 / 14
+   s: BLR is ~15x slower there, its gain memory alone.) **The LDL^T trial with the loop/tree basis to (k h)^2 =
+   1e-3** (`tools/mom25d_ldl_trial.py --lt-below 1e-3`; LimeRFE F_Cu_g50 11.8k / 20 ports, F_Cu_g24 14k / 9 ports,
+   a Thor In7 window 7.4k / 28 ports): the complex64 LDL^T without pivoting converged at every frequency, as LU
+   does: in the loop/tree basis (to 2-3 GHz) 2 GMRES iterations a port against LU's 1-2; in the RWG basis above
+   4-17 against 3-16 (fewer than LU on F_Cu_g24); half the factor's bytes. The weak band (the RWG basis at ~1
+   GHz) is the loop/tree basis's now. **Next, in order:** (1) ~~the loop/tree threshold raised~~ done (1e-3,
+   2026-11-22: `tests/mom25d` 314 with the GPU on and off, the example boards swept both ways within 2.9e-6, at
+   fixed frequencies within 4e-8; `tools/mom25d_threshold_compare.sh`; CHANGELOG); (2) the GPU LDL^T factor (the CPU's panel, the GPU's trailing update on the lower
+   block columns, the factor by block columns: half its memory and flops); (3) Z stored and filled by its lower
+   half (the loop/tree basis's ~20 GB at 25k is its dense double matrices: half, so ~35k pieces would fit it); (4)
+   the block low-rank solver for pieces past that, with weak admissibility or clusters along the traces tried
+   (on long traces and pours its factor is 50-84 % of the dense complex64: little compression). The LimeRFE (1.5-2 h) is set by two pieces of ~27k
    unknowns where several RF paths meet: (b) and (c) are what would bring it to an hour.
    **LimeRFE left over:** its KiCad 4 file's nets are out of step with its tracks (84 net pairs touching the RF
    nets overlap): re-deriving the nets from the copper's connectivity would bring back the channels the run

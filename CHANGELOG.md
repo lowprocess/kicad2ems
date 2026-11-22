@@ -559,6 +559,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **mom25d: the loop/tree basis to (k h)^2 = 1e-3 (2026-11-22; was 1e-5; `MOM25D_LOOP_TREE_BELOW`).** The RWG
+  basis's badly conditioned band (about 1-2 GHz on fine meshes) now goes to the loop/tree basis where its dense
+  matrices fit. The Thor carrier's In7 group (24.9k unknowns, 106 ports): 16 / 15 / 16 / 13.5 s at 1 / 2 / 5 /
+  10 GHz against 208 / 238 / 20 / 13.6 s, S within 1.4e-5; a LimeRFE piece (27k, 17 ports) 17 / 14 s at 1 / 2
+  GHz against 129 / 130 s; GMRES 1-2 iterations a port. Checked: `tests/mom25d` (314, GPU on and off; eight tests
+  of the RWG basis's fallbacks pinned to it by a fixture, `rwg_at_4ghz`), the examples demo_bandpass,
+  demo_transition, hairpin, antenna_patch and demo_lowpass swept both ways (max |dS| 0 to 2.9e-6, demo_transition
+  2.6e-3 from the sweep's own sample points: at fixed frequencies within 4e-8; `tools/mom25d_threshold_compare.sh`). Peak memory as before (it is
+  taken only where it fits: ~20 GB at 25k).
+- **`tools/mom25d_ldl_trial.py --lt-below`**: the loop/tree threshold for the trial. With it at 1e-3 the
+  complex64 LDL^T without pivoting preconditioned as LU does at every frequency on three pieces (LimeRFE
+  F_Cu_g50 11.8k, F_Cu_g24 14k, a Thor In7 window 7.4k; 0.3-10 GHz): 2 GMRES iterations a port in the loop/tree
+  basis against LU's 1-2, 4-17 in the RWG basis against 3-16, half the factor's bytes (ROADMAP: the GPU LDL^T
+  next).
 - **segment: a channel's ends on two parts (2026-11-21).** A USB-C connector's two D+ pins (A6, B6: the plug either
   way up) had been a USB 2 lane's two ends, the hub it runs to left out (the Thor's USBC4_D -31 dB at 1 GHz).
 - **segment: each net cut by its own vias' circles (2026-11-21).** A net's copper was cut by the whole via

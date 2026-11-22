@@ -14,6 +14,7 @@ import kicad2ems.mom25d.gpu as mom25d_gpu
 pytest.importorskip('kicad2ems.mom25d._core')
 
 
+@pytest.mark.usefixtures('rwg_at_4ghz')
 def test_gpu_solves_that_stall_are_done_on_the_cpu(clean, S_cpu):
     """The GPU's triangular solves losing a good factor's accuracy (ROCm's
     complex64 trsm on an ill-conditioned factor, gpu.py): the factor is
@@ -103,6 +104,7 @@ def test_auto_without_gpu_is_silent_cpu(clean, S_cpu):
     assert np.abs(S - S_cpu).max() < 1e-6
 
 
+@pytest.mark.usefixtures('rwg_at_4ghz')
 def test_gpu_refinement_that_stalls_falls_back_to_double_nearby(clean, S_cpu):
     """A GPU LU too weak to precondition (here: a wrong one) must not cost the
     sweep: the refinement stops after its 30 iterations, the frequency is solved
@@ -128,6 +130,7 @@ def test_gpu_refinement_that_stalls_falls_back_to_double_nearby(clean, S_cpu):
     assert sum(r[0] == 'LU factor (GPU)' for r in sim.log.records) == n_gpu + 1
 
 
+@pytest.mark.usefixtures('rwg_at_4ghz')
 def test_gpu_refinement_that_breaks_down_falls_back_to_double(clean, S_cpu):
     """A GMRES breakdown (a NaN residual, as the complex64 LU gave at 0.1 GHz on
     a dfsynth low-pass) is a failure too: NaN compares false against the
@@ -204,6 +207,7 @@ def test_a_gpu_factor_that_raises_is_the_hosts(clean, S_cpu):
     assert len(lus(sim, 'complex64')) == 1
 
 
+@pytest.mark.usefixtures('rwg_at_4ghz')
 @pytest.mark.parametrize('keep', [4, 0])
 def test_a_host_lu_that_does_not_precondition_is_redone_in_double(
         clean, S_cpu, keep):
@@ -228,6 +232,7 @@ def test_a_host_lu_that_does_not_precondition_is_redone_in_double(
     assert len(lus(sim, 'complex64')) == n + 1
 
 
+@pytest.mark.usefixtures('rwg_at_4ghz')
 def test_the_matrix_free_gpu_lu_falls_back_on_the_hosts_solves(clean, S_cpu):
     """The GPU's LU past the hybrid (HYBRID_MAX_N: Z complex64, the
     refinement matrix-free) whose solves stall: the factor downloaded and
@@ -262,6 +267,7 @@ def test_the_loop_tree_bases_failures_are_its_own(clean):
     assert np.abs(S - ref.sparams(4e9)).max() < 1e-9
 
 
+@pytest.mark.usefixtures('rwg_at_4ghz')
 @pytest.mark.parametrize('keep,kept', [(4, 2), (1, 1), (0, 1)])
 def test_a_kept_lu_that_does_not_precondition_is_replaced(clean, keep, kept):
     """A kept LU tried past its reach: GMRES capped, a new one factored and
