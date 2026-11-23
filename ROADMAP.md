@@ -208,7 +208,16 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    leaves out; series parts with no value (20) leave their chains open; the outline is the panel's frame (the
    board's own edge is open at the tabs). **Segment in the window**: a study for it (the board, net patterns,
    band, pour/edges/windows), its overlay page and figures in the results (kicad2ems-add-analysis).
-4. **mom25d iterative: AIM + GMRES (being prototyped, 2026-11-20).** The far (centroid) product by a
+4. **mom25d iterative: AIM + GMRES (being prototyped, 2026-11-20).** (2026-11-23: its near part's sparse LU
+   in a fill-reducing order is the first thing to try where the prototype ran out of memory: METIS nested
+   dissection on the pattern of Z + Z^T, or SuperLU's `permc_spec='MMD_AT_PLUS_A'`, against SciPy's default
+   COLAMD; then a shorter reach. A complex-symmetric Krylov method (COCG, symmetric QMR: short recurrences)
+   would drop GMRES's stored basis there and in the block low-rank solve, ~2 x restart x N x ports x 16 bytes,
+   1.7 GB at 100k unknowns, 18 ports, restart 30, at some cost in robustness; CG itself needs a Hermitian
+   positive definite matrix, which Z is not. The dense path has no fill to reduce: Z is dense. Multigrid in
+   its classical forms does not suit these first-kind integral equations; their counterparts, hierarchical
+   loop-star or multiresolution bases and Calderon preconditioning, would matter for iterative solves on
+   very fine meshes, the loop/tree basis being a one-level form of them.) The far (centroid) product by a
    precorrected FFT on a grid per layer pair (the layered tables sampled on it: no multipole expansion of the
    layered kernel needed), mom25d's exact near correction as it is, GMRES preconditioned by the near part's
    sparse LU. Measured on the test strip (4.2k unknowns): the product within 1e-5 of the exact one (grid one
