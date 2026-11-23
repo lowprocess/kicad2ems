@@ -341,9 +341,10 @@ CHANGELOG has their numbers; updated 2026-11-23):**
    the large boards below): the largest gain on bus-heavy boards, a modelling change.
 7. Small: a test-isolation fault, not today's: with `tests/core/test_segment.py` run first in one session, the
    kicad2ems CLI's tests then lack mom25d's dump options ("unrecognized arguments: --mom-near"; CI runs the folders
-   apart, so it never meets it): the solver registry built in an import order that leaves them out. And
-   `tests/core/test_coupled.py`'s three filter tests fail before 2026-11-22's work too (`test_filter_line_models`:
-   sections [2, 2, 5, 5] where [5, 5] is meant: a filter's lines counted twice). Also the GPU
+   apart, so it never meets it): the solver registry built in an import order that leaves them out.
+   ~~`tests/core/test_coupled.py`'s three filter tests~~ fixed 2026-11-23 (with test_xsection's two, rf_interdig's
+   golden summary and test_fastsolve's ground via: all seven from 2026-11-21's stale-fill cut, which cut the fills
+   back from the examples' grounding vias; CHANGELOG). Also the GPU
    LDL^T's solve at one right-hand side (16 ms against the LU's 12.6 at 20k: its diagonal block's
    product one workgroup), the host LDL^T as fast as LAPACK's LU (1.8 s against 1.6 at 8k), the policy's host
    bytes for the whole Z's hybrid with the LDL^T (24 N^2 counted, 20 N^2 used).

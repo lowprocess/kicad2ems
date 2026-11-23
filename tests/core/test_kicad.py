@@ -203,3 +203,35 @@ def test_cutouts_are_air_and_a_split_region_says_so():
                   region=[3, 12, 17, 16], log=lambda *a: None)
     assert (any('splits the board into 2 pieces' in n for n in split.notes)
             and split.outline.area == pytest.approx(28))
+
+
+def test_a_stale_fill_is_cut_back_from_tracks_not_from_vias():
+    """A GND fill saved over an RF track (filled before the track was routed:
+    a LimeRFE's pour over its 30 MHz RX line) is cut back from it by the
+    zone's clearance; over an RF via it is left whole, the via a short to it
+    as drawn (the examples' grounded resonators: cut back, from 2026-11-21,
+    they had been open). With another via's unused rings dropped first (the
+    lists rebuilt) the fill found as itself, not by a stale position."""
+    from shapely.geometry import Point
+    fill = '''(zone (net 1) (net_name "GND") (layer "B.Cu")
+      (connect_pads (clearance 0.3))
+      (polygon (pts (xy 0 0) (xy 20 0) (xy 20 20) (xy 0 20)))
+      (filled_polygon (layer "B.Cu")
+        (pts (xy 0 0) (xy 20 0) (xy 20 20) (xy 0 20))))'''
+    track = ('(segment (start 2 5) (end 18 5) (width 0.5) (layer "B.Cu") '
+             '(net 2))')
+    via = ('(via (at 10 15) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") '
+           '(net 2))')
+    unused = ('(via (at 4 15) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") '
+              '(remove_unused_layers yes) (net 2))')
+    for extra in ('', unused):
+        b = _text_board(track + via + extra + fill)
+        gnd = [g for l, n, g in b.items if n == 'GND']
+        assert len(gnd) == 1, extra
+        g = gnd[0]
+        # the track's strip and its clearance out of the fill; the via in it
+        assert not g.intersects(Point(10, 5).buffer(0.25 + 0.29)), extra
+        assert g.contains(Point(10, 15).buffer(0.3)), extra
+        assert any('cut back' in n for n in b.notes), extra
+        assert [s for s in b.shapes if s[1] == 'GND'] == [
+            it for it in b.items if it[1] == 'GND'], extra

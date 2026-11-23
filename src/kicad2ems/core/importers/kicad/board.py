@@ -80,24 +80,35 @@ class KiCadBoard(Imported):
 
     # ---- zone fills over other nets' copper -----------------------------------
     def _clear_stale_fills(self):
-        """A zone's fill saved over another net's track, pad or via (filled
-        before that was routed, the file saved without a refill: a LimeRFE's
-        GND pour lay over its 30 MHz RX line, which merged into the pour and
-        was gone) cut back from it by the zone's clearance, as KiCad's refill
-        would; a fill clear of them is left as it is."""
+        """A zone's fill saved over another net's track or pad (filled before
+        that was routed, the file saved without a refill: a LimeRFE's GND pour
+        lay over its 30 MHz RX line, which merged into the pour and was gone)
+        cut back from it by the zone's clearance, as KiCad's refill would; a
+        fill clear of them is left as it is. Not from another net's via: a via
+        in a fill is a short to it, as drawn (the examples' grounded
+        resonators, rf_interdig's and the filters' line models; cut back from
+        them too, from 2026-11-21, their resonators had been open)."""
         if not self._fills:
             return
         import shapely
-        fill_ids = {i for i, _, _ in self._fills}
+        # (each fill and via ring by the item itself: _drop_unused, run
+        # before, rebuilds the lists, and positions kept from the import had
+        # pointed past them on a board with rings dropped, 2207 on the Thor)
+        clear_of = {id(it): c for it, c in self._fills}
+        fills = [i for i, it in enumerate(self.items) if id(it) in clear_of]
         by_lay = {}
-        for i, (l, n, g) in enumerate(self.items):
-            if i not in fill_ids and n:
+        for i, it in enumerate(self.items):
+            l, n, g = it
+            if (id(it) not in clear_of and n
+                    and id(it) not in self._via_rings):
                 by_lay.setdefault(l, []).append((n, g))
         trees = {l: (shapely.STRtree([g for _, g in v]), v)
                  for l, v in by_lay.items()}
         cut = 0
-        for i, j, clear in self._fills:
-            l, n, g = self.items[i]
+        for i in fills:
+            old = self.items[i]
+            l, n, g = old
+            clear = clear_of[id(old)]
             if l not in trees:
                 continue
             tree, v = trees[l]
@@ -107,7 +118,8 @@ class KiCadBoard(Imported):
                 continue
             new = g.difference(unary_union(hit).buffer(clear, quad_segs=4))
             self.items[i] = (l, n, new)
-            self.shapes[j] = self.items[i]
+            self.shapes = [self.items[i] if sh is old else sh
+                           for sh in self.shapes]
             cut += 1
         if cut:
             self.notes.append(
@@ -226,7 +238,7 @@ class KiCadBoard(Imported):
         tracks, vias, footprints and the Edge.Cuts outline pieces (and the
         outlines drawn on other layers: regions on User.1 ...)."""
         all_cu = self.copper_order
-        self._removable, self._stroke_text = [], 0
+        self._removable, self._stroke_text, self._via_rings = [], 0, set()
         for s in sx.items(self.root, 'segment'):
             self._track(s, [sx.xy(s, 'start'), sx.xy(s, 'end')])
         for a in sx.items(self.root, 'arc'):
@@ -258,6 +270,7 @@ class KiCadBoard(Imported):
                 self.items.append(
                     (l, self._net_of(v), Point(x, y).buffer(d / 2,
                                                             quad_segs=6)))
+                self._via_rings.add(id(self.items[-1]))
                 self._unused(len(self.items) - 1, v, ends)
         for z in sx.items(self.root, 'zone'):
             net = sx.val(z, 'net_name', '') or self._net_of(z)
@@ -281,8 +294,7 @@ class KiCadBoard(Imported):
                 if len(pts) >= 3:
                     self.items.append((lay, net, Polygon(pts).buffer(0)))
                     self.shapes.append(self.items[-1])
-                    self._fills.append((len(self.items) - 1,
-                                        len(self.shapes) - 1, clear))
+                    self._fills.append((self.items[-1], clear))
         for kind in GRAPHICS:
             for g in sx.items(self.root, 'gr_' + kind):
                 lys = sx.layers(g)

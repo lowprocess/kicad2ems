@@ -407,6 +407,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **KiCad import: a fill over another net's via is a short to it again (2026-11-23).** 2026-11-21's stale-fill cut
+  (a LimeRFE GND pour saved over its 30 MHz RX line) cut every fill back from other nets' tracks, pads and vias;
+  the examples draw their grounding vias inside the ground fill (rf_interdig's resonators, the filters' line
+  models), so those were open from then: seven tests red (rf_interdig's golden summary, test_fastsolve's ground
+  via, test_xsection's two, test_coupled's three, the last put down to something older in the ROADMAP). The cut
+  now spares vias (a via in a fill shorts it, as drawn), tracks and pads still cut. And the cut found the fills
+  by their positions in the import's lists, which `_drop_unused` rebuilds before it on a board whose unused rings
+  are dropped (the Thor carrier's 2207): it finds them as themselves now (no run so far met both: the cut fired
+  on LimeRFE alone, which drops none). A test of both (test_kicad).
 - **Two tests red since earlier this week (2026-11-23):** `parts.not_fitted` documented in docs/api.md, and the
   configs' stored meanings (tests/core/data/config_compat.json) given the settings added since (`mom_edges`,
   `lean`, `mom_excite`, each at its default: no config's meaning changed).
