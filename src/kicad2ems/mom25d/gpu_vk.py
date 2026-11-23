@@ -571,9 +571,269 @@ void to_c64(uint3 tid: SV_DispatchThreadID)
     C_.b[cc >> C_.sh][(int64_t)(cc & C_.mask) * C_.ld + i] =
         float2((float)(z.x * s), (float)(z.y * s));
 }
+
+#ifndef DRF
+#define DRF 4
+#endif
+#ifndef DCF
+#define DCF 4
+#endif
+#ifndef DC2F
+#define DC2F 8
+#endif
+// ---- the double half's products in float-float (the GPU's single precision
+// units, 32 times its double ones on an RX 7800 XT or a GTX 980 Ti): each
+// number hi + lo (two floats, about 48 bits), a product's rounding error kept
+// by its FMA (Dekker), a sum's by two-sum (Knuth); the half itself made
+// float-float once after its upload (to_ff_half: re_hi, im_hi, re_lo, im_lo
+// in the double's 16 bytes), the vectors split on the host
+struct FHalf {
+    float4* bc[MAXBLK];
+    int n, nb;
+};
+uniform FHalf Hf_;
+uniform float4* Vf_;
+
+// opaque: v as it is (zm_ is 0), but the compiler cannot see through it. The
+// error-free sums and products are algebraically zero, and both drivers fold
+// them (RADV fma(x, y, -x y) to 0, both the two-sum's error; `precise` and
+// slang's precise mode do not stop it, 2026-11-23): each step's result passed
+// through this, they cannot.
+uniform uint zm_;
+float opq(float v)
+{
+    return asfloat(asuint(v) ^ zm_);
+}
+
+[shader("compute")] [numthreads(256, 1, 1)]
+void to_ff_half(uint3 tid: SV_DispatchThreadID)
+{
+    const int64_t t = (int64_t)tid.x + (int64_t)tid.y * 65535 * 256;
+    if (t >= (int64_t)w_ * ld_) return;
+    const double2 z = Hd_.bc[jb_][t];
+    // (opaque: RADV folds z - double(float(z)) to 0, every low part lost)
+    const float2 h = float2(opq((float)z.x), opq((float)z.y));
+    const float2 l = float2((float)(z.x - (double)h.x),
+                            (float)(z.y - (double)h.y));
+    Hf_.bc[jb_][t] = float4(h, l);
+}
+
+// a b - p exactly without an FMA (Dekker: a, b split into 12-bit halves,
+// Veltkamp's, whose products are exact): where the driver's fma is not fused
+// (RADV keeps a float fma fused only when told it is exact, which slang's
+// SPIR-V does not say; ff_probe tells, fmaok_)
+float2 vsplit(float a)
+{
+    const float c = opq(4097.0 * a);
+    const float h = opq(c - opq(c - a));
+    return float2(h, a - h);
+}
+
+float tprod_err(float a, float b, float p)
+{
+    const float2 x = vsplit(a), y = vsplit(b);
+    return opq(opq(opq(x.x * y.x - p) + x.x * y.y) + x.y * y.x) + x.y * y.y;
+}
+
+// a += (xh + xl) (yh + yl), a = (hi, lo) unnormalised; the product's error
+// by FMA (ffmac) or Dekker's (ffmacd: _with_dekker's kernels, chosen by
+// ff_probe: a select between the two had computed both)
+void ffmac(inout float2 a, float xh, float xl, float yh, float yl)
+{
+    const float p = opq(xh * yh);
+    float e = fma(xh, yh, -p);
+    e = e + (xh * yl + xl * yh);
+    const float s = opq(a.x + p);
+    const float b = opq(s - a.x);
+    const float t = (a.x - opq(s - b)) + (p - b);
+    a.x = s;
+    a.y = a.y + (t + e);
+}
+
+// (re, im) += z v, z and v float-float complex (re_hi, im_hi, re_lo, im_lo)
+void cmac(inout float2 re, inout float2 im, float4 z, float4 v)
+{
+    ffmac(re, z.x, z.z, v.x, v.z);
+    ffmac(re, -z.y, -z.w, v.y, v.w);
+    ffmac(im, z.x, z.z, v.y, v.w);
+    ffmac(im, z.y, z.w, v.x, v.z);
+}
+
+void ffmacd(inout float2 a, float xh, float xl, float yh, float yl)
+{
+    const float p = opq(xh * yh);
+    float e = tprod_err(xh, yh, p);
+    e = e + (xh * yl + xl * yh);
+    const float s = opq(a.x + p);
+    const float b = opq(s - a.x);
+    const float t = (a.x - opq(s - b)) + (p - b);
+    a.x = s;
+    a.y = a.y + (t + e);
+}
+
+void cmacd(inout float2 re, inout float2 im, float4 z, float4 v)
+{
+    ffmacd(re, z.x, z.z, v.x, v.z);
+    ffmacd(re, -z.y, -z.w, v.y, v.w);
+    ffmacd(im, z.x, z.z, v.y, v.w);
+    ffmacd(im, z.y, z.w, v.x, v.z);
+}
+
+double2 ffd(float2 re, float2 im)
+{
+    return double2((double)re.x + (double)re.y, (double)im.x + (double)im.y);
+}
+
+// zhalf_rows in float-float (its partial sums double for their reduction;
+// DRF rows and DCF columns a thread)
+groupshared double2 partf[DRF * DCF][64];
+[shader("compute")] [numthreads(64, 1, 1)]
+void zhalf_rows_ff(uint3 lid: SV_GroupThreadID, uint3 gid: SV_GroupID)
+{
+    const int t = (int)lid.x, r0 = (int)gid.x * DRF, c0 = (int)gid.y * DCF;
+    const int n = Hf_.n, nb = Hf_.nb, J = r0 / nb, j0 = J * nb, ld = n - j0;
+    float2 ar[DRF][DCF], ai[DRF][DCF];
+    for (int a = 0; a < DRF; a++)
+        for (int c = 0; c < DCF; c++) {
+            ar[a][c] = float2(0.0, 0.0);
+            ai[a][c] = float2(0.0, 0.0);
+        }
+    float4* base = Hf_.bc[J];
+    for (int j = j0 + t; j < n; j += 64) {
+        float4 v[DCF];
+        for (int c = 0; c < DCF; c++)
+            v[c] = c0 + c < k_ ? Vf_[(int64_t)(c0 + c) * n + j]
+                               : float4(0.0, 0.0, 0.0, 0.0);
+        for (int a = 0; a < DRF; a++) {
+            const int r = r0 + a;
+            const float4 z = r < n ? base[(int64_t)(r - j0) * ld + (j - j0)]
+                                   : float4(0.0, 0.0, 0.0, 0.0);
+            for (int c = 0; c < DCF; c++)
+                cmac(ar[a][c], ai[a][c], z, v[c]);
+        }
+    }
+    for (int a = 0; a < DRF; a++)
+        for (int c = 0; c < DCF; c++)
+            partf[a * DCF + c][t] = ffd(ar[a][c], ai[a][c]);
+    GroupMemoryBarrierWithGroupSync();
+    for (int w = 32; w > 0; w >>= 1) {
+        if (t < w)
+            for (int q = 0; q < DRF * DCF; q++)
+                partf[q][t] += partf[q][t + w];
+        GroupMemoryBarrierWithGroupSync();
+    }
+    if (t < DRF * DCF) {
+        const int r = r0 + t / DCF, c = c0 + t % DCF;
+        if (r < n && c < k_)
+            Y_[(int64_t)c * n + r] = partf[t][0];
+    }
+}
+
+// zhalf_cols in float-float (its chunks' sums into P_, double)
+groupshared float4 vsf[HB][DC2F];
+
+[shader("compute")] [numthreads(256, 1, 1)]
+void zhalf_cols_ff(uint3 lid: SV_GroupThreadID, uint3 gid: SV_GroupID)
+{
+    const int t = (int)lid.x, r0 = (int)gid.x * 256, r = r0 + t;
+    const int cc = (int)gid.y * DC2F, ch = (int)gid.z;
+    const int n = Hf_.n, nb = Hf_.nb;
+    const int Jr = min(r, n - 1) / nb;
+    const int Jend = min(min(r0 + 255, n - 1) / nb, (ch + 1) * HCH);
+    float2 ar[DC2F], ai[DC2F];
+    for (int q = 0; q < DC2F; q++) {
+        ar[q] = float2(0.0, 0.0);
+        ai[q] = float2(0.0, 0.0);
+    }
+    for (int Jc = ch * HCH; Jc < Jend; Jc++) {
+        const int j0 = Jc * nb, ld = n - j0, w = min(nb, n - j0);
+        GroupMemoryBarrierWithGroupSync();
+        for (int q = t; q < HB * DC2F; q += 256) {
+            const int cl = q % HB, c = q / HB;
+            vsf[cl][c] = (cl < w && cc + c < k_)
+                             ? Vf_[(int64_t)(cc + c) * n + j0 + cl]
+                             : float4(0.0, 0.0, 0.0, 0.0);
+        }
+        GroupMemoryBarrierWithGroupSync();
+        if (r < n && Jc < Jr) {
+            float4* col = Hf_.bc[Jc] + (r - j0);
+            for (int c8 = 0; c8 < w; c8 += 8) {
+                float4 z[8];
+                [unroll] for (int u = 0; u < 8; u++)
+                    z[u] = c8 + u < w ? col[(int64_t)(c8 + u) * ld]
+                                      : float4(0.0, 0.0, 0.0, 0.0);
+                [unroll] for (int u = 0; u < 8; u++)
+                    for (int q = 0; q < DC2F; q++)
+                        cmac(ar[q], ai[q], z[u], vsf[c8 + u][q]);
+            }
+        }
+    }
+    if (r < n)
+        for (int q = 0; q < DC2F; q++)
+            if (cc + q < k_)
+                P_[((int64_t)ch * k_ + cc + q) * n + r] = ffd(ar[q], ai[q]);
+}
+
+// whether fma(x, y, -x y) is the product's exact error here (x = y = 1 +
+// 2^-12: 2^-24), into Fp_[0]
+uniform float* Fp_;
+[shader("compute")] [numthreads(1, 1, 1)]
+void ff_probe(uint3 tid: SV_DispatchThreadID)
+{
+    const float x = opq(1.0 + 1.0 / 4096.0);
+    const float p = opq(x * x);
+    Fp_[0] = fma(x, x, -p);
+}
+
+// rows_to_mat: rows r0_ .. r0_ + rows_ of the half's complex64 (equilibrated:
+// half_c64_rows's, in the mapped staging buffer src_; each from its block's
+// start j0_, ld_ numbers) into the LU's whole matrix C_ at both places (Z
+// symmetric: column c is row c): factor_from_half, no whole copy on the host
+uniform float2* src_;
+uniform int r0_, rows_;
+[shader("compute")] [numthreads(256, 1, 1)]
+void rows_to_mat(uint3 tid: SV_DispatchThreadID)
+{
+    const int64_t t = (int64_t)tid.x + (int64_t)tid.y * 65535 * 256;
+    if (t >= (int64_t)rows_ * ld_) return;
+    const int r = r0_ + (int)(t / ld_), c = j0_ + (int)(t % ld_);
+    const float2 v = src_[t];
+    C_.b[c >> C_.sh][(int64_t)(c & C_.mask) * C_.ld + r] = v;
+    C_.b[r >> C_.sh][(int64_t)(r & C_.mask) * C_.ld + c] = v;
+}
+
+// to_c64_hh from the float-float half (hi + lo, equilibrated by dsc)
+[shader("compute")] [numthreads(256, 1, 1)]
+void to_c64_hf(uint3 tid: SV_DispatchThreadID)
+{
+    const int64_t t = (int64_t)tid.x + (int64_t)tid.y * 65535 * 256;
+    if (t >= (int64_t)w_ * ld_) return;
+    const int r = (int)(t % ld_), c = (int)(t / ld_);
+    const float4 z = Hf_.bc[jb_][t];
+    const double s = dsc_[j0_ + c] * dsc_[j0_ + r];
+    hp_[t] = float2((float)(((double)z.x + (double)z.z) * s),
+                    (float)(((double)z.y + (double)z.w) * s));
+}
 '''
 DNAMES = ('zgemv', 'to_c64', 'to_c64_half', 'zhalf_rows', 'zhalf_cols',
-          'zhalf_cols4', 'zhalf_sum', 'to_c64_hh')
+          'zhalf_cols4', 'zhalf_sum', 'to_c64_hh', 'to_ff_half',
+          'zhalf_rows_ff', 'zhalf_cols_ff', 'to_c64_hf', 'ff_probe',
+          'zhalf_rows_ffd', 'zhalf_cols_ffd', 'rows_to_mat')
+
+
+def _with_dekker(src):
+    """DSOURCE with the float-float product kernels again, their products'
+    errors by Dekker's split (zhalf_rows_ffd, zhalf_cols_ffd: where the
+    GPU's float fma is not fused)."""
+    out = src
+    for name in ('zhalf_rows_ff', 'zhalf_cols_ff'):
+        a = src.index(f'void {name}(')
+        a = src.rindex('[shader("compute")]', 0, a)
+        b = src.index('\n}\n', a) + 3
+        body = src[a:b].replace(f'{name}(', f'{name}d(').replace(
+            'cmac(', 'cmacd(')
+        out = out + '\n' + body
+    return out
 
 
 def _with_cols4(src):
@@ -586,6 +846,11 @@ def _with_cols4(src):
     return (src[:b] + '#define DC4 4\ngroupshared double2 vs4[HB][DC4];\n'
             + body + src[b:])
 DR = DC = 4
+# the float-float products' tiles: DRF rows x DCF columns a thread (rows),
+# DC2F columns a thread (the mirror)
+DRF = int(os.environ.get('MOM25D_VK_FF_DR') or 2)
+DCF = int(os.environ.get('MOM25D_VK_FF_DC') or 8)
+DC2F = int(os.environ.get('MOM25D_VK_FF_DC2') or 8)
 
 
 GT = 4  # each thread's outputs: GT x GT (the tile 16 GT square); tile() per GPU
@@ -1060,7 +1325,9 @@ class VulkanBackend:
                 from .gpu_ldl import MAXBLK
                 mod = self.dev.load_module_from_source(
                     'mom25d_dense', f"#define TABLE {TABLE}\n#define MAXBLK "
-                    f"{MAXBLK}\n" + _with_cols4(DSOURCE))
+                    f"{MAXBLK}\n#define DRF {DRF}\n#define DCF {DCF}\n"
+                    f"#define DC2F {DC2F}\n"
+                    + _with_dekker(_with_cols4(DSOURCE)))
                 for n in DNAMES:
                     self.k[n] = self.dev.create_compute_pipeline(
                         self.dev.link_program([mod], [mod.entry_point(n)]))
@@ -1091,13 +1358,41 @@ class VulkanBackend:
         else:
             self._upload(self.zd, np.ascontiguousarray(Z).view(np.complex64))
 
+    # the double half on the GPU as float-float (to_ff_half once after its
+    # upload; mul_dense's products then on the single-precision units:
+    # MOM25D_VK_FF=off keeps it double)
+    FF = os.environ.get('MOM25D_VK_FF', 'on') != 'off'
+
+    def _fma_fused(self):
+        """Whether the GPU's float fma is fused (ff_probe: its rounding error
+        exact), once: the float-float products' error term from it, else
+        Dekker's (RADV: not fused; NVIDIA's: fused)."""
+        if getattr(self, '_fmaok', None) is None:
+            from . import gpu_ldl
+            gpu_ldl.kernels(self)
+            buf, h = self._work('ffprobe', 16), self._host('ffprobe', 16)
+            self._run('ff_probe', (1, 1, 1), Fp_=buf.device_address, zm_=0)
+            gpu_ldl._copy(self, buf.device_address, 1, h.address, 1, 1, 1)
+            self.dev.wait_for_submit(self._submit())
+            self._fmaok = float(h.view(np.float32, 1)[0]) == 2.0 ** -24
+        return self._fmaok
+
     def put_dense_half(self, H):
         """The double Z by its lower half (a host half.Half, complex128) onto
         the GPU for mul_dense and factor_dense_ldl, until drop_dense: 8 N^2
-        bytes."""
+        bytes (FF: made float-float there, in place)."""
         from . import gpu_ldl
         self.drop_dense()
         self.zd = gpu_ldl.upload(self, H)
+        self.zd.ff = False
+        if self.FF:
+            d = self.zd.desc()
+            for J in range(len(self.zd.j0)):
+                w, ld = int(self.zd.w[J]), int(self.zd.ld[J])
+                self._run('to_ff_half', self._flat(w * ld), Hd_=d, Hf_=d,
+                          jb_=J, w_=w, ld_=ld, zm_=0)
+            self._submit(wait=True)
+            self.zd.ff = True
 
     def drop_dense(self):
         if self.zd is not None:
@@ -1141,21 +1436,36 @@ class VulkanBackend:
         k = V.shape[1]
         n2 = 2 * N * k  # (as float2)
         hv, hy = self._host(f'dv{i}', 8 * n2), self._host(f'dy{i}', 8 * n2)
-        hv.view(np.complex128, N * k).reshape(k, N)[...] = V.T
+        ff = getattr(self.zd, 'ff', False)
+        if ff:  # (each number hi + lo: re_hi, im_hi, re_lo, im_lo)
+            Vt = np.asarray(V.T)
+            h = Vt.astype(np.complex64)
+            l = (Vt - h).astype(np.complex64)
+            o = hv.view(np.float32, 4 * N * k).reshape(k, N, 4)
+            o[..., 0], o[..., 1], o[..., 2], o[..., 3] = (h.real, h.imag,
+                                                          l.real, l.imag)
+        else:
+            hv.view(np.complex128, N * k).reshape(k, N)[...] = V.T
         Vd, Yd = self._work('dv', 8 * n2), self._work('dy', 8 * n2)
         self._copy(self._flatdesc(hv.address, n2),
                    self._flatdesc(Vd.device_address, n2), n2, 1)
         if hasattr(self.zd, 'groups'):  # (the half: its rows, their mirror)
-            kw = dict(Hd_=self.zd.desc(), V_=Vd.device_address,
-                      Y_=Yd.device_address, n_=N, k_=k)
-            self._run('zhalf_rows', (-(-N // DR), -(-k // DC), 1), **kw)
+            d = self.zd.desc()
+            kw = (dict(Hf_=d, Vf_=Vd.device_address, zm_=0) if ff else
+                  dict(Hd_=d, V_=Vd.device_address))
+            kw.update(Y_=Yd.device_address, n_=N, k_=k)
+            dk = '' if not ff or self._fma_fused() else 'd'
+            self._run('zhalf_rows_ff' + dk if ff else 'zhalf_rows',
+                      ((-(-N // DRF), -(-k // DCF), 1) if ff else
+                       (-(-N // DR), -(-k // DC), 1)), **kw)
             # the mirror in chunks of 8 blocks (every row group's chunks
             # written, the ones it has none of as zeros), then their sum
             nblk = -(-N // self.zd.nb)
             nch = max(1, -(-(nblk - 1) // 8))
             P = self._work('dp', 16 * nch * N * min(k, self.SOLVE_RHS))
-            w = 4 if k <= 4 else 8
-            self._run('zhalf_cols4' if w == 4 else 'zhalf_cols',
+            w = DC2F if ff else 4 if k <= 4 else 8
+            self._run('zhalf_cols_ff' + dk if ff else
+                      'zhalf_cols4' if w == 4 else 'zhalf_cols',
                       (-(-N // 256), -(-k // w), nch), P_=P.device_address,
                       nch_=nch, **kw)
             self._run('zhalf_sum', self._flat(N * k), P_=P.device_address,
@@ -1172,6 +1482,45 @@ class VulkanBackend:
         sid, hy, N, k = h
         self.dev.wait_for_submit(sid)
         return hy.view(np.complex128, N * k).reshape(k, N).T.copy()
+
+    def factor_from_half(self, H, dsc, chunk=1 << 28):
+        """factor() of the double half H (a host half.Half, complex128)
+        equilibrated by dsc: its rows converted a range at a time into the
+        mapped staging buffers (the core's half_c64_rows) and set at both
+        places of the LU's whole matrix on the GPU (rows_to_mat). The LU of an
+        LDL^T without a factor had made the complex64 half and its whole copy
+        on the host, 12 N^2 beside the double half (a LimeRFE piece of 33k
+        unknowns OOM-killed at 21.9 GB)."""
+        from . import _core
+        if not self.dense_ok():
+            raise RuntimeError("factor_from_half: no shaderFloat64 module")
+        self.release()
+        N, t0 = H.n, time.perf_counter()
+        A = _Mat(self, N, N)
+        d = np.ascontiguousarray(dsc, np.float64)
+        per = chunk // 8
+        hs = [self._host(f'hup{i}', chunk) for i in (0, 1)]
+        subs, j = [None, None], 0
+        for J in range(H.nblk):
+            a, b = int(H.j0[J]), int(H.j0[J] + H.w[J])
+            ld, r = N - a, a
+            while r < b:
+                r1 = min(b, r + max(1, per // ld))
+                cnt, i = (r1 - r) * ld, j % 2
+                if subs[i] is not None:
+                    self.dev.wait_for_submit(subs[i])
+                _core.half_c64_rows(H.data, d, hs[i].view(np.complex64, cnt),
+                                    H.nb, r, r1)
+                self._run('rows_to_mat', self._flat(cnt), C_=A.desc(),
+                          src_=hs[i].address, r0_=r, rows_=r1 - r, j0_=a,
+                          ld_=ld)
+                subs[i] = self._submit()
+                j += 1
+                r = r1
+        for x in subs:
+            if x is not None:
+                self.dev.wait_for_submit(x)
+        self._factor(A, t0)
 
     def factor_dense(self, dsc):
         """factor() of put_dense's Z equilibrated by dsc, its complex64 copy
@@ -1222,7 +1571,10 @@ class VulkanBackend:
             w, ld = int(dev.w[J]), int(dev.ld[J])
             kw = dict(dsc_=d.device_address, hp_=dev.at(J),
                       j0_=int(dev.j0[J]), w_=w, ld_=ld)
-            if half:
+            if half and getattr(self.zd, 'ff', False):
+                self._run('to_c64_hf', self._flat(w * ld), Hf_=self.zd.desc(),
+                          jb_=J, **kw)
+            elif half:
                 self._run('to_c64_hh', self._flat(w * ld), Hd_=self.zd.desc(),
                           jb_=J, **kw)
             else:

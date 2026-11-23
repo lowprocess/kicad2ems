@@ -377,7 +377,8 @@ def test_vulkan_double_z_products_and_factor(clean, max_buffer):
     for k in (1, 3, 6):
         V = rng.standard_normal((N, k)) + 1j * rng.standard_normal((N, k))
         Y = Z @ V
-        assert np.abs(be.mul_dense(V) - Y).max() < 1e-13 * np.abs(Y).max()
+        # (float-float there by default, MOM25D_VK_FF: ~1e-13; double 1e-15)
+        assert np.abs(be.mul_dense(V) - Y).max() < 5e-13 * np.abs(Y).max()
     hb = be.host_buffer(16 * N * N)  # (read from mapped memory)
     Zh = hb.view(np.complex128, N * N).reshape(N, N)
     Zh[...] = Z
@@ -578,6 +579,37 @@ def test_the_double_half_converted_on_its_way_up(clean, N, chunk):
     H = Half.pack(Z, dtype=complex, nb=be.nb)
     got = be.download_ldl(be.factor_ldl(H, dsc))
     assert np.abs(got.data - ref.data).max() < 1e-6 * np.abs(ref.data).max()
+    be.release()
+
+
+@vulkan
+@pytest.mark.parametrize('N,chunk', [(300, 1 << 28), (700, 40 * 1024)])
+def test_the_lu_from_the_double_half(clean, N, chunk):
+    """factor_from_half: the double half's rows converted into the staging
+    buffers and set at both places of the LU's whole matrix on the GPU (no
+    whole copy on the host): the LU of that copy's upload (factor), its
+    solves Z's, a chunk smaller than a block's rows too."""
+    from kicad2ems.mom25d import gpu_vk
+    from kicad2ems.mom25d.half import Half
+    clean.setenv('MOM25D_VK_NB', '64')
+    be = gpu_vk.VulkanBackend()
+    if not be.dense_ok():
+        pytest.skip('no shaderFloat64')
+    rng = np.random.default_rng(8)
+    Z = rng.standard_normal((N, N)) + 1j * rng.standard_normal((N, N))
+    Z = Z + Z.T + 4 * np.sqrt(N) * np.eye(N)
+    dsc = 1 / np.sqrt(np.abs(np.diagonal(Z)))
+    Zs = Z * dsc[:, None] * dsc[None, :]
+    be.factor(Zs.astype(np.complex64))
+    ref = be.download()
+    be.factor_from_half(Half.pack(Z, dtype=complex, nb=be.nb), dsc,
+                        chunk=chunk)
+    got = be.download()
+    assert np.array_equal(got[1], ref[1])
+    assert np.abs(got[0] - ref[0]).max() < 1e-6 * np.abs(ref[0]).max()
+    R = rng.standard_normal((N, 2)) + 1j * rng.standard_normal((N, 2))
+    x = np.linalg.solve(Zs, R)
+    assert np.abs(be.solve(R) - x).max() < 1e-4 * np.abs(x).max()
     be.release()
 
 

@@ -935,15 +935,23 @@ class FastOperator:
                    and any(k.M.on_gpu for k in self.st.kept)):
                 self.st.drop(gpu=True)
                 gpu.release()
-            # (its complex64 half and whole copy: 12 n^2 beside the double
-            # half, past what the plan counts with the half converted on the
-            # way up: given back, or MemoryError, rather than killed)
-            self._room(12.0 * n * n, f"the GPU LU of the half's whole copy at "
-                       f"{self.f / 1e9:.4g} GHz (the LDL^T without a factor)")
+            # (from the double half, set whole on the GPU: factor_from_half;
+            # else its complex64 half and whole copy, 12 n^2 beside the double
+            # half, past what the plan counts: given back, or MemoryError,
+            # rather than killed)
+            streamed = (hasattr(gpu, 'factor_from_half')
+                        and getattr(gpu, 'dense_ok', lambda: False)())
+            if not streamed:
+                self._room(12.0 * n * n, "the GPU LU of the half's whole copy "
+                           f"at {self.f / 1e9:.4g} GHz (the LDL^T without a "
+                           "factor)")
             with sim.log.timer('LU factor (GPU)', f"N={n}, {gpu.name}, the "
                                "half's whole copy"):
                 try:
-                    gpu.factor(c64().to_full())
+                    if streamed:
+                        gpu.factor_from_half(H, dsc)
+                    else:
+                        gpu.factor(c64().to_full())
                     M = GpuLU(gpu, n)
                     return M.to_host() if plan.gpu_factor else M
                 except Exception as e:
