@@ -10,6 +10,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **mom25d (GPU): the refinement's products in float-float (2026-11-23).** The double half on the GPU is made hi +
+  lo (two floats a number, ~48 bits) in place after its upload, the vectors split on the host, and its products
+  run on the single-precision units with error-free products and sums (Dekker, Knuth; FMA where `ff_probe` finds
+  the driver's float fma fused, Veltkamp's split where not: RADV's is not). Both drivers folded the error terms
+  away (RADV even z - double(float(z))), with `precise` and slang's precise mode alike: each step's result passes
+  through an opaque XOR with a run-time zero. Within 1.4e-13 of double on both GPUs; RX 7800 XT 1.37-1.43x the
+  double kernels from 8 to 106 columns (20k unknowns, 106 columns 0.757 -> 0.545 s), GTX 980 Ti 1.2-1.5x (tiles 2
+  x 8); used from 8 columns (`MOM25D_VK_FF_MIN`; below it the products are bound by memory, the double's no
+  slower), `MOM25D_VK_FF=off` keeps them double. With it the policy keeps Z on the GPU with one factor beside it
+  rather than several factors without it (`GPU_DENSE_FIRST`): a GMRES iteration (the refinement's, a reused
+  factor's) tens of ms there against ~0.45 s on the host at 29k.
+- **mom25d: a solve's matrix built faster and in less memory (2026-11-23).** Measured on a LimeRFE 6-layer via model
+  (29,363 unknowns, the whole stack) and its 33k-unknown F.Cu piece:
+  - the GPU's LDL^T from the double half itself (`gpu_ldl.upload_c64`: converted a range of rows at a time into
+    the staging buffers): no complex64 half on the host, the hybrid half's host 8 N^2 rather than 12
+    (`HALF_STREAM`); the 33k piece had peaked at 15.5 GB with the copy;
+  - the LU of an LDL^T without a factor from the double half set whole on the GPU (`factor_from_half`): its
+    complex64 half and whole copy had been 12 N^2 more on the host, the 33k piece OOM-killed at 21.9 GB there;
+  - the Green tables' Hankel transforms one call a frequency (`GreenTableML.batch`: every pair's contour and rho
+    the same): 21 tables 3.6 -> 0.65 s at 0.1 GHz;
+  - the stack's transmission-line network kept (it depends on no interface: every pair's voltage had made it
+    again): the via kernels 2.3 -> 0.65 s a frequency;
+  - the half scaled in one pass of the core (`half_scale`, real or complex), not two of NumPy's; the loop/tree
+    transform's passes reading only the rows they take.
 - **mom25d: the block low-rank operator by its tiles on and above the diagonal (2026-11-23).** Z, its near field
   and (checked) its extras are symmetric, so the GMRES operator of the block low-rank solve (double, to 1e-8) now
   keeps only the tiles on and above the diagonal and applies the others as their mirrors' transposes (`matvec`

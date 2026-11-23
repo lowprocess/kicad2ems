@@ -295,8 +295,13 @@ CHANGELOG has their numbers):**
    ThunderScope as further large boards): today's numbers are single fresh solves at fixed frequencies; a sweep
    reuses LDL^T factors and half matrices across frequencies and runs small pieces in parallel.
 2. **The refinement's double products with many ports**, now the largest part of a many-port solve (4-7 s of the
-   In7 group's 8-12 s a frequency): a float-float product on the GPU's single precision (~2-3x its double), and
-   the GPU's half read once a number (each is read twice today: the half saves memory, not time there).
+   In7 group's 8-12 s a frequency): ~~a float-float product on the GPU's single precision~~ done (2026-11-23:
+   1.4x the double kernels on the RX 7800 XT from 8 columns, Dekker's split there; CHANGELOG), the policy
+   keeping Z on the GPU with one factor. Left: the kernels are far from the single-precision peak (~0.5
+   TFLOP/s of ~6 on the GTX 980 Ti: Z re-read for every DCF columns, a shared-memory reduction a row group) -
+   GEMM-like tiles of Z and V in shared memory would be the next 2-3x; the half read once a number (each is read
+   twice: rows, then their mirror); and on RADV an exact (fused) float fma (slang emits no NoContraction: an
+   inline SPIR-V decoration would drop Dekker's 20 extra operations a product).
 3. ~~**The sides' loops on the half itself**~~ done (2026-11-23, `Half.loop_transform`: host 12 N^2, not 16).
 4. ~~**The loop/tree basis's transform on the half itself**~~ done (2026-11-23, `looptree.transform_half`, the
    core's `lt_half_step`: 8 N^2 at the peak; 27k unknowns 9.6 GB rather than 12.6; CHANGELOG). Left in it: the
