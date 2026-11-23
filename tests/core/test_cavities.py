@@ -122,3 +122,25 @@ def test_a_ground_via_beside_a_driven_one_takes_its_resonance_away():
     assert len(fixed.shorts) == 1
     after = fixed.modes(6e9)['z_peak'][0].max()
     assert before > 50 and after < before / 10
+
+
+def test_islands_static_modes_do_not_cut_the_band_short():
+    """The 40 x 25 mm rectangle beside 40 small islands (no ground via: a
+    static mode each): the eigen-solve's first guess (Weyl's count) is spent
+    on the islands' static modes, and is asked again until it passes fmax -
+    every rectangle mode below 8 GHz still found."""
+    from shapely import STRtree
+    from shapely.geometry import box
+    from shapely.ops import unary_union
+    isl = [box(50 + 2 * (i % 10), 2 * (i // 10), 50.8 + 2 * (i % 10),
+               0.8 + 2 * (i // 10)) for i in range(40)]
+    g = unary_union([box(0, 0, 40.0, 25.0)] + isl)
+    index = (STRtree([g]), [(g, 'GND')])
+    cav = CV.Cavity(dict(vias=[]), ('L2', 'L1'), (0.0, 1.0), g, 0.2, 4.0,
+                    0.01, (index, index), [], log=lambda *x: None)
+    res = cav.build(20e9, 0.5).modes(8e9)
+    want = _closed(40.0, 25.0, 4.0, 40)
+    want = want[(want > 0) & (want < 8e9)]
+    assert res['static'] == 41
+    assert len(res['f']) == len(want)
+    assert np.abs(res['f'] / want - 1).max() < 5e-3

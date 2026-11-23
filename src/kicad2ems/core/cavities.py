@@ -268,12 +268,19 @@ class Cavity:
         # Weyl's count of a 2D Neumann region's modes below k: area k^2 / 4pi
         # (and a margin)
         guess = int(1.3 * self.area * k2max / (4 * math.pi)) + 12
-        nev = int(min(self.n - 2, max_modes, guess))
+        cap = int(min(self.n - 2, max_modes))
+        nev = int(min(cap, guess))
         if nev < 1:
             return self._empty()
-        w, V = eigsh(self.K, k=nev, M=self.M, sigma=-1.0, which='LM')
-        o = np.argsort(w)
-        w, V = w[o], V[:, o]
+        while True:
+            w, V = eigsh(self.K, k=nev, M=self.M, sigma=-1.0, which='LM')
+            o = np.argsort(w)
+            w, V = w[o], V[:, o]
+            # every mode found is in band: the guess fell short (static modes
+            # of untied islands take their place in it) - ask for more
+            if w[-1] >= k2max or nev >= cap:
+                break
+            nev = int(min(cap, 2 * nev))
         more = bool(nev == max_modes and w[-1] < k2max)
         keep = w <= k2max
         w, V = np.maximum(w[keep], 0.0), V[:, keep]
