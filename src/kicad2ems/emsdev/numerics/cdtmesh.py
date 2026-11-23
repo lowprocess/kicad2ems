@@ -350,6 +350,12 @@ def _rounds(core, V, extra, segs, limit, inside, frozen, dseg, tol):
                     ])
                 split = mid
         cand, h, prio = cand[room], h[room], A[bad][room]
+        if len(split) and len(cand):
+            # a right triangle's circumcentre is its hypotenuse's midpoint, and
+            # the split adds that already: twice was a duplicate input point
+            # (mesh2d refuses them: a LimeRFE via model failed in every run)
+            far = cKDTree(split).query(cand)[0] >= SEP * h
+            cand, h, prio = cand[far], h[far], prio[far]
         if not len(cand) and not len(split):
             break
         keep = _spaced(cand, h, prio) if len(cand) else np.zeros(0, bool)
