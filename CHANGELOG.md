@@ -10,11 +10,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
-- **segment: the physics-based via models beside the queue (2026-11-23).** With `--via-solver pbm` they run in a
-  thread of their own from the start (no process, no GPU, ~1 s each) instead of last in the GPU's queue one at a
-  time: the Thor carrier's 140 had been its last 3.1 min. With today's other work the Thor carrier went from 38:08
-  (this morning) to 28:14, its figures the same (insertion loss within 0.04 dB, crosstalk within 0.0002 %), before
-  this change.
 - **mom25d: the loop/tree transform's steps read a row's own part where it is (2026-11-23).** `lt_half_step`
   copied each row it takes whole into its group's buffer (step 2: the tree's 23k rows of LimeRFE's 33k-unknown
   piece, ~12 GB of copying); only the part before the row's block (its mirror's, strided) is gathered now, the

@@ -1293,22 +1293,13 @@ def _solve_all(parts, out, band, a, echo):
              f"CPU ({cores} threads each, up to {SMALL_BUDGET / 1e9:.1f} GB), "
              f"{len(parts) - len(small)} on their own (up to "
              f"{(whole - hold) / 1e9:.1f} GB beside them)")
-    # the physics-based via models (--via-solver pbm: no process, no GPU,
-    # ~1 s each) in a thread of their own from the start: in the GPU's queue
-    # they came last, one at a time (a Thor carrier's 140: its last 3.1 min)
-    side = [p for p in parts if p['kind'] == 'via'
-            and getattr(a, 'via_solver', None) == 'pbm']
-    side_t = threading.Thread(target=lambda: [one(p) for p in side],
-                              daemon=True)
     big_now, done = [False], threading.Event()
     dog = threading.Thread(target=watch, daemon=True)
     dog.start()
     try:
-        if side:
-            side_t.start()
         with ThreadPoolExecutor(max_workers=max(JOBS, 1)) as pool:
             futs = [pool.submit(small_one, p) for p in small]
-            names = {p['name'] for p in small} | {p['name'] for p in side}
+            names = {p['name'] for p in small}
             for p in parts:
                 if p['name'] in names:
                     continue
@@ -1319,8 +1310,6 @@ def _solve_all(parts, out, band, a, echo):
                 big_now[0] = False
             for f in futs:
                 f.result()
-        if side:
-            side_t.join()
     finally:
         done.set()
     # those that gave their share back: alone, with all of it
