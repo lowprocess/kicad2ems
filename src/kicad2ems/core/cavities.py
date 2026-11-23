@@ -458,9 +458,14 @@ def plot_mode(cav, res, m, path, title=None):
     if len(col) and col.max() > 0:
         i = int(np.argmax(col))
         q = cav.ports[i]
+        x0, x1 = ax.get_xlim()
+        left = q['x'] > (x0 + x1) / 2   # (the label towards the middle)
         ax.annotate(f"{q['net'].rsplit('/', 1)[-1]}: {col[i]:.0f} ohm",
-                    (q['x'], -q['y']), xytext=(10, 10),
+                    (q['x'], -q['y']), xytext=(-12 if left else 12, 12),
                     textcoords='offset points', color='w', fontsize=8,
+                    ha='right' if left else 'left',
+                    bbox=dict(boxstyle='round,pad=0.25', fc='0.1', ec='none',
+                              alpha=0.75),
                     arrowprops=dict(arrowstyle='-', color='w', lw=0.6))
     ax.invert_yaxis()
     ax.set_xlabel('x (mm)')
