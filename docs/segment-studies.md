@@ -178,8 +178,11 @@ dielectrics turned back (the stack is not mirror-symmetric here) and failed its 
 **Front end (2026-11-22):** 5:47, 9.3 GB peak; 80 ports, 46 layer pieces. Its band ends at 3 GHz (the table's 5
 and 10 GHz columns repeat 3 GHz). The four ADC differential channels fan in to one point and with their kept pour
 were one piece of 100,537 unknowns on the fine edge mesh (70 GB compressed): `--edges coarse` made it 14,584. The
-ADC driver outputs lose under 0.1 dB, the attenuator paths 0.45-0.6 dB at 3 GHz, the four channels alike; the BNC
-inputs and the 50x attenuator inputs are open through relays the model does not have.
+ADC driver outputs lose under 0.1 dB, the attenuator paths 0.45-0.6 dB at 3 GHz, the four channels alike; the 50x
+attenuator inputs are open through relays the model does not have. **Again on 2026-11-23** (2:48, 4.1 GB): the four BNC
+inputs, which had read open (-67 dB, put down to the relays), lose 0.07 / 0.19 dB at 1 / 3 GHz, return loss -20 / -16
+dB: their via models' ports, on the BNC's through-hole pads, had taken the pad's own copper as their reference (the
+meshed box then open); those via models are the physics-based model's now (CHANGELOG 2026-11-23).
 
 ## Current maps
 
