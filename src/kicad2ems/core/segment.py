@@ -1680,9 +1680,18 @@ def run(a, echo=print):
     miss = sorted({r for r in part_of.values() if r not in parts_by})
     if miss:
         raise ValueError(f"series parts with no value in the model: {miss}")
-    pairs = []
+    pairs, opened = [], []
     for k, sides in links.items():
         # (sides, not ends: ends is the external ports' list, written below)
+        if len(sides) == 1:
+            # a leg with no path on (unrouted's warning: its other side in no
+            # piece, a series part to copper not modelled): open there, as the
+            # warning says (the LimeRFE study's first join had stopped here)
+            nm = f"open{k}"
+            blocks.append((np.ones((len(f0), 1, 1), complex), [nm]))
+            pairs.append((sides[0], nm))
+            opened.append(k)
+            continue
         if len(sides) != 2:
             raise ValueError(f"cut {k}: {len(sides)} sides "
                              f"({', '.join(sides)})")
@@ -1694,6 +1703,9 @@ def run(a, echo=print):
         xa, xb = f"cut{k}:a", f"cut{k}:b"
         blocks.append((X, [xa, xb]))
         pairs += [(sides[0], xa), (xb, sides[1])]
+    if opened:
+        echo(f"segment: {len(opened)} cut(s) with one side open (their legs' "
+             "other side in no piece)")
     pairs = nodes(blocks, pairs, len(f0), echo)
     S, names = join(blocks, pairs)
     ext = [n.split(':', 1)[1] for n in names]
