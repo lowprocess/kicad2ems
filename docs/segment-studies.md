@@ -126,9 +126,19 @@ leave their chains open, as on the board. Its parts' values are written `<value>
 `hardware/1v31/BOM/Lime_RFE_1v31.xls`, every series part on its RF chains is modelled but two on supply nets
 (a 100 uH and a 2.2 uH with no value in the file).
 
-**Time:** two pieces where several paths meet (about 27k unknowns each: 140–200 mm² of wide RF copper on the fine
-mesh) take most of it; the rest are small. Expect 1.5–2 hours on this machine with the loop/tree basis to 1e-5; to 1e-3 (since 2026-11-22) these
-pieces solve their 1-2 GHz in under 20 s instead of 2-4 min: expect under an hour (not yet run whole).
+**Result (2026-11-23, RX 7800 XT, 31 GB):** the whole board for the first time: 318 ports, 292 layer pieces and 25
+via models, 684 cuts (44 left open: their legs' other side in no piece, as the run warns). A fresh run solved 316 of
+the 317 pieces in 1:17:27 (on that evening's code, before the GPU products and the faster matrix build); the
+33k-unknown F.Cu piece where several RF paths meet then solved in 207 s (13 solves, its loop/tree basis on the
+matrix's half, the GPU's factor from the double half) where it had been OOM-killed twice; with every piece cached
+the join and report take 8.4 min. 151 channels: 93 through (median insertion loss -0.01 / -0.13 dB at 1 / 5 GHz,
+return loss -28.8 / -16.8 dB; the worst at 5 GHz are band filters rejecting there, |S11| near 0 dB), 21 open
+(series parts not fitted or unvalued, the KiCad 4 file's nets out of step with its tracks). Crosstalk for a 100
+ps edge: up to 4.7 % NEXT (`/TX_H2/PA4000/RF_OUT` from `/TX_H2/LPF3500/OUT`); one far-end figure of 37.7 %
+(`Net-(C120-Pad1)` from `/30MHz_TX`) is to be checked against the file's overlapping nets before it is believed.
+Four faults surfaced on the way, each fixed (CHANGELOG 2026-11-23): two ports at one place (a doubled track; two
+parts' pads under one wide copper), a mesh refinement's duplicate point, the join's one-sided cuts, the report's
+chain-shared end ports.
 
 ## LibreVNA (6 layers, 134 RF nets)
 
