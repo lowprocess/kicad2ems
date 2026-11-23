@@ -287,6 +287,17 @@ taken back); nothing below may fix a panel in place. Left:
    if the mesh's 0.2 s at worst becomes the limit. `mom25d/multilayer.py` has the stack but a dynamic kernel; the
    static 2D one needs deriving.
 
+## Plane-pair cavities (2026-11-23, the user's question)
+
+`kicad2ems.core.cavities` finds each plane pair's modes and the signal vias they reach (docs/si.md). Next, in order:
+1. **A check against Palace** on a board of the kind (its eigenmodes in 3D): started on rf_siw (the open box's
+   eigenproblem took an hour for one mode; again with a metal can).
+2. **Each cavity as a network in the segment study's join:** the cavity's impedance matrix between the vias
+   through it (the modal sum, or the 2D solve at each frequency) in place of the via models' infinite planes, so
+   the joined S carries the cavity's resonances and its via-to-via coupling.
+3. The power planes' decoupling capacitors as the PDN tool attaches them (their ESL, ESR), and the cavity's
+   edges' radiation in Q.
+
 ## mom25d: speed (2026-11-19)
 
 **Next, in order (2026-11-22, after the GPU's LDL^T, the dense Z by its half and the block low-rank operator;

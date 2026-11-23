@@ -268,3 +268,55 @@ nor `--calibrate` (each cut corrected for its two lumped ports back to back, fro
 section: 0.042 to 0.069 dB rms on rf_msvia, 0.160 to 0.142 on rf_diffvia) changes it much; to find in the via
 model. What the pieces leave out: a plane's apertures under a trace, a plane pair's cavity beyond a via model's
 box, broadside coupling between layers, the vias of nets not selected.
+
+## Plane-pair cavities and their resonances (`kicad2ems.core.cavities`)
+
+The dielectric between two adjacent reference planes is a cavity: its modes are set by the planes' shape and the
+ground vias that tie them, and every signal via passing through it drives them. Where a signal via sits where an
+in-band mode is strong, and no ground via is near it, the cavity's impedance at that via (in series with its
+return path) peaks at the mode's frequency: a notch in the via's transmission and coupling to every other via the
+mode reaches. The segment study's via models leave this out (the physics-based model's planes are infinite, a
+meshed model's a box round the via), so this is the check to run beside it.
+
+```sh
+python -m kicad2ems.core.cavities board.kicad_pcb --fmax 10 --nets 'PCIE*,USB*' --out cav
+python -m kicad2ems.core.cavities board.kicad_pcb --fmax 6 --planes In1.Cu,In2.Cu   # named planes
+```
+
+- **The model:** while the planes are close against the wavelength the field between them is the cavity's TEM
+  one, the voltage V(x, y) between the planes with -div grad V = k^2 V, k^2 = w^2 mu0 eps0 er (er the dielectrics'
+  series one), over the area both planes cover (antipads and holes under 2 mm2 filled), the edges open. Linear
+  triangles (the PDN tool's mesher: each via's disc a ring of the mesh, cells a twelfth of the wavelength at fmax),
+  the consistent mass matrix, the modes below fmax by shift-invert Lanczos; Q from the loss tangent and the
+  planes' skin depth (1/Q = tan d + delta/d; the edges' radiation not counted).
+- **The planes:** layers whose ground copper (ground and the power nets the board takes as AC ground) covers 40 %
+  of the outline or more (`--plane-frac`), or those named (`--planes`); each adjacent pair a cavity, any signal
+  layer between them inside it.
+- **The vias:** one whose barrel touches both planes' copper (not in an antipad) shorts the cavity there (V = 0 on
+  its disc); any other through it is where it is driven (its disc one voltage). A part of the cavity no ground via
+  ties has a mode at 0 Hz (the planes untied there): counted apart, not listed.
+- **The figures:** each mode's frequency, Q and extent (its participation ratio: 1 the whole cavity, small a local
+  pocket); for each via of the nets asked for (`--nets`, default every non-ground via), the cavity's impedance at
+  it at each resonance, `d |V|^2 Q / (A w eps0 er)` (V the mode's voltage there in units of its RMS over the area
+  A: the mode's term of the cavity's modal sum), and its distance to the nearest ground via. Reported from 10 ohm
+  (in series with a 50 ohm line's return, -0.8 dB at that frequency; 50 ohm, -3.5 dB). PNGs of each cavity's
+  lowest modes with a reported via in them (a local mode drawn where it is, the via named), and `cavities.json`.
+
+Checked against closed forms (tests/core/test_cavities.py): a 40 x 25 mm rectangle's modes within 0.5 %; a via
+shorting it, the modes where the open rectangle's impedance at that point passes through zero, within 2 % (the
+lowest, the planes' capacitance against the via's inductance, within 4 %: the via's own field meshed in a few
+rings); a via's peak impedance against the rectangle's modal sum within 10 %.
+
+On the reference boards (2026-11-23; 17-71 s each, 0.4-1.3 GB): ThunderScope (10 GHz, its high-speed and
+front-end vias) and LibreVNA (6 GHz, its RF vias) have a ground via 0.6-1.0 mm from every reported via, and no
+mode below fmax reaches into those cages (the largest impedance any reported via sees is 0.008 ohm). On the Thor
+carrier (10 GHz, every pair) the In4.Cu/In6.Cu cavity round the In5.Cu striplines has local modes the fast lanes
+see at 15-22 ohm only above 8 GHz (`PCIe_{C2x1}R_CLK+` 22 ohm at 8.4 GHz, its nearest ground via 2.4 mm; the
+USB 3 and CSI lanes 15 ohm near 10 GHz); the largest are the slow lines' (`USBC3_D+` 203 ohm at 7.8 GHz, a pocket
+by the USB hub's connector with few ground vias; `DP1.AUX_C+` 167 ohm at 9.7 GHz), far above what they carry.
+
+Left out: the signal traces inside the cavity (a stripline is no part of the TEM field here), the edges'
+radiation and fringing (an open edge is exact only for d << the planes' size), the power planes' decoupling
+capacitors (open: at these frequencies their mounting inductance is ohms), and the cavity's coupling into the
+segment study's joined network (each cavity as a network between the vias through it, in place of the via models'
+infinite planes: the next step).

@@ -10,6 +10,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Plane-pair cavities and their resonances (`kicad2ems.core.cavities`, 2026-11-23; the user's question: resonances
+  from signal and ground via placement).** Each pair of adjacent reference planes a 2D cavity (the voltage between
+  them, -div grad V = k^2 V over the area both cover, open edges; the PDN tool's mesher and matrices, the consistent
+  mass matrix); a via touching both planes' copper shorts it (V = 0 on its disc), any other through it drives it;
+  the modes below fmax by shift-invert Lanczos, each one's Q (tan d, skin depth) and extent, and for each signal via
+  the cavity's impedance at it at each resonance (the mode's term of the modal sum) and its nearest ground via.
+  `python -m kicad2ems.core.cavities board --fmax 10 --nets ... --out cav`: a report, `cavities.json`, mode maps.
+  Against closed forms: a rectangle's modes within 0.5 %, a shorting via's modes (the zeros of the open
+  rectangle's impedance there) within 2 % (its LC mode 4 %), a peak impedance within 10 %. On the reference boards
+  in 17-71 s: ThunderScope's and LibreVNA's signal vias each 0.6-1.0 mm from a ground via, no mode in band reaching
+  them; the Thor carrier's fast lanes at most 22 ohm above 8 GHz (In4.Cu/In6.Cu round the In5.Cu striplines), its
+  slow USB 2 and DP AUX lines up to 203 ohm at 7.8 GHz in a pocket by the USB hub with few ground vias.
 - **segment: a piece's file carries the primitives near it, not the whole board's (2026-11-23).** Each piece's
   board file had held every primitive of the board (a Thor window's 34.6 of its 35 MB: the planes of nine other
   layers, 1,206 footprints), read by its run and written and hashed by the parent; now those within 3 mm of its own
