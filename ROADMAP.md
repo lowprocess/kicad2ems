@@ -293,13 +293,30 @@ taken back); nothing below may fix a panel in place. Left:
 CHANGELOG has their numbers; updated 2026-11-23):**
 1. ~~**End-to-end runs of the segment studies with them**~~ done (2026-11-23: Thor 39:30, LibreVNA 30:44, ThunderScope
    15:12 and 5:47, LimeRFE whole for the first time, 318 ports; docs/segment-studies.md). **Next from them, in
-   order:** (a) factor reuse across frequencies now that GMRES iterations run on the GPU (on LimeRFE's big
-   pieces 22 of 93 reuse attempts succeeded, an iteration ~0.45 s on the host; measure with the products on the
-   GPU and widen REUSE_ITER's cap by their cost); (b) fewer adaptive-sweep samples (11-25 a piece, ~15 s each on
-   the 30k pieces); (c) a pivoted symmetric factor (Bunch-Kaufman blocks) so the LDL^T does not fail on
+   order:** (a) factor reuse across frequencies now that GMRES iterations run on the GPU. **Measured
+   2026-11-23** (LimeRFE's 33k F.Cu piece, RX 7800 XT): a fresh solve ~14 s (the GPU's LDL^T 4.9, the loop/tree
+   transform 3.6, the charge matrix 1.25, the fill 1.1, the near field 0.9, Z up 0.7, the refinement 0.8); the
+   dense path already tries the kept factor with the GPU's products after the fill, so a reuse saves the factor
+   alone, and a kept factor preconditions only within ~3 % in frequency (1.546 -> 1.575 GHz: 3-4 iterations;
+   1.546 -> 2.25 or 3.05 GHz: residual 0.6-0.9 after 3). Fixed on the way: a failed one stayed on the GPU
+   beside the new factor (10.0 s for 4.9; CHANGELOG). Left: a product of 18 columns at 33k is 310 ms on the GPU
+   (the float-float kernels, item 2), the preconditioner 55 ms; and `_products`' host share (SPLIT_MIN 16)
+   now loses (a host pass over the 8.7 GB half ~0.4 s for any number of columns: the refinement 2.31 -> 1.58 s
+   and the reuse 4.03 -> 2.72 s over three frequencies with it off) - its threshold to measure against the
+   float-float rate with many ports (a Thor In7 piece) and raise. (b) fewer adaptive-sweep samples: **measured
+   2026-11-23** over 604 pieces of the five runs (5,898 solves): of the 618 widest-gap checks after a first
+   agreement, the 403 whose agreement was within a tenth of the tolerance (change and prediction) caught
+   nothing; the 215 others caught one (0.87 tol, then 1.09). Skipping the check after so deep an agreement
+   would save 6.8 % of the solves; not done, the check is the sweep's guard against two models wrong alike
+   where neither was asked - the user's call. (c) a pivoted symmetric factor (Bunch-Kaufman blocks) so the LDL^T does not fail on
    via-chain-heavy pieces (F_Cu_g34's mixed rungs all failed at 0.8-1.6 GHz before its ports were merged);
    ~~(d) LimeRFE's 37.7 % far-end coupling~~ done (2026-11-23: an end port on `/30MHz_TX`'s copper in the file, its
    channel now left out; and the pieces of channels open before solving are not solved, 20 % of LimeRFE's).
+   (e) **via models that are no meshed box** (found 2026-11-23 solving LimeRFE's via models with `pbm` beside
+   their meshed results): a port with no plane under it took its own net's copper as reference (read open),
+   a box with fewer than two ground vias left its planes untied; now `pbm`'s (CHANGELOG). Left: whether the
+   two models' 0.1-0.36 |dS| at 6 GHz where both are well posed is the box's (its truncation) or `pbm`'s (a
+   check against a larger region solved whole); and LimeRFE and ThunderScope's front end run again with it.
 2. **The refinement's double products with many ports**, now the largest part of a many-port solve (4-7 s of the
    In7 group's 8-12 s a frequency): ~~a float-float product on the GPU's single precision~~ done (2026-11-23:
    1.4x the double kernels on the RX 7800 XT from 8 columns, Dekker's split there; CHANGELOG), the policy
