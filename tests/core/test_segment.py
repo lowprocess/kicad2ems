@@ -559,3 +559,28 @@ def test_a_via_model_that_is_no_meshed_box():
     b.ports.append(P('P1001', 'B.Cu'))
     assert SG._unmeshable(m, b, bx) == (
         'port P1001 over signal copper, no plane under')
+
+
+def test_physics_based_via_models_run_beside_the_queue(monkeypatch, tmp_path):
+    """_solve_all with --via-solver pbm: the via models (no process, no GPU)
+    in a thread of their own from the start, not last in the GPU's queue one
+    at a time (a Thor carrier's 140: its last 3.1 min); every piece solved."""
+    import threading
+    import types
+    where = {}
+
+    def fake(p, folder, band, solver, echo, env=None, started=None, **kw):
+        where[p['name']] = threading.current_thread() is threading.main_thread()
+        return (np.zeros(1), np.zeros((1, 1, 1)), ['P1'], {})
+    monkeypatch.setattr(SG, 'solve_piece', fake)
+    monkeypatch.setattr(SG, 'JOBS', 2)
+    monkeypatch.setattr(SG, '_small', lambda p: False)
+    parts = _parts(['b0', 'b1', 'v0', 'v1'], {'b0', 'b1'})  # (b: layers)
+    for solver, main in (('pbm', False), (None, True)):
+        where.clear()
+        a = types.SimpleNamespace(thickness=None, dmax=None, layer_solver=None,
+                                  via_solver=solver, edges=None,
+                                  solver='mom25d')
+        res = SG._solve_all(parts, str(tmp_path), {}, a, echo=lambda *x: None)
+        assert sorted(res) == ['b0', 'b1', 'v0', 'v1']
+        assert where == {'b0': True, 'b1': True, 'v0': main, 'v1': main}
