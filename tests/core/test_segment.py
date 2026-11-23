@@ -464,3 +464,28 @@ def test_a_piece_process_is_the_oom_killers_first_choice():
         [sys.executable, '-c', 'print(open("/proc/self/oom_score_adj").read())'],
         preexec_fn=SG._victim, capture_output=True, text=True).stdout
     assert int(out) == 800
+
+
+def test_ports_that_come_to_one_place_are_one():
+    """_one_port_a_place: a piece's cut or joint ports on one net and layer
+    within 1 um (two parts' pads apart, each port centred on the same wide
+    copper) one port, the other's links its (run's nodes: a junction); a
+    board end's port, another net's or layer's kept apart."""
+    import types
+    P = lambda name, x, net='A', layer='F.Cu': types.SimpleNamespace(
+        name=name, c=np.array([x, 0.0]), net=net, layer=layer)
+    b = types.SimpleNamespace(ports=[P('P1', 0.0), P('P20076', 5.0),
+                                     P('P20085', 5.0 + 1e-4),
+                                     P('P20090', 5.0, net='B'),
+                                     P('P20091', 5.0, layer='B.Cu'),
+                                     P('P2', 5.0)])
+    pc = SG._one_port_a_place(dict(board=b, external=['P2'], links=[
+        ('P20076', 76), ('P20085', 85), ('P20090', 90), ('P20091', 91)],
+        part_net={'P20076': 'A', 'P20085': 'A'}, core_ports=['P20085']))
+    assert [p.name for p in pc['board'].ports] == [
+        'P1', 'P20076', 'P20090', 'P20091', 'P2']
+    assert pc['links'] == [('P20076', 76), ('P20076', 85), ('P20090', 90),
+                           ('P20091', 91)]
+    assert pc['part_net'] == {'P20076': 'A'}
+    assert pc['core_ports'] == ['P20076']
+    assert pc['merged'] == {'P20085': 'P20076'}

@@ -909,7 +909,42 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
                                for c in mine],
                         external=[n for n, _ in own], vias=g['vias']))
     del scale
-    return out, allcuts
+    return [_one_port_a_place(p) for p in out], allcuts
+
+
+def _one_port_a_place(piece):
+    """The piece with its cut and joint ports that came to one place (one net
+    and layer, within 1 um: two series parts' pads 1.1 mm apart, each port
+    centred on the same 4 mm of copper, a LimeRFE piece's) made one, the
+    other's links that one's (run's nodes then joins them: a junction). Two
+    ports at one place are two via chains there, the matrix near singular in
+    either basis: every complex64 factor failed and the double LDL^T without
+    pivoting gave |S| of 1.4 to 539, run to run."""
+    b = piece['board']
+    ext = set(piece.get('external') or ())
+    keep, alias = [], {}
+    for p in b.ports:
+        q = None
+        if p.name not in ext:
+            q = next((k for k in keep if k.name not in ext
+                      and k.layer == p.layer and k.net == p.net
+                      and math.hypot(k.c[0] - p.c[0], k.c[1] - p.c[1]) < 1e-3),
+                     None)
+        if q is None:
+            keep.append(p)
+        else:
+            alias[p.name] = q.name
+    if alias:
+        b.ports = keep
+        piece['links'] = [(alias.get(n, n), k) for n, k in piece['links']]
+        if piece.get('part_net'):
+            piece['part_net'] = {n: v for n, v in piece['part_net'].items()
+                                 if n not in alias}
+        if piece.get('core_ports'):
+            piece['core_ports'] = list(dict.fromkeys(
+                alias.get(n, n) for n in piece['core_ports']))
+        piece['merged'] = alias
+    return piece
 
 
 def _unique(ports):
