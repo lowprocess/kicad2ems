@@ -119,7 +119,7 @@ class EmulatedBackend:
             return self.factor_ldl(H)
         return self.factor_ldl(Half.pack(self.zd, dsc, nb=self.nb))
 
-    def put_dense_half(self, H):
+    def put_dense_half(self, H, cols=None):
         self.zd = H
 
     def solve_ldl(self, F, R):
