@@ -299,6 +299,35 @@ def test_a_kept_lu_that_does_not_precondition_is_replaced(clean, keep, kept):
     assert np.abs(S - make_sim('off').sparams(8e9)).max() < 1e-6
 
 
+@pytest.mark.usefixtures('rwg_at_4ghz')
+def test_a_kept_lu_that_did_not_precondition_is_freed_where_dropped(clean):
+    """A kept factor tried and failed (the dense path): nothing in solve
+    holds it once the new factor's _factor drops it, so its memory is the new
+    factor's (held, the GPU's was not given back: a 33k-unknown LDL^T beside Z
+    and it ran over the card's memory, 10.0 s for 4.9)."""
+    import gc
+    import weakref
+    from kicad2ems.mom25d import fast, policy
+    clean.setattr(policy, 'REUSE_KEEP', 1)
+    sim = make_sim('off')
+    sim.sparams(4e9)
+    st = sim.fast.st
+    st.reach = 10.0
+    clean.setattr(fast, 'REUSE_ITER', (1, 1))
+    old = weakref.ref(st.kept[0].M)
+    ladder, seen = fast.FastOperator._ladder, []
+
+    def dropped_first(self, *a, **k):
+        self.st.kept.clear()            # (as _factor drops it for room)
+        gc.collect()
+        seen.append(old())
+        return ladder(self, *a, **k)
+    clean.setattr(fast.FastOperator, '_ladder', dropped_first)
+    sim.sparams(8e9)
+    assert any('did not precondition' in n for n in sim.log.notes)
+    assert seen == [None]
+
+
 def test_a_gpu_asked_for_and_missing_is_said(clean, S_cpu):
     clean.setitem(sys.modules, 'slangpy', None)
     sim = make_sim('vulkan')

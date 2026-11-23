@@ -540,6 +540,11 @@ class FastOperator:
                     Y = self._reused(f, k, A, B, lambda R: r * k.M(r * R))
                     if Y is not None:
                         return up(dsc[:, None] * Y)
+                    # (no reference to it here: the new factor's room is its
+                    # memory where _factor drops it; held, the GPU's had not
+                    # been given back, and a 33k-unknown LDL^T beside Z and it
+                    # ran over the card's memory: 10.0 s, 4.9 s with room)
+                    k = r = None
                 # (a dense LU's cost: its factor and refinement, which a kept
                 # one saves; a matrix-free one's: the fill too)
                 t0 = time.time()

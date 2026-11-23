@@ -389,6 +389,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **mom25d: a kept factor that did not precondition is freed when the new one needs its room (2026-11-23).** In the
+  dense path `solve` still held the kept factor it had tried (its local and the preconditioner's closure), so when
+  `_factor_half` dropped it for the new factor's room the GPU's memory was not given back, and the new LDL^T ran
+  on an over-full card: on LimeRFE's 33k-unknown F.Cu piece (Z's double half 8.7 GB on the GPU, a factor 4.4 GB)
+  every factor after a failed reuse took 10.0 s, 4.9 s with room (3.05 GHz 20.2 -> 14.6 s, S within 3e-11); its
+  run had four. Pieces under ~28k unknowns had room for both and were not slowed.
 - **segment: a channel whose end port lies on another net's copper is left out, said (2026-11-23).** A port's net
   is the copper under its point (`Board.net_at`, the first net there); where two nets' copper overlap in the board
   file, the port joined the other net's piece and read its signal. LimeRFE's one 37.7 % far-end figure was that:
