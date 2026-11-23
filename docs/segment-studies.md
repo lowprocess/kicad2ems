@@ -155,7 +155,11 @@ fan-out paths lose 0.1-0.5 dB at 5 GHz (`RF_HBLB_SWITCH` -0.07, `SOURCE_LOWBAND`
 reference-clock fan-out couples up to 2.9 % NEXT (`CLKOUT` from `CLKIN`). **Open by the model, not the board:**
 chains through parts it does not model read -50 to -85 dB with |S11| near 0 dB: ferrite beads (value `FERRITE`),
 the `PAT0816-C-3DB-T5` 3 dB attenuator chips (an R designator, a part number for a value), DNP options, and
-chains that end on an amplifier's or mixer's pins (`Net-(IC22-IN+)`, `Net-(IC33-OUT+)`).
+chains that end on an amplifier's or mixer's pins (`Net-(IC22-IN+)`, `Net-(IC33-OUT+)`). **Again on 2026-11-23** (the GPU's float-float products, the faster matrix build, the
+loop/tree basis on the matrix's half): 19:48 against 30:44, the largest process 6.9 GB against 11.1; every channel's
+figures the same (insertion loss at 1 / 3 / 5 GHz within 0.002 dB for 90 % of them, crosstalk within 0.022 %) but
+the one chain through REFLO1's via, whose box had one ground via and is the physics-based model's now
+(`Net-(IC33-LO+)`: -18.6 -> -15.3 dB at 5 GHz).
 
 ## ThunderScope Rev 5.3 (6 layers)
 
