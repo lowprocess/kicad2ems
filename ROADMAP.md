@@ -290,10 +290,16 @@ taken back); nothing below may fix a panel in place. Left:
 ## mom25d: speed (2026-11-19)
 
 **Next, in order (2026-11-22, after the GPU's LDL^T, the dense Z by its half and the block low-rank operator;
-CHANGELOG has their numbers):**
-1. **End-to-end runs of the segment studies with them** (the Thor carrier, the LimeRFE; then LibreVNA and
-   ThunderScope as further large boards): today's numbers are single fresh solves at fixed frequencies; a sweep
-   reuses LDL^T factors and half matrices across frequencies and runs small pieces in parallel.
+CHANGELOG has their numbers; updated 2026-11-23):**
+1. ~~**End-to-end runs of the segment studies with them**~~ done (2026-11-23: Thor 39:30, LibreVNA 30:44, ThunderScope
+   15:12 and 5:47, LimeRFE whole for the first time, 318 ports; docs/segment-studies.md). **Next from them, in
+   order:** (a) factor reuse across frequencies now that GMRES iterations run on the GPU (on LimeRFE's big
+   pieces 22 of 93 reuse attempts succeeded, an iteration ~0.45 s on the host; measure with the products on the
+   GPU and widen REUSE_ITER's cap by their cost); (b) fewer adaptive-sweep samples (11-25 a piece, ~15 s each on
+   the 30k pieces); (c) a pivoted symmetric factor (Bunch-Kaufman blocks) so the LDL^T does not fail on
+   via-chain-heavy pieces (F_Cu_g34's mixed rungs all failed at 0.8-1.6 GHz before its ports were merged);
+   (d) LimeRFE's 37.7 % far-end coupling of `Net-(C120-Pad1)` from `/30MHz_TX`, to be checked against the file's
+   overlapping nets.
 2. **The refinement's double products with many ports**, now the largest part of a many-port solve (4-7 s of the
    In7 group's 8-12 s a frequency): ~~a float-float product on the GPU's single precision~~ done (2026-11-23:
    1.4x the double kernels on the RX 7800 XT from 8 columns, Dekker's split there; CHANGELOG), the policy
