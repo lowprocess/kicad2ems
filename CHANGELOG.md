@@ -388,6 +388,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   solver does not fit its share exits before its fill (`MOM25D_NO_ROOM_EXIT`, code 75) and runs again at the end,
   alone, with all of it; a small one starts only with room for it, and below a low mark the newest one is stopped
   and run again at the end the same way.
+- **segment, mom25d, mesh: three failures of the LimeRFE study (2026-11-23).** (1) Ports that come to one place in
+  a piece are one (`segment._one_port_a_place`): two series parts' pads 1.1 mm apart, each port centred on the
+  same 4 mm of copper, had made two via chains at one place; the other's links are its, `nodes` joining them.
+  (2) The double rung on the half pivots on the matrix whole where it fits beside the half (`DOUBLE_WHOLE`): it
+  is reached where every complex64 factor failed, a near singular matrix, and there the half's LDL^T without
+  pivoting had returned |S| of 1.4 to 539 run to run, without an error. (3) A mesh refinement round's
+  circumcentre that falls on its split midpoint (a right triangle's) is dropped: added twice it was a duplicate
+  point the triangulator refuses; a via model had failed in every run, unseen because a study raises only its
+  first failed piece.
 - **segment: one cut where one conductor crosses (2026-11-23).** Two crossings of one net on one layer within half
   the narrower track's width, alike in direction, are one cut (they were within 1 um): a KiCad 4 file's track
   drawn twice 3 um off gave two ports 0.03 um apart (centred on its 2.5 mm copper), two via chains at one place,
