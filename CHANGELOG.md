@@ -10,6 +10,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **segment: a piece's file carries the primitives near it, not the whole board's (2026-11-23).** Each piece's
+  board file had held every primitive of the board (a Thor window's 34.6 of its 35 MB: the planes of nine other
+  layers, 1,206 footprints), read by its run and written and hashed by the parent; now those within 3 mm of its own
+  copper and ports (`_near_prims`; a via model's: its box), what its run reads (its ports' nets and references, the
+  line model's strips). The Thor carrier's piece files 34.7 -> 12.7 MB (median), its meshed pieces' processes 34.6 ->
+  25.2 min, its via models 3.2 -> 1.6, the run 28:14 -> 24:33, every channel's figures as before (one,
+  `/SoM_IO2/USB2.D`, moves 0.01-0.04 dB from run to run alike).
 - **mom25d: the loop/tree transform's steps read a row's own part where it is (2026-11-23).** `lt_half_step`
   copied each row it takes whole into its group's buffer (step 2: the tree's 23k rows of LimeRFE's 33k-unknown
   piece, ~12 GB of copying); only the part before the row's block (its mirror's, strided) is gathered now, the

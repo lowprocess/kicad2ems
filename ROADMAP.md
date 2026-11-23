@@ -339,7 +339,13 @@ CHANGELOG has their numbers; updated 2026-11-23):**
    tolerance: one kernel assembly, not two), the factor's GEMMs on the GPU, and a first run at 45-100k unknowns.
 6. **Straight coupled runs as analytic multi-line sections** with MoM at the discontinuities only (item (a) of
    the large boards below): the largest gain on bus-heavy boards, a modelling change.
-7. Small: a test-isolation fault, not today's: with `tests/core/test_segment.py` run first in one session, the
+7. **The segment run's own work around the pieces** (2026-11-23: the Thor carrier 38:08 -> 24:33 from a piece's
+   overhead, CHANGELOG). Left: a piece's file still keeps whole any plane that reaches its neighbourhood (12.7 MB
+   median, the planes 2 MB each: clipped to it, ~1 MB); the physics-based via models still run one at a time last in
+   the GPU's queue (1.6 min of the Thor's) - in a thread of their own they stalled the run (one via model's
+   ~1 s became an hour, every other thread waiting on the interpreter lock: reverted, cause not found; a process of
+   their own would sidestep it).
+8. Small: a test-isolation fault, not today's: with `tests/core/test_segment.py` run first in one session, the
    kicad2ems CLI's tests then lack mom25d's dump options ("unrecognized arguments: --mom-near"; CI runs the folders
    apart, so it never meets it): the solver registry built in an import order that leaves them out.
    ~~`tests/core/test_coupled.py`'s three filter tests~~ fixed 2026-11-23 (with test_xsection's two, rf_interdig's

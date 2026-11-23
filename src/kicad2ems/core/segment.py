@@ -572,6 +572,44 @@ def _port_closing(b, raw, name, fp):
     return b._port(raw, name, fp)
 
 
+PRIMS_REACH = 3.0  # mm: a piece's primitives kept this far round its copper
+
+
+def _near_prims(b, piece=None):
+    """b's primitives within PRIMS_REACH of its own copper and ports (a layer
+    piece's nets on its layer; a via model's box): what its run can read
+    (its ports' nets and references, the line model's strips). Each piece had
+    carried the whole board's: a Thor window's file 34.6 of its 35 MB, its
+    run ~2 s reading it, the parent ~2 s writing and hashing it."""
+    import shapely
+    from shapely.geometry import LineString
+    from shapely.ops import unary_union
+    from .board import Prims
+    pr = b.prims
+    if piece is not None and piece.get('kind') == 'layer':
+        lay, nets = piece['layer'], set(piece.get('nets') or ())
+        own = [g for g, n in zip(b.copper.get(lay, []),
+                                 b.copper_nets.get(lay, [])) if n in nets]
+    else:
+        own = [b.outline]
+    own += [_pt(*p.c[:2]) for p in b.ports]
+    if not own:
+        return pr
+    zone = unary_union(own).buffer(PRIMS_REACH)
+    tree = shapely.STRtree([it[2] for it in pr.items]) if pr.items else None
+    hit = (set(tree.query(zone, predicate='intersects').tolist())
+           if tree is not None else set())
+    items = [it for i, it in enumerate(pr.items) if i in hit]
+    kept = {id(it) for it in items}
+    return Prims(
+        items, [s for s in pr.shapes if id(s) in kept],
+        [t for t in pr.tracks if len(t['pts']) > 1
+         and LineString(t['pts']).intersects(zone)],
+        pr.vias,
+        [fp for fp in pr.footprints
+         if any(q['geom'].intersects(zone) for q in fp['pads'])])
+
+
 def _to_dict(b, piece=None):
     """The piece's board file. A layer piece's prims (what the line model
     builds from) are its own: its nets' tracks and pads on its layer, cut
@@ -579,7 +617,8 @@ def _to_dict(b, piece=None):
     cut port into the circle: an open stub to the line model), and the other
     layers' ground copper (its reference planes)."""
     from shapely.geometry import LineString, mapping, shape
-    d = b.to_dict()
+    d = b.to_dict(prims=False)
+    d['prims'] = _near_prims(b, piece).to_dict()
     pr = d.get('prims') or {}
     pr['vias'] = []
     if piece is None or piece.get('kind') != 'layer':

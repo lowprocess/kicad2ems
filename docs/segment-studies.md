@@ -61,6 +61,10 @@ Touchstone file, `segment.json` (each channel's figures and curves), `<board>_ov
 by a chosen figure, opened from the disk), `<board>_couplings.png` (the worst-coupled pairs on the board) and
 `<board>_coupling_profiles.png` (where along each victim it comes from: the local backward-coupling coefficient).
 That run predates the core-port excitation, `--lean` and the parallel small pieces.
+**Its time since (RX 7800 XT, the same run):** 39:30 (2026-11-22), 38:08 (2026-11-23, the GPU's float-float
+products), 28:14 (the causality check and mixed-mode conversion as matrix products, no second write of a piece's
+board), 24:33 (a piece's file with the primitives near it alone); every channel's figures within 0.04 dB of the
+first.
 
 **What it took**, in order (each is in the CHANGELOG with its numbers):
 
