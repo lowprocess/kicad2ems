@@ -10,6 +10,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **segment: the pieces whose every channel is open end to end are not solved (2026-11-23).** `unrouted` already
+  found, before any solve, the channels with no path through the pieces; a piece whose every net is such a
+  channel's would give only their own open S and their coupling to one another (pieces apart do not couple), so
+  `open_pieces` leaves it out (said, `--solve-open` to solve it anyway); a kept piece's cut to one left out ends
+  open, as a leg with no path on already did. LimeRFE's run of the night before: 74 of its 317 pieces, 18.5 of
+  its 91 min of solving, five via models of 25-29k unknowns among them (the largest pieces, and so the peak
+  memory, are live ones: unchanged). No such piece on the Thor carrier, LibreVNA or ThunderScope. Asked whether a
+  line-model pass should find the open traces first: their openness is the connectivity's, known for free; the
+  channels that read open only after the solve (LimeRFE's 145 and 220 MHz filters' inputs, chains through
+  parts the model does not have) are joined copper whose coupling is wanted, and no cheaper model knows them.
 - **mom25d (GPU): the refinement's products in float-float (2026-11-23).** The double half on the GPU is made hi +
   lo (two floats a number, ~48 bits) in place after its upload, the vectors split on the host, and its products
   run on the single-precision units with error-free products and sums (Dekker, Knuth; FMA where `ff_probe` finds
@@ -379,6 +389,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **segment: a channel whose end port lies on another net's copper is left out, said (2026-11-23).** A port's net
+  is the copper under its point (`Board.net_at`, the first net there); where two nets' copper overlap in the board
+  file, the port joined the other net's piece and read its signal. LimeRFE's one 37.7 % far-end figure was that:
+  `Net-(C120-Pad1)`'s end port at U11 pad 4 (`Net-(C120-Pad2)`) sat on `/30MHz_TX`'s track in the file, so it
+  read that line's signal, and the 50 ohm port took half its power (`/30MHz_TX` -3.5 dB at 0.1 GHz). `placed`
+  now leaves such channels out before building the pieces (`_off_its_net`, all at once): ten on LimeRFE, seven of
+  them pads under a stale ground pour's fill (their channels had read open), none on the other boards.
 - **segment: the pieces share the memory (2026-11-22).** The LimeRFE rerun and LibreVNA were OOM-killed at a 23 GB
   cap: a 27k-unknown piece planned its hybrid solve (24 n^2 with thick copper's sides, 17.5 GB) against what was
   free when it started, and the six small pieces beside it on the CPU grew into the same cap. Now each piece runs

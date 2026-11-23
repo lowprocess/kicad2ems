@@ -1048,8 +1048,25 @@ def placed(m, raw, base, specs, ends, apart_h=None, echo=print):
     """pieces() of model m, a channel left out (said) wherever a cut lands on
     copper the model gives another net (two nets' copper overlapping in the
     board file: a short, or nets renamed out of step with the tracks), the
-    model made again without it: (m, parts, cuts, specs, ends)."""
+    model made again without it: (m, parts, cuts, specs, ends). Likewise a
+    channel whose end port the model puts on another net's copper
+    (_off_its_net)."""
     while True:
+        off = _off_its_net(m, ends) if ends else []
+        if off:
+            echo(f"segment: WARNING: {len(off)} channel(s) left out, an end "
+                 "port on another net's copper in the board file (two nets' "
+                 "copper overlapping): " + ', '.join(
+                     f"{leg} ({port.name}: {x['ref']}.{x['pad']}, "
+                     f"{x['pad_net']}, on {port.net})"
+                     for leg, port, x in off[:8])
+                 + (' ...' if len(off) > 8 else ''))
+            legs = {leg for leg, _, _ in off}
+            gone = {y['port'] for y in ends if y['net'] in legs}
+            specs = [q for q in specs if q.split('=')[0] not in gone]
+            ends = [y for y in ends if y['net'] not in legs]
+            m, specs, ends = model_dropping(base, specs, ends, echo)
+            continue
         nets = set(m.sel or [n for ns in m.copper_nets.values() for n in ns])
         try:
             parts, allcuts = pieces(m, raw, raw, nets, apart_h, echo=echo)
@@ -1064,6 +1081,26 @@ def placed(m, raw, base, specs, ends, apart_h=None, echo=print):
             specs = [q for q in specs if q.split('=')[0] not in gone]
             ends = [x for x in ends if x['net'] != leg]
             m, specs, ends = model_dropping(base, specs, ends, echo)
+
+
+def _off_its_net(m, ends):
+    """[(channel, port, its ends entry)], one an end port that model m puts
+    on another net's copper than its pad's (each channel once). A port's net
+    is the copper under its point (Board.net_at, the first net there): where
+    two nets' copper overlap in the file, the port joins the other net's
+    piece and reads that net's signal (LimeRFE's U11 pad 4, Net-(C120-Pad2),
+    on /30MHz_TX's track: 37.7 % far-end "coupling", and /30MHz_TX -3.5 dB at
+    0.1 GHz, its power split into the port), or no piece's (seven LimeRFE
+    pads under a stale ground pour's fill: their channels open)."""
+    pad = {x['port']: x for x in ends}
+    out, seen = [], set()
+    for p in m.ports:
+        x = pad.get(p.name)
+        if (x is not None and p.net and x.get('pad_net')
+                and p.net != x['pad_net'] and x['net'] not in seen):
+            seen.add(x['net'])
+            out.append((x['net'], p, x))
+    return out
 
 
 def _channel_at(msg, kb, ends):
@@ -1344,6 +1381,29 @@ def unrouted(parts, allcuts, port_nets):
     return out
 
 
+def open_pieces(parts, bad, port_nets):
+    """The pieces (names) whose every net is a channel's that unrouted (bad)
+    found open end to end: solved, they would give only those channels' own
+    open S and their coupling to one another (pieces apart do not couple).
+    A piece with a net of a live channel, or of none, is kept; a kept piece's
+    cut to a piece left out ends open, as a leg with no path on does.
+    LimeRFE (2026-11-23): 74 of its 317 pieces, 18.5 of the 91 min of
+    solving, five via models of 25-29k unknowns among them."""
+    dead = {c for c, _ in bad}
+    of = {}
+    for x in port_nets:
+        for n in x.get('nets') or [x['net']]:
+            of.setdefault(n, set()).add(x['net'])
+    out = []
+    for p in parts:
+        nets = (set(p.get('nets') or ())
+                | {v['net'] for v in p.get('vias') or () if v.get('net')}
+                | {q.net for q in p['board'].ports if getattr(q, 'net', None)})
+        if nets and all(of.get(n) and of[n] <= dead for n in nets):
+            out.append(p['name'])
+    return out
+
+
 def junction(fW, SW, fA, SA):
     """A cut's correction (S, 2 x 2 at 50 ohm) from the calibration's whole
     line W and its half A (calibration_pieces): X = A^-1 W B^-1, B the half
@@ -1599,6 +1659,14 @@ def run(a, echo=print):
                  + ", ".join(f"{c} ({' / '.join(map(str, g))})"
                              for c, g in bad[:8])
                  + (" ..." if len(bad) > 8 else ''))
+            skip = ([] if getattr(a, 'solve_open', False)
+                    else open_pieces(parts, bad, ends))
+            if skip:
+                echo(f"segment: {len(skip)} piece(s) not solved, their every "
+                     "channel open end to end (--solve-open to solve them): "
+                     + ", ".join(skip[:12]) + (" ..." if len(skip) > 12
+                                               else ''))
+                parts = [p for p in parts if p['name'] not in set(skip)]
     echo(f"segment: {sum(p['kind'] == 'layer' for p in parts)} layer(s), "
          f"{sum(p['kind'] == 'via' for p in parts)} via model(s), "
          f"{len(allcuts)} cut(s)")
@@ -2612,6 +2680,10 @@ def parser():
     p.add_argument('--ends', action='store_true',
                    help="ports at the nets' ends on pads (the default where "
                    "the board has no ports of its own)")
+    p.add_argument('--solve-open', action='store_true',
+                   help="solve the pieces whose every channel is open end to "
+                   "end before solving too (by default left out: their "
+                   "result would be those channels' own open S)")
     return p
 
 

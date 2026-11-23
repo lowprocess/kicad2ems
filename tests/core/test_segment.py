@@ -489,3 +489,46 @@ def test_ports_that_come_to_one_place_are_one():
     assert pc['part_net'] == {'P20076': 'A'}
     assert pc['core_ports'] == ['P20076']
     assert pc['merged'] == {'P20085': 'P20076'}
+
+
+def test_a_piece_whose_every_channel_is_open_is_not_solved():
+    """open_pieces: a piece whose every net is a channel's that unrouted found
+    open end to end (a layer piece, a via model on its chain's middle net) is
+    left out; one with a live channel's net beside them, or a net of no
+    channel, is kept."""
+    import types
+    P = lambda net: types.SimpleNamespace(name='P1', net=net)
+    piece = lambda name, nets=(), vias=(), ports=(): dict(
+        name=name, nets=list(nets), vias=[dict(net=n) for n in vias],
+        board=types.SimpleNamespace(ports=[P(n) for n in ports]))
+    ends = [dict(port='P1', net='A', nets=['a1', 'a2']),
+            dict(port='P2', net='A', nets=['a1', 'a2']),
+            dict(port='P3', net='B', nets=['b1']),
+            dict(port='P4', net='B', nets=['b1'])]
+    parts = [piece('alone', ['a1']), piece('beside', ['a1', 'b1']),
+             piece('via', vias=['a2'], ports=['a2']), piece('other', ['x']),
+             piece('live', ['b1']), piece('empty')]
+    assert SG.open_pieces(parts, [('A', ['alone', None])], ends) == [
+        'alone', 'via']
+    assert SG.open_pieces(parts, [], ends) == []
+
+
+def test_an_end_port_on_another_nets_copper_leaves_its_channel_out():
+    """_off_its_net: an end port the model puts on another net's copper than
+    its pad's (two nets' copper overlapping in the file: LimeRFE's U11 pad 4
+    on /30MHz_TX's track, read as 37.7 % far-end coupling) names its channel,
+    once; a port on its own pad's copper, or with no net, none."""
+    import types
+    P = lambda name, net: types.SimpleNamespace(name=name, net=net)
+    ends = [dict(port='P1', net='C', pad_net='c1', ref='J5', pad='1'),
+            dict(port='P2', net='C', pad_net='c2', ref='U11', pad='4')]
+    m = types.SimpleNamespace(ports=[P('P1', 'c1'), P('P2', 'TX'),
+                                     P('P1000', 'c1')])
+    (leg, port, x), = SG._off_its_net(m, ends)
+    assert (leg, port.name, x['ref']) == ('C', 'P2', 'U11')
+    m.ports[0].net = 'GND'          # (both its ends off: the channel once)
+    assert [leg for leg, _, _ in SG._off_its_net(m, ends)] == ['C']
+    m.ports[0].net, m.ports[1].net = 'c1', 'c2'
+    assert SG._off_its_net(m, ends) == []
+    m.ports[1].net = None
+    assert SG._off_its_net(m, ends) == []

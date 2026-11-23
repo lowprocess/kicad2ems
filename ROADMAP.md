@@ -298,8 +298,8 @@ CHANGELOG has their numbers; updated 2026-11-23):**
    GPU and widen REUSE_ITER's cap by their cost); (b) fewer adaptive-sweep samples (11-25 a piece, ~15 s each on
    the 30k pieces); (c) a pivoted symmetric factor (Bunch-Kaufman blocks) so the LDL^T does not fail on
    via-chain-heavy pieces (F_Cu_g34's mixed rungs all failed at 0.8-1.6 GHz before its ports were merged);
-   (d) LimeRFE's 37.7 % far-end coupling of `Net-(C120-Pad1)` from `/30MHz_TX`, to be checked against the file's
-   overlapping nets.
+   ~~(d) LimeRFE's 37.7 % far-end coupling~~ done (2026-11-23: an end port on `/30MHz_TX`'s copper in the file, its
+   channel now left out; and the pieces of channels open before solving are not solved, 20 % of LimeRFE's).
 2. **The refinement's double products with many ports**, now the largest part of a many-port solve (4-7 s of the
    In7 group's 8-12 s a frequency): ~~a float-float product on the GPU's single precision~~ done (2026-11-23:
    1.4x the double kernels on the RX 7800 XT from 8 columns, Dekker's split there; CHANGELOG), the policy
