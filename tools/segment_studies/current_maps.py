@@ -204,7 +204,10 @@ def main(argv=None):
     # its start (starts())
     want = [c.strip() for c in o.channels.split(',') if c.strip()]
     chans = {}
+    have = set(res.get('ports') or ())   # (the network's: a leg left out has none)
     for p in res['port_nets']:
+        if have and p['port'] not in have:
+            continue
         key = tuple(p.get('nets') or [p['net']])
         if want and not any(w in key for w in want):
             continue
