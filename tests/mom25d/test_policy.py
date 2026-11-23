@@ -129,8 +129,14 @@ def test_memory_plan_of_the_half(monkeypatch):
     p = memory_plan(n, avail=30e9, gpu=GPU, precision='mixed',
                     solver='direct')
     assert p['path'] == 'hybrid'
-    assert p['host'] == pytest.approx(12.0 * n * n + policy.SPARE)
+    # (the GPU's factor from the double half, converted on the way up:
+    # HALF_STREAM; the host's complex64 copy before)
+    assert p['host'] == pytest.approx(8.0 * n * n + policy.SPARE)
     assert p['gpu'] == pytest.approx(GPU[1](n) + 8.0 * n * n)
+    monkeypatch.setattr(policy, 'HALF_STREAM', False)
+    p = memory_plan(n, avail=30e9, gpu=GPU, precision='mixed',
+                    solver='direct')
+    assert p['host'] == pytest.approx(12.0 * n * n + policy.SPARE)
     w = memory_plan(n, avail=30e9, gpu=GPU, precision='mixed',
                     solver='direct', sides=True)
     assert w['host'] == pytest.approx(12.0 * n * n + policy.SPARE)
@@ -143,11 +149,20 @@ def test_memory_plan_of_the_half(monkeypatch):
     # (a 16.4 GB share less what the run holds: a LimeRFE piece's) is enough
     # for the one alone
     m, kh2 = 27000, 1e-5
-    lt = lambda: choose(1e8, m, avail=11e9 / 0.8, nt=2 * m, kh2=kh2,
-                        precision='mixed').basis
+    lt = lambda gpu=None: choose(1e8, m, avail=11e9 / 0.8, nt=2 * m,
+                                 kh2=kh2, precision='mixed', gpu=gpu).basis
     assert lt() == 'loop/tree'
     monkeypatch.setattr(policy, 'LT_HALF', False)
     assert lt() == 'rwg'
+    # with the GPU's factor converted on the way up, 8 n^2 + SPARE (6.7 GB):
+    # 8 GB of room is enough, not without
+    monkeypatch.setattr(policy, 'LT_HALF', True)
+    big = (16e9, lambda n: 4.0 * n * n + 0.4e9)
+    small = lambda gpu=None: choose(1e8, m, avail=8e9 / 0.8, nt=2 * m,
+                                    kh2=kh2, precision='mixed', gpu=gpu).basis
+    assert small() == 'rwg'
+    monkeypatch.setattr(policy, 'HALF_STREAM', True)
+    assert small(big) == 'loop/tree'
 
 
 @pytest.mark.parametrize('kw,want', CASES)

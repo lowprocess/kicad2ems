@@ -557,6 +557,31 @@ def test_vulkan_ldl_matches_the_hosts(clean, N, max_buffer):
 
 
 @vulkan
+@pytest.mark.parametrize('N,chunk', [(300, 1 << 28), (1000, 64 * 1024)])
+def test_the_double_half_converted_on_its_way_up(clean, N, chunk):
+    """factor_ldl(H, dsc) of the double half (gpu_ldl.upload_c64: converted
+    and equilibrated a range of rows at a time into the staging buffers, no
+    complex64 half on the host): the factor of its complex64 half's upload,
+    a chunk smaller than a block's rows too."""
+    from kicad2ems.mom25d import gpu_ldl, gpu_vk
+    from kicad2ems.mom25d.half import Half
+    clean.setenv('MOM25D_VK_NB', '64')
+    be = gpu_vk.VulkanBackend()
+    rng = np.random.default_rng(5)
+    Z = rng.standard_normal((N, N)) + 1j * rng.standard_normal((N, N))
+    Z = Z + Z.T + 4 * np.sqrt(N) * np.eye(N)
+    dsc = 1 / np.sqrt(np.abs(np.diagonal(Z)))
+    ref = be.download_ldl(be.factor_ldl(Half.pack(Z, dsc, nb=be.nb)))
+    real = gpu_ldl.upload_c64
+    clean.setattr(gpu_ldl, 'upload_c64',
+                  lambda b, H, d: real(b, H, d, chunk=chunk))
+    H = Half.pack(Z, dtype=complex, nb=be.nb)
+    got = be.download_ldl(be.factor_ldl(H, dsc))
+    assert np.abs(got.data - ref.data).max() < 1e-6 * np.abs(ref.data).max()
+    be.release()
+
+
+@vulkan
 def test_vulkan_ldl_zero_pivot_raises(clean):
     from kicad2ems.mom25d import gpu_vk
     from kicad2ems.mom25d.half import Half

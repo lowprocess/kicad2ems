@@ -310,6 +310,44 @@ class GreenTableML:
     """
     def __init__(self, f, stack, o, s, rho_max, nrho=260, nfine=8192, K=None,
                  nq=8, cross_sing=False, image_sing=None):
+        GA, Gq, kr, dk = self._spectral(f, stack, o, s, rho_max, K, nq,
+                                        cross_sing, image_sing)
+        self._tabulate(GA, Gq, kr, dk, rho_max, nrho, nfine)
+
+    @classmethod
+    def batch(cls, f, stack, pairs, rho_max, nrho=260, nfine=8192, K=None,
+              nq=8):
+        """The tables of pairs [(o, s, cross_sing, image_sing)] at f, as each
+        alone, their Hankel transforms one call: every pair's contour and rho
+        are the same at f, so the Bessel functions on them (most of a table's
+        time: 0.15 s of 0.16 a pair on a 6-layer via model's 21) once, not
+        once a pair."""
+        objs, specs, grid = [], [], None
+        for o, s_, xs, im in pairs:
+            t = cls.__new__(cls)
+            GA, Gq, kr, dk = t._spectral(f, stack, o, s_, rho_max, K, nq, xs,
+                                         im)
+            if grid is None:
+                grid = (kr, dk)
+            elif not (np.array_equal(grid[0], kr)
+                      and np.array_equal(grid[1], dk)):
+                raise ValueError("GreenTableML.batch: the pairs' contours "
+                                 "differ")
+            specs += list(t._rest(GA, Gq, kr))
+            objs.append(t)
+        if not objs:
+            return objs
+        kr, dk = grid
+        rho = rho_max * np.linspace(0, 1, nrho) ** 2
+        H = hankel(np.stack(specs), kr, dk, rho)
+        for i, t in enumerate(objs):
+            t._table(rho, H[2 * i:2 * i + 2].T, rho_max, nfine, len(kr))
+        return objs
+
+    def _spectral(self, f, stack, o, s, rho_max, K, nq, cross_sing,
+                  image_sing):
+        """The pair's spectral G_A, G_q on the contour (kr, dk) and the parts
+        extracted from them (self's cA, cq, cAi, cqi, dimg, d, K)."""
         w = 2 * np.pi * f
         stack = stack.at(f)  # a wideband stack's permittivities at f
         self.o, self.s, self.f = o, s, f
@@ -340,23 +378,32 @@ class GreenTableML:
             self.cAi = complex((ga[0] - MU0 / (2 * K1)) * fac).real
             self.cqi = complex((gq[0] - 1.0 /
                                 (EPS0 * stack.eps_sum(o) * K1)) * fac)
-        self._tabulate(GA, Gq, kr, dk, rho_max, nrho, nfine)
+        self.K = K
+        return GA, Gq, kr, dk
+
+    def _rest(self, GA, Gq, kr):
+        """The spectral G_A, G_q less the extracted parts: c / sqrt(rho^2 +
+        d^2) <-> 2 pi c e^(-kr d) / kr."""
+        for d, cA, cq in self.extracted():
+            e = 2 * np.pi * np.exp(-kr * d) / kr
+            GA, Gq = GA - cA * e, Gq - cq * e
+        return GA, Gq
+
+    def _table(self, rho, v, rho_max, nfine, npts):
+        """The table of the rest's transform v (len(rho), 2), nfine points
+        over rho_max."""
+        self._tab = Table1D(rho, v, rho_max, nfine)
         self.rho, self.A_rest, self.Q_rest = (self._tab.rho, self._tab.v[:, 0],
                                               self._tab.v[:, 1])
-        self.npts, self.K = len(kr), K
+        self.npts = npts
 
     def _tabulate(self, GA, Gq, kr, dk, rho_max, nrho, nfine):
         """The table of the spectral G_A, G_q less the extracted parts, nfine
         points over rho_max."""
-        # c / sqrt(rho^2 + d^2) <-> 2 pi c e^(-kr d) / kr
-        for d, cA, cq in self.extracted():
-            e = 2 * np.pi * np.exp(-kr * d) / kr
-            GA, Gq = GA - cA * e, Gq - cq * e
+        GA, Gq = self._rest(GA, Gq, kr)
         rho = rho_max * np.linspace(0, 1, nrho) ** 2
-        # (nfine, 2)
-        self._tab = Table1D(rho,
-                            hankel(np.stack([GA, Gq]), kr, dk, rho).T, rho_max,
-                            nfine)
+        self._table(rho, hankel(np.stack([GA, Gq]), kr, dk, rho).T, rho_max,
+                    nfine, len(kr))
 
     def extracted(self):
         """[(d, cA, cq)]: the parts taken out of the tables, cA / sqrt(rho^2 +

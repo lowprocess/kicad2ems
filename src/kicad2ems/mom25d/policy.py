@@ -92,6 +92,10 @@ LT_HALF = os.environ.get('MOM25D_LT_HALF', 'on') != 'off'
 # (Half.loop_transform: the half and the verticals' columns at the peak, not
 # the matrix whole)
 LOOPS_HALF = os.environ.get('MOM25D_LOOPS_HALF', 'on') != 'off'
+# the GPU's LDL^T of the half from the double half itself, converted on the way
+# up (gpu_ldl.upload_c64): the host holds 8 N^2, not 12 (no complex64 half
+# there); a LimeRFE piece of 33k unknowns 15.5 GB at its peak with the copy
+HALF_STREAM = os.environ.get('MOM25D_HALF_STREAM', 'on') != 'off'
 # the refinement's products with the double Z on the GPU split with the host
 # (which holds Z too) from this many columns: with many the products are bound
 # by double arithmetic, an RX 7800 XT's about the same as 8 P-cores' (the
@@ -171,10 +175,14 @@ def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
     # loop/tree basis, the sides' loops: their transforms need the whole)
     # whole first, its half kept after them (16 n^2 at the peak)
     half = half and HALF and LDL and nq == n
+    # the half's host bytes: the double Z's 8 n^2, and where the host factors
+    # it the factor's complex64 4 n^2 (the GPU's converted on the way up)
+    hh = (8.0 if HALF_STREAM and gpu is not None
+          and gpu_fits(gpu[1](n), gpu[0]) else 12.0)
     if loop_tree == 'on' or (loop_tree == 'auto' and kh2 < LOOP_TREE_BELOW):
         # (its charge matrix by blocks; the factor's copy the LU's whole or
         # the LDL^T's half)
-        need = ((12.0 if LT_HALF else 16.0) if half else 24.0) * n * n + SPARE
+        need = ((hh if LT_HALF else 16.0) if half else 24.0) * n * n + SPARE
         why = lt_block or (f"its matrices need ~{need / 1e9:.1f} GB"
                            if need > 0.8 * avail else '')
         basis = 'rwg' if why else 'loop/tree'
@@ -193,7 +201,7 @@ def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
     # the half: the double Z's 8 n^2 and the factor's complex64 4 n^2; 16
     # n^2 while a transform has it whole
     host = ((16.0 if (lt and not LT_HALF) or (sides and not LOOPS_HALF)
-             else 12.0) * n * n if half
+             else hh) * n * n if half
             else 24.0 * n * n if lt else dense_bytes(n, nq))
     hybrid = fits and (lt or (host + SPARE <= 0.8 * avail and nq <= (
         HALF_HYBRID_MAX_N if half else HYBRID_MAX_N)))
@@ -252,7 +260,8 @@ def memory_plan(n, avail=None, gpu=None, precision='auto', solver='auto',
     plan = choose(np.inf, n, m, avail=avail, gpu=gpu, precision=precision,
                   loop_tree='off', gpu_dense=gpu_dense, sides=sides)
     p = plan.path
-    host = ((max(12.0 + 4.0 * (plan.keep if p == 'cpu-mixed' else 0),
+    host = ((max((8.0 if HALF_STREAM and p in ('hybrid', 'gpu-lu')
+                  else 12.0 + 4.0 * (plan.keep if p == 'cpu-mixed' else 0)),
                  16.0 if sides and not LOOPS_HALF else 0.0)) * n * n
             if plan.half else
             {'double': 18.0, 'hybrid': 24.0}.get(p, 10.0) * n * n) + SPARE

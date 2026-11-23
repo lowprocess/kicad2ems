@@ -69,3 +69,25 @@ def test_split_substrate_equals_single_layer():
     g1, z1 = line_char_xs(LayerStack([Layer(h, 4.3, 0.02)]), 1, w, [5e9])
     assert abs(z2[0].real / z1[0].real - 1) < 0.002
     assert abs(g2[0].imag / g1[0].imag - 1) < 0.002
+
+
+def test_the_tables_in_one_batch_are_each_alone():
+    """GreenTableML.batch: every pair's table at f (one Hankel transform for
+    all: their contour and rho the same) as each built alone, the extracted
+    singular parts too."""
+    st = LayerStack([Layer(0.2e-3, 4.3, 0.02), Layer(0.1e-3, 3.5, 0.002),
+                     Layer(0.3e-3, 4.5, 0.01)])
+    for f in (1e8, 5e9):
+        pairs = [(a, b, a != b, a == b) for a in (1, 2, 3)
+                 for b in (1, 2, 3) if a <= b]
+        got = GreenTableML.batch(f, st, pairs, 20e-3)
+        for (a, b, xs, im), g in zip(pairs, got):
+            one = GreenTableML(f, st, a, b, 20e-3, cross_sing=xs,
+                               image_sing=im)
+            assert (g.cA, g.cq, g.cAi, g.cqi, g.dimg, g.K, g.npts) == (
+                one.cA, one.cq, one.cAi, one.cqi, one.dimg, one.K, one.npts)
+            assert np.abs(g._tab.v - one._tab.v).max() <= (
+                1e-13 * np.abs(one._tab.v).max())
+            r = np.linspace(1e-5, 15e-3, 7)
+            assert np.allclose(g.total(r), one.total(r), rtol=1e-12)
+    assert GreenTableML.batch(1e9, st, [], 20e-3) == []

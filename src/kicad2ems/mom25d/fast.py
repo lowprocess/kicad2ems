@@ -914,6 +914,8 @@ class FastOperator:
                 with sim.log.timer('LDL^T factor (GPU)', f"N={n}, {gpu.name}"):
                     try:
                         F = (gpu.factor_dense_ldl(dsc) if gpu.zd is not None
+                             else gpu.factor_ldl(H, dsc)
+                             if getattr(gpu, 'LDL_FROM_DOUBLE', False)
                              else gpu.factor_ldl(c64()))
                         M = GpuLDL(gpu, F)
                         return M.to_host() if plan.gpu_factor else M
@@ -933,6 +935,11 @@ class FastOperator:
                    and any(k.M.on_gpu for k in self.st.kept)):
                 self.st.drop(gpu=True)
                 gpu.release()
+            # (its complex64 half and whole copy: 12 n^2 beside the double
+            # half, past what the plan counts with the half converted on the
+            # way up: given back, or MemoryError, rather than killed)
+            self._room(12.0 * n * n, f"the GPU LU of the half's whole copy at "
+                       f"{self.f / 1e9:.4g} GHz (the LDL^T without a factor)")
             with sim.log.timer('LU factor (GPU)', f"N={n}, {gpu.name}, the "
                                "half's whole copy"):
                 try:

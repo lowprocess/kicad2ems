@@ -178,6 +178,14 @@ class Half:
         """In place: entry (i, j) times d[i] d[j] (d real, or complex for a
         complex matrix: the loop/tree basis's sqrt(jw))."""
         d = np.asarray(d)
+        if self.dtype == np.complex128:
+            try:  # (one pass a row: half the two NumPy passes' 0.58 s at 33k)
+                from . import _core
+                _core.half_scale(self.data, *self.rows(),
+                                 np.ascontiguousarray(d, complex))
+                return self
+            except (ImportError, AttributeError):
+                pass
         dt = (self.dtype if np.iscomplexobj(d) else
               np.zeros(0, self.dtype).real.dtype)
 

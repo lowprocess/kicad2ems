@@ -890,18 +890,21 @@ class Simulation:
     def green_tables(self, f):
         """The layered-media tables of every pair of metal interfaces at f: {(a,
         b): GreenTableML}, a <= b."""
-        self.tables = {}
+        self.tables, pairs = {}, []
         for i, a in enumerate(self.layers):
             for b in self.layers[i:]:
                 xs = a != b and abs(self.st.z[a] - self.st.z[b]) < 3 * self.dmax
                 im = (a == b and self.st.at(f).nearest_discontinuity(a)
                       < 1.5 * self.dmax)
-                with self.log.timer('Green tables',
-                                    f"M{a}-M{b} @ {f / 1e9:.2f} GHz"):
-                    self.tables[(a, b)] = GreenTableML(f, self.st, a, b,
-                                                       self.rho_max,
-                                                       cross_sing=xs,
-                                                       image_sing=im)
+                pairs.append((a, b, xs, im))
+        # every pair's Hankel transform one call (GreenTableML.batch: the
+        # Bessel functions on their shared contour once; a 6-layer via model's
+        # 21 tables had taken 3.4 s a frequency)
+        with self.log.timer('Green tables', f"{len(pairs)} pair(s) @ "
+                            f"{f / 1e9:.2f} GHz"):
+            for (a, b, _, _), t in zip(pairs, GreenTableML.batch(
+                    f, self.st, pairs, self.rho_max)):
+                self.tables[(a, b)] = t
         return self.tables
 
     # via pairs of one span pair above which R comes from a table

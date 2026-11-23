@@ -158,3 +158,26 @@ def test_rows_and_a_border_transform_on_the_half(n, nb):
     H = Half.pack(A, dtype=complex, nb=nb).loop_transform(W, chunk=17)
     ref = T.T @ A @ T
     assert np.abs(H.to_full() - ref).max() < 1e-12 * np.abs(ref).max()
+
+
+@pytest.mark.parametrize('n,nb', [(300, 64), (513, 256), (5, 2)])
+def test_core_scale_and_rows_into_complex64(n, nb):
+    """The core's half_scale (one pass, real or complex d) as NumPy's two;
+    half_c64_rows: any range of rows of half_c64's, their numbers alone."""
+    from kicad2ems.mom25d import _core
+    rng = np.random.default_rng(n)
+    A = sym(n, rng)
+    d = rng.random(n) + 0.5
+    dc = d * np.exp(1j * rng.random(n))
+    for dd in (d, dc):
+        H = Half.pack(A, dtype=complex, nb=nb).scale(dd)
+        ref = A * dd[:, None] * dd[None, :]
+        assert np.abs(H.to_full() - ref).max() < 1e-13 * np.abs(ref).max()
+    H = Half.pack(A, dtype=complex, nb=nb)
+    whole = np.empty(H.size, np.complex64)
+    _core.half_c64(H.data, d, whole, nb)
+    rp = np.r_[H.rows()[0], H.size]
+    for r0, r1 in ((0, n), (1, min(n, nb + 3)), (n - 1, n), (2, 2)):
+        out = np.empty(max(1, rp[r1] - rp[r0]), np.complex64)
+        _core.half_c64_rows(H.data, d, out, nb, r0, r1)
+        assert np.array_equal(out[:rp[r1] - rp[r0]], whole[rp[r0]:rp[r1]])

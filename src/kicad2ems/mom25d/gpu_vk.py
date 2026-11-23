@@ -1194,12 +1194,17 @@ class VulkanBackend:
         from .policy import gpu_fits
         return gpu_fits(self.vram_needed_ldl(N), self.mem_free() + extra)
 
-    def factor_ldl(self, H):
-        """The LDL^T of a host half.Half (complex64, equilibrated): a
-        gpu_ldl.LDLFactor (raises ZeroDivisionError / FloatingPointError
-        where it has no factor without pivoting)."""
+    # factor_ldl takes the double half and its equilibration (converted on
+    # the way up: gpu_ldl.upload_c64)
+    LDL_FROM_DOUBLE = True
+
+    def factor_ldl(self, H, dsc=None):
+        """The LDL^T of a host half.Half (complex64, equilibrated; or the
+        double half with dsc, converted on the way up): a gpu_ldl.LDLFactor
+        (raises ZeroDivisionError / FloatingPointError where it has no factor
+        without pivoting)."""
         from . import gpu_ldl
-        return gpu_ldl.factor(self, H)
+        return gpu_ldl.factor(self, H, dsc)
 
     def factor_dense_ldl(self, dsc):
         """factor_ldl of put_dense's Z equilibrated by dsc, its complex64

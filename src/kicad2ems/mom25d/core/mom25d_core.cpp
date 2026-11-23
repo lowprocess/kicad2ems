@@ -1133,12 +1133,19 @@ void lt_half_step(py::array_t<cd> data, arr<i64> rp, arr<i64> c0,
                 any |= (tr[a] != 0) == want_tree;
             if (!any) continue;
             const i64 cs = c0p[g0];  // (a group within one block)
+            // (only the rows this step takes: steps 1 and 3 the loops', a
+            // third of them, step 2 the tree's)
+            bool take[64];
+            for (i64 k = 0; k < m; ++k)
+                take[k] = (tr[g0 + k] != 0) == want_tree;
             for (i64 c = 0; c < cs; ++c) {
                 if (!all_cols && !tr[c]) continue;
                 const cd *src = z + rpp[c] + (g0 - c0p[c]);
-                for (i64 k = 0; k < m; ++k) R[k * n + c] = src[k];
+                for (i64 k = 0; k < m; ++k)
+                    if (take[k]) R[k * n + c] = src[k];
             }
             for (i64 k = 0; k < m; ++k) {
+                if (!take[k]) continue;
                 const cd *src = z + rpp[g0 + k];
                 cd *dst = &R[k * n];
                 if (all_cols)
@@ -3062,6 +3069,57 @@ void half_c64(arr<cd> H, arr<double> d, py::array_t<cf> out, int nb) {
     }
 }
 
+// half_c64_rows: rows r0 .. r1 of half_c64's, into out (their numbers alone,
+// in the half's order: the GPU upload's staging buffer, gpu_ldl.upload_c64:
+// no complex64 half on the host)
+void half_c64_rows(arr<cd> H, arr<double> d, py::array_t<cf> out, int nb,
+                   i64 r0, i64 r1) {
+    const i64 n = d.shape(0);
+    if (r0 < 0 || r1 > n || r0 > r1)
+        throw std::invalid_argument("half_c64_rows: rows out of range");
+    auto at = [n, nb](i64 r) {        // row r's first number's index
+        const i64 J = r / nb, j0 = J * nb;
+        // blocks before J: sum over K < J of nb (n - K nb)
+        const i64 before = nb * (J * n - nb * J * (J - 1) / 2);
+        return before + (r - j0) * (n - j0);
+    };
+    const i64 a0 = at(r0), a1 = r1 < n ? at(r1) : at(n - 1) + (n - (n - 1) / nb * nb);
+    if (out.size() < a1 - a0 || H.size() < a1)
+        throw std::invalid_argument("half_c64_rows: buffer too small");
+    const cd *h = H.data();
+    const double *dd = d.data();
+    cf *o = out.mutable_data();
+    py::gil_scoped_release nogil;
+#pragma omp parallel for schedule(static)
+    for (i64 r = r0; r < r1; ++r) {
+        const i64 J = r / nb, j0 = J * nb, ld = n - j0, a = at(r);
+        const double dr = dd[r];
+        for (i64 c = 0; c < ld; ++c) {
+            const double s = dr * dd[j0 + c];
+            o[a - a0 + c] = cf((float)(h[a + c].real() * s),
+                               (float)(h[a + c].imag() * s));
+        }
+    }
+}
+
+// half_scale: half.Half's entry (i, j) times d[i] d[j] in place (d complex: the
+// loop/tree basis's sqrt(jw) too), one pass a row
+void half_scale(py::array_t<cd> data, arr<i64> rp, arr<i64> c0, arr<cd> d) {
+    auto buf = data.request(true);
+    cd *z = static_cast<cd *>(buf.ptr);
+    const i64 n = rp.shape(0);
+    const i64 *rpp = rp.data(), *c0p = c0.data();
+    const cd *dd = d.data();
+    py::gil_scoped_release nogil;
+#pragma omp parallel for schedule(static)
+    for (i64 r = 0; r < n; ++r) {
+        cd *row = z + rpp[r];
+        const cd dr = dd[r];
+        const i64 a = c0p[r];
+        for (i64 c = a; c < n; ++c) row[c - a] *= dr * dd[c];
+    }
+}
+
 // -----------------------------------------------------------------------------
 // compact_half: a complex64 Z (n x n, C order) into half.Half's layout in its
 // own memory, from its start: row r's columns from its block's start moved to
@@ -3292,6 +3350,10 @@ PYBIND11_MODULE(_core, m) {
           "the loop/tree basis's charge block into Z[tree, tree]");
     m.def("charge_into_half", &charge_into_half,
           "charge_into on half.Half's layout");
+    m.def("half_c64_rows", &half_c64_rows,
+          "rows r0 .. r1 of half_c64's into a staging buffer");
+    m.def("half_scale", &half_scale,
+          "half.Half's entries times d[i] d[j] in place, one pass");
     m.def("lt_half_step", &lt_half_step,
           "a step of the loop/tree transform on half.Half's layout");
     py::class_<BLRFactorT<cf>>(m, "BLRFactor",

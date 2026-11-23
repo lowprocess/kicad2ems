@@ -427,9 +427,46 @@ def upload(be, H, chunk=1 << 28):
     return dev
 
 
-def factor(be, H):
-    """The LDL^T factor of the host half.Half H (complex64, equilibrated) on
-    be's GPU: LDLFactor. Raises ZeroDivisionError / FloatingPointError where a
+def upload_c64(be, H, dsc, chunk=1 << 28):
+    """H (a host half.Half, complex128: the double Z's) onto the device as
+    the LDL^T's complex64 half equilibrated by dsc (the core's half_c64), a
+    range of rows at a time converted straight into the two mapped staging
+    buffers: no complex64 half on the host (4 N^2 bytes: a LimeRFE piece of
+    33k unknowns had peaked at 15.5 GB with it, its double half 8.7)."""
+    from . import _core
+    kernels(be)
+    dev = HalfDev(be, H.n, H.nb, itemsize=8)
+    d = np.ascontiguousarray(dsc, np.float64)
+    rp = np.r_[H.rows()[0], H.size].astype(np.int64)
+    per = chunk // 8
+    hs = [be._host(f'hup{i}', chunk) for i in (0, 1)]
+    subs, j = [None, None], 0
+    for a, b, buf in dev.groups:
+        lo, base = int(H.off[a]), dev.addr[a]
+        r, end = int(H.j0[a]), (int(H.j0[b]) if b < H.nblk else H.n)
+        while r < end:
+            r1 = int(np.searchsorted(rp, rp[r] + per, 'right')) - 1
+            r1 = max(r + 1, min(end, r1))
+            cnt, i = int(rp[r1] - rp[r]), j % 2
+            if subs[i] is not None:
+                be.dev.wait_for_submit(subs[i])
+            _core.half_c64_rows(H.data, d, hs[i].view(np.complex64, cnt),
+                                H.nb, r, r1)
+            _copy(be, hs[i].address, cnt, base + 8 * (int(rp[r]) - lo), cnt,
+                  cnt, 1)
+            subs[i] = be._submit()
+            j += 1
+            r = r1
+    for x in subs:
+        if x is not None:
+            be.dev.wait_for_submit(x)
+    return dev
+
+
+def factor(be, H, dsc=None):
+    """The LDL^T factor of the host half.Half H (complex64, equilibrated; or
+    complex128 with dsc: upload_c64's, converted on the way) on be's GPU:
+    LDLFactor. Raises ZeroDivisionError / FloatingPointError where a
     diagonal block has no factor without pivoting (the caller's LU then)."""
     if H.nb != be.nb:
         raise ValueError(f"gpu_ldl: the matrix's blocks ({H.nb}) are not the "
@@ -439,7 +476,7 @@ def factor(be, H):
                          "backward solve's tiles)")
     be.release()
     t0 = time.perf_counter()
-    dev = upload(be, H)
+    dev = upload(be, H) if dsc is None else upload_c64(be, H, dsc)
     return _factor(be, dev, t0)
 
 
