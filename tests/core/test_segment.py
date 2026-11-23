@@ -532,3 +532,30 @@ def test_an_end_port_on_another_nets_copper_leaves_its_channel_out():
     assert SG._off_its_net(m, ends) == []
     m.ports[1].net = None
     assert SG._off_its_net(m, ends) == []
+
+
+def test_a_via_model_that_is_no_meshed_box():
+    """_unmeshable: a port whose reference is a signal net's copper (a cut
+    circle inside the antipad: the port over its own net's copper on the
+    board's far side, shorted by the via, the model open), or a box with
+    fewer than two ground vias (its clipped planes tied by none, or one: a
+    shorted patch), is no meshed via model; two ground vias and ports over a
+    plane, or copper of no net, are."""
+    import types
+    from shapely.geometry import box
+    P = lambda name, ref: types.SimpleNamespace(
+        name=name, kind='z', ref_layer=ref, c=np.array([0.0, 0.0]))
+    under = {'In1.Cu': 'GND', 'B.Cu': 'SIG', 'In4.Cu': None}
+    b = types.SimpleNamespace(ports=[P('P1', 'In1.Cu'), P('P2', 'In4.Cu')],
+                              net_at=lambda lay, x, y: under[lay])
+    m = types.SimpleNamespace(ground_nets={'GND'}, vias=[
+        (1.0, 1.0, 0.15, 0, 1), (-1.0, 1.0, 0.15, 0, 1),
+        (9.0, 9.0, 0.15, 0, 1), (0.0, 0.0, 0.15, 0, 1)],
+        via_nets=['GND', 'GND', 'GND', 'SIG'])
+    bx = box(-2, -2, 2, 2)
+    assert SG._unmeshable(m, b, bx) == ''
+    m.via_nets[1] = 'SIG2'
+    assert SG._unmeshable(m, b, bx) == '1 ground via in its box'
+    b.ports.append(P('P1001', 'B.Cu'))
+    assert SG._unmeshable(m, b, bx) == (
+        'port P1001 over signal copper, no plane under')

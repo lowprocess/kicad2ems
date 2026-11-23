@@ -389,6 +389,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **segment: a via model that is no meshed box is the physics-based model's (2026-11-23).** Two faults made meshed
+  via models read open or wrong, found by solving LimeRFE's via models with `pbm` beside their meshed results:
+  - a port over signal copper: a series part's pad near the via shrinks its cut circle (the keep-out) inside the
+    antipad, or the port is a through-hole pad's over its own barrel; no plane is under the port, so its
+    reference is the nearest copper, its own net's on the board's far side, and the via shorts it (|S11| 0 dB,
+    |S21| -30 to -150 dB: LimeRFE's `VCOM`, `Net-(C6-Pad1)`, `Net-(C508-Pad2)`, `/Cell/VIA_U35_U39` and others,
+    ThunderScope's four BNC inputs, which docs/segment-studies.md had put down to relays the model lacks);
+  - fewer than two ground vias in its box: the planes, clipped to the box, tied by none (the return current at
+    low frequency only their few pF: -12 to -18 dB at 0.1 GHz, 0 dB above 1 GHz) or by one (a shorted patch:
+    LimeRFE's J18 via -16 dB at 3.88 GHz, `pbm` -0.8 dB at most).
+  With no `--via-solver` given, `_unmeshable` sends such a model to `pbm` (said; `--via-solver mom25d`, or
+  `K2E_SEG_VIA_AUTO=off`, meshes every box): 14 of LimeRFE's 20 via models, 1 of LibreVNA's 24, ThunderScope's
+  front end's 4, none of the examples. Where both are well posed (3-15 ground vias) they agree to |dS| 0.10-0.36
+  at 6 GHz; on rf_diffvia `pbm` is the closer to the whole board already (0.073 dB rms against 0.193).
 - **mom25d: a kept factor that did not precondition is freed when the new one needs its room (2026-11-23).** In the
   dense path `solve` still held the kept factor it had tried (its local and the preconditioner's closure), so when
   `_factor_half` dropped it for the new factor's room the GPU's memory was not given back, and the new LDL^T ran

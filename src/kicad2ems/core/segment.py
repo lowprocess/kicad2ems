@@ -907,9 +907,41 @@ def pieces(m, raw, kb, nets, apart_h=None, echo=print):
         out.append(dict(kind='via', name=f"via{gi + 1}", board=b,
                         links=[(c.get('port', f"P{1000 + c['k']}"), c['k'])
                                for c in mine],
-                        external=[n for n, _ in own], vias=g['vias']))
+                        external=[n for n, _ in own], vias=g['vias'],
+                        unmeshable=_unmeshable(m, b, bx)))
     del scale
     return [_one_port_a_place(p) for p in out], allcuts
+
+
+VIA_GROUND_MIN = 2  # ground vias a via model's box needs to be meshed
+# a via model that is no meshed box (_unmeshable) the physics-based model's
+# where no --via-solver is given (K2E_SEG_VIA_AUTO=off: meshed as asked)
+VIA_AUTO = os.environ.get('K2E_SEG_VIA_AUTO', 'on') != 'off'
+
+
+def _unmeshable(m, b, bx):
+    """Why via model b (its box bx) is no meshed model, or '': a port whose
+    reference is a signal net's copper (its own: a cut circle inside the
+    antipad, a series part's pad near the via having shrunk it, or a through-
+    hole pad's port over its own barrel; the port then shorted by the via, the
+    model open: five of LimeRFE's via models, ThunderScope's four BNC inputs);
+    or fewer than VIA_GROUND_MIN ground vias in the box (its planes, clipped
+    to the box, tied by none: the return current at low frequency only their
+    small capacitance, -12 to -18 dB at 0.1 GHz where the board's whole planes
+    pass it; or by one, a shorted patch: LimeRFE's J18 via -16 dB at 3.9 GHz).
+    The physics-based model (viamodel: the planes infinite) has neither."""
+    bad = [p.name for p in b.ports
+           if getattr(p, 'kind', 'z') == 'z' and p.ref_layer
+           and b.net_at(p.ref_layer, *p.c[:2]) not in (None, *m.ground_nets)]
+    if bad:
+        return (f"port{'s' if len(bad) > 1 else ''} {', '.join(bad[:4])} "
+                "over signal copper, no plane under")
+    inside = bx.buffer(-1e-6)
+    gv = sum(1 for (x, y, *_), n in zip(m.vias, m.via_nets)
+             if n in m.ground_nets and inside.contains(_pt(x, y)))
+    if gv < VIA_GROUND_MIN:
+        return f"{gv} ground via{'s' if gv != 1 else ''} in its box"
+    return ''
 
 
 def _one_port_a_place(piece):
@@ -1436,6 +1468,16 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
         solver = layer_solver
     elif piece['kind'] == 'via' and via_solver:
         solver = via_solver
+    auto = (piece['kind'] == 'via' and solver == 'mom25d' and not via_solver
+            and piece.get('unmeshable') and VIA_AUTO)
+    if auto:
+        # (no via solver asked for: the meshed box where it is one)
+        from .viamodel import planes_of
+        if planes_of(d):
+            solver = 'pbm'
+            echo(f"{piece['name']}: the physics-based via model, not a meshed "
+                 f"box ({piece['unmeshable']}; --via-solver mom25d to mesh "
+                 "it)")
     if solver == 'pbm':
         # the physics-based via model (viamodel.py): no mesh, no run
         from . import viamodel
@@ -2673,7 +2715,10 @@ def parser():
     p.add_argument('--via-solver', default=None,
                    help="the via models' solver where not --solver's: gfdtd, "
                    "or pbm (a physics-based model: the cavities between the "
-                   "planes, no mesh; viamodel.py)")
+                   "planes, no mesh; viamodel.py); mom25d meshes every box. "
+                   "Unset, a via model that is no meshed box (a port with no "
+                   "plane under it, fewer than 2 ground vias in its box) is "
+                   "pbm's, said")
     p.add_argument('--dmax', type=float, default=None,
                    help="mom25d's largest cell along the copper, mm "
                    "(--mom-dmax)")
