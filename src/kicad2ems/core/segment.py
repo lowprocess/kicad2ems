@@ -1929,9 +1929,10 @@ def pairs_report(f, S, ports, port_nets, rise_ps=100.0, z0=50.0,
         xs = sorted(xs, key=lambda x: -refs[x['ref']])
         names[xs[0]['port']] = (net, 'near')
         names[xs[1]['port']] = (net, 'far')
-    # a pair whose other leg has not its two ends (a leg open: segment's
-    # one-sided cuts) left out, and the report made of the rest (a KeyError
-    # had lost the LimeRFE study's whole report)
+    # a net without its two ends here (a leg open: segment's one-sided cuts;
+    # or its end port another net's of its chain too, named that net's) left
+    # out with its pair's other leg, and the report made of the rest (a
+    # KeyError had lost the LimeRFE study's whole report)
     while True:
         try:
             return _pairs_report(f, S, ports, names, rise_ps, z0, curves)
@@ -1941,10 +1942,10 @@ def pairs_report(f, S, ports, port_nets, rise_ps=100.0, z0=50.0,
                 raise
             from .coupling import channels
             have = list(dict.fromkeys(v[0] for v in names.values()))
-            drop = {l for c in channels(have + [key[0]], True)
-                    if key[0] in c.get('legs', ()) for l in c['legs']}
-            drop.discard(key[0])
-            if not drop or not any(v[0] in drop for v in names.values()):
+            drop = {key[0]} | {l for c in channels(have + [key[0]], True)
+                               if key[0] in c.get('legs', ())
+                               for l in c['legs']}
+            if not any(v[0] in drop for v in names.values()):
                 raise
             names = {p: v for p, v in names.items() if v[0] not in drop}
 
