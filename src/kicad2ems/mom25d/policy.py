@@ -73,6 +73,9 @@ BLR_CPU_MIN_N = int(os.environ.get('MOM25D_BLR_CPU_MIN_N', 13000))
 # precision (the refinement's: a GMRES iteration's cost), where that leaves
 # room for two LUs: MOM25D_GPU_DENSE=off keeps them on the host
 GPU_DENSE = os.environ.get('MOM25D_GPU_DENSE', 'on') != 'off'
+# Z on the GPU with one factor kept (its products the GPU's, a reused factor's
+# iterations cheap) rather than two or more kept without it
+GPU_DENSE_FIRST = os.environ.get('MOM25D_GPU_DENSE_FIRST', 'on') != 'off'
 # the GPU's factor complex-symmetric where it can be (gpu_ldl.py: LDL^T without
 # pivoting, half an LU's work and memory; the LU where it fails or does not
 # precondition, up to RETRY x f): MOM25D_LDL=off for the LU always. RX 7800 XT
@@ -211,7 +214,11 @@ def choose(f, n, nq=None, nt=0, avail=16e9, gpu=None, precision='mixed',
         # (a kept factor's bytes: gpu[2], the backend's; an LU's 8 m^2)
         per = gpu[2](m) if len(gpu) > 2 else 8.0 * m * m
         room = (0.9 * gpu[0] - 0.4e9 - zd) // per
-        if room < 2 and zd:  # the LUs kept rather than Z
+        # Z there with one factor kept beside it rather than more factors
+        # without it: its products the refinement's and a reused factor's
+        # iterations (on the host 0.45 s each at 29k, 8.7 GB read twice; on
+        # the GPU tens of ms), so a factor kept is cheap to reuse with it
+        if room < (1 if GPU_DENSE_FIRST else 2) and zd:
             zd, room = 0.0, (0.9 * gpu[0] - 0.4e9) // per
     elif not fits:   # (a host factor: the LDL^T's 4 m^2 with the half)
         room = (0.8 * avail - host - SPARE) // ((4.0 if half else 8.0) * m * m)

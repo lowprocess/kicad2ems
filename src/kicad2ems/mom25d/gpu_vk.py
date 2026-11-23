@@ -1362,6 +1362,11 @@ class VulkanBackend:
     # upload; mul_dense's products then on the single-precision units:
     # MOM25D_VK_FF=off keeps it double)
     FF = os.environ.get('MOM25D_VK_FF', 'on') != 'off'
+    # ... from this many columns (the solve's right-hand sides): below it the
+    # products are bound by memory, the double's no slower (RX 7800 XT, 20k:
+    # 1 column 0.030 s double, 0.038 float-float; 8 columns 0.058 / 0.041;
+    # 106 columns 0.757 / 0.545; GTX 980 Ti, 8k: 106 columns 0.584 / 0.414)
+    FF_MIN = int(os.environ.get('MOM25D_VK_FF_MIN') or 8)
 
     def _fma_fused(self):
         """Whether the GPU's float fma is fused (ff_probe: its rounding error
@@ -1377,15 +1382,16 @@ class VulkanBackend:
             self._fmaok = float(h.view(np.float32, 1)[0]) == 2.0 ** -24
         return self._fmaok
 
-    def put_dense_half(self, H):
+    def put_dense_half(self, H, cols=None):
         """The double Z by its lower half (a host half.Half, complex128) onto
         the GPU for mul_dense and factor_dense_ldl, until drop_dense: 8 N^2
-        bytes (FF: made float-float there, in place)."""
+        bytes (FF, for products of FF_MIN columns or more (cols: the solve's,
+        None: any): made float-float there, in place)."""
         from . import gpu_ldl
         self.drop_dense()
         self.zd = gpu_ldl.upload(self, H)
         self.zd.ff = False
-        if self.FF:
+        if self.FF and (cols is None or cols >= self.FF_MIN):
             d = self.zd.desc()
             for J in range(len(self.zd.j0)):
                 w, ld = int(self.zd.w[J]), int(self.zd.ld[J])

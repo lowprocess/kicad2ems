@@ -483,6 +483,7 @@ class FastOperator:
                        "here) in the loop/tree basis, dense")
         self.setup(f, mode='direct')
         Sx, self.iters = self.extra_blocks(f), []
+        self._ncols = int(np.shape(E)[1]) if np.ndim(E) == 2 else 1
         if not plan.dense:
             X = self._reuse(f, E, Sx)
             if X is not None:
@@ -599,7 +600,7 @@ class FastOperator:
             with self.sim.log.timer('Z to the GPU', f"N={len(Z) if not half else Z.n}"
                                     f", double{', its half' if half else ''}"):
                 if half:
-                    gpu.put_dense_half(Z)
+                    gpu.put_dense_half(Z, getattr(self, '_ncols', None))
                 else:
                     zh = getattr(self, '_zh', None)
                     gpu.put_dense(Z, zh if zh is not None
