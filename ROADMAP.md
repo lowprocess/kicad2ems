@@ -297,8 +297,8 @@ taken back); nothing below may fix a panel in place. Left:
    the joined S carries the cavity's resonances and its via-to-via coupling.
 3. The power planes' decoupling capacitors as the PDN tool attaches them (their ESL, ESR), and the cavity's
    edges' radiation in Q.
-4. A ground via's place suggested for each flagged via (the nearest spot on both planes' copper and what the peak
-   then is: by hand on the Thor carrier, one 0.7 mm from `USBC3_D+` took it from 203 to 16 ohm).
+4. ~~A ground via's place suggested for each flagged via~~ done (2026-11-23, `--suggest`: the Thor carrier's 13 in
+   In4.Cu/In6.Cu, each then 0-16 ohm).
 
 ## mom25d: speed (2026-11-19)
 

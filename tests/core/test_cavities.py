@@ -105,3 +105,20 @@ def test_a_ground_via_s_modes_are_the_zeros_of_the_open_cavity_s_impedance():
     assert len(zeros) >= 6
     assert np.abs(res["f"][:6] / zeros[:6] - 1).max() < 0.04
     assert np.abs(res["f"][1:6] / zeros[1:6] - 1).max() < 0.02
+
+
+def test_a_ground_via_beside_a_driven_one_takes_its_resonance_away():
+    """ground_spot: the nearest place at least 0.5 mm from a via where a
+    ground via's disc lies on both planes (not in the via's 0.4 mm antipad);
+    a ground via there takes the cavity's peak at the signal via, from the
+    rectangle's (1,0) mode, down by more than ten times."""
+    a, b, x, y = 40.0, 25.0, 3.0, 12.5
+    cav = _cavity(a, b, vias=[(x, y, 'SIG')])
+    res = cav.modes(6e9)
+    before = res['z_peak'][0].max()
+    sx, sy, dist = CV.ground_spot(cav, x, y)
+    assert 0.5 <= dist <= 1.0 and math.hypot(sx - x, sy - y) >= 0.7
+    fixed = _cavity(a, b, vias=[(x, y, 'SIG'), (sx, sy, 'GND')])
+    assert len(fixed.shorts) == 1
+    after = fixed.modes(6e9)['z_peak'][0].max()
+    assert before > 50 and after < before / 10

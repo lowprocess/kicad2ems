@@ -21,7 +21,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   rectangle's impedance there) within 2 % (its LC mode 4 %), a peak impedance within 10 %. On the reference boards
   in 17-71 s: ThunderScope's and LibreVNA's signal vias each 0.6-1.0 mm from a ground via, no mode in band reaching
   them; the Thor carrier's fast lanes at most 22 ohm above 8 GHz (In4.Cu/In6.Cu round the In5.Cu striplines), its
-  slow USB 2 and DP AUX lines up to 203 ohm at 7.8 GHz in a pocket by the USB hub with few ground vias.
+  slow USB 2 and DP AUX lines up to 203 ohm at 7.8 GHz in a pocket by the USB hub with few ground vias. `--suggest`:
+  for each flagged via a ground via at the nearest place on both planes' copper and the peak then (the cavity solved
+  again with them): the Thor carrier's 13 flagged vias each 0.7 mm from one, every peak then 0-16 ohm.
 - **segment: a piece's file carries the primitives near it, not the whole board's (2026-11-23).** Each piece's
   board file had held every primitive of the board (a Thor window's 34.6 of its 35 MB: the planes of nine other
   layers, 1,206 footprints), read by its run and written and hashed by the parent; now those within 3 mm of its own

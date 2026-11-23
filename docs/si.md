@@ -281,6 +281,7 @@ meshed model's a box round the via), so this is the check to run beside it.
 ```sh
 python -m kicad2ems.core.cavities board.kicad_pcb --fmax 10 --nets 'PCIE*,USB*' --out cav
 python -m kicad2ems.core.cavities board.kicad_pcb --fmax 6 --planes In1.Cu,In2.Cu   # named planes
+python -m kicad2ems.core.cavities board.kicad_pcb --fmax 10 --nets 'PCIE*' --suggest   # and where to add ground vias
 ```
 
 - **The model:** while the planes are close against the wavelength the field between them is the cavity's TEM
@@ -315,7 +316,10 @@ see at 15-22 ohm only above 8 GHz (`PCIe_{C2x1}R_CLK+` 22 ohm at 8.4 GHz, its ne
 USB 3 and CSI lanes 15 ohm near 10 GHz); the largest are the slow lines' (`USBC3_D+` 203 ohm at 7.8 GHz, a pocket
 by the USB hub's connector with few ground vias; `DP1.AUX_C+` 167 ohm at 9.7 GHz), far above what they carry. One
 ground via added 0.7 mm from `USBC3_D+` (where both planes are copper) takes its peak from 203 ohm at 7.84 GHz to
-16 ohm at 9.52 GHz: the via-placement effect the tool is for.
+16 ohm at 9.52 GHz: the via-placement effect the tool is for. `--suggest` does this for every via with a peak (a
+ground via at the nearest place, from 0.5 mm, where its disc lies on both planes' copper clear of the other vias;
+the cavity solved again with all of them): on the Thor carrier's In4.Cu/In6.Cu, 13 vias, each 0.7 mm from its
+suggested ground via, every peak then 0-16 ohm (77 s).
 
 Left out: the signal traces inside the cavity (a stripline is no part of the TEM field here), the edges'
 radiation and fringing (an open edge is exact only for d << the planes' size), the power planes' decoupling

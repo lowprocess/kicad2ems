@@ -147,6 +147,30 @@ def cavities(board, frac=PLANE_FRAC, hole_fill=HOLE_FILL, planes=None,
     return out
 
 
+def ground_spot(cav, x, y, rmin=0.5, rmax=5.0, clear=0.3, step=0.1):
+    """The nearest place (x, y, distance mm) from (x, y), rmin to rmax mm
+    away, where a ground via's disc of radius `clear` lies on both planes'
+    copper (not in an antipad or void, clear of the other vias), or None."""
+    from shapely.geometry import Point
+    from shapely.ops import unary_union
+    if not hasattr(cav, '_both'):
+        a, b = (unary_union([g for g, _ in idx[1]]) for idx in cav.index)
+        cav._both = a.intersection(b).buffer(0)
+    others = [(v['x'], v['y'], v['r']) for v in cav.shorts + cav.ports]
+    for rr in np.arange(rmin, rmax + 1e-9, step):
+        for t in np.linspace(0, 2 * math.pi, max(24, int(2 * math.pi * rr
+                                                           / step)),
+                             endpoint=False):
+            px, py = x + rr * math.cos(t), y + rr * math.sin(t)
+            if not cav._both.contains(Point(px, py).buffer(clear, 8)):
+                continue
+            if any(math.hypot(px - ox, py - oy) < clear + orr + 0.1
+                   for ox, oy, orr in others):
+                continue
+            return float(px), float(py), float(rr)
+    return None
+
+
 class Cavity:
     """A plane pair (bottom, top): its geometry (mm), dielectric (d mm, er,
     tand), the signal layers inside it, and the vias through it: shorts (V = 0:
@@ -157,7 +181,7 @@ class Cavity:
         from shapely.geometry import Point
         self.layers, self.zs, self.geom = layers, zs, geom
         self.d, self.er, self.tand, self.inside = d, er, tand, inside
-        self.log = log
+        self.log, self.index = log, index
         self.name = f"{layers[1]}/{layers[0]}"
         za, zb = zs
         eps = 1e-6
@@ -304,13 +328,16 @@ class Cavity:
 
 # ---- a report -----------------------------------------------------------
 def study(board, fmax, nets=None, frac=PLANE_FRAC, dmax=None, planes=None,
-          log=print):
+          suggest=False, log=print):
     """Every cavity's modes and the vias that drive them: [dict(cavity,
     layers, inside, d, er, area, shorts, ports, static, modes [dict(f, Q, pr,
     top [(port index, coupling, z_peak ohm)])], vias [dict(net, x, y,
     nearest_ground_via mm, peaks [(f Hz, z_peak ohm, coupling)] at least
     Z_FLAG, the largest first)])]. nets (fnmatch patterns): the vias reported
-    (default every via that is no ground via)."""
+    (default every via that is no ground via). suggest: for each via with a
+    peak, a ground via at the nearest place on both planes' copper
+    (ground_spot), the cavity solved again with all of them: each one's
+    'fix' dict(x, y, distance, z_peak, f) (KiCad mm, the peak then)."""
     from fnmatch import fnmatch
     want = (lambda n: any(fnmatch(n, p) for p in nets)) if nets else \
         (lambda n: True)
@@ -339,6 +366,8 @@ def study(board, fmax, nets=None, frac=PLANE_FRAC, dmax=None, planes=None,
                              nearest_ground_via=float(near[i]), peaks=hit,
                              largest=((float(res['f'][mx]), float(zp[i, mx]))
                                       if mx >= 0 else None)))
+        if suggest:
+            _suggest(board, cav, vias, fmax, dmax, frac, planes, log)
         out.append(dict(cavity=cav.name, layers=list(cav.layers),
                         inside=cav.inside, d=cav.d, er=cav.er,
                         area=cav.geom.area, shorts=len(cav.shorts),
@@ -351,6 +380,49 @@ def study(board, fmax, nets=None, frac=PLANE_FRAC, dmax=None, planes=None,
                res['static'] else '')
             + (" - more than MAX_MODES" if res['more'] else ''))
     return out
+
+
+def _suggest(board, cav, vias, fmax, dmax, frac, planes, log):
+    """study's suggest: a ground via beside each via with a peak, the cavity
+    again with them, each via's peak then (its 'fix')."""
+    hot = [v for v in vias if v['peaks']]
+    if not hot:
+        return
+    tmpl = dict(z0=min(cav.zs) - 1e-3, z1=max(cav.zs) + 1e-3, r=0.15,
+                net='GND')
+    if cav.shorts:
+        tmpl['r'] = cav.shorts[0]['r']
+    added, spots = [], {}
+    for v in hot:
+        sp = ground_spot(cav, v['x'], -v['y'])
+        if sp is None:
+            continue
+        spots[id(v)] = sp
+        added.append(dict(tmpl, x=sp[0], y=sp[1]))
+    if not added:
+        return
+    b2 = dict(board, vias=list(board.get('vias', [])) + added)
+    two = [c for c in cavities(b2, frac, planes=list(cav.layers),
+                               log=lambda *a: None)
+           if c.layers == cav.layers]
+    if not two:
+        return
+    c2 = two[0]
+    r2 = c2.modes(fmax, dmax)
+    at = {(round(p['x'], 4), round(p['y'], 4)): i
+          for i, p in enumerate(c2.ports)}
+    for v in hot:
+        sp = spots.get(id(v))
+        i = at.get((round(v['x'], 4), round(-v['y'], 4)))
+        if sp is None or i is None:
+            continue
+        zp = r2['z_peak'][i] if r2['z_peak'].size else np.zeros(1)
+        m = int(np.argmax(zp)) if len(zp) else -1
+        v['fix'] = dict(x=sp[0], y=-sp[1], distance=sp[2],
+                        z_peak=float(zp[m]) if m >= 0 else 0.0,
+                        f=float(r2['f'][m]) if m >= 0 and len(r2['f'])
+                        else None)
+    log(f"{cav.name}: {len(added)} ground via(s) suggested, solved again")
 
 
 def plot_mode(cav, res, m, path, title=None):
@@ -425,6 +497,12 @@ def _echo(rows, fmax, nets, echo):
                  f"{z0:5.0f} ohm at {f0 / 1e9:.2f} GHz ({len(v['peaks'])} "
                  f"resonance(s) over {Z_FLAG:g} ohm), nearest ground via "
                  f"{v['nearest_ground_via']:.1f} mm")
+            fx = v.get('fix')
+            if fx:
+                echo(f"      a ground via at ({fx['x']:.2f}, {fx['y']:.2f}) "
+                     f"mm, {fx['distance']:.1f} mm from it: its largest peak "
+                     f"then {fx['z_peak']:.0f} ohm"
+                     + (f" at {fx['f'] / 1e9:.2f} GHz" if fx['f'] else ''))
         if len(hot) > 12:
             echo(f"  ... {len(hot) - 12} more vias")
 
@@ -451,6 +529,10 @@ def parser():
     p.add_argument('--plots', type=int, default=3,
                    help='each cavity\'s lowest modes with a reported via '
                    'strong in them drawn (PNG)')
+    p.add_argument('--suggest', action='store_true',
+                   help='for each via with a peak, a ground via at the '
+                   'nearest place on both planes\' copper, and the peak then '
+                   '(the cavity solved again with them)')
     p.add_argument('--out', default='cavities')
     return p
 
@@ -463,7 +545,8 @@ def main(argv=None):
     nets = [n for n in (a.nets or '').split(',') if n.strip()] or None
     fmax = a.fmax * 1e9
     planes = [l for l in (a.planes or '').split(',') if l.strip()] or None
-    rows = study(board, fmax, nets, a.plane_frac, a.dmax, planes)
+    rows = study(board, fmax, nets, a.plane_frac, a.dmax, planes,
+                 a.suggest)
     os.makedirs(a.out, exist_ok=True)
     _echo(rows, fmax, nets, print)
     for r in rows:
