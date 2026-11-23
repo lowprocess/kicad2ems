@@ -215,7 +215,30 @@ class LayerStack:
                    + ([abs(self.top_er)] if self.top == 'open' else [])
                    + ([abs(self.bottom_er)] if self.bottom == 'open' else []))
 
+    # _network's last results (process-wide, by the stack's contents, w, the
+    # mode and the contour): it depends on no interface, yet every pair's
+    # voltage made it again, twice (a 6-layer via model: 43 times a
+    # frequency, 1.6 s of its Green tables' and via kernels' 2.3)
+    _NET, _NET_KEEP = {}, 8
+
+    def _signature(self):
+        return (self.N, self.top, self.bottom, complex(self.top_er),
+                complex(self.bottom_er), tuple(sorted(self.pec)),
+                tuple((self.layers[j - 1].h, complex(self.eps(j)))
+                      for j in range(1, self.N + 1)))
+
     def _network(self, kr, w, mode):
+        kr = np.asarray(kr)
+        key = (self._signature(), float(w), mode, kr.shape, kr.dtype.str,
+               hash(kr.tobytes()))
+        hit = LayerStack._NET.get(key)
+        if hit is None:
+            hit = LayerStack._NET[key] = self._network_eval(kr, w, mode)
+            while len(LayerStack._NET) > LayerStack._NET_KEEP:
+                LayerStack._NET.pop(next(iter(LayerStack._NET)), None)
+        return hit
+
+    def _network_eval(self, kr, w, mode):
         k0, N = w / C0, self.N
 
         def y0(e):  # line admittance and kz of a medium
