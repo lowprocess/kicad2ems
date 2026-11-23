@@ -805,8 +805,17 @@ def test_the_loop_tree_bases_matrix_by_its_half(ldl, S_cpu, gpu):
     p = sim.fast.plan(4e9)
     assert p.basis == 'loop/tree' and p.half
     S = sim.sparams(4e9)
-    assert any(r[0] == 'Z into its half' for r in sim.log.records)
+    # (by its half throughout: policy.LT_HALF; whole for the transforms
+    # before)
+    assert not any(r[0] == 'Z into its half' for r in sim.log.records)
+    assert any(r[0] == 'loop/tree transform' and 'on the half' in r[2]
+               for r in sim.log.records)
     assert np.abs(S - S_cpu).max() < 1e-6
+    ldl.setattr(policy, 'LT_HALF', False)
+    after = make_sim(gpu)
+    assert np.abs(after.sparams(4e9) - S).max() < 1e-6
+    assert any(r[0] == 'Z into its half' for r in after.log.records)
+    ldl.setattr(policy, 'LT_HALF', True)
     ldl.setattr(fast.FastOperator, 'CHARGE_COLS', 37)
     blocks = make_sim(gpu).sparams(4e9)
     assert np.abs(blocks - S).max() < 1e-9
@@ -817,19 +826,45 @@ def test_the_loop_tree_bases_matrix_by_its_half(ldl, S_cpu, gpu):
 
 
 def test_the_sides_loops_matrix_by_its_half(ldl):
-    """The sides' loops (thick copper) on the whole Z, then its half: the
-    whole one's answer."""
+    """The sides' loops (thick copper) on the half itself (policy.LOOPS_HALF,
+    Half.loop_transform; mixed precision, where they are taken): the matrix
+    the whole one's transformed, then halved, and the answer that of the
+    whole Z's."""
+    import dataclasses
     from kicad2ems.mom25d import policy
-    from kicad2ems.mom25d.api import solve_board
+    from kicad2ems.mom25d.api import build_board
+    from kicad2ems.mom25d.half import Half
     sys.path.insert(0, __file__.rsplit('/', 1)[0])
     from test_board import board, quiet
-    f = np.array([1e9, 3e9])
-    half = solve_board(board('thru'), f, port='via', thickness='sides',
-                       coarsen=None, log=quiet)
+
+    def sim():
+        _, s = build_board(board('thru'), 1e9, 6e9, port='via',
+                           thickness='sides', coarsen=None, log=quiet)
+        s.precision = 'mixed'
+        return s
+    got, S = {}, {}
+    for on in (True, False):
+        ldl.setattr(policy, 'LOOPS_HALF', on)
+        s = sim()
+        fo = s.fast
+        plan = fo.plan(3e9)
+        assert plan.half and plan.loops
+        fo.setup(3e9, mode='direct')
+        N = s.Ne + s.Nv
+        E = np.random.default_rng(2).standard_normal((N, 2)) + 0j
+        Z, B, _, _ = fo._rwg_system(3e9, E, fo.extra_blocks(3e9), plan)
+        assert isinstance(Z, Half)
+        got[on] = (Z.to_full(), B)
+        timer = [r[2] for r in s.log.records if r[0] == 'side loops'][0]
+        assert ('on the half' in timer) == on
+        S[on] = sim().sparams(3e9)
+    (A, Ba), (Wm, Bw) = got[True], got[False]
+    assert np.abs(A - Wm).max() <= 1e-13 * np.abs(Wm).max()
+    assert np.abs(Ba - Bw).max() <= 1e-13 * np.abs(Bw).max()
     ldl.setattr(policy, 'HALF', False)
-    whole = solve_board(board('thru'), f, port='via', thickness='sides',
-                        coarsen=None, log=quiet)
-    assert np.abs(half.S - whole.S).max() < 1e-6
+    whole = sim().sparams(3e9)
+    assert np.abs(S[True] - S[False]).max() < 1e-6
+    assert np.abs(S[True] - whole).max() < 1e-6
 
 
 def test_a_transformed_z_with_asymmetric_extras_stays_whole(ldl, S_cpu):

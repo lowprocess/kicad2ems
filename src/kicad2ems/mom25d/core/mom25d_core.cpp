@@ -1094,18 +1094,93 @@ void tree_rows(py::array_t<cd> X, arr<int> node, arr<int> parent,
 // Gc the potential between unit charges on two triangles) straight into Z. A
 // branch's ends: u (+1) and v (-1), the ground (g) carrying none. Mq: the G_q
 // moments between triangles (Nt x Nt).
-void charge_into(py::array_t<cd> Z, arr<cd> Mq, arr<int> tree, arr<int> u,
-                 arr<int> v, arr<double> area, int g, int f0) {
-    // Mq: the G_q moments between every triangle and triangles [f0, f0 + its
-    // columns) (all of them: f0 0, Nt columns): the branches' ends in that
-    // block alone added (the matrix by blocks of triangles, not whole)
-    auto buf = Z.request(true);
-    const i64 ld = buf.shape[1], nf = Mq.shape(1), f1 = f0 + nf;
+// The loop/tree transform on half.Half's layout (looptree.transform_half), a
+// step at a time; Z(a, c) at data[rp[a] + c - c0[a]] where c >= c0[a] (its
+// block's start), else at its mirror's. With K = I + P (P: the tree's paths),
+// step 1: each loop row a adds (Z P)[a, c] to its kept (a, c), c a loop;
+// step 2: each tree row a sets the pair {a, c} (c a loop) to Z[a, c] + (Z
+// P)[a, c] = M_tc, at each place it is kept; step 3: each loop row a adds
+// (M P)[a, c] = (P^T M_tc)[c, a] at the kept (c, a). Every pair is written by
+// one row's thread and read meaningfully by no other at that step: rows run
+// in parallel, 32 at a time within a block (their earlier columns read as
+// contiguous runs of their mirrors' rows); steps 1 and 3 read tree columns
+// alone (the loops' being written).
+void lt_half_step(py::array_t<cd> data, arr<i64> rp, arr<i64> c0,
+                  arr<uint8_t> is_tree, int step, arr<int> node,
+                  arr<int> parent, arr<int> branch, arr<double> sig,
+                  arr<int> roots, arr<int> cot, arr<int> cu, arr<int> cv,
+                  int n_nodes) {
+    if (step < 1 || step > 3)
+        throw std::invalid_argument("lt_half_step: step 1, 2 or 3");
+    auto buf = data.request(true);
     cd *z = static_cast<cd *>(buf.ptr);
-    const cd *M = Mq.data();
-    const int nt = (int)tree.shape(0);
-    const int *tr = tree.data(), *pu = u.data(), *pv = v.data();
-    const double *ar = area.data();
+    const i64 n = rp.shape(0);
+    const i64 *rpp = rp.data(), *c0p = c0.data();
+    const uint8_t *tr = is_tree.data();
+    TreeView t =
+        tree_view(node, parent, branch, sig, roots, cot, cu, cv, n_nodes);
+    const bool want_tree = step == 2, all_cols = step == 2;
+    const i64 G = 32, ng = (n + G - 1) / G;
+    py::gil_scoped_release nogil;
+#pragma omp parallel
+    {
+        std::vector<cd> R((size_t)G * n), P(t.n_nodes);
+#pragma omp for schedule(dynamic, 1)
+        for (i64 g = 0; g < ng; ++g) {
+            const i64 g0 = g * G, g1 = std::min(n, g0 + G), m = g1 - g0;
+            bool any = false;
+            for (i64 a = g0; a < g1; ++a)
+                any |= (tr[a] != 0) == want_tree;
+            if (!any) continue;
+            const i64 cs = c0p[g0];  // (a group within one block)
+            for (i64 c = 0; c < cs; ++c) {
+                if (!all_cols && !tr[c]) continue;
+                const cd *src = z + rpp[c] + (g0 - c0p[c]);
+                for (i64 k = 0; k < m; ++k) R[k * n + c] = src[k];
+            }
+            for (i64 k = 0; k < m; ++k) {
+                const cd *src = z + rpp[g0 + k];
+                cd *dst = &R[k * n];
+                if (all_cols)
+                    std::copy(src, src + (n - cs), dst + cs);
+                else
+                    for (i64 c = cs; c < n; ++c)
+                        if (tr[c]) dst[c] = src[c - cs];
+            }
+            for (i64 k = 0; k < m; ++k) {
+                const i64 a = g0 + k;
+                if ((tr[a] != 0) != want_tree) continue;
+                const cd *x = &R[k * n];
+                for (int q = 0; q < t.nr; ++q) P[t.roots[q]] = 0;
+                for (int q = 0; q < t.nn; ++q)
+                    P[t.node[q]] = P[t.parent[q]] + t.sig[q] * x[t.branch[q]];
+                cd *row = z + rpp[a] - cs;  // (row[c] for c >= cs)
+                for (int j = 0; j < t.nc; ++j) {
+                    const i64 c = t.cot[j];
+                    const cd val = P[t.cv[j]] - P[t.cu[j]];
+                    if (step == 1) {
+                        if (c >= cs) row[c] += val;
+                    } else if (step == 2) {
+                        const cd v = x[c] + val;
+                        if (c >= cs) row[c] = v;
+                        if (a >= c0p[c]) z[rpp[c] + a - c0p[c]] = v;
+                    } else if (a >= c0p[c]) {
+                        z[rpp[c] + a - c0p[c]] += val;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// the charge block's loops (charge_into's, charge_into_half's): row r of Z at
+// z + off(r), its columns from first(r) on kept (the whole Z: r ld and 0; the
+// half: rp[r] - c0[r] and c0[r], the others its mirror's, added there)
+template <class Off, class First>
+static void charge_rows(cd *z, Off off, First first, const cd *M, i64 nf,
+                        int f0, const int *tr, const int *pu, const int *pv,
+                        int nt, const double *ar, int g) {
+    const i64 f1 = f0 + nf;
     // the tree branches with an end in the block
     std::vector<int> js;
     for (int j = 0; j < nt; ++j)
@@ -1113,10 +1188,9 @@ void charge_into(py::array_t<cd> Z, arr<cd> Mq, arr<int> tree, arr<int> u,
             (pv[j] != g && pv[j] >= f0 && pv[j] < f1))
             js.push_back(j);
     const int nj = (int)js.size();
-    py::gil_scoped_release nogil;
 #pragma omp parallel for schedule(dynamic, 16)
     for (int i = 0; i < nt; ++i) {
-        cd *row = z + (i64)tr[i] * ld;
+        const i64 o = off(tr[i]), c0 = first(tr[i]);
         const int ends[2] = {pu[i], pv[i]};
         const double sg[2] = {1.0, -1.0};
         for (int ea = 0; ea < 2; ++ea) {
@@ -1126,15 +1200,53 @@ void charge_into(py::array_t<cd> Z, arr<cd> Mq, arr<int> tree, arr<int> u,
             const double sa = sg[ea] / ar[a];
             for (int q = 0; q < nj; ++q) {
                 const int j = js[q];
+                if (tr[j] < c0) continue;
                 cd acc = 0;
                 if (pu[j] != g && pu[j] >= f0 && pu[j] < f1)
                     acc += Ma[pu[j]] / ar[pu[j]];
                 if (pv[j] != g && pv[j] >= f0 && pv[j] < f1)
                     acc -= Ma[pv[j]] / ar[pv[j]];
-                row[tr[j]] += sa * acc;
+                z[o + tr[j]] += sa * acc;
             }
         }
     }
+}
+
+void charge_into(py::array_t<cd> Z, arr<cd> Mq, arr<int> tree, arr<int> u,
+                 arr<int> v, arr<double> area, int g, int f0) {
+    // Mq: the G_q moments between every triangle and triangles [f0, f0 + its
+    // columns) (all of them: f0 0, Nt columns): the branches' ends in that
+    // block alone added (the matrix by blocks of triangles, not whole)
+    auto buf = Z.request(true);
+    const i64 ld = buf.shape[1];
+    cd *z = static_cast<cd *>(buf.ptr);
+    const cd *M = Mq.data();
+    const i64 nf = Mq.shape(1);
+    const int nt = (int)tree.shape(0);
+    const int *tr = tree.data(), *pu = u.data(), *pv = v.data();
+    const double *ar = area.data();
+    py::gil_scoped_release nogil;
+    charge_rows(z, [ld](int r) { return (i64)r * ld; },
+                [](int) { return (i64)0; }, M, nf, f0, tr, pu, pv, nt, ar, g);
+}
+
+// charge_into on half.Half's layout (data, rp, c0: Half.rows()): the entries
+// it keeps, each pair once (the loop/tree basis by its half)
+void charge_into_half(py::array_t<cd> data, arr<i64> rp, arr<i64> c0,
+                      arr<cd> Mq, arr<int> tree, arr<int> u, arr<int> v,
+                      arr<double> area, int g, int f0) {
+    auto buf = data.request(true);
+    cd *z = static_cast<cd *>(buf.ptr);
+    const i64 *rpp = rp.data(), *c0p = c0.data();
+    const cd *M = Mq.data();
+    const i64 nf = Mq.shape(1);
+    const int nt = (int)tree.shape(0);
+    const int *tr = tree.data(), *pu = u.data(), *pv = v.data();
+    const double *ar = area.data();
+    py::gil_scoped_release nogil;
+    charge_rows(z, [rpp, c0p](int r) { return rpp[r] - c0p[r]; },
+                [c0p](int r) { return c0p[r]; }, M, nf, f0, tr, pu, pv, nt,
+                ar, g);
 }
 
 // -----------------------------------------------------------------------------
@@ -3139,6 +3251,10 @@ PYBIND11_MODULE(_core, m) {
           "X <- K^T X, the loop/tree basis (looptree.py)");
     m.def("charge_into", &charge_into,
           "the loop/tree basis's charge block into Z[tree, tree]");
+    m.def("charge_into_half", &charge_into_half,
+          "charge_into on half.Half's layout");
+    m.def("lt_half_step", &lt_half_step,
+          "a step of the loop/tree transform on half.Half's layout");
     py::class_<BLRFactorT<cf>>(m, "BLRFactor",
                                "block low-rank LU of the equilibrated matrix "
                                "(fast.solve_blr's), complex64")

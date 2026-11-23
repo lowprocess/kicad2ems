@@ -676,6 +676,19 @@ class FastOperator:
         Ne, Nv, N, T = sim.Ne, sim.Nv, sim.Ne + sim.Nv, sim.qT
         if plan.half and not plan.loops:
             return self._rwg_half(f, E, Sx)
+        from . import policy
+        if plan.half and policy.LOOPS_HALF and self._symmetric(Sx):
+            # the sides' loops on the half itself (Half.loop_transform): 8
+            # N^2 and their columns at the peak, not 16 N^2
+            H, E, up, A = self._rwg_half(f, E, Sx)
+            W = self._side_loops()
+            if W is not None:
+                with sim.log.timer('side loops', f"{len(sim.sides.vert)} "
+                                   "loops, on the half"):
+                    H.loop_transform(W)
+                E = E + W.T @ E
+                up = lambda X: X + W @ X
+            return H, E, up, A
         dt = np.complex128 if plan.dense else np.complex64
         with sim.log.timer(
                 'direct fill',
@@ -1186,11 +1199,14 @@ class FastOperator:
         z = np.zeros_like
         # the current's part alone
         tbA = dict(tb, Q=z(tb['Q']), cq=z(tb['cq']), cqi=z(tb['cqi']))
+        from . import policy
+        half = plan is not None and plan.half
+        if half and policy.LT_HALF and self._symmetric(Sx):
+            return self._lt_half(f, E, Sx, lt, tbA)
         with sim.log.timer(
                 'direct fill',
                 f"N={N}, complex128, the current's part (loop/tree), "
                 f"{core.num_threads()} threads"):
-            half = plan is not None and plan.half
             Z = zeros_mapped(N) if half else np.zeros((N, N), complex)
             core.fill_far(Z, self.g, tbA, w)
         with sim.log.timer('near-field correction'):
@@ -1231,6 +1247,63 @@ class FastOperator:
             Z = self._to_half(Z, Sx)
         return (Z, sc[:, None] * lt.rows(lt.rhs(E)),
                 lambda Y: lt.from_ideal(lt.from_tree(sc[:, None] * Y)), None)
+
+    def _lt_half(self, f, E, Sx, lt, tbA):
+        """_lt_system by the matrix's half throughout (policy.LT_HALF): the
+        fills into it (fill_far_half, near_into_half), the vias' border, the
+        extras (symmetric), the transforms on it (LoopTree.to_ideal_half,
+        transform_half), the charge block into the pairs it keeps: 8 N^2 at
+        the peak where the whole matrix's transforms took 16 N^2."""
+        sim, core, w = self.sim, self.core, self.w
+        Ne, Nv, N, Nt = sim.Ne, sim.Nv, sim.Ne + sim.Nv, len(sim.rwg.tris)
+        with sim.log.timer(
+                'direct fill',
+                f"N={N}, complex128, the current's part (loop/tree), its "
+                f"lower half, {core.num_threads()} threads"):
+            H = Half(N, HALF_NB, complex)
+            rp, c0 = H.rows()
+            core.fill_far_half(H.data, rp, c0, self.g, tbA, w)
+        with sim.log.timer('near-field correction'):
+            core.near_into_half(H.data, rp, c0, self.g, tbA, self.q,
+                                self.nP32, self.nQ32, w)
+            self._near_kept()
+        if Nv:
+            with sim.log.timer('via kernels',
+                               f"{Nv} chains, without their end charges"):
+                B, C = sim._via_blocks(f, None, charges=False)
+            H.border(B, C)
+            del B, C
+        if Sx.nnz:
+            H.add_sparse(Sx)
+        with sim.log.timer('loop/tree transform',
+                           f"{len(lt.cot)} loops, depth {lt.depth}, on the "
+                           "half"):
+            lt.to_ideal_half(H)
+            lt.transform_half(H)
+            sc = lt.scales(w)
+            H.scale(sc)
+        with sim.log.timer('charge matrix', f"{Nt} triangles"):
+            nq = core.near_q(self.g, self.tb, self.q, self.nP32, self.nQ32, w)
+            for f0 in range(0, Nt, self.CHARGE_COLS):
+                f1 = min(Nt, f0 + self.CHARGE_COLS)
+                Mq = core.fan_q(self.g, self.tb,
+                                np.arange(f0, f1, dtype=np.int32))
+                k = (self.nQ >= f0) & (self.nQ < f1)  # (a pair once)
+                Mq[self.nP[k], self.nQ[k] - f0] += nq[k]
+                lt.charge_into(H, Mq, sim.rwg.area, f0)
+            del Mq, nq
+        self._Sa = None
+        return (H, sc[:, None] * lt.rows(lt.rhs(E)),
+                lambda Y: lt.from_ideal(lt.from_tree(sc[:, None] * Y)), None)
+
+    @staticmethod
+    def _symmetric(Sx):
+        """Whether the sparse extras are symmetric (the half holds them; an
+        antisymmetric part, transformed, would not be sparse)."""
+        if not Sx.nnz:
+            return True
+        Sa = (Sx - Sx.T).tocoo()
+        return not (Sa.nnz and np.abs(Sa.data).max() > 0)
 
     # the loop/tree basis's charge matrix built this many triangles at a time
     CHARGE_COLS = 2048

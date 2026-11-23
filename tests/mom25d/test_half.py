@@ -128,3 +128,33 @@ def test_compact_of_a_mapped_matrix_gives_its_rest_back():
     assert np.array_equal(H.data, Half.pack(A, dtype=complex, nb=nb).data)
     tail = Z.reshape(-1)[-1000:]
     assert not tail.any()          # (given back: zero pages)
+
+
+@pytest.mark.parametrize('n,nb', [(300, 64), (513, 256)])
+def test_rows_and_a_border_transform_on_the_half(n, nb):
+    """rows_of / set_rows: any rows whole, read and written where the half
+    keeps them (a diagonal block's mirror too); loop_transform: T^T Z T for T
+    = I + W, W in some columns V on rows outside them (the sides' loops, the
+    fan paths), as on the whole matrix."""
+    from scipy import sparse
+    rng = np.random.default_rng(n)
+    A = sym(n, rng)
+    H = Half.pack(A, dtype=complex, nb=nb)
+    idx = np.array([3, nb - 1, nb, n - 2, 5])
+    assert np.array_equal(H.rows_of(idx), A[idx])
+    R = rng.standard_normal((len(idx), n)) + 0j
+    R[:, idx] = (R[:, idx] + R[:, idx].T) / 2
+    B = A.copy()
+    B[idx], B[:, idx] = R, R.T
+    assert np.array_equal(H.set_rows(idx, R).to_full(), B)
+    V = np.r_[n - 40:n - 10, 7]
+    rows = np.setdiff1d(np.arange(n), V)
+    W = sparse.random(n, n, density=0.02, random_state=1, format='lil')
+    W[:, np.setdiff1d(np.arange(n), V)] = 0
+    W[V] = 0
+    W = W.tocsc()
+    assert np.flatnonzero(np.diff(W.indptr)).size and rows.size
+    T = np.eye(n) + W.toarray()
+    H = Half.pack(A, dtype=complex, nb=nb).loop_transform(W, chunk=17)
+    ref = T.T @ A @ T
+    assert np.abs(H.to_full() - ref).max() < 1e-12 * np.abs(ref).max()

@@ -138,3 +138,37 @@ def test_auto_takes_loop_tree_below_its_threshold_and_keeps_each_basis_lus():
     assert any('reused' in n for n in sim.log.notes)
     S_fresh = _sim('double', 'on').sparams(1.05 * lo)
     assert np.abs(S_again - S_fresh).max() < 1e-5
+
+
+@pytest.mark.parametrize('f', [1e8, 2e9])
+def test_the_transforms_on_the_half_are_the_whole_matrixs(monkeypatch, f):
+    """policy.LT_HALF: the loop/tree basis's matrix filled, transformed and
+    given its charge block by its half (looptree.transform_half, to_ideal_half,
+    charge_into_half) against the whole matrix's transforms, block by block (at
+    0.1 GHz its blocks span ~17 decades: an error in the loops' block is
+    nothing beside the tree's), and the same right-hand side."""
+    import dataclasses
+    from kicad2ems.mom25d import policy
+    from kicad2ems.mom25d.half import Half
+    got = {}
+    for on in (True, False):
+        monkeypatch.setattr(policy, 'LT_HALF', on)
+        sim = _sim(precision='mixed', loop_tree='on')
+        fo = sim.fast
+        plan = dataclasses.replace(fo.plan(f), half=True)
+        assert plan.basis == 'loop/tree'
+        fo.setup(f, mode='direct')
+        N = sim.Ne + sim.Nv
+        E = np.random.default_rng(3).standard_normal((N, 2)) + 0j
+        Z, B, _, _ = fo._lt_system(f, E, fo.extra_blocks(f), plan)
+        assert isinstance(Z, Half)
+        got[on] = (Z.to_full(), B, fo._lt)
+        timers = [r[2] for r in sim.log.records if r[0] == 'loop/tree transform']
+        assert ('on the half' in timers[0]) == on
+    (A, Ba, lt), (W, Bw, _) = got[True], got[False]
+    assert len(lt.fan_edges) and len(lt.cot) and len(lt.tree)
+    for r in (lt.tree, lt.cot):
+        for c in (lt.tree, lt.cot):
+            w = W[np.ix_(r, c)]
+            assert np.abs(A[np.ix_(r, c)] - w).max() <= 1e-13 * np.abs(w).max()
+    assert np.array_equal(Ba, Bw)

@@ -288,11 +288,14 @@ CHANGELOG has their numbers):**
 2. **The refinement's double products with many ports**, now the largest part of a many-port solve (4-7 s of the
    In7 group's 8-12 s a frequency): a float-float product on the GPU's single precision (~2-3x its double), and
    the GPU's half read once a number (each is read twice today: the half saves memory, not time there).
-3. **The sides' loops on the half itself** (thick copper's default `sides`: its peak is 16 N^2 during the
-   transform, 8 N^2 after): a border transform of the verticals' columns.
-4. **The loop/tree basis's transform on the half itself** (16 N^2 -> ~8 N^2 at low frequency, ~40k pieces): the
-   tree's rows first, M_tc = Z_tc + Z_tt P row by row, the loops' block from P^T Z_tc (before) and P^T M_tc
-   (after) a column block at a time, in increasing block order.
+3. ~~**The sides' loops on the half itself**~~ done (2026-11-23, `Half.loop_transform`: host 12 N^2, not 16).
+4. ~~**The loop/tree basis's transform on the half itself**~~ done (2026-11-23, `looptree.transform_half`, the
+   core's `lt_half_step`: 8 N^2 at the peak; 27k unknowns 9.6 GB rather than 12.6; CHANGELOG). Left in it: the
+   charge block's `fan_q` columns (Nt x 2048 at a time) and `near_q` are the next largest host arrays.
+   **Seen with it (2026-11-23):** a matrix whose complex64 factors do not precondition at all (GMRES residual
+   ~1 at every rung) is near singular; after the sweep's second such frequency the history sends every lower
+   frequency to the double LU (two LimeRFE via models: 11 and 28 min), the cause two ports at one place (fixed in
+   segment's cuts); a sweep-wide "double from here" on a residual ~1 would bound such a case.
 5. **The block low-rank solver, the rest:** its operator on a pour (71 % of dense complex128 at 1e-8: the near
    tiles in complex64 would halve it), its tiles above the diagonal alone (Z is symmetric), the factor's GEMMs on
    the GPU, and a first run at 45-100k unknowns.

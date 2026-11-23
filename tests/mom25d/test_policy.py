@@ -120,7 +120,9 @@ def test_the_half_needs_the_ldl(monkeypatch):
 
 def test_memory_plan_of_the_half(monkeypatch):
     """The half's host bytes (12 n^2 with the factor's copy) and the GPU's
-    double half (8 n^2); with sides (their loops, whole first) 16 n^2."""
+    double half (8 n^2); with sides, their loops on the half itself
+    (LOOPS_HALF) the same, whole first (before) 16 n^2; the loop/tree basis's
+    room the same (LT_HALF)."""
     monkeypatch.setattr(policy, 'HALF', True)
     monkeypatch.setattr(policy, 'LDL', True)
     n = 20000
@@ -131,7 +133,21 @@ def test_memory_plan_of_the_half(monkeypatch):
     assert p['gpu'] == pytest.approx(GPU[1](n) + 8.0 * n * n)
     w = memory_plan(n, avail=30e9, gpu=GPU, precision='mixed',
                     solver='direct', sides=True)
+    assert w['host'] == pytest.approx(12.0 * n * n + policy.SPARE)
+    monkeypatch.setattr(policy, 'LOOPS_HALF', False)
+    w = memory_plan(n, avail=30e9, gpu=GPU, precision='mixed',
+                    solver='direct', sides=True)
     assert w['host'] == pytest.approx(16.0 * n * n + policy.SPARE)
+    # the loop/tree basis where its matrices fit: 12 n^2 + SPARE by the half
+    # (9.6 GB at 27k), 16 n^2 + SPARE whole first (12.6 GB): 11 GB of room
+    # (a 16.4 GB share less what the run holds: a LimeRFE piece's) is enough
+    # for the one alone
+    m, kh2 = 27000, 1e-5
+    lt = lambda: choose(1e8, m, avail=11e9 / 0.8, nt=2 * m, kh2=kh2,
+                        precision='mixed').basis
+    assert lt() == 'loop/tree'
+    monkeypatch.setattr(policy, 'LT_HALF', False)
+    assert lt() == 'rwg'
 
 
 @pytest.mark.parametrize('kw,want', CASES)

@@ -175,16 +175,85 @@ class Half:
         return Sa if Sa.nnz and abs(Sa).max() > 0 else None
 
     def scale(self, d, threads=None):
-        """In place: entry (i, j) times d[i] d[j]."""
-        d = np.asarray(d, float)
+        """In place: entry (i, j) times d[i] d[j] (d real, or complex for a
+        complex matrix: the loop/tree basis's sqrt(jw))."""
+        d = np.asarray(d)
+        dt = (self.dtype if np.iscomplexobj(d) else
+              np.zeros(0, self.dtype).real.dtype)
 
         def one(J):
             a, b = int(self.j0[J]), int(self.j0[J] + self.w[J])
             blk = self.block(J)
-            blk *= d[a:b, None].astype(blk.real.dtype)
-            blk *= d[None, a:].astype(blk.real.dtype)
+            blk *= d[a:b, None].astype(dt)
+            blk *= d[None, a:].astype(dt)
         _each(range(self.nblk), one, threads)
         return self
+
+    def panel(self, J, out=None):
+        """Rows J0 .. J1 of the matrix whole (w x n, C order): block J's own
+        (its columns from J0) and before J0 the earlier blocks' columns J0 ..
+        J1 transposed (the matrix symmetric: their mirror)."""
+        a, w = int(self.j0[J]), int(self.w[J])
+        R = np.empty((w, self.n), self.dtype) if out is None else out
+        R[:, a:] = self.block(J)
+        for I in range(J):
+            i0, wi = int(self.j0[I]), int(self.w[I])
+            R[:, i0:i0 + wi] = self.block(I)[:, a - i0:a - i0 + w].T
+        return R
+
+    def set_rows(self, idx, R):
+        """The matrix's rows idx whole set to R (len(idx) x n; R's block idx x
+        idx symmetric), where the half keeps them: each pair's one place,
+        and in a diagonal block both."""
+        idx = np.asarray(idx, int)
+        J = idx // self.nb
+        for b in np.unique(J):
+            k = np.flatnonzero(J == b)
+            a, w = int(self.j0[b]), int(self.w[b])
+            loc = idx[k] - a
+            blk = self.block(b)
+            blk[loc] = R[k, a:]
+            blk[:, loc] = R[k, a:a + w].T
+            for I in range(b):
+                i0, wi = int(self.j0[I]), int(self.w[I])
+                self.block(I)[:, a - i0 + loc] = R[k, i0:i0 + wi].T
+        return self
+
+    def loop_transform(self, W, chunk=512):
+        """Z <- T^T Z T in place, T = I + W (W: n x n sparse, nonzero in some
+        columns V, on rows R outside V: the sides' verticals as loops, the
+        via chains' fan paths): only V's rows and columns change. Y = Z[:, V]
+        + Z[:, R] W[R, V] (R's rows chunk at a time), Y[V] += W[:, V]^T Y,
+        then rows V := Y^T. Its peak beside the half: Y (n x |V|)."""
+        from scipy import sparse
+        W = sparse.csc_matrix(W)
+        V = np.flatnonzero(np.diff(W.indptr))
+        if not len(V):
+            return self
+        Wv = W[:, V].tocsr()
+        R = np.flatnonzero(np.diff(Wv.indptr))
+        Y = np.ascontiguousarray(self.rows_of(V).T)
+        for k in range(0, len(R), chunk):
+            sel = R[k:k + chunk]
+            Y += self.rows_of(sel).T @ Wv[sel].toarray()
+        Y[V] += np.asarray(Wv.T @ Y)
+        return self.set_rows(V, Y.T)
+
+    def rows_of(self, idx):
+        """The matrix's rows idx whole (len(idx) x n), any rows."""
+        idx = np.asarray(idx, int)
+        out = np.empty((len(idx), self.n), self.dtype)
+        J = idx // self.nb
+        for b in np.unique(J):
+            k = np.flatnonzero(J == b)
+            a = int(self.j0[b])
+            loc = idx[k] - a
+            out[k, a:] = self.block(b)[loc]
+            for I in range(b):
+                i0, wi = int(self.j0[I]), int(self.w[I])
+                out[np.ix_(k, np.arange(i0, i0 + wi))] = \
+                    self.block(I)[:, a - i0 + loc].T
+        return out
 
     def matvec(self, X):
         """Z X, X: n or n x k (in the matrix's precision, or double for a

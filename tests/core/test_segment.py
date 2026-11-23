@@ -151,9 +151,10 @@ def test_a_via_transition_in_pieces_is_the_whole_board(tmp_path):
 
 
 def test_a_track_drawn_twice_is_one_cut(tmp_path):
-    """A track drawn twice (a KiCad 4 file's) crosses a via's circle twice at
-    one place: one cut (two ports there were two coincident via chains, the
-    loop/tree basis's matrix singular)."""
+    """A track drawn twice (a KiCad 4 file's), and again 3 um off, crosses a
+    via's circle at one place: one cut (two ports there were two coincident
+    via chains: the matrix near singular). A second conductor a width away
+    is a cut of its own."""
     from kicad2ems.core.config import build_settings
     from kicad2ems.core.importers.kicad import KiCadBoard
     from kicad2ems.core.pipeline import board_from_settings
@@ -165,8 +166,16 @@ def test_a_track_drawn_twice_is_one_cut(tmp_path):
     (g,) = SG.via_groups(m, {'RF'})
     n0 = len(SG.cuts(kb, g, {'RF'}))
     assert n0 >= 2
-    kb.tracks += [dict(t) for t in kb.tracks if t['net'] == 'RF']
+    rf = [dict(t) for t in kb.tracks if t['net'] == 'RF']
+    kb.tracks += [dict(t) for t in rf]
     assert len(SG.cuts(kb, g, {'RF'})) == n0
+    shift = lambda dy: [dict(t, pts=[(x, y + dy) for x, y in t['pts']])
+                        for t in rf]
+    kb.tracks += shift(3e-3)
+    assert len(SG.cuts(kb, g, {'RF'})) == n0
+    w = min(t['width'] for t in rf)
+    kb.tracks += shift(1.5 * w)
+    assert len(SG.cuts(kb, g, {'RF'})) > n0
 
 
 def test_a_layer_pieces_tracks_end_at_the_via_circles(tmp_path):

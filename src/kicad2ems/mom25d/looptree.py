@@ -195,6 +195,35 @@ class LoopTree:
             Z[Ne:, :] += self.F.T @ Z[fe, :]
         return Z
 
+    def to_ideal_half(self, H):
+        """to_ideal on a half.Half of the symmetric Z, in place: the scale,
+        then the fan paths (Half.loop_transform: T = I + F on the fan edges'
+        rows and the via chains' columns, which alone change)."""
+        H.scale(self.dl)
+        fe = self.fan_edges
+        if len(fe):
+            F = sparse.coo_matrix(self.F)
+            H.loop_transform(sparse.csc_matrix(
+                (F.data, (fe[F.row], self.Ne + F.col)), shape=(self.N,) * 2))
+        return H
+
+    def transform_half(self, H):
+        """H <- K^T H K in place, H a half.Half of the symmetric Z (to_ideal's
+        unit branch currents), never whole: 8 N^2 complex128 at the peak, not
+        16. With K = I + P (P: the tree paths, tree rows x loop columns), M_tt
+        = Z_tt, M_tc = Z_tc + Z_tt P and M_cc = Z_cc + Z_ct P + P^T M_tc: the
+        loops' block's Z_ct P first (step 1), then the tree rows' M_tc (2),
+        then P^T M_tc (3), each its rows' prefix over the tree's nodes
+        (tree_cols's) and each pass reading one region (tree-tree, tree-loop)
+        while it writes another (tree-loop, loop-loop): the compiled core's
+        lt_half_step, rows in parallel."""
+        from . import _core
+        rp, c0 = H.rows()
+        tree = np.ascontiguousarray(self.is_tree, np.uint8)
+        for step in (1, 2, 3):
+            _core.lt_half_step(H.data, rp, c0, tree, step, *self._args)
+        return H
+
     def rhs(self, E):
         """Mmap^T E (N x m)."""
         out = (np.array(E, complex) *
@@ -250,11 +279,15 @@ class LoopTree:
         triangles f0 .. f0 + its width, those ends' part alone: the matrix by
         blocks of triangles); the compiled core's."""
         from . import _core
+        from .half import Half
         t, u, v = self.tree, self.bu[self.tree], self.bv[self.tree]
-        _core.charge_into(Z, np.ascontiguousarray(Mq), t.astype(np.int32),
-                          u.astype(np.int32), v.astype(np.int32),
-                          np.ascontiguousarray(area, float), int(self.G),
-                          int(f0))
+        args = (np.ascontiguousarray(Mq), t.astype(np.int32),
+                u.astype(np.int32), v.astype(np.int32),
+                np.ascontiguousarray(area, float), int(self.G), int(f0))
+        if isinstance(Z, Half):  # (the pairs it keeps)
+            _core.charge_into_half(Z.data, *Z.rows(), *args)
+        else:
+            _core.charge_into(Z, *args)
         return Z
 
     def charge_operator(self, sim):

@@ -286,16 +286,21 @@ def cuts(kb, group, nets):
                     continue  # it touches the edge (a notch's tip): no cut
                 c = dict(layer=t['layer'], net=t['net'],
                          at=(float(q[0]), float(q[1])),
-                         out=(float(d[0]), float(d[1])), nudge=nudge)
-                # the same crossing again (a track drawn twice, as a KiCad 4
-                # file has them): one cut. Two ports at one place are two
-                # coincident via chains, a loop of no impedance: the loop/tree
-                # basis's matrix singular (four LimeRFE pieces at 0.1 GHz,
-                # 2026-11-22)
+                         out=(float(d[0]), float(d[1])), nudge=nudge,
+                         width=float(t.get('width') or 0.0))
+                # the same conductor crossing again (a track drawn twice, as a
+                # KiCad 4 file has them, or again a few um off): one cut, where
+                # the two cross within half the narrower's width, alike. Two
+                # ports there are two via chains at one place (their ports
+                # centred on the copper): the matrix near singular in either
+                # basis (four LimeRFE pieces at 0.1 GHz, 2026-11-22; then two
+                # via models 3 um apart, every factor failing to precondition,
+                # 11 and 28 min in double precision)
                 if any(o['layer'] == c['layer'] and o['net'] == c['net']
                        and math.hypot(o['at'][0] - q[0], o['at'][1] - q[1])
-                       < 1e-3 and o['out'][0] * d[0] + o['out'][1] * d[1]
-                       > 0.999 for o in out):
+                       < max(1e-3, 0.5 * min(o['width'], c['width']))
+                       and o['out'][0] * d[0] + o['out'][1] * d[1] > 0.98
+                       for o in out):
                     continue
                 out.append(c)
     return out

@@ -10,6 +10,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **mom25d: the loop/tree basis and the sides' loops on the matrix's half itself (2026-11-23).** The loop/tree
+  basis (low frequency) had filled and transformed the whole double Z, 16 N^2, before halving it; now its far and
+  near fill go straight into the half (`fill_far_half`, `near_into_half`), the vias' fan paths are a border
+  transform (`Half.loop_transform`: T = I + W with W in some columns, only their rows and columns change), and
+  K^T Z K is three passes over the half (`looptree.transform_half`, the core's `lt_half_step`): with K = I + P,
+  M_tt = Z_tt, M_tc = Z_tc + Z_tt P, M_cc = Z_cc + Z_ct P + P^T M_tc, each pass reading one region while it
+  writes another, rows in parallel; the charge block into the pairs the half keeps (`charge_into_half`). Thick
+  copper's sides' loops likewise (`Half.loop_transform`). Peak 8 N^2 (and the verticals' columns), host 12 N^2
+  with the factor's copy, not 16: a LimeRFE piece of 9,341 unknowns at 0.1 GHz 1.41 GB over its baseline
+  against 2.06, its system built in 1.5 s against 1.7 (the transform 0.33 s against 0.32; on NumPy panels it had
+  been 3x slower); at 27k the basis needs 9.6 GB rather than 12.6, so the LimeRFE's 27k-unknown piece's 16.4 GB
+  share holds it beside the small pieces. Its matrix the whole path's block by block to 1e-13 (at 0.1 GHz the
+  blocks span ~17 decades: a first version's error in the loops' block, 0.6, was invisible in the whole's
+  maximum; the test compares each block). `MOM25D_LT_HALF=off`, `MOM25D_LOOPS_HALF=off` restore the whole
+  matrix's transforms.
 - **segment: surface-current maps of a finished run (2026-11-22).** `tools/segment_studies/current_maps.py GHZ --
   <the run's arguments>`: the run's network rebuilt from its folder (no piece solved again), every chain driven at
   once from its start (the end whose net reads as an input, else its first port; `--starts` by hand; 1 W each, in
@@ -342,6 +357,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   solver does not fit its share exits before its fill (`MOM25D_NO_ROOM_EXIT`, code 75) and runs again at the end,
   alone, with all of it; a small one starts only with room for it, and below a low mark the newest one is stopped
   and run again at the end the same way.
+- **segment: one cut where one conductor crosses (2026-11-23).** Two crossings of one net on one layer within half
+  the narrower track's width, alike in direction, are one cut (they were within 1 um): a KiCad 4 file's track
+  drawn twice 3 um off gave two ports 0.03 um apart (centred on its 2.5 mm copper), two via chains at one place,
+  the matrix near singular in either basis: two LimeRFE via models (25-29k unknowns) had every complex64 factor
+  fail to precondition (GMRES residual ~1) and solved in double precision, 11 and 28 minutes. (Its ports
+  renumbered after the cuts dropped: a LimeRFE run solves its pieces again once.)
 - **mom25d: a broken factor no longer runs a piece out of memory (2026-11-22).** The LimeRFE rerun's 27k-unknown
   piece ran at 4.6 GB in its share for 15 minutes, then grew to 20 GB within three and was OOM-killed: GMRES had
   gone on to its cap on NaN (a complex64 factor without pivoting broken down; `den` NaN in the Givens rotation),

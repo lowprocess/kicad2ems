@@ -680,6 +680,10 @@ def test_thickness_sides_loops_condition_the_matrix(monkeypatch):
     assert abs(Q[:, V]).max() == pytest.approx(sd.t.max() / 2)
     got = {}
     real = fast._loop_transform
+    # (the whole matrix's transform, spied on: the half's own, Half.
+    # loop_transform, is test_gpu's test_the_sides_loops_matrix_by_its_half)
+    from kicad2ems.mom25d import policy
+    monkeypatch.setattr(policy, 'LOOPS_HALF', False)
 
     def spy(Z, W):
         got['Z'] = Z.copy()
