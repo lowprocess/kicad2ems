@@ -313,7 +313,9 @@ mode below fmax reaches into those cages (the largest impedance any reported via
 carrier (10 GHz, every pair) the In4.Cu/In6.Cu cavity round the In5.Cu striplines has local modes the fast lanes
 see at 15-22 ohm only above 8 GHz (`PCIe_{C2x1}R_CLK+` 22 ohm at 8.4 GHz, its nearest ground via 2.4 mm; the
 USB 3 and CSI lanes 15 ohm near 10 GHz); the largest are the slow lines' (`USBC3_D+` 203 ohm at 7.8 GHz, a pocket
-by the USB hub's connector with few ground vias; `DP1.AUX_C+` 167 ohm at 9.7 GHz), far above what they carry.
+by the USB hub's connector with few ground vias; `DP1.AUX_C+` 167 ohm at 9.7 GHz), far above what they carry. One
+ground via added 0.7 mm from `USBC3_D+` (where both planes are copper) takes its peak from 203 ohm at 7.84 GHz to
+16 ohm at 9.52 GHz: the via-placement effect the tool is for.
 
 Left out: the signal traces inside the cavity (a stripline is no part of the TEM field here), the edges'
 radiation and fringing (an open edge is exact only for d << the planes' size), the power planes' decoupling
