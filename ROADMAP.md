@@ -295,7 +295,7 @@ CHANGELOG has their numbers; updated 2026-11-23):**
    15:12 and 5:47, LimeRFE whole for the first time, 318 ports; docs/segment-studies.md). **Next from them, in
    order:** (a) factor reuse across frequencies now that GMRES iterations run on the GPU. **Measured
    2026-11-23** (LimeRFE's 33k F.Cu piece, RX 7800 XT): a fresh solve ~14 s (the GPU's LDL^T 4.9, the loop/tree
-   transform 3.6, the charge matrix 1.25, the fill 1.1, the near field 0.9, Z up 0.7, the refinement 0.8); the
+   transform 3.6 (its steps 2.31 -> 1.72 s since: rows read in place), the charge matrix 1.25, the fill 1.1, the near field 0.9, Z up 0.7, the refinement 0.8); the
    dense path already tries the kept factor with the GPU's products after the fill, so a reuse saves the factor
    alone, and a kept factor preconditions only within ~3 % in frequency (1.546 -> 1.575 GHz: 3-4 iterations;
    1.546 -> 2.25 or 3.05 GHz: residual 0.6-0.9 after 3). Fixed on the way: a failed one stayed on the GPU

@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **mom25d: the loop/tree transform's steps read a row's own part where it is (2026-11-23).** `lt_half_step`
+  copied each row it takes whole into its group's buffer (step 2: the tree's 23k rows of LimeRFE's 33k-unknown
+  piece, ~12 GB of copying); only the part before the row's block (its mirror's, strided) is gathered now, the
+  rest read in place (each step writes only pairs no other row reads in it). Bit for bit the same; the three
+  steps on that piece's tree 2.31 -> 1.72 s (step 2 1.26 -> 0.96 s), on an 8.9k piece's 183 -> 149 ms.
 - **A run's own work around the solve, 6x less on a segment piece (2026-11-23).** A Thor bus window (92 ports, 8k
   unknowns) took 107 s, of which its 10 field solves were 9.3: the causality check 46 s, the mixed-mode conversion
   31.5, the board file written again 10.6, the board as data four more times 3.7. Now 16.6 s, its S the same to

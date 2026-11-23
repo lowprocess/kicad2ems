@@ -1144,31 +1144,24 @@ void lt_half_step(py::array_t<cd> data, arr<i64> rp, arr<i64> c0,
                 for (i64 k = 0; k < m; ++k)
                     if (take[k]) R[k * n + c] = src[k];
             }
-            for (i64 k = 0; k < m; ++k) {
-                if (!take[k]) continue;
-                const cd *src = z + rpp[g0 + k];
-                cd *dst = &R[k * n];
-                if (all_cols)
-                    std::copy(src, src + (n - cs), dst + cs);
-                else
-                    for (i64 c = cs; c < n; ++c)
-                        if (tr[c]) dst[c] = src[c - cs];
-            }
+            // (the row's own part, c >= cs, read where it is: copied too it
+            // had been most of the step, 23k rows of 33k unknowns ~12 GB)
             for (i64 k = 0; k < m; ++k) {
                 const i64 a = g0 + k;
                 if ((tr[a] != 0) != want_tree) continue;
-                const cd *x = &R[k * n];
+                const cd *xr = &R[k * n];
+                cd *row = z + rpp[a] - cs;  // (row[c] for c >= cs)
+                auto x = [&](i64 c) { return c < cs ? xr[c] : row[c]; };
                 for (int q = 0; q < t.nr; ++q) P[t.roots[q]] = 0;
                 for (int q = 0; q < t.nn; ++q)
-                    P[t.node[q]] = P[t.parent[q]] + t.sig[q] * x[t.branch[q]];
-                cd *row = z + rpp[a] - cs;  // (row[c] for c >= cs)
+                    P[t.node[q]] = P[t.parent[q]] + t.sig[q] * x(t.branch[q]);
                 for (int j = 0; j < t.nc; ++j) {
                     const i64 c = t.cot[j];
                     const cd val = P[t.cv[j]] - P[t.cu[j]];
                     if (step == 1) {
                         if (c >= cs) row[c] += val;
                     } else if (step == 2) {
-                        const cd v = x[c] + val;
+                        const cd v = x(c) + val;
                         if (c >= cs) row[c] = v;
                         if (a >= c0p[c]) z[rpp[c] + a - c0p[c]] = v;
                     } else if (a >= c0p[c]) {
