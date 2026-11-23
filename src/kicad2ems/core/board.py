@@ -708,13 +708,23 @@ class Board:
                              + ("region" if self.region else "board outline"))
         self.ports = []
         for n, fp in port_fps.items():
-            if isinstance(fp, DiffLegs):
-                self.ports += [
-                    self._port(raw, f"P{n}+", fp['+'], leg='+', pair=f"P{n}"),
-                    self._port(raw, f"P{n}-", fp['-'], leg='-', pair=f"P{n}")
-                ]
-            else:
-                self.ports.append(self._port(raw, f"P{n}", fp))
+            try:
+                if isinstance(fp, DiffLegs):
+                    self.ports += [
+                        self._port(raw, f"P{n}+", fp['+'], leg='+',
+                                   pair=f"P{n}"),
+                        self._port(raw, f"P{n}-", fp['-'], leg='-',
+                                   pair=f"P{n}")
+                    ]
+                else:
+                    self.ports.append(self._port(raw, f"P{n}", fp))
+            except ValueError as exc:
+                # a board read for its copper only (need_ports=False: the
+                # PDN, cavity and thermal tools) need not have its P<n>
+                # footprints be ports - a connector named P10, say
+                if self.need_ports:
+                    raise
+                self.notes.append(f"{exc}: not a port, left out")
 
     @property
     def user_ports(self):
