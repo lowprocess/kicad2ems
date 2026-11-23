@@ -53,6 +53,10 @@ d 0.02), B.Cu ground:
   idc         an interdigital capacitor in series with a 50 ohm line
   meander     a meander inductor in series with a 50 ohm line
   spiral      4-layer: a square spiral inductor with an underpass
+  array_1k / array_5k / array_10k
+              4-layer multichannel RF arrays (15 / 70 / 144 channels, about
+              1k / 5k / 10k vias) for scale tests: fenced microstrip channels,
+              signal vias to B.Cu, bias-line pour slivers, stitching grids
 
     python examples/make_rf_examples.py all
         # every board, examples/rf_<name>.kicad_pcb
@@ -1106,6 +1110,106 @@ def spiral(path, turns=3, ws=0.25, ss=0.25, dout=5.0, feed=8.0):
     return w
 
 
+def array(path, nx=4, ny=3, cw=18.0, ch=24.0, pitch=1.2, grid=3.0,
+          fence=2.4, s=0.3, antipad=0.45, defect=3):
+    """4-layer multichannel RF array for scale tests (cavity, PDN, mesh and
+    solver timing): nx x ny channel cells, each cw x ch mm, on 3 x 0.2 mm
+    FR-4. In each cell, a 50 ohm microstrip on F.Cu in a GND pour (s mm
+    clear of it), fenced both sides at `pitch`, ends in a via to B.Cu with
+    four return vias 1 mm round it; a bias line (CTRLn) runs beside it from a
+    via of its own, leaving a 1 mm pour sliver between them. In1.Cu, In2.Cu
+    and B.Cu are GND planes with antipads at both signal vias. A fence at
+    `fence` pitch round every cell, a `grid` mm stitching grid inside. Every
+    `defect`-th channel leaves out the fence along the bias line, so its
+    sliver is tied only at its ends (a local cavity mode near 7-8 GHz)."""
+    w = round(w_on(50.0, H4), 3)
+    n = nx * ny
+    nets = ["", "GND"] + [f"RF{k + 1}" for k in range(n)] + \
+           [f"CTRL{k + 1}" for k in range(n)]
+    bd = Board(nets=nets)
+    W, H = nx * cw, ny * ch
+    keep = w / 2 + s                      # the pour's clearance to the RF line
+    holes_f, holes_in = [], []
+    vias = []                             # (x, y) of every GND via so far
+
+    def gnd(x, y):
+        vias.append((x, y)); bd.via(x, y, size=0.45, drill=0.2)
+
+    for j in range(ny):
+        for i in range(nx):
+            k = j * nx + i
+            rf, ctrl = 2 + k, 2 + n + k
+            x0, y0 = i * cw, j * ch
+            yc = y0 + ch / 2
+            xa, xb = x0 + 2.0, x0 + cw - 3.0           # RF line start, via
+            # the RF line, its pour keepout (the via's pad clearance with it)
+            bd.track([(xa, yc), (xb, yc)], w, net=rf)
+            bd.via(xb, yc, net=rf, size=0.5, drill=0.25)
+            holes_f.append([(xa - 0.6, yc - keep), (xb + 0.55, yc - keep),
+                            (xb + 0.55, yc + keep), (xa - 0.6, yc + keep)])
+            holes_in.append((xb, yc, antipad))
+            for a in (45, 135, 225, 315):
+                t = math.radians(a)
+                gnd(xb + math.cos(t), yc + math.sin(t))
+            # the bias line beside it, from its via to a pad
+            yb = yc + keep + 1.0 + 0.1 + 0.3      # 1 mm sliver, 0.2 mm line
+            xc0, xc1 = x0 + 3.5, x0 + cw - 6.0
+            bd.track([(xc0, yb), (xc1, yb)], 0.2, net=ctrl)
+            bd.via(xc0, yb, net=ctrl, size=0.5, drill=0.25)
+            holes_f.append([(xc0 - 0.6, yb - 0.4), (xc1 + 0.4, yb - 0.4),
+                            (xc1 + 0.4, yb + 0.4), (xc0 - 0.6, yb + 0.4)])
+            holes_in.append((xc0, yb, antipad))
+            # the line's fences: below it, and above it except (a defect
+            # channel) along the bias line
+            nf = int((xb - 1.5 - xa) / pitch)
+            for q in range(nf + 1):
+                x = xa + q * (xb - 1.5 - xa) / nf
+                gnd(x, yc - keep - 0.35)
+                if not (k % defect == 0 and xc0 - 0.8 < x < xc1 + 0.8):
+                    gnd(x, yc + keep + 0.35)
+            # the cell's fence: its left and top edges (the next cells close
+            # it), and the board's right and bottom edges
+            def edge(xs, ys, xe, ye, step):
+                m = max(1, int(math.hypot(xe - xs, ye - ys) / step))
+                for q in range(m):
+                    gnd(xs + (xe - xs) * q / m, ys + (ye - ys) * q / m)
+            edge(x0 + 0.6, y0 + 0.6, x0 + 0.6, y0 + ch + 0.6, fence)
+            edge(x0 + 0.6, y0 + 0.6, x0 + cw + 0.6, y0 + 0.6, fence)
+            if i == nx - 1:
+                edge(W - 0.6, y0 + 0.6, W - 0.6, y0 + ch + 0.6, fence)
+            if j == ny - 1:
+                edge(x0 + 0.6, H - 0.6, x0 + cw + 0.6, H - 0.6, fence)
+            # stitching inside, clear of the lines and the vias
+            busy = (lambda x, y: (abs(y - yc) < keep + 0.9 and xa - 1 < x < xb + 1.6)
+                    or (abs(y - yb) < 1.0 and xc0 - 1.2 < x < xc1 + 1.0))
+            gx = x0 + 0.6 + grid
+            while gx < x0 + cw - 0.6:
+                gy = y0 + 0.6 + grid
+                while gy < y0 + ch - 0.6:
+                    if not busy(gx, gy):
+                        gnd(gx, gy)
+                    gy += grid
+                gx += grid
+    bd.plane('F.Cu', W, H, holes=holes_f)
+    for layer in ('In1.Cu', 'In2.Cu', 'B.Cu'):
+        bd.plane(layer, W, H, holes=holes_in)
+    bd.write(path, W, H, ground=False, four=True)
+    return dict(channels=n, size=f"{W:g} x {H:g} mm", w=w,
+                gnd_vias=len(vias), vias=len(vias) + 2 * n)
+
+
+def array_1k(path):
+    return array(path, nx=5, ny=3)
+
+
+def array_5k(path):
+    return array(path, nx=10, ny=7)
+
+
+def array_10k(path):
+    return array(path, nx=12, ny=12)
+
+
 KINDS = dict(branchline=branchline, wilkinson=wilkinson, steplpf=steplpf,
              stubnotch=stubnotch, gcpw=gcpw, coupler=coupler, ratrace=ratrace,
              radialstub=radialstub, stripline=stripline, diffvia=diffvia,
@@ -1114,7 +1218,8 @@ KINDS = dict(branchline=branchline, wilkinson=wilkinson, steplpf=steplpf,
              serpentine=serpentine, crosstalk=crosstalk,
              crosstalk_guard=crosstalk_guard, bus=si_bus, ddr=ddr, pcoupled=pcoupled,
              combline=combline, openloop=openloop, dgs=dgs, ebg=ebg, idc=idc,
-             meander=meander, spiral=spiral)
+             meander=meander, spiral=spiral, array_1k=array_1k,
+             array_5k=array_5k, array_10k=array_10k)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2 or sys.argv[1] not in list(KINDS) + ['all']:
