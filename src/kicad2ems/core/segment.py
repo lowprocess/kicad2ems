@@ -1929,6 +1929,29 @@ def pairs_report(f, S, ports, port_nets, rise_ps=100.0, z0=50.0,
         xs = sorted(xs, key=lambda x: -refs[x['ref']])
         names[xs[0]['port']] = (net, 'near')
         names[xs[1]['port']] = (net, 'far')
+    # a pair whose other leg has not its two ends (a leg open: segment's
+    # one-sided cuts) left out, and the report made of the rest (a KeyError
+    # had lost the LimeRFE study's whole report)
+    while True:
+        try:
+            return _pairs_report(f, S, ports, names, rise_ps, z0, curves)
+        except KeyError as e:
+            key = e.args[0] if e.args else None
+            if not (isinstance(key, tuple) and len(key) == 2):
+                raise
+            from .coupling import channels
+            have = list(dict.fromkeys(v[0] for v in names.values()))
+            drop = {l for c in channels(have + [key[0]], True)
+                    if key[0] in c.get('legs', ()) for l in c['legs']}
+            drop.discard(key[0])
+            if not drop or not any(v[0] in drop for v in names.values()):
+                raise
+            names = {p: v for p, v in names.items() if v[0] not in drop}
+
+
+def _pairs_report(f, S, ports, names, rise_ps, z0, curves):
+    """pairs_report's, for the ports' (net, end) names."""
+    from .coupling import matrix, summary, channels, modal
     order = [p for p in ports if p in names]
     ix = [ports.index(p) for p in order]
     Ss = np.asarray(S)[:, ix][:, :, ix]
