@@ -187,7 +187,7 @@ def solve(m, freq, dmax=0.3, port='auto', max_solves=60, sigma=None, rough=None,
 
     def board(pairs):
         from kicad2ems.mom25d.api import solve_board
-        return solve_board(m.to_dict(), freq, pairs=pairs, **kw)
+        return solve_board(m.to_dict(prims=False), freq, pairs=pairs, **kw)
     res, pairs = _legs_if_short(board, pairs, port, log)
     if hold is not None:
         hold['res'] = res
@@ -344,7 +344,7 @@ def apertures(m, s):
     from kicad2ems.mom25d.board import ground_apertures, pec_planes
     g, out = _solid_ground(m), []
     if g is not None:
-        data = m.to_dict()
+        data = m.to_dict(prims=False)
         if _model_kw(s)['planes'] in ('pec', 'holes'):
             g, _ = pec_planes(data, g)
         out = [(poly, a, g) for poly, a in ground_apertures(data, g)]
@@ -361,7 +361,7 @@ def ports_below(m, s):
         return []
     if _model_kw(s)['planes'] in ('pec', 'holes'):
         from kicad2ems.mom25d.board import pec_planes
-        g, _ = pec_planes(m.to_dict(), g)
+        g, _ = pec_planes(m.to_dict(prims=False), g)
     return [
         p.name
         for p in m.ports
@@ -689,7 +689,7 @@ class MoM25D(Solver):
         # mom25d.board.pec_planes: the ground may move up
         if not whole and kw['planes'] == 'pec':
             from kicad2ems.mom25d.board import pec_planes
-            g, cover = pec_planes(m.to_dict(), g)
+            g, cover = pec_planes(m.to_dict(prims=False), g)
         zg = min(m.cu_z.values()) if whole else m.cu_z[g]
         zc = m.cu_z[cover] if cover else np.inf
         out.append(
@@ -732,7 +732,7 @@ class MoM25D(Solver):
         if kw['stitching_pads'] == 'drop':
             from shapely.geometry import shape
             from kicad2ems.mom25d.board import lone_pads
-            data = m.to_dict()
+            data = m.to_dict(prims=False)
             pads = lone_pads(
                 data, [l for l in metal if data.get('copper', {}).get(l)])
             for l, ix in pads.items():
@@ -809,7 +809,7 @@ class MoM25D(Solver):
         board terms."""
         from kicad2ems.mom25d.board import BoardModel
         bm = BoardModel(
-            run.m.to_dict(), log=lambda *a: None, **_model_kw(run.s),
+            run.m.to_dict(prims=False), log=lambda *a: None, **_model_kw(run.s),
             **(dict(ground='none') if _stack(run.s, run.m) == 'whole' else {}))
         zk, lay = bm._zk, {k: l for l, k in bm.iface.items()}
         ports = [
@@ -836,7 +836,7 @@ class MoM25D(Solver):
         from kicad2ems.mom25d.board import BoardModel
         s = run.s
         bm = BoardModel(
-            run.m.to_dict(), log=lambda *a: None, **_model_kw(s),
+            run.m.to_dict(prims=False), log=lambda *a: None, **_model_kw(s),
             **(dict(ground='none') if _stack(s, run.m) == 'whole' else {}))
         dmax = s.mom_dmax * 1e-3
         planes = {
@@ -917,7 +917,7 @@ class MoM25D(Solver):
             # the quads come with a run)
             pairs, kw = _board_kw(m, s.mom_dmax, s.mom_port, **_mesh_kw(s, m))
             bm, sim = _legs_if_short(
-                lambda p: build_board(m.to_dict(), run.fmin, run.fmax, pairs=p,
+                lambda p: build_board(m.to_dict(prims=False), run.fmin, run.fmax, pairs=p,
                                       log=lambda *a: None, mesh_only=True,
                                       characterize=False, **kw),
                 pairs, s.mom_port)[0]

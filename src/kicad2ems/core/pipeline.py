@@ -510,8 +510,14 @@ class Job:
         self.finish = fin = finish.resolve(s, m)
         for n in (fin.notes if fin is not None else []):
             self.log(n)
+        bj = self.path('_board.json')
+        same = (getattr(s, 'lean', False) and os.path.isfile(str(s.board))
+                and os.path.isfile(bj) and os.path.samefile(s.board, bj))
+        # (a lean run of that very file, a segment piece's: it is the model's
+        # source already; written again it was 10 s of a Thor window's run,
+        # the whole board's primitives in each piece)
         self.wrote('board (what every solver gets)',
-                   m.save(self.path('_board.json')))
+                   bj if same else m.save(bj))
         ob = m.outline.bounds
         self.summary['model'] = dict(
             board=s.board, outline_mm=[ob[2] - ob[0], ob[3] - ob[1]],

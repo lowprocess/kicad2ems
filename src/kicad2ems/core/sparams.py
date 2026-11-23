@@ -27,9 +27,10 @@ def mixed_mode(S, m):
     # unknown entries (NaN: ports not excited) must not spread: transform with
     # zeros, then mark only the results that actually depend on an unknown entry
     unknown = np.isnan(S)
-    Smm = np.einsum('ij,fjk,lk->fil', Mx, np.where(unknown, 0, S), Mx)
-    dep = (np.einsum('ij,fjk,lk->fil', np.abs(Mx), unknown.astype(float),
-                     np.abs(Mx)) > 0)
+    # (Mx S Mx^T as products: a three-operand einsum ran over every (i, j, k,
+    # l) at once, 31 s of a 92-port Thor window's 107)
+    Smm = Mx @ np.where(unknown, 0, S) @ Mx.T
+    dep = (np.abs(Mx) @ unknown.astype(float) @ np.abs(Mx).T) > 0
     Smm[dep] = np.nan
     return Smm, names, zref
 

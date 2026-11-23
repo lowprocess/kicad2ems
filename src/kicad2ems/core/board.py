@@ -940,9 +940,11 @@ class Board:
         return "\n".join(L + self.notes)
 
     # ---- board.json ---------------------------------------------------------
-    def to_dict(self):
+    def to_dict(self, prims=True):
         """The board as plain data (board.json): lengths in mm, model
-        coordinates, polygons as GeoJSON."""
+        coordinates, polygons as GeoJSON. prims False: without the board's
+        primitives (mom25d reads none of them; a segment piece carries the
+        whole board's, 35 MB of a Thor window's 35.0: 0.75 s a call)."""
         req = json.loads(json.dumps(self.request, default=list))
         return dict(
             format=FORMAT, version=VERSION, units='mm', source=self.source,
@@ -970,7 +972,8 @@ class Board:
             parts=[p.to_dict() for p in self.parts], walls=[
                 dict(axis=a, at=c, t0=t0, t1=t1, z0=z0, z1=z1)
                 for a, c, t0, t1, z0, z1 in self.walls
-            ], prims=self.prims.to_dict(), notes=self.notes)
+            ], notes=self.notes, **(dict(prims=self.prims.to_dict()) if prims
+                                    else {}))
 
     def save(self, path):
         """Writes the board file (to_dict as JSON: <name>_board.json); returns

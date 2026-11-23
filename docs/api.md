@@ -274,7 +274,7 @@ For programs that drive kicad2ems: read a board, show its line model, start runs
 |---|---|
 | `kicad2ems.core.importers.kicad` | `KiCadBoard` (a `.kicad_pcb`, or KiCad's board text), `read_pos`, `pos_port_refs`, `resolve_nets`, `DiffLegs`, `board_outline` |
 | `kicad2ems.core.board` | `Board` (the canonical model), `Port` |
-| `kicad2ems.core.parts` | `kind_value` (a footprint's lumped part) |
+| `kicad2ems.core.parts` | `kind_value` (a footprint's lumped part), `not_fitted` (DNP, excluded from simulation, or 'NF' in its value) |
 | `kicad2ems.core.region` | `extra_port_fps` (the footprints a region adds as ports) |
 | `kicad2ems.core.layout` | `board_layout(path)`: a `.kicad_pcb` as the model board's dict (`Board.to_dict()`: every net's copper by layer, no ports asked for) with `footprints` (`[dict(ref, value, layer, through, box, pads=[dict(name, net)])]`, model mm) and `layout_of` (the file), to show before anything is run; `net_at(layout, layer, x, y)` and `part_at(layout, layer, x, y)`: the net whose copper, and the part whose pads' box, is under a point, or `None` |
 | `kicad2ems.core.lines.builder` | `build` (Board → LineModel; `field=True`: every section by the field solver) |

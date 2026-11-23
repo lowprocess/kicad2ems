@@ -10,6 +10,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **A run's own work around the solve, 6x less on a segment piece (2026-11-23).** A Thor bus window (92 ports, 8k
+  unknowns) took 107 s, of which its 10 field solves were 9.3: the causality check 46 s, the mixed-mode conversion
+  31.5, the board file written again 10.6, the board as data four more times 3.7. Now 16.6 s, its S the same to
+  1.2e-8 (the GMRES tolerance's); on the Thor carrier the pieces' processes had been 44.6 min for 20.9 of solving.
+  - `causality.check` with every term at once: a term's reconstruction is `R1 h + R2 conj(h)`, its matrices and
+    bound the band's alone (`_operator`), so all terms are a few products a subtraction count (a term at a time it
+    had been 29,967 calls, each computing Gauss-Legendre's nodes again); the same figures to 1.5e-15, a 36-port S
+    6.35 -> 0.02 s.
+  - `sparams.mixed_mode` as products (`Mx @ S @ Mx.T`; a three-operand einsum ran over every (i, j, k, l)): a
+    92-port S 30.1 -> 0.04 s, the same to 1e-15.
+  - a lean run of a board file in its own output folder (a segment piece's) does not write it again; mom25d takes
+    the board without its primitives (`Board.to_dict(prims=False)`: it reads none, and a piece carries the whole
+    board's, 34.6 of its 35 MB).
 - **segment: the pieces whose every channel is open end to end are not solved (2026-11-23).** `unrouted` already
   found, before any solve, the channels with no path through the pieces; a piece whose every net is such a
   channel's would give only their own open S and their coupling to one another (pieces apart do not couple), so
@@ -389,6 +402,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **Two tests red since earlier this week (2026-11-23):** `parts.not_fitted` documented in docs/api.md, and the
+  configs' stored meanings (tests/core/data/config_compat.json) given the settings added since (`mom_edges`,
+  `lean`, `mom_excite`, each at its default: no config's meaning changed).
 - **segment: a via model that is no meshed box is the physics-based model's (2026-11-23).** Two faults made meshed
   via models read open or wrong, found by solving LimeRFE's via models with `pbm` beside their meshed results:
   - a port over signal copper: a series part's pad near the via shrinks its cut circle (the keep-out) inside the

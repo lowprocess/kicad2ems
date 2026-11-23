@@ -43,63 +43,81 @@ def _points(f, n):
 
 def reconstruct(f, h, n):
     """(H_r, T) on the samples f (Hz, ascending, from fmin > 0) of one term h,
-    with n subtractions."""
-    f = np.asarray(f, float)
+    with n subtractions (_operator's, applied)."""
+    R1, R2, T = _operator(np.asarray(f, float), n)
     h = np.asarray(h, complex)
+    return R1 @ h + R2 @ np.conj(h), T
+
+
+# Gauss-Legendre's 64 nodes (_rest's: computed afresh each call they had been
+# a third of a 92-port piece's check)
+_GL = np.polynomial.legendre.leggauss(64)
+
+
+def _operator(f, n):
+    """The reconstruction as matrices: H_r = R1 h + R2 conj(h) for any term h
+    on the samples f, with n subtractions, and its truncation bound T (the
+    term's own share nowhere: the subtraction points, the kernels and the
+    bound are the band's). (R1, R2, T). The data enter linearly: the
+    interpolating polynomial P through h at the w_k, G = (h - P) / Pi on the
+    band, its mirror band's conj(h) / Pi; each integral a fixed matrix on
+    them (product integration: G linear between samples, the kernel
+    1 / (w - w') exact on each interval)."""
+    f = np.asarray(f, float)
+    F = len(f)
     ks = _points(f, n)
-    wk, hk = f[ks], h[ks]
+    wk = f[ks]
     m = len(wk)
     Pi = lambda x: np.prod(np.subtract.outer(np.atleast_1d(x), wk), axis=-1)
     dPi = np.array([
         np.prod([wk[i] - wk[j] for j in range(m) if j != i]) for i in range(m)
     ])
-    c = hk / dPi  # P / Pi = sum c_k / (w - w_k)
-    def lagrange(x):
+
+    def basis(x):  # Lagrange's basis at x: P(x) = basis(x) @ h[ks]
         x = np.atleast_1d(x)
-        out = np.zeros(len(x), complex)
+        out = np.ones((len(x), m))
         for i in range(m):
-            li = np.ones(len(x))
             for j in range(m):
                 if j != i:
-                    li = li * (x - wk[j]) / (wk[i] - wk[j])
-            out += hk[i] * li
+                    out[:, i] *= (x - wk[j]) / (wk[i] - wk[j])
         return out
-
-    # the whole line from the band and its mirror: w' in B+ (h) and B- (h*), the
-    # integrand H / (Pi (w - w'))
     a, b = f[0], f[-1]
-    PiB, PiBm = Pi(f), Pi(-f)
-    # smooth on B+ (H - P vanishes at the w_k)
-    G = (h - lagrange(f)) / np.where(np.abs(PiB) > 0, PiB, np.inf)
-    G[ks] = 0.0
-    for k in ks:  # (its value there: the derivative's ratio)
-        G[k] = (0.5 * ((G[k - 1] if k > 0 else 0) +
-                       (G[k + 1] if k + 1 < len(f) else 0)))
-    # H_r and T at every sample. The smooth parts by product integration: G (and
-    # on the mirror band H* / Pi) linear between samples, the kernel 1 / (w -
-    # w') integrated exactly on each interval (second order; the logarithms at w
-    # itself cancel between its two intervals, the principal value)
     x, dx = f, np.diff(f)
+    PiB, PiBm, Pw = Pi(f), Pi(-f), Pi(f)
+    Lb = basis(x)
+    I = np.eye(F)
+    Sel = I[ks]                      # h -> h[ks]
+    P = Lb @ Sel                     # h -> P(x)
+    # G = (h - P h) / Pi, zero at the w_k, then each w_k's value its
+    # neighbours' mean (in order: an earlier w_k's already set)
+    Gm = (I - P) / np.where(np.abs(PiB) > 0, PiB, np.inf)[:, None]
+    Gm[ks] = 0.0
+    for k in ks:
+        Gm[k] = 0.5 * ((Gm[k - 1] if k > 0 else 0) +
+                       (Gm[k + 1] if k + 1 < F else 0))
+    D = np.diff(I, axis=0) / dx[:, None]     # v -> diff(v) / dx
     with np.errstate(divide='ignore', invalid='ignore'):
         L = np.log(np.abs(np.subtract.outer(x, x)))
-        L[np.arange(len(x)), np.arange(len(x))] = 0.0  # (the PV: they cancel)
-        sG = np.diff(G) / dx
-        # the linear piece of interval j, at w_i
-        A = G[None, :-1] + sG[None, :] * (x[:, None] - x[None, :-1])
-        Ip = (A * (L[:, :-1] - L[:, 1:])).sum(1) - np.sum(sG * dx)
-        for ck, wkk in zip(c, wk):  # the P / Pi share, in closed form
-            t = (ck / (x - wkk) * (np.log(abs(
-                (b - wkk) / (a - wkk))) + np.log(np.abs((x - a) / (x - b)))))
-            Ip += np.where(np.isfinite(t), t, 0.0)
-        K = np.conj(h) / PiBm  # the mirror band: w' = -x, H = h*
-        sK = np.diff(K) / dx
-        Im = (((K[None, :-1] - sK[None, :] *
-                (x[:, None] + x[None, :-1])) * np.log(
-                    (x[:, None] + x[None, 1:]) /
-                    (x[:, None] + x[None, :-1]))).sum(1) + np.sum(sK * dx))
-        Pw = Pi(x)
-        return (lagrange(x) + Pw / (1j * np.pi) *
-                (Ip + Im), np.abs(Pw) / np.pi * _rest(x, a, b, Pi, m))
+        L[np.arange(F), np.arange(F)] = 0.0  # (the PV: they cancel)
+        DL = L[:, :-1] - L[:, 1:]
+        # sum_j (G_j + sG_j (x_i - x_j)) DL_ij - sum_j sG_j dx_j
+        Ip = (DL @ Gm[:-1] + ((x[:, None] - x[None, :-1]) * DL - dx[None, :])
+              @ (D @ Gm))
+        # the P / Pi share, in closed form: sum_k c_k Q_k(x), c = h[ks] / dPi
+        Q = np.zeros((F, m))
+        for i, wkk in enumerate(wk):
+            q = (1.0 / (x - wkk) * (np.log(abs((b - wkk) / (a - wkk)))
+                                    + np.log(np.abs((x - a) / (x - b)))))
+            Q[:, i] = np.where(np.isfinite(q), q, 0.0)
+        Ip = Ip + (Q / dPi[None, :]) @ Sel
+        # the mirror band: w' = -x, H = conj(h): K = conj(h) / Pi(-x)
+        Km = np.diag(1.0 / PiBm)
+        M = np.log((x[:, None] + x[None, 1:]) / (x[:, None] + x[None, :-1]))
+        Im = (M @ Km[:-1] + (dx[None, :] - (x[:, None] + x[None, :-1]) * M)
+              @ (D @ Km))
+    c = Pw[:, None] / (1j * np.pi)
+    return (P + c * Ip, c * Im,
+            np.abs(Pw) / np.pi * _rest(x, a, b, Pi, m))
 
 
 def _rest(w, a, b, Pi, m):
@@ -108,7 +126,7 @@ def _rest(w, a, b, Pi, m):
     log, the tail beyond in closed form (the integrand as 1 / w'^(m+1)
     there)."""
     w = np.atleast_1d(w)[:, None]
-    x, wq = np.polynomial.legendre.leggauss(64)
+    x, wq = _GL
     lo = a * x
     s = np.sum(wq * a / (np.abs(Pi(lo)) * np.abs(w - lo)), axis=1)
     u = np.log(b) + (np.log(10 * b) - np.log(b)) * (x + 1) / 2
@@ -128,39 +146,47 @@ def check(freq, S, ns=range(2, 9)):
     bounds but the data's own shape decides; many: small bounds, but the
     interpolating polynomial absorbs a violation), so a miss at any one is
     evidence. e_n: the reconstruction's own error on these samples (a causal
-    test response's). 0: causal within the evidence."""
+    test response's). 0: causal within the evidence. Every term at once, a
+    few products of _operator's matrices with them for each n (a term at a
+    time it had been 46 s of a 92-port Thor window's 107)."""
     f = np.asarray(freq, float)
     S = np.asarray(S)
     if f[0] <= 0 or len(f) < 16:
         return None
     nt = S.shape[1]
-    e = {k: _quadrature_error(f, k) for k in ns}
     mid = slice(len(f) // 10, len(f) - len(f) // 10)
-    out, worst = [], (0.0, None, None, None)
-    for i in range(nt):
-        for j in range(i + 1):
-            h = S[:, i, j]
-            if not np.all(np.isfinite(h)):
-                continue
-            best = (-np.inf, None, None, None, None)
-            for k in ns:
-                Hr, T = reconstruct(f, h, k)
-                miss = (np.abs(h - Hr) - T - e[k])[mid]
-                ii = int(np.argmax(miss))
-                if miss[ii] > best[0]:
-                    best = (float(miss[ii]), k, float(f[mid][ii]),
-                            float(np.abs(h - Hr)[mid][ii]),
-                            float(T[mid][ii] + e[k]))
-            out.append(
-                dict(term=(i, j), n=best[1], worst=max(best[0], 0.0), f=best[2],
-                     err=best[3], bound=best[4]))
-            if best[0] > worst[0]:
-                worst = (best[0], best[2], (i, j), best[1])
-    return dict(worst=worst[0], f=worst[1], term=worst[2], n=worst[3],
-                terms=out)
+    fm = f[mid]
+    pairs = [(i, j) for i in range(nt) for j in range(i + 1)
+             if np.all(np.isfinite(S[:, i, j]))]
+    if not pairs:
+        return dict(worst=0.0, f=None, term=None, n=None, terms=[])
+    H = np.stack([S[:, i, j] for i, j in pairs], 1).astype(complex)
+    best = np.full(len(pairs), -np.inf)
+    bn = np.zeros(len(pairs), int)
+    bf, be, bb = (np.zeros(len(pairs)) for _ in range(3))
+    for k in ns:
+        R1, R2, T = _operator(f, k)
+        e = _quadrature_error(f, k, (R1, R2, T))
+        err = np.abs(H - (R1 @ H + R2 @ np.conj(H)))
+        miss = (err - (T + e)[:, None])[mid]
+        ii = np.argmax(miss, axis=0)
+        cols = np.arange(len(pairs))
+        mm = miss[ii, cols]
+        up = mm > best
+        best[up], bn[up] = mm[up], k
+        bf[up], be[up] = fm[ii[up]], err[mid][ii[up], cols[up]]
+        bb[up] = (T[mid] + e)[ii[up]]
+    out = [dict(term=pairs[t], n=int(bn[t]), worst=max(float(best[t]), 0.0),
+                f=float(bf[t]), err=float(be[t]), bound=float(bb[t]))
+           for t in range(len(pairs))]
+    w = int(np.argmax(best))
+    if best[w] > 0.0:
+        return dict(worst=float(best[w]), f=float(bf[w]), term=pairs[w],
+                    n=int(bn[w]), terms=out)
+    return dict(worst=0.0, f=None, term=None, n=None, terms=out)
 
 
-def _quadrature_error(f, n):
+def _quadrature_error(f, n, op=None):
     """The reconstruction's own error with n subtractions on these samples:
     causal test responses (a damped resonance in the band with a delay, and a
     smooth low-pass) reconstructed as the data are, their largest miss beyond
@@ -174,7 +200,8 @@ def _quadrature_error(f, n):
     tests.append(0.9 / (1 + 1j * f / (2 * b)))
     mid = slice(len(f) // 10, len(f) - len(f) // 10)
     worst = 0.0
+    R1, R2, T = op or _operator(f, n)
     for h in tests:
-        Hr, T = reconstruct(f, h, n)
+        Hr = R1 @ h + R2 @ np.conj(h)
         worst = max(worst, float(np.max((np.abs(h - Hr) - T)[mid])))
     return max(worst, 0.0) + 1e-3
