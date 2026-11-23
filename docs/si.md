@@ -306,7 +306,14 @@ python -m kicad2ems.core.cavities board.kicad_pcb --fmax 10 --nets 'PCIE*' --sug
 Checked against closed forms (tests/core/test_cavities.py): a 40 x 25 mm rectangle's modes within 0.5 %; a via
 shorting it, the modes where the open rectangle's impedance at that point passes through zero, within 2 % (the
 lowest, the planes' capacitance against the via's inductance, within 4 %: the via's own field meshed in a few
-rings); a via's peak impedance against the rectangle's modal sum within 10 %.
+rings); a via's peak impedance against the rectangle's modal sum within 10 %. **Against Palace's 3D eigenmodes**
+(2026-11-23, `rf_msvia`: a signal via through the In1.Cu/In2.Cu pair inside four ground vias 1 mm round it; Palace
+`--palace-modes 10 --palace-box pec`, 34 min): the six modes Palace finds at Q 52 (the dielectric's 1 / tan d:
+the cavity's; the rest the metal can's air, Q over 2000, or the feed lines damped by their ports, Q 1-2) are the
+2D model's within 2.5 % (2.741 / 2.759, 3.132 / 3.055, 8.184 / 8.147, 8.956 / 9.124, 9.351 / 9.161, 9.364 / 9.425
+GHz), and the ports load them hardly at all (Q_ext 2e4 and up), as the 2D model's 0.2 ohm at the via says; in
+under a second. (On `rf_siw` the waveguide's modes reach into its tapers and microstrip feeds, which the 2D model
+takes as parallel plates without their fringing: 6.84 / 7.89 GHz against Palace's port-loaded 6.51 / 7.61, 4-5 %.)
 
 On the reference boards (2026-11-23; 17-71 s each, 0.4-1.3 GB): ThunderScope (10 GHz, its high-speed and
 front-end vias) and LibreVNA (6 GHz, its RF vias) have a ground via 0.6-1.0 mm from every reported via, and no

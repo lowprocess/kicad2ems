@@ -290,8 +290,8 @@ taken back); nothing below may fix a panel in place. Left:
 ## Plane-pair cavities (2026-11-23, the user's question)
 
 `kicad2ems.core.cavities` finds each plane pair's modes and the signal vias they reach (docs/si.md). Next, in order:
-1. **A check against Palace** on a board of the kind (its eigenmodes in 3D): started on rf_siw (the open box's
-   eigenproblem took an hour for one mode; again with a metal can).
+1. ~~**A check against Palace**~~ done (2026-11-23: rf_msvia's six cavity modes within 2.5 % of Palace's 3D
+   eigenmodes, docs/si.md; a metal can, 34 min; the open box's eigenproblem had taken an hour for one mode).
 2. **Each cavity as a network in the segment study's join:** the cavity's impedance matrix between the vias
    through it (the modal sum, or the 2D solve at each frequency) in place of the via models' infinite planes, so
    the joined S carries the cavity's resonances and its via-to-via coupling.
