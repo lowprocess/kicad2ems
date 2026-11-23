@@ -709,11 +709,18 @@ def test_a_half_whose_factors_do_not_precondition_is_solved_in_double(
     sim = make_sim('off')
     S = sim.sparams(4e9)
     assert np.abs(S - S_cpu).max() < 1e-6
-    assert any(r[0] == 'LDL^T factor' and 'complex128' in r[2]
+    # (the matrix whole, pivoted, where it fits beside the half: DOUBLE_WHOLE)
+    assert any(r[0] == 'LU factor' and 'pivoted' in r[2]
                for r in sim.log.records)
     assert ('rwg', 'cpu-c64') in sim.fast.history
     sim.reuse = 'off'
     assert not sim.fast.plan(4.5e9).half
+    # where the whole does not fit: the half's own LDL^T in double, in place
+    half.setattr(fast, 'DOUBLE_WHOLE', False)
+    sim = make_sim('off')
+    assert np.abs(sim.sparams(4e9) - S_cpu).max() < 1e-6
+    assert any(r[0] == 'LDL^T factor' and 'complex128' in r[2]
+               for r in sim.log.records)
 
 
 def lossy_edges(clean):
@@ -755,6 +762,7 @@ def test_a_half_that_cannot_hold_its_extras_is_given_up(half):
     given up for that operator, the frequency solved whole."""
     from kicad2ems.mom25d import fast, policy
     lossy_edges(half)
+    half.setattr(fast, 'DOUBLE_WHOLE', False)  # (the half's own double LDL^T)
     for M in (fast.HostLDL, fast.HostLU):
         half.setattr(M, '__call__',
                      lambda self, R: np.asarray(R, complex) * 1e-3)

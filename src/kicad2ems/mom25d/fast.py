@@ -81,6 +81,10 @@ BLR_GIVE_UP = 1e-2
 # the direct), 1e-7 17 s (7 %, 1.1e-5), 1e-6 (2e-4). A LimeRFE piece's pour
 # compresses less (71 % at 1e-8): the dense half where it is smaller
 BLR_OP_TOL = 1e-8
+# the double rung of the half pivoted, the matrix whole, where that fits beside
+# it (_ladder: where every complex64 factor failed the half's LDL^T without
+# pivoting is unstable); off: the half's LDL^T in place
+DOUBLE_WHOLE = os.environ.get('MOM25D_DOUBLE_WHOLE', 'on') != 'off'
 # the operator by its tiles on and above the diagonal (Z symmetric; the extras
 # too): the others their transposes, half its bytes and assembly
 BLR_OP_SYM = os.environ.get('MOM25D_BLR_OP_SYM', 'on') != 'off'
@@ -1041,6 +1045,22 @@ class FastOperator:
         if not box:
             return None
         Z, M = box.pop(), None  # (M's memory: the double LU's)
+        if (isinstance(Z, Half) and DOUBLE_WHOLE
+                and 16.0 * Z.n * Z.n + SPARE <= 0.8 * available_memory()):
+            # pivoted, the matrix whole, where it fits beside the half: this
+            # rung is reached where every single-precision factor failed (a
+            # near singular matrix), and there the half's LDL^T without
+            # pivoting is unstable and says nothing (a LimeRFE piece with two
+            # ports at one place: |S| of 1.4 to 539, run to run)
+            n, W = Z.n, Z.to_full()
+            del Z
+            if self._Sa is not None:
+                Sc = self._Sa.tocoo()
+                np.add.at(W, (Sc.row, Sc.col), Sc.data)
+            _equilibrate(W, dsc)
+            with sim.log.timer('LU factor', f"N={n}, the half's whole, "
+                               "pivoted"):
+                return _lu_solve(_lu(W), B)
         if isinstance(Z, Half):
             # the half's own LDL^T in double, in place; where that has no
             # factor, the frequency again (its plan the double LU's now)
