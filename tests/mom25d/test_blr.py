@@ -240,6 +240,35 @@ def test_the_blr_operator_is_the_matrix():
     assert op.over
 
 
+def test_the_symmetric_blr_operator_keeps_half_its_tiles():
+    """symmetric=True (the matrix and its extras symmetric): the tiles on and
+    above the diagonal alone, those below as their mirrors' transposes: the
+    full operator's products to its tolerance, in about half its bytes, its
+    tile counts those kept; a factor cannot be symmetric."""
+    pytest.importorskip('kicad2ems.mom25d._core')
+    from kicad2ems.mom25d.fast import _CompiledBLR
+    sim = _sim()
+    fo, tiles, boxes, dZx, dsc, Zs = _equilibrated(sim, 4e9)
+    N, nb = len(dsc), len(tiles)
+    x = np.random.default_rng(5).standard_normal((N, 3)) + 0j
+    full = _CompiledBLR(fo, tiles, boxes, dZx, dsc, 1e-8, -1.0, double=True,
+                        factor=False)
+    sym = _CompiledBLR(fo, tiles, boxes, dZx, dsc, 1e-8, -1.0, double=True,
+                       factor=False, symmetric=True)
+    ref = Zs @ x
+    for op in (full, sym):
+        assert np.linalg.norm(op.matvec(x) - ref) < 1e-7 * np.linalg.norm(ref)
+    assert np.linalg.norm(sym.matvec(x[:, 0]) - ref[:, 0]) < (
+        1e-7 * np.linalg.norm(ref[:, 0]))
+    assert 0.4 * full.memory < sym.memory < 0.65 * full.memory
+    st = sym.stats
+    assert st['lowrank'] + st['dense'] == nb * (nb + 1) // 2
+    assert full.stats['lowrank'] + full.stats['dense'] == nb * nb
+    with pytest.raises(ValueError, match='symmetric'):
+        _CompiledBLR(fo, tiles, boxes, dZx, dsc, 1e-8, -1.0, double=True,
+                     factor=True, symmetric=True)
+
+
 @pytest.mark.parametrize('case', ['compressed', 'half', 'exact'])
 def test_the_blr_solves_operator(monkeypatch, case):
     """GMRES's operator in the block low-rank solve: compressed (BLR_OP_TOL),
@@ -254,7 +283,10 @@ def test_the_blr_solves_operator(monkeypatch, case):
         monkeypatch.setattr(fast.Half, 'bytes',
                             staticmethod(lambda n, nb=256, itemsize=8: 1e12))
     if case == 'half':
+        # (at 1e-15 the full operator outgrows the half; the symmetric one,
+        # half its tiles, does not: the fallback with the full one)
         monkeypatch.setattr(fast, 'BLR_OP_TOL', 1e-15)
+        monkeypatch.setattr(fast, 'BLR_OP_SYM', False)
     if case == 'exact':
         monkeypatch.setattr(fast, 'BLR_OP_ROOM', 0.0)
     sim = _sim()
@@ -267,6 +299,8 @@ def test_the_blr_solves_operator(monkeypatch, case):
     assert ('the exact matrix-free products' in notes) == (case == 'exact')
     assert (any(r[0] == 'BLR operator' for r in sim.log.records)
             == (case != 'exact'))
+    if case == 'compressed':  # (its tiles above the diagonal alone)
+        assert any('% of complex128' in n for n in sim.log.notes)
 
 
 def test_tiles_by_copper_split_no_piece_with_another():

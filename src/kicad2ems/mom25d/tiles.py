@@ -104,7 +104,7 @@ class _CompiledBLR:
     on_gpu, device_bytes = False, 0
 
     def __init__(self, fo, tiles, boxes, dZx, dsc, tol, eta, double=False,
-                 factor=True, max_bytes=0.0):
+                 factor=True, max_bytes=0.0, symmetric=False):
         lo, hi = (np.array([b[0]
                             for b in boxes]), np.array([b[1] for b in boxes]))
         gap = np.linalg.norm(
@@ -126,7 +126,7 @@ class _CompiledBLR:
                           dZx.indptr.astype(np.int64),
                           dZx.indices.astype(np.int32), c(dZx.data, complex), B,
                           C, c(dsc, float), float(tol), 0, bool(factor),
-                          float(max_bytes))
+                          float(max_bytes), bool(symmetric))
         self.stats = self.f.stats()
         self.memory = self.nbytes = self.stats['bytes']
         self.over = bool(self.stats.get('over', False))  # (past max_bytes)

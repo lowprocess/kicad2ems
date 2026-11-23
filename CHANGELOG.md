@@ -10,6 +10,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **mom25d: the block low-rank operator by its tiles on and above the diagonal (2026-11-23).** Z, its near field
+  and (checked) its extras are symmetric, so the GMRES operator of the block low-rank solve (double, to 1e-8) now
+  keeps only the tiles on and above the diagonal and applies the others as their mirrors' transposes (`matvec`
+  a pass by tile rows, then one by tile columns, each thread its own block; D^T, or V^T U^T): a LimeRFE piece of
+  9,341 unknowns at 2 GHz 0.43 GB against 0.82 (31 % of dense complex128 against 59 %), assembled in 0.9 s
+  against 1.6, its products the same (0.030 s against 0.026 for 4 columns) and the full operator's to 1.2e-14.
+  `MOM25D_BLR_OP_SYM=off` keeps every tile.
 - **mom25d: the loop/tree basis and the sides' loops on the matrix's half itself (2026-11-23).** The loop/tree
   basis (low frequency) had filled and transformed the whole double Z, 16 N^2, before halving it; now its far and
   near fill go straight into the half (`fill_far_half`, `near_into_half`), the vias' fan paths are a border

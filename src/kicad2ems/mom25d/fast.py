@@ -13,6 +13,7 @@ The compiled core is required (its mesher too): python -m
 kicad2ems.mom25d.core.build.
 """
 import math
+import os
 import time
 from collections import namedtuple
 
@@ -80,6 +81,9 @@ BLR_GIVE_UP = 1e-2
 # the direct), 1e-7 17 s (7 %, 1.1e-5), 1e-6 (2e-4). A LimeRFE piece's pour
 # compresses less (71 % at 1e-8): the dense half where it is smaller
 BLR_OP_TOL = 1e-8
+# the operator by its tiles on and above the diagonal (Z symmetric; the extras
+# too): the others their transposes, half its bytes and assembly
+BLR_OP_SYM = os.environ.get('MOM25D_BLR_OP_SYM', 'on') != 'off'
 # ... in at most this share of the free memory (less the factor's)
 BLR_OP_ROOM = 0.6
 
@@ -1398,8 +1402,11 @@ class FastOperator:
             return None
         with sim.log.timer('BLR operator', f"N={N}, {len(tiles)} tiles, "
                            f"tolerance {BLR_OP_TOL:g}, complex128"):
+            # (its tiles above the diagonal alone where the matrix is
+            # symmetric: half the bytes and the assembly)
             op = _CompiledBLR(self, tiles, boxes, dZx, dsc, BLR_OP_TOL, -1.0,
-                              double=True, factor=False, max_bytes=budget)
+                              double=True, factor=False, max_bytes=budget,
+                              symmetric=BLR_OP_SYM and self._symmetric(Sx))
         if not op.over:
             sim.log.note(
                 f"BLR operator: {op.memory / 2 ** 20:.0f} MB "

@@ -296,9 +296,10 @@ CHANGELOG has their numbers):**
    ~1 at every rung) is near singular; after the sweep's second such frequency the history sends every lower
    frequency to the double LU (two LimeRFE via models: 11 and 28 min), the cause two ports at one place (fixed in
    segment's cuts); a sweep-wide "double from here" on a residual ~1 would bound such a case.
-5. **The block low-rank solver, the rest:** its operator on a pour (71 % of dense complex128 at 1e-8: the near
-   tiles in complex64 would halve it), its tiles above the diagonal alone (Z is symmetric), the factor's GEMMs on
-   the GPU, and a first run at 45-100k unknowns.
+5. **The block low-rank solver, the rest:** its operator's tiles above the diagonal alone done (2026-11-23: half
+   its bytes and assembly). Left: the near tiles in complex64 (the operator on a pour, 71 % of dense complex128 at
+   1e-8 before, ~36 % now, would be ~25 %), the factor's tiles from the operator's (recompressed to the factor's
+   tolerance: one kernel assembly, not two), the factor's GEMMs on the GPU, and a first run at 45-100k unknowns.
 6. **Straight coupled runs as analytic multi-line sections** with MoM at the discontinuities only (item (a) of
    the large boards below): the largest gain on bus-heavy boards, a modelling change.
 7. Small: a test-isolation fault, not today's: with `tests/core/test_segment.py` run first in one session, the

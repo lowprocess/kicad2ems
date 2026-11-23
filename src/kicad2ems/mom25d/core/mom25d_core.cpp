@@ -1516,10 +1516,18 @@ public:
     BLRFactorT(arr<int> order, arr<int> start, arr<uint8_t> far, py::dict geom,
                py::dict tabs, double w, arr<i64> nptr, arr<int> nidx,
                arr<cd> nval, arr<cd> B, arr<cd> C, arr<double> dsc, double atol,
-               int max_rank, bool factor_it, double max_bytes)
-        : atol_(atol), factored_(factor_it) {
+               int max_rank, bool factor_it, double max_bytes,
+               bool symmetric)
+        : atol_(atol), factored_(factor_it), sym_(symmetric) {
         // max_bytes > 0: the tiles' bytes at most; past them the assembly
-        // stops (stats' "over": the caller's exact products then)
+        // stops (stats' "over": the caller's exact products then).
+        // symmetric (an operator alone, factor_it false; the matrix and its
+        // near and extra blocks symmetric): the tiles on and above the
+        // diagonal alone, those below their transposes in matvec (half the
+        // operator's bytes and assembly)
+        if (symmetric && factor_it)
+            throw std::invalid_argument(
+                "BLRFactor: symmetric is for an operator (factor_it false)");
         using namespace blrk;
         lapack<Sc>();
         MeshHold mh(geom); TabHold th(tabs);
@@ -1557,6 +1565,7 @@ public:
                 for (i64 p = 0; p < (i64)nb * nb; ++p) {
                     if (over_.load(std::memory_order_relaxed)) continue;
                     const int I = (int)(p / nb), J = (int)(p % nb);
+                    if (sym_ && I > J) continue;  // (its mirror's transpose)
                     const int m = st[I + 1] - st[I], n = st[J + 1] - st[J];
                     const int *rows = ord + st[I], *cols = ord + st[J];
                     // the triangles of the tile's edges, and the kernel between
@@ -1676,7 +1685,8 @@ public:
                         // heading there at the rate so far
                         const double h = (double)(held_ += T.bytes());
                         const double k = (double)(++done_);
-                        const double all = (double)nb * nb;
+                        const double all =
+                            sym_ ? 0.5 * nb * (nb + 1.0) : (double)nb * nb;
                         if (h > max_bytes ||
                             (k >= 0.1 * all && h * all / k > 1.1 * max_bytes))
                             over_ = true;
@@ -1686,7 +1696,7 @@ public:
             t_assemble_ = blrk::wall() - t0;
             for (const auto &T : T_) {
                 if (T.kind == 'L') { ++lowrank0_; rank0_ += T.r; }
-                else ++dense0_;
+                else if (T.kind == 'D') ++dense0_;
             }
             bytes0_ = bytes();
             t0 = blrk::wall();
@@ -1728,32 +1738,60 @@ public:
                         x[k][i + (size_t)c * m] =
                             Sc(r[(size_t)order_[start_[k] + i] * nr + c]);
             }
+            std::vector<std::vector<Sc>> acc(nb);
 #pragma omp parallel
             {
-                std::vector<Sc> acc, tmp;
+                std::vector<Sc> tmp;
 #pragma omp for schedule(dynamic, 1)
                 for (int I = 0; I < nb; ++I) {
                     const int m = start_[I + 1] - start_[I];
-                    acc.assign((size_t)m * nr, Sc(0));
-                    for (int J = 0; J < nb; ++J) {
+                    acc[I].assign((size_t)m * nr, Sc(0));
+                    for (int J = sym_ ? I : 0; J < nb; ++J) {
                         const Tile<Sc> &T = T_[(size_t)I * nb + J];
                         if (T.kind == 'D')
                             gemm('N', 'N', m, nr, T.n, Sc(1), T.D.data(), m,
-                                 x[J].data(), T.n, Sc(1), acc.data(), m);
+                                 x[J].data(), T.n, Sc(1), acc[I].data(), m);
                         else if (T.kind == 'L' && T.r) {
                             tmp.assign((size_t)T.r * nr, Sc(0));
                             gemm('N', 'N', T.r, nr, T.n, Sc(1), T.V.data(),
                                  T.r, x[J].data(), T.n, Sc(0), tmp.data(),
                                  T.r);
                             gemm('N', 'N', m, nr, T.r, Sc(1), T.U.data(), m,
-                                 tmp.data(), T.r, Sc(1), acc.data(), m);
+                                 tmp.data(), T.r, Sc(1), acc[I].data(), m);
                         }
                     }
-                    for (int i = 0; i < m; ++i)
-                        for (int c = 0; c < nr; ++c)
-                            o[(size_t)order_[start_[I] + i] * nr + c] =
-                                cd(acc[i + (size_t)c * m]);
                 }
+                // symmetric: the tiles below the diagonal as their mirrors'
+                // transposes, a block column a thread (T^T: D^T, or V^T U^T)
+                if (sym_) {
+#pragma omp for schedule(dynamic, 1)
+                    for (int J = 0; J < nb; ++J) {
+                        const int n = start_[J + 1] - start_[J];
+                        for (int I = 0; I < J; ++I) {
+                            const Tile<Sc> &T = T_[(size_t)I * nb + J];
+                            if (T.kind == 'D')
+                                gemm('T', 'N', n, nr, T.m, Sc(1), T.D.data(),
+                                     T.m, x[I].data(), T.m, Sc(1),
+                                     acc[J].data(), n);
+                            else if (T.kind == 'L' && T.r) {
+                                tmp.assign((size_t)T.r * nr, Sc(0));
+                                gemm('T', 'N', T.r, nr, T.m, Sc(1),
+                                     T.U.data(), T.m, x[I].data(), T.m, Sc(0),
+                                     tmp.data(), T.r);
+                                gemm('T', 'N', n, nr, T.r, Sc(1), T.V.data(),
+                                     T.r, tmp.data(), T.r, Sc(1),
+                                     acc[J].data(), n);
+                            }
+                        }
+                    }
+                }
+            }
+            for (int I = 0; I < nb; ++I) {
+                const int m = start_[I + 1] - start_[I];
+                for (int i = 0; i < m; ++i)
+                    for (int c = 0; c < nr; ++c)
+                        o[(size_t)order_[start_[I] + i] * nr + c] =
+                            cd(acc[I][i + (size_t)c * m]);
             }
         }
         return out;
@@ -2003,6 +2041,7 @@ private:
     int N_ = 0, nb_ = 0; double atol_ = 0, t_assemble_ = 0, t_factor_ = 0;
     bool factored_ = true;
     std::atomic<bool> over_{false};
+    bool sym_ = false;
     std::atomic<size_t> held_{0}, done_{0};
     std::vector<int> order_, start_;
     std::vector<blrk::Tile<Sc>> T_;
@@ -3260,7 +3299,7 @@ PYBIND11_MODULE(_core, m) {
                                "(fast.solve_blr's), complex64")
         .def(py::init<arr<int>, arr<int>, arr<uint8_t>, py::dict, py::dict,
                       double, arr<i64>, arr<int>, arr<cd>, arr<cd>, arr<cd>,
-                      arr<double>, double, int, bool, double>())
+                      arr<double>, double, int, bool, double, bool>())
         .def("solve", &BLRFactorT<cf>::solve,
              "the approximate inverse applied to R (N or N x m)")
         .def("matvec", &BLRFactorT<cf>::matvec,
@@ -3272,7 +3311,7 @@ PYBIND11_MODULE(_core, m) {
         "far apart for a complex64 factor (low frequency)")
         .def(py::init<arr<int>, arr<int>, arr<uint8_t>, py::dict, py::dict,
                       double, arr<i64>, arr<int>, arr<cd>, arr<cd>, arr<cd>,
-                      arr<double>, double, int, bool, double>())
+                      arr<double>, double, int, bool, double, bool>())
         .def("solve", &BLRFactorT<cd>::solve,
              "the approximate inverse applied to R (N or N x m)")
         .def("matvec", &BLRFactorT<cd>::matvec,
