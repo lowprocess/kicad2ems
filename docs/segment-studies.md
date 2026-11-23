@@ -13,6 +13,8 @@ here are in `tools/segment_studies/` (`fetch_boards.sh` gets every board below a
 | Antmicro Baseboard for Jetson AGX Thor, rev 1.1.0 | [antmicro/jetson-agx-thor-baseboard](https://github.com/antmicro/jetson-agx-thor-baseboard) (`507847a`), Apache-2.0 | 10 | every differential pair's legs: 288 nets, `select_nets.py pairs` | the scale target: 22k tracks, 3.3k vias |
 | LimeRFE 1v31 | [myriadrf/LimeRFE](https://github.com/myriadrf/LimeRFE) (`412e190`), `hardware/1v31/KiCAD` | 6 | 470 RF nets, `select_nets.py rf-wide` | KiCad 4, no stackup: `add_stackup.py limerfe` |
 | HackRF Opera Cake | [greatscottgadgets/hackrf](https://github.com/greatscottgadgets/hackrf) (`8540a76`), `hardware/operacake` | 4 | `Net-(C1..C12-Pad1/2)` | KiCad 4, no stackup: `add_stackup.py operacake`; plain microstrip, no top pour |
+| LibreVNA | [jankae/LibreVNA](https://github.com/jankae/LibreVNA) (`e21e2fe`), `Hardware/Kicad`, GPL-3.0 | 6 | the project's `RF` netclass: 134 nets, `select_nets.py netclass BOARD RF` | a 6 GHz VNA: LO and source chains, switches, the reference clock fan-out |
+| ThunderScope Rev 5.3 | [EEVengers/ThunderScope](https://github.com/EEVengers/ThunderScope) (`df2b845`), `Hardware/Thunderscope_Rev5.3`, MIT | 6 | high speed: `LVDS_ADC,LVDS_ADC_CLK,PCIe` (76 nets); front end: `FE_50Z,FE_50Z_INPUT,FE_100Z_Diff` (64 nets) | a 4-channel 1 GS/s scope: ADC LVDS lanes, PCIe, the analogue front end; its outer prepregs differ (0.100 / 0.111 mm): the stack is not mirror-symmetric |
 
 The KiCad 4 boards needed the importer to map their renamed copper layers (`T`, `GND`, `C1F`: by number to F.Cu,
 In*n*.Cu, B.Cu), close their hand-drawn outlines (loose ends within 0.1 mm joined; the face the parts are on is the
@@ -127,6 +129,47 @@ leave their chains open, as on the board. Its parts' values are written `<value>
 **Time:** two pieces where several paths meet (about 27k unknowns each: 140–200 mm² of wide RF copper on the fine
 mesh) take most of it; the rest are small. Expect 1.5–2 hours on this machine with the loop/tree basis to 1e-5; to 1e-3 (since 2026-11-22) these
 pieces solve their 1-2 GHz in under 20 s instead of 2-4 min: expect under an hour (not yet run whole).
+
+## LibreVNA (6 layers, 134 RF nets)
+
+```
+NETS=$(python tools/segment_studies/select_nets.py netclass boards/librevna.kicad_pcb RF)
+systemd-run --user --scope -p MemoryMax=23G -p MemorySwapMax=0 -p OOMPolicy=continue \
+  python -m kicad2ems.core.segment boards/librevna.kicad_pcb --nets "$NETS" --pour keep --thickness grow \
+  --fmin 0.1 --fmax 6 --points 201 --out librevna
+```
+
+**Result (2026-11-22, RX 7800 XT, 31 GB):** 30:44, 19.7 GB peak (the scope's); 87 ports, 94 layer pieces and 24 via
+models, 245 cuts; three pieces gave their memory share back and ran alone at the end. The switch, source and LO
+fan-out paths lose 0.1-0.5 dB at 5 GHz (`RF_HBLB_SWITCH` -0.07, `SOURCE_LOWBAND` -0.18, `PORT1SRC` -0.28), the
+reference-clock fan-out couples up to 2.9 % NEXT (`CLKOUT` from `CLKIN`). **Open by the model, not the board:**
+chains through parts it does not model read -50 to -85 dB with |S11| near 0 dB: ferrite beads (value `FERRITE`),
+the `PAT0816-C-3DB-T5` 3 dB attenuator chips (an R designator, a part number for a value), DNP options, and
+chains that end on an amplifier's or mixer's pins (`Net-(IC22-IN+)`, `Net-(IC33-OUT+)`).
+
+## ThunderScope Rev 5.3 (6 layers)
+
+```
+NETS=$(python tools/segment_studies/select_nets.py netclass boards/thunderscope.kicad_pcb LVDS_ADC,LVDS_ADC_CLK,PCIe)
+systemd-run ... python -m kicad2ems.core.segment boards/thunderscope.kicad_pcb --nets "$NETS" --edges coarse \
+  --via-solver pbm --thickness grow --dmax 0.5 --fmin 0.1 --fmax 10 --points 201 --out ts_hs
+NETS=$(python tools/segment_studies/select_nets.py netclass boards/thunderscope.kicad_pcb FE_50Z,FE_50Z_INPUT,FE_100Z_Diff)
+systemd-run ... python -m kicad2ems.core.segment boards/thunderscope.kicad_pcb --nets "$NETS" --pour keep \
+  --thickness grow --edges coarse --fmin 0.01 --fmax 3 --points 201 --out ts_fe
+```
+
+**High speed (2026-11-22):** 15:12, 16.7 GB peak; 72 ports, 20 layer pieces, 23 via models (`pbm`). The ADC's LVDS
+lanes lose 0.4-0.6 dB at 5 GHz and 0.9-1.5 dB at 10 GHz, their worst NEXT 0.96 % (`D4A` from `D4B`). The PCIe
+lanes read 3-8 dB at 5 GHz with |S11| -2 to -5 dB: three of their legs had no reference copper under a port (left
+out, said in the log) and the edge fingers' ground is cut away under them; a check against the connector's own
+model is not done. The B.Cu pieces are turned over onto In4.Cu: before 2026-11-22 every second one had its
+dielectrics turned back (the stack is not mirror-symmetric here) and failed its port check.
+
+**Front end (2026-11-22):** 5:47, 9.3 GB peak; 80 ports, 46 layer pieces. Its band ends at 3 GHz (the table's 5
+and 10 GHz columns repeat 3 GHz). The four ADC differential channels fan in to one point and with their kept pour
+were one piece of 100,537 unknowns on the fine edge mesh (70 GB compressed): `--edges coarse` made it 14,584. The
+ADC driver outputs lose under 0.1 dB, the attenuator paths 0.45-0.6 dB at 3 GHz, the four channels alike; the BNC
+inputs and the 50x attenuator inputs are open through relays the model does not have.
 
 ## Current maps
 
