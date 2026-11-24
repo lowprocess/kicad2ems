@@ -78,6 +78,10 @@ class StudyPanel(QWidget):
         self.max_modes = QSpinBox(); self.max_modes.setRange(1, 10000)
         self.max_modes.setValue(SolverConfig().max_modes)
         f.addRow('Linear solver', self.backend); f.addRow('Max. modes / pair', self.max_modes)
+        self.fringe = QCheckBox('Edge fringing (outer layers: field in air)')
+        self.radiation = QCheckBox('Radiation loss in Q')
+        for w in (self.fringe, self.radiation):
+            w.setChecked(True); f.addRow(w)
         lay.addWidget(box)
 
         row = QHBoxLayout()
@@ -120,7 +124,9 @@ class StudyPanel(QWidget):
                             min_angle=self.angle.value(), refine_narrow=self.narrow.value(),
                             narrow_cell=self.narrow_cell.value()),
             solver=SolverConfig(backend=self.backend.currentText(),
-                                max_modes=self.max_modes.value()))
+                                max_modes=self.max_modes.value(),
+                                fringe=self.fringe.isChecked(),
+                                radiation=self.radiation.isChecked()))
 
     def busy(self, on):
         self.run.setEnabled(not on); self.cancel.setEnabled(on)
@@ -155,12 +161,12 @@ class ResultsPanel(QWidget):
         self.readout.setTextInteractionFlags(Qt.TextSelectableByMouse)
         lay.addWidget(self.readout)
 
-        self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(['f (GHz)', 'Q', 'PR %', 'Peak', 'Via', 'Z (Ω)'])
+        self.table = QTableWidget(0, 7)
+        self.table.setHorizontalHeaderLabels(['f (GHz)', 'Q', 'Q rad', 'PR %', 'Peak', 'Via', 'Z (Ω)'])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)   # via net
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)   # via net
         self.table.currentCellChanged.connect(lambda r, *_: r >= 0 and self.slider.setValue(r))
         lay.addWidget(self.table, 1)
 
@@ -204,13 +210,14 @@ class ResultsPanel(QWidget):
         self.pair.blockSignals(False)
 
     def set_modes(self, rows):
-        """rows: [(f GHz, Q, PR %, peak, via net, Z ohm)] of the shown pair."""
+        """rows: [(f GHz, Q, Q_rad, PR %, peak, via net, Z ohm)] of the shown pair."""
         self.table.setRowCount(len(rows))
         for i, r in enumerate(rows):
             for j, v in enumerate(r):
-                txt = v if isinstance(v, str) else (f'{v:.4f}' if j == 0 else f'{v:.3g}')
+                txt = v if isinstance(v, str) else (f'{v:.4f}' if j == 0 else
+                                                    '–' if v == float('inf') else f'{v:.3g}')
                 it = QTableWidgetItem(txt)
-                it.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter if j != 4 else Qt.AlignLeft)
+                it.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter if j != 5 else Qt.AlignLeft)
                 self.table.setItem(i, j, it)
         n = max(len(rows), 1)
         self.slider.setRange(0, n - 1); self.mode.setRange(1, n)

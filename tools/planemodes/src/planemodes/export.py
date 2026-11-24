@@ -18,7 +18,9 @@ def mode_rows(results):
             top = top if top >= 0 and m.zpeak[top, k] >= 0.01 else -1    # (0.01 ohm: none)
             rows.append(dict(
                 pair=r.cavity.name, mode=k + 1, f_GHz=round(m.f[k] / 1e9, 6),
-                Q=round(float(m.Q[k]), 1), participation=round(float(m.pr[k]), 5),
+                Q=round(float(m.Q[k]), 1),
+                Q_rad=round(float(m.Q_rad[k]), 1) if np.isfinite(m.Q_rad[k]) else '',
+                participation=round(float(m.pr[k]), 5),
                 peak_over_rms=round(float(m.peak[k]), 3),
                 strongest_via=r.cavity.ports[top][3] if top >= 0 else '',
                 via_z_ohm=round(float(m.zpeak[top, k]), 3) if top >= 0 else ''))

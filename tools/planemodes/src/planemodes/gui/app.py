@@ -183,7 +183,7 @@ class MainWindow(QMainWindow):
         for k in range(len(m.f)):
             top = int(np.argmax(m.zpeak[:, k])) if m.zpeak.size else -1
             top = top if top >= 0 and m.zpeak[top, k] >= 0.01 else -1    # (0.01 ohm: none)
-            rows.append((m.f[k] / 1e9, m.Q[k], 100 * m.pr[k], m.peak[k],
+            rows.append((m.f[k] / 1e9, m.Q[k], m.Q_rad[k], 100 * m.pr[k], m.peak[k],
                          r.cavity.ports[top][3] if top >= 0 else '',
                          float(m.zpeak[top, k]) if top >= 0 else 0.0))
         self.res.set_modes(rows)
@@ -202,7 +202,8 @@ class MainWindow(QMainWindow):
                if top >= 0 and m.zpeak[top, k] >= 0.01 else 'no via drives it')
         self.res.readout.setText(
             f'<b>{m.f[k] / 1e9:.4f} GHz</b> — mode {k + 1} of {len(m.f)} on {r.cavity.name}<br>'
-            f'Q {m.Q[k]:.0f} · participation {100 * m.pr[k]:.2g} % · peak {m.peak[k]:.1f}× RMS<br>{via}')
+            f'Q {m.Q[k]:.0f}' + (f' (radiation alone {m.Q_rad[k]:.3g})' if np.isfinite(m.Q_rad[k]) else '')
+            + f' · participation {100 * m.pr[k]:.2g} % · peak {m.peak[k]:.1f}× RMS<br>{via}')
         self.res.table.blockSignals(True); self.res.table.selectRow(k); self.res.table.blockSignals(False)
         if not self.res.lock.isChecked():
             v = np.abs(m.V[:, k])
