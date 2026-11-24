@@ -53,6 +53,24 @@ def test_a_ground_via_holds_the_voltage_at_zero():
     assert r.modes.f[0] < _closed(40, 25, 4.4, 3e9)[0]
 
 
+def test_contour_lines_find_the_nodal_line():
+    """The (1,0) mode's V = 0 line is x = a/2; its levels are symmetric."""
+    from planemodes.raster import FieldSampler, contour_levels, contours
+    cfg = StudyConfig(fmin=1e9, fmax=2e9, ref_nets=['GND'], mesh=MeshConfig(max_cell=0.6),
+                      solver=SolverConfig(fringe=False, radiation=False))
+    (r,) = run_study(_plate(), cfg)
+    s = FieldSampler(r.mesh.nodes, r.mesh.tris)
+    s.sample(0, 0, 40, 25, 400, 250)
+    vals = s.values(r.modes.V[:, 0])
+    lev = contour_levels(r.modes.peak[0], 4)
+    assert np.allclose(lev, r.modes.peak[0] * np.array([-.75, -.5, -.25, .25, .5, .75]))
+    lines = dict(contours(vals, (0, 0, 40, 25), [0.0, *lev]))
+    x = lines[0.0][:, 0]
+    assert np.nanmax(np.abs(x - 20)) < 0.2
+    assert len(lines) == 7
+    assert len(contour_levels(1.0, 2, 'abs', decades=3)) == 6          # 2 a decade
+
+
 def test_a_signal_via_at_a_node_does_not_couple():
     """(1,0) has its node on x = a/2: a via there sees nothing, one in a
     corner sees the most."""

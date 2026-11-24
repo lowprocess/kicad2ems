@@ -26,7 +26,7 @@ pip install pypardiso                      # optional: a multithreaded sparse so
 ```sh
 planemodes                                  # the viewer
 planemodes board.kicad_pcb                  # the viewer with a board
-planemodes run board.kicad_pcb --fmin 1 --fmax 10 --pairs F.Cu/In1.Cu --out results --images
+planemodes run board.kicad_pcb --fmin 1 --fmax 10 --pairs F.Cu/In1.Cu --out results --images --contours 10
 python -m planemodes ...                    # the same without the entry point
 ```
 
@@ -43,7 +43,11 @@ In the viewer:
    and radiation on or off), then **Run**.
 4. Pick a **mode** with the slider or the table. Colour by signed V (the
    nodes show), |V|, or the plane current; linear or log; each mode's own
-   scale or a fixed one. Arrows show the current on the chosen plane.
+   scale or a fixed one; the colour fill can be turned off. Overlay current
+   arrows (on the chosen plane), **contour lines** of the coloured quantity,
+   both or neither. Contours: lines every 1/N of the scale (N a decade on a
+   log scale), width, dark / white / coloured by value, the nodal line
+   (V = 0) in bold, negative V dashed; the colour bar marks the levels.
 5. **Animate** plays V ∝ cos ωt with the current ∝ sin ωt.
    **Save image / frames / data** writes PNGs and `modes.csv`,
    `summary.json`, `fields.npz` (`planemodes.export.load_fields` reads it back).
@@ -68,7 +72,7 @@ for r in run_study(board, StudyConfig(fmin=1e9, fmax=10e9, mesh=MeshConfig(min_a
 | `solver.py` | finite elements, shift-invert eigen-solve in the frequency window, Q, via coupling |
 | `edges.py` | the open edges: fringing field (microstrip model) and radiated power |
 | `study.py` | configuration and the run over plane pairs |
-| `export.py`, `raster.py` | files out; mode fields as images and arrows (shared by the GUI) |
+| `export.py`, `raster.py` | files out; mode fields as images, contour lines and arrows (shared by the GUI) |
 | `gui/` | Qt only: `app.py` (main window), `board_view.py`, `panels.py`, `worker.py` |
 
 ## Model and accuracy

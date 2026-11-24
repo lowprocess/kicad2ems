@@ -1,6 +1,8 @@
 """Mode fields as images: sampling a mesh field on a pixel grid, colour maps,
-and the surface-current arrows. No Qt here - the GUI and image export share it.
+contour lines and the surface-current arrows. No Qt here - the GUI and image
+export share it.
 """
+import contourpy
 import numpy as np
 from matplotlib.tri import Triangulation
 
@@ -81,24 +83,64 @@ class FieldSampler:
         return self.values(mag)
 
 
+def scale_position(vals, vmax, mode='signed', decades=0):
+    """Where `vals` sit on the colour scale, 0..1 (0.5 is zero for signed V):
+    linear in |vals| / vmax, or log over `decades` below vmax."""
+    a = np.abs(np.nan_to_num(vals)) / max(vmax, 1e-30)
+    if decades > 0:
+        a = np.clip((np.log10(np.maximum(a, 1e-30)) + decades) / decades, 0, 1)
+    a = np.clip(a, 0, 1)
+    return 0.5 + 0.5 * np.sign(np.nan_to_num(vals)) * a if mode == 'signed' else a
+
+
 def colorize(vals, vmax, mode='signed', decades=0, alpha_outside=0):
     """RGBA uint8 image of `vals` (NaN: transparent). mode 'signed' (blue -
     red about 0), 'abs' (|V|) or 'current'. decades > 0: a log scale spanning
     that many decades below vmax."""
     stops = {'signed': DIVERGING, 'abs': SEQUENTIAL, 'current': CURRENT}[mode]
-    table = lut(stops)
-    a = np.abs(np.nan_to_num(vals)) / max(vmax, 1e-30)
-    if decades > 0:
-        a = np.clip((np.log10(np.maximum(a, 1e-30)) + decades) / decades, 0, 1)
-    a = np.clip(a, 0, 1)
-    if mode == 'signed':
-        t = 0.5 + 0.5 * np.sign(np.nan_to_num(vals)) * a
-    else:
-        t = a
+    t = scale_position(vals, vmax, mode, decades)
     img = np.empty(vals.shape + (4,), np.uint8)
-    img[..., :3] = table[(t * 255).astype(int)]
+    img[..., :3] = lut(stops)[(t * 255).astype(int)]
     img[..., 3] = np.where(np.isnan(vals), alpha_outside, 255)
     return img
+
+
+def contour_levels(vmax, per, mode='signed', decades=0):
+    """Contour values for a colour scale of full value `vmax`: linear, every
+    vmax / per (below vmax); log (decades > 0), `per` lines a decade. Signed
+    V gets each value with both signs; its zero (the nodal line) is not
+    included - contours() draws it on request."""
+    if per <= 0 or vmax <= 0:
+        return np.zeros(0)
+    if decades > 0:
+        pos = vmax * 10.0 ** (-np.arange(1, int(decades * per) + 1) / per)
+    else:
+        pos = vmax * np.arange(1, int(per)) / per
+    pos = np.sort(pos)
+    return np.concatenate([-pos[::-1], pos]) if mode == 'signed' else pos
+
+
+def contours(values, rect, levels, max_px=700):
+    """Contour lines of a grid from FieldSampler.values (NaN off the mesh)
+    over `rect` (x0, y0, x1, y1): [(level, (N, 2) mm with NaN rows between
+    the separate lines)]. Grids wider than `max_px` are thinned first: lines
+    from ~700 points across are smooth on screen and fast to animate."""
+    h, w = values.shape
+    step = max(1, int(np.ceil(max(h, w) / max_px)))
+    z = values[step // 2::step, step // 2::step]
+    if min(z.shape) < 2 or not len(levels) or not np.isfinite(z).any():
+        return []
+    x0, y0, x1, y1 = rect
+    xs = x0 + (np.arange(step // 2, w, step) + 0.5) * (x1 - x0) / w
+    ys = y0 + (np.arange(step // 2, h, step) + 0.5) * (y1 - y0) / h
+    gen = contourpy.contour_generator(xs, ys, np.ma.masked_invalid(z), line_type='Separate')
+    out = []
+    for lev in levels:
+        parts = gen.lines(float(lev))
+        if parts:
+            gap = np.full((1, 2), np.nan)
+            out.append((float(lev), np.vstack([q for p in parts for q in (p, gap)])))
+    return out
 
 
 def arrows(sampler, v, spacing_px, cap_quantile=0.9):

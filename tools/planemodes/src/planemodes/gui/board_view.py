@@ -1,6 +1,6 @@
 """The board canvas: outline, one layer's copper, vias, and a mode's field
-over them (with current arrows). Pan and zoom with the mouse; the field is
-re-sampled to the screen after each view change.
+over them (colour, contour lines, current arrows). Pan and zoom with the
+mouse; the field is re-sampled to the screen after each view change.
 """
 import math
 
@@ -11,7 +11,8 @@ from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import QGraphicsPathItem, QWidget
 
-from ..raster import CURRENT, DIVERGING, SEQUENTIAL, FieldSampler, arrows, colorize
+from ..raster import (CURRENT, DIVERGING, SEQUENTIAL, FieldSampler, arrows, colorize,
+                      contour_levels, contours, lut, scale_position)
 
 BG = '#f7f8f7'
 GND_FILL, OTHER_FILL, EDGE = QColor(208, 212, 208), QColor(150, 152, 146, 170), QColor(90, 98, 101)
@@ -51,10 +52,11 @@ class ColourBar(QWidget):
         super().__init__(parent)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.resize(230, 62)
-        self.stops, self.labels, self.title = DIVERGING, ('', '', ''), ''
+        self.stops, self.labels, self.title, self.ticks = DIVERGING, ('', '', ''), '', []
 
-    def set(self, stops, labels, title):
-        self.stops, self.labels, self.title = stops, labels, title
+    def set(self, stops, labels, title, ticks=()):
+        """ticks: positions 0..1 on the bar (the contour levels)."""
+        self.stops, self.labels, self.title, self.ticks = stops, labels, title, list(ticks)
         self.update()
 
     def paintEvent(self, _):
@@ -69,6 +71,9 @@ class ColourBar(QWidget):
             g.setColorAt(i / (len(self.stops) - 1), QColor(*c))
         p.fillRect(8, 22, self.width() - 16, 10, g)
         w = self.width() - 16
+        p.setPen(QPen(QColor(30, 34, 36), 1))
+        for t in self.ticks:
+            p.drawLine(QPointF(8 + t * w, 20), QPointF(8 + t * w, 34))
         for frac, text, align in ((0, self.labels[0], Qt.AlignLeft), (0.5, self.labels[1], Qt.AlignHCenter),
                                   (1, self.labels[2], Qt.AlignRight)):
             x = 8 + frac * w - (100 if align == Qt.AlignRight else 50 if align == Qt.AlignHCenter else 0)
@@ -85,12 +90,14 @@ class BoardView(pg.PlotWidget):
         for ax in ('left', 'bottom'):
             self.getPlotItem().getAxis(ax).setLabel(units='mm')
         self.items = {}                              # name -> graphics item
+        self.contour_items = []                      # the contour curves
         self.image = pg.ImageItem(axisOrder='row-major')
         self.image.setZValue(5)
         self.addItem(self.image)
         self.sampler, self.result, self.field = None, None, None
         self.state = dict(mode=0, phase=0.0, animating=False, colour='signed', vmax=None,
-                          decades=0, arrows=True, plane_sign=1)
+                          decades=0, arrows=True, plane_sign=1, fill=True, contours=False,
+                          per=10, nodal=True, line_width=1.2, line_colour='dark')
         self._timer = QTimer(self, singleShot=True, interval=120)
         self._timer.timeout.connect(self.resample)
         self.vb.sigRangeChanged.connect(lambda *a: self._timer.start())
@@ -143,8 +150,14 @@ class BoardView(pg.PlotWidget):
         self.sampler = FieldSampler(result.mesh.nodes, result.mesh.tris) if result else None
         self.field = None
         if result is None:
-            self.image.clear(); self.bar.hide()
+            self.image.clear(); self.bar.hide(); self._clear_overlays()
         self.resample()
+
+    def _clear_overlays(self):
+        for it in self.contour_items + [self.items.pop('arrows', None)]:
+            if it is not None:
+                self.removeItem(it)
+        self.contour_items = []
 
     def resample(self):
         """Sample the field on the current view at about screen resolution."""
@@ -162,14 +175,17 @@ class BoardView(pg.PlotWidget):
         w = int(min(1800, px_w * (x1 - x0) / (vx1 - vx0) * 1.2)) or 1
         h = int(min(1800, px_h * (y1 - y0) / (vy1 - vy0) * 1.2)) or 1
         self.sampler.sample(x0, y0, x1, y1, max(w, 2), max(h, 2))
-        self.image.setRect(QRectF(x0, y0, x1 - x0, y1 - y0))
         self.field = None
         self.redraw()
 
     def set_state(self, **kw):
         """Change what is drawn: mode, phase (rad), colour ('signed', 'abs',
-        'current'), vmax (None: the mode's own), decades (0: linear), arrows,
-        plane_sign (+1 top plane, -1 bottom: the current runs opposite)."""
+        'current'), vmax (None: the mode's own), decades (0: linear), fill
+        (the colour image), arrows, plane_sign (+1 top plane, -1 bottom: the
+        current runs opposite), contours (lines of the coloured quantity):
+        per (lines per full scale, or per decade on a log scale), nodal (the
+        V = 0 line, bold), line_width (px), line_colour ('dark', 'light',
+        'value': the colour scale's)."""
         if 'mode' in kw and kw['mode'] != self.state['mode']:
             self.field = None
         self.state.update(kw)
@@ -180,7 +196,7 @@ class BoardView(pg.PlotWidget):
             return
         s, modes = self.state, self.result.modes
         if not len(modes.f):
-            self.image.clear(); self.bar.hide()
+            self.image.clear(); self.bar.hide(); self._clear_overlays()
             return
         m = min(s['mode'], len(modes.f) - 1)
         v = modes.V[:, m]
@@ -194,11 +210,18 @@ class BoardView(pg.PlotWidget):
         dec = s['decades']
         if s['colour'] == 'current':
             vmax = s['vmax'] or (float(np.nanquantile(J, 0.99)) if np.isfinite(J).any() else 1.0)
-            img = colorize(J * abs(sin_t), vmax, 'current', dec)
+            shown = J * abs(sin_t)
         else:
             vmax = s['vmax'] or float(modes.peak[m])
-            img = colorize(V * cos_t, vmax, s['colour'], dec)
-        self.image.setImage(img, autoLevels=False)
+            shown = V * cos_t if s['colour'] == 'signed' else np.abs(V * cos_t)
+        if s['fill']:
+            self.image.setImage(colorize(shown, vmax, s['colour'], dec), autoLevels=False)
+            x0, y0, x1, y1 = self.sampler.grid['rect']   # after setImage: the scale is
+            self.image.setRect(QRectF(x0, y0, x1 - x0, y1 - y0))   # per pixel of this image
+            self.image.show()
+        else:
+            self.image.hide()
+        levels = contour_levels(vmax, s['per'], s['colour'], dec) if s['contours'] else []
         # the colour bar: ends of the scale, the floor of a log scale
         fmt = lambda x: f'{x:.3g}'
         lo = vmax * 10 ** -dec
@@ -211,9 +234,42 @@ class BoardView(pg.PlotWidget):
         if s['animating']:
             title += f'   ωt = {math.degrees(s["phase"]):3.0f}°'
         stops = {'signed': DIVERGING, 'abs': SEQUENTIAL, 'current': CURRENT}[s['colour']]
-        self.bar.set(stops, labels, title)
+        self.bar.set(stops, labels, title, scale_position(np.asarray(levels), vmax, s['colour'], dec))
         self.bar.show()
+        self._draw_contours(shown, levels, vmax)
         self._draw_arrows(v, sin_t)
+
+    def _draw_contours(self, shown, levels, vmax):
+        """Contour lines of the coloured quantity, one curve per pen."""
+        for it in self.contour_items:
+            self.removeItem(it)
+        self.contour_items = []
+        s = self.state
+        if not s['contours']:
+            return
+        nodal = s['nodal'] and s['colour'] == 'signed'
+        lines = contours(shown, self.sampler.grid['rect'],
+                         np.append(levels, 0.0) if nodal else levels)
+        if s['line_colour'] == 'value':
+            table = lut({'signed': DIVERGING, 'abs': SEQUENTIAL, 'current': CURRENT}[s['colour']])
+            t = scale_position(np.array([lev for lev, _ in lines]), vmax, s['colour'], s['decades'])
+            colours = [QColor(*(int(c * 0.8) for c in table[int(k * 255)])) for k in t]
+        else:
+            colours = [QColor(20, 24, 27) if s['line_colour'] == 'dark' else QColor(255, 255, 255)] * len(lines)
+        groups = {}                                  # (colour, width, dashed) -> [xy]
+        for (lev, xy), c in zip(lines, colours):
+            zero = nodal and lev == 0.0
+            w = s['line_width'] * (2.0 if zero else 1.0)
+            dashed = not zero and s['colour'] == 'signed' and lev < 0    # negative: dashed
+            groups.setdefault((c.rgba(), w, dashed), []).append(xy)
+        for (rgba, w, dashed), xys in groups.items():
+            pen = pg.mkPen(QColor.fromRgba(rgba), width=w,
+                           style=Qt.DashLine if dashed else Qt.SolidLine)
+            xy = np.vstack(xys)
+            it = pg.PlotCurveItem(xy[:, 0], xy[:, 1], pen=pen, connect='finite', antialias=True)
+            it.setZValue(7.5)
+            self.addItem(it)
+            self.contour_items.append(it)
 
     def _draw_arrows(self, v, sin_t):
         if 'arrows' in self.items:

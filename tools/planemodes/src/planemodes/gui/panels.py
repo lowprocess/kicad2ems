@@ -168,6 +168,7 @@ class ResultsPanel(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)   # via net
         self.table.currentCellChanged.connect(lambda r, *_: r >= 0 and self.slider.setValue(r))
+        self.table.setMinimumHeight(200)
         lay.addWidget(self.table, 1)
 
         box = QGroupBox('Display'); f = QFormLayout(box)
@@ -178,17 +179,35 @@ class ResultsPanel(QWidget):
         self.scale.setSpecialValueText("mode's own peak")
         self.decades = QSpinBox(); self.decades.setRange(0, 6)
         self.decades.setSpecialValueText('linear'); self.decades.setSuffix(' decades (log)')
-        self.arrows = QCheckBox('Current arrows'); self.arrows.setChecked(True)
+        self.fill = QCheckBox('Colour fill'); self.fill.setChecked(True)
+        self.overlay = QComboBox()
+        self.overlay.addItems(['Current arrows', 'Contour lines', 'Arrows and contours', 'None'])
         self.vias = QCheckBox('Vias'); self.vias.setChecked(True)
         f.addRow('Colour', self.colour); f.addRow('Copper shown', self.layer)
         f.addRow('Full scale', self.scale); f.addRow('Scale', self.decades)
-        f.addRow(self.arrows); f.addRow(self.vias)
-        for w in (self.colour, self.layer):
+        f.addRow(self.fill); f.addRow('Overlay', self.overlay); f.addRow(self.vias)
+        for w in (self.colour, self.layer, self.overlay):
             w.currentIndexChanged.connect(self.changed)
         for w in (self.scale, self.decades):
             w.valueChanged.connect(self.changed)
-        for w in (self.arrows, self.vias):
+        for w in (self.fill, self.vias):
             w.toggled.connect(self.changed)
+        lay.addWidget(box)
+
+        # contour lines of the coloured quantity: V (nodal lines), |V| or the current
+        box = QGroupBox('Contour lines'); f = QFormLayout(box)
+        self.per = QSpinBox(); self.per.setRange(1, 50); self.per.setValue(10)
+        self.per.setToolTip('Lines every 1/N of full scale (linear), or N per decade (log)')
+        self.line_width = _spin(0.5, 6, 1.2, 0.2, 1, ' px')
+        self.line_colour = QComboBox(); self.line_colour.addItems(['Dark', 'White', 'Colour scale'])
+        self.nodal = QCheckBox('Nodal line (V = 0) in bold'); self.nodal.setChecked(True)
+        f.addRow('Lines per scale', self.per); f.addRow('Width', self.line_width)
+        f.addRow('Colour', self.line_colour); f.addRow(self.nodal)
+        f.addRow(QLabel('Negative V dashed; ticks on the colour bar mark the levels.'))
+        self.per.valueChanged.connect(self.changed)
+        self.line_width.valueChanged.connect(self.changed)
+        self.line_colour.currentIndexChanged.connect(self.changed)
+        self.nodal.toggled.connect(self.changed)
         lay.addWidget(box)
 
         box = QGroupBox('Animation'); f = QFormLayout(box)
@@ -225,3 +244,13 @@ class ResultsPanel(QWidget):
 
     def colour_mode(self):
         return ['signed', 'abs', 'current'][self.colour.currentIndex()]
+
+    def display(self):
+        """The display settings as BoardView.set_state keywords."""
+        ov = self.overlay.currentIndex()
+        return dict(colour=self.colour_mode(), vmax=self.scale.value() or None,
+                    decades=self.decades.value(), fill=self.fill.isChecked(),
+                    arrows=ov in (0, 2), contours=ov in (1, 2), per=self.per.value(),
+                    line_width=self.line_width.value(), nodal=self.nodal.isChecked(),
+                    line_colour=['dark', 'light', 'value'][self.line_colour.currentIndex()],
+                    plane_sign=-1 if self.layer.currentIndex() == 1 else 1)

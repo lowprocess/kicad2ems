@@ -17,6 +17,7 @@ dependencies = [
     "shapely>=2.0",
     "meshpy>=2026.1.1",
     "matplotlib>=3.7",     # point location for the field raster (matplotlib.tri)
+    "contourpy>=1.2",      # contour lines
     "PySide6>=6.5",
     "pyqtgraph>=0.13",
 ]

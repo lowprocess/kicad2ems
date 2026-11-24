@@ -41,7 +41,7 @@ class MainWindow(QMainWindow):
         self.study, self.res = StudyPanel(), ResultsPanel()
         self.addDockWidget(Qt.LeftDockWidgetArea, _dock('Study', self.study, scroll=True))
         self.study.setMinimumWidth(380)
-        self.addDockWidget(Qt.RightDockWidgetArea, _dock('Results', self.res))
+        self.addDockWidget(Qt.RightDockWidgetArea, _dock('Results', self.res, scroll=True))
         self.res.setMinimumWidth(440)
         self._menus()
         # signals -> actions
@@ -226,9 +226,7 @@ class MainWindow(QMainWindow):
 
     def display_changed(self):
         self._draw_board()
-        self.view.set_state(colour=self.res.colour_mode(), vmax=self.res.scale.value() or None,
-                            decades=self.res.decades.value(), arrows=self.res.arrows.isChecked(),
-                            plane_sign=-1 if self.res.layer.currentIndex() == 1 else 1)
+        self.view.set_state(**self.res.display())
 
     # ---- animation ---------------------------------------------------------------
     def _animate(self, on):
