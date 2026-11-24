@@ -160,6 +160,7 @@ class ResultsPanel(QWidget):
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)   # via net
         self.table.currentCellChanged.connect(lambda r, *_: r >= 0 and self.slider.setValue(r))
         lay.addWidget(self.table, 1)
 

@@ -15,6 +15,7 @@ def mode_rows(results):
         m = r.modes
         for k in range(len(m.f)):
             top = int(np.argmax(m.zpeak[:, k])) if m.zpeak.size else -1
+            top = top if top >= 0 and m.zpeak[top, k] >= 0.01 else -1    # (0.01 ohm: none)
             rows.append(dict(
                 pair=r.cavity.name, mode=k + 1, f_GHz=round(m.f[k] / 1e9, 6),
                 Q=round(float(m.Q[k]), 1), participation=round(float(m.pr[k]), 5),

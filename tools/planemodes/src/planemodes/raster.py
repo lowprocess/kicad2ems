@@ -119,8 +119,11 @@ def arrows(sampler, v, spacing_px, cap_quantile=0.9):
         return np.zeros((0, 5))
     grad = sampler.gradient(v)[g['tri'][k[ok]]]
     mag = np.hypot(grad[:, 0], grad[:, 1])
-    cap = np.quantile(mag, cap_quantile) if len(mag) else 1.0
-    keep = mag > 0.08 * cap
+    # the scale from where the current is significant, not the whole view (a
+    # local mode leaves most of it near zero)
+    sig = mag[mag > 0.02 * mag.max()] if mag.max() > 0 else mag
+    cap = np.quantile(sig, cap_quantile) if len(sig) else 1.0
+    keep = mag > 0.12 * cap
     xs = x0 + (gx.ravel()[ok][keep] + 0.5) * (x1 - x0) / w
     ys = y0 + (gy.ravel()[ok][keep] + 0.5) * (y1 - y0) / h
     u = grad[keep] / mag[keep, None]
