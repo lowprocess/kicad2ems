@@ -74,10 +74,9 @@ class StudyPanel(QWidget):
         lay.addWidget(box)
 
         box = QGroupBox('Solver'); f = QFormLayout(box)
-        self.backend = QComboBox(); self.backend.addItems(['auto', 'superlu', 'pardiso'])
         self.max_modes = QSpinBox(); self.max_modes.setRange(1, 10000)
         self.max_modes.setValue(SolverConfig().max_modes)
-        f.addRow('Linear solver', self.backend); f.addRow('Max. modes / pair', self.max_modes)
+        f.addRow('Max. modes / pair', self.max_modes)
         self.fringe = QCheckBox('Edge fringing (outer layers: field in air)')
         self.radiation = QCheckBox('Radiation loss in Q')
         for w in (self.fringe, self.radiation):
@@ -123,8 +122,7 @@ class StudyPanel(QWidget):
             mesh=MeshConfig(max_cell=self.max_cell.value(), cells_per_wavelength=self.cpw.value(),
                             min_angle=self.angle.value(), refine_narrow=self.narrow.value(),
                             narrow_cell=self.narrow_cell.value()),
-            solver=SolverConfig(backend=self.backend.currentText(),
-                                max_modes=self.max_modes.value(),
+            solver=SolverConfig(max_modes=self.max_modes.value(),
                                 fringe=self.fringe.isChecked(),
                                 radiation=self.radiation.isChecked()))
 

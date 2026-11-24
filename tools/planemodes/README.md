@@ -18,7 +18,6 @@ aarch64), Windows and macOS; the Triangle mesher comes compiled in meshpy:
 
 ```sh
 pip install ./tools/planemodes             # or: pip wheel ./tools/planemodes
-pip install pypardiso                      # optional: a multithreaded sparse solver
 ```
 
 ## Use
@@ -39,7 +38,7 @@ In the viewer:
    Run one pair or many.
 3. Set the **frequency** range, **mesh** (largest cell, or cells per
    wavelength; minimum triangle angle; refinement of narrow copper) and
-   **solver** (SuperLU, or PARDISO if installed; mode limit; edge fringing
+   **solver** (mode limit; edge fringing
    and radiation on or off), then **Run**.
 4. Pick a **mode** with the slider or the table. Colour by signed V (the
    nodes show), |V|, or the plane current; linear or log; each mode's own

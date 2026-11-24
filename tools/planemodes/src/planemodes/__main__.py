@@ -22,7 +22,7 @@ def _run(a):
         ref_nets=[n.strip() for n in a.ref_nets.split(',')] if a.ref_nets else None,
         mesh=MeshConfig(max_cell=a.max_cell, cells_per_wavelength=a.cells, min_angle=a.min_angle,
                         refine_narrow=a.refine_narrow, narrow_cell=a.narrow_cell),
-        solver=SolverConfig(backend=a.backend, max_modes=a.max_modes,
+        solver=SolverConfig(max_modes=a.max_modes,
                             fringe=not a.no_fringe, radiation=not a.no_radiation))
     res = run_study(board, cfg, progress=lambda f, t: print(f'[{100 * f:3.0f} %] {t}', flush=True))
     files = save_results(res, a.out, board, cfg)
@@ -81,7 +81,6 @@ def main(argv=None):
         p.add_argument('--min-angle', type=float, default=25.0)
         p.add_argument('--refine-narrow', type=float, default=0.0, help='mm (0: off)')
         p.add_argument('--narrow-cell', type=float, default=0.3, help='mm')
-        p.add_argument('--backend', default='auto', choices=['auto', 'superlu', 'pardiso'])
         p.add_argument('--max-modes', type=int, default=600)
         p.add_argument('--no-fringe', action='store_true', help='leave out the edge fringing')
         p.add_argument('--no-radiation', action='store_true', help='leave radiation out of Q')

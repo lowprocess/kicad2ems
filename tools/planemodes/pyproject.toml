@@ -23,7 +23,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-pardiso = ["pypardiso>=0.4"]   # multithreaded sparse solver (Intel MKL)
 test = ["pytest"]
 
 [project.scripts]

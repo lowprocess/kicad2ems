@@ -3,7 +3,7 @@
 Linear triangles give K v = k^2 M v (K: stiffness, M: consistent mass), with
 V = 0 at ground vias and open edges elsewhere. The modes in [fmin, fmax] come
 from shift-invert Lanczos (ARPACK) about the window: the shifted matrix is
-factorised once (SuperLU, or PARDISO when installed) and the number of modes
+factorised once (SuperLU) and the number of modes
 asked for grows until the window is covered - asking for a guess from the
 area alone wastes most of the time on well-stitched boards.
 
@@ -28,7 +28,6 @@ STATIC = 1e6              # Hz: modes below this are islands' static modes
 
 @dataclass
 class SolverConfig:
-    backend: str = 'auto'          # 'superlu', 'pardiso' or 'auto' (see _factor)
     max_modes: int = 600           # per plane pair
     tol: float = 0.0               # ARPACK tolerance (0: machine precision)
     fringe: bool = True            # the edges' fringing field (edges.py)
@@ -68,26 +67,11 @@ def assemble(nodes_mm, tris):
     return K, M, lump
 
 
-PARDISO_FROM = 400_000     # unknowns: 'auto' uses PARDISO above this (if installed)
-
-
-def _factor(A, backend):
-    """A function solving A x = b, A factorised once. The eigen-solve is
-    hundreds of single right-hand-side solves, memory-bound: PARDISO factorises
-    2-3.6x faster but each solve gains little from threads and pays the
-    wrapper's overhead, so it only wins on large meshes (measured: 3x slower at
-    35k unknowns, 15 % faster at 830k)."""
-    if backend == 'pardiso' or (backend == 'auto' and A.shape[0] > PARDISO_FROM):
-        try:
-            import pypardiso
-            ps = pypardiso.PyPardisoSolver(mtype=11)
-            A = A.tocsr(); A.sort_indices()
-            ps.factorize(A)
-            ps._is_already_factorized = lambda _A: True    # skip its per-solve check
-            return lambda b: ps.solve(A, b)
-        except ImportError:
-            if backend == 'pardiso':
-                raise
+def _factor(A):
+    """A function solving A x = b, A factorised once (SuperLU). The eigen-solve
+    is hundreds of single right-hand-side solves, memory-bound; PARDISO (MKL)
+    was measured slower at every size tried, 147k to 1.1M unknowns (3.8x to
+    1.1x), so it is not offered."""
     return splu(A.tocsc()).solve
 
 
@@ -110,7 +94,7 @@ def solve_modes(mesh, cav, fmin, fmax, cfg=SolverConfig()):
     # shift: below the spectrum for a window from ~0 (K + M is then positive
     # definite), else the window's middle
     sigma = -1.0 if fmin < 0.05 * fmax else 0.5 * (lo + hi)
-    op = LinearOperator(Kf.shape, matvec=_factor(Kf - sigma * Mf, cfg.backend), dtype=float)
+    op = LinearOperator(Kf.shape, matvec=_factor(Kf - sigma * Mf), dtype=float)
     cap = min(cfg.max_modes, Kf.shape[0] - 2)
     nev, capped = min(24, cap), False
     while True:
