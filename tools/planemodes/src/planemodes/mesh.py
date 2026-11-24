@@ -1,4 +1,5 @@
-"""Triangle meshes of cavity regions (the Triangle library, from PyPI).
+"""Triangle meshes of cavity regions (Shewchuk's Triangle, through meshpy:
+wheels on PyPI for CPython 3.10-3.14 on Linux, Windows and macOS).
 
 Cells are sized from the wavelength at fmax unless a maximum is given. Ground
 vias are cut out as holes whose rim vertices are held at V = 0; port vias
@@ -15,7 +16,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import shapely
-import triangle
+from meshpy import triangle
 from scipy.spatial import cKDTree
 
 C0 = 299_792_458.0
@@ -79,12 +80,9 @@ def _pslg(region, rings, h):
     S = np.sort(inv.reshape(-1)[S], axis=1)
     S = np.unique(S[S[:, 0] != S[:, 1]], axis=0)
     # one point inside every hole of the region (not inside an island in it)
-    holes = []
-    for p in shapely.get_parts(region):
-        for ring in p.interiors:
-            gap = shapely.Polygon(ring).difference(region)
-            holes += [q.representative_point().coords[0]
-                      for q in shapely.get_parts(gap) if q.area > 1e-9]
+    inner = [shapely.Polygon(r) for p in shapely.get_parts(region) for r in p.interiors]
+    gaps = shapely.get_parts(shapely.union_all(inner).difference(region)) if inner else []
+    holes = [q.representative_point().coords[0] for q in gaps if q.area > 1e-9]
     return V, S, np.array(holes).reshape(-1, 2)
 
 
@@ -99,14 +97,16 @@ def mesh_cavity(cav, fmax, cfg=MeshConfig()):
     rings = [_ngon(x, y, r, cfg.via_sides) for x, y, r, _ in cav.ports]
     rings = [rg for rg in rings if region.contains(shapely.Polygon(rg))]
     V, S, H = _pslg(region, rings, h)
-    q = f'q{cfg.min_angle:g}' if cfg.min_angle > 0 else ''
-    data = dict(vertices=V, segments=S)
+    info = triangle.MeshInfo()
+    info.set_points(V.tolist())
+    info.set_facets(S.tolist())
     if len(H):
-        data['holes'] = H
-    out = triangle.triangulate(data, f'p{q}a{math.sqrt(3) / 4 * h * h:.6g}Q')
+        info.set_holes(H.tolist())
+    q = dict(quality_meshing=cfg.min_angle > 0, min_angle=cfg.min_angle or None)
+    out = triangle.build(info, max_volume=math.sqrt(3) / 4 * h * h, **q)
     if cfg.refine_narrow > 0 and cfg.narrow_cell < h:
         out = _refine_narrow(out, region, cfg, h, q)
-    nodes, tris = out['vertices'], out['triangles']
+    nodes, tris = np.array(out.points), np.array(out.elements, dtype=np.int64)
     tree = cKDTree(nodes)
     fixed = np.zeros(len(nodes), bool)
     grow = math.pi / (cfg.via_sides * math.sin(math.pi / cfg.via_sides))
@@ -127,8 +127,10 @@ def _refine_narrow(out, region, cfg, h, q):
     if narrow.is_empty:
         return out
     shapely.prepare(narrow)
-    cent = out['vertices'][out['triangles']].mean(1)
+    cent = np.array(out.points)[np.array(out.elements)].mean(1)
     fine = shapely.contains_xy(narrow, cent[:, 0], cent[:, 1])
     area = np.where(fine, math.sqrt(3) / 4 * cfg.narrow_cell ** 2, math.sqrt(3) / 4 * h * h)
-    out = dict(out, triangle_max_area=area)
-    return triangle.triangulate(out, f'rp{q}aQ')
+    out.element_volumes.setup()                # a largest area per triangle, then refine
+    for i, a in enumerate(area.tolist()):
+        out.element_volumes[i] = a
+    return triangle.refine(out, **q)

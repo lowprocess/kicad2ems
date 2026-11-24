@@ -256,6 +256,49 @@ def test_the_hyperlynx_reader(tmp_path):
                                                          ('SIG', 'Top', 'Bottom')}
 
 
+KICAD_HYP = """{VERSION=2.14}
+{UNITS=ENGLISH LENGTH}
+{BOARD "/tmp/b.kicad_pcb"
+  (PERIMETER_SEGMENT X1=0 Y1=0 X2=1 Y2=0)
+  (PERIMETER_SEGMENT X1=1 Y1=0 X2=1 Y2=0.8)
+  (PERIMETER_SEGMENT X1=1 Y1=0.8 X2=0 Y2=0.8)
+  (PERIMETER_SEGMENT X1=0 Y1=0.8 X2=0 Y2=0)
+}
+{STACKUP
+  (SIGNAL T=0.00137795 P=0 C=1.724e-08 L="F.Cu" M=COPPER)
+  (DIELECTRIC T=0.0062992 C=4.5 L="DE_F.Cu" M="FR4")
+  (SIGNAL T=0.00137795 P=0 C=1.724e-08 L="B.Cu" M=COPPER)
+}
+{PADSTACK=0
+  ("F.Cu", 1, 0.08, 0.02, 150.0, M)
+}
+{PADSTACK=1, 0.0256
+  ("MDEF", 0, 0.0256, 0.0256, 0.0, M)
+}
+{NET="SIG"
+  (PIN X=0.5 Y=0.4 R="R1.1" P=0)
+}
+{NET="EmptyNet0"
+  (PIN X=0.2 Y=0.2 R="H1.1" P=1)
+}
+"""
+
+
+def test_a_kicad_written_hyp(tmp_path):
+    """KiCad's exporter: 180 - orientation for pad angles, its own y (before
+    KiCad 9), EmptyNet<n> for no net, unplated holes as metal = drill."""
+    p = tmp_path / 'k.hyp'
+    p.write_text(KICAD_HYP)
+    b = load_board(p)
+    assert b.outline.bounds[1] == pytest.approx(0) and b.outline.bounds[3] > 0   # y kept
+    pad = b.copper['F.Cu']['SIG']                       # 2 x 0.5 mm, turned 30 deg CCW as seen
+    x, y = 0.5 * 25.4, 0.4 * 25.4
+    c, s = math.cos(math.radians(30)), math.sin(math.radians(30))
+    assert pad.contains(shapely.Point(x + 0.8 * c, y - 0.8 * s))     # y down: CCW is -y
+    assert not pad.contains(shapely.Point(x + 0.8 * c, y + 0.8 * s))
+    assert '' not in b.copper.get('F.Cu', {}) and not b.vias          # the hole: no copper
+
+
 def _compress(data, maxbits=16):
     """A Unix-compress encoder (block mode), only to test the decoder."""
     table = {bytes([i]): i for i in range(256)}

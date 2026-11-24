@@ -9,13 +9,13 @@ description = "Plane-pair cavity eigenmodes of PCBs from KiCad, ODB++ or HyperLy
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-# Everything is on PyPI; 'triangle' (the Triangle mesher) and PySide6 ship as
-# compiled wheels.
+# Everything is on PyPI as wheels for CPython 3.10-3.14 (Linux x86_64/aarch64,
+# Windows, macOS): meshpy carries the Triangle mesher compiled.
 dependencies = [
     "numpy>=1.24",
     "scipy>=1.10",
     "shapely>=2.0",
-    "triangle>=20230923",
+    "meshpy>=2026.1.1",
     "matplotlib>=3.7",     # point location for the field raster (matplotlib.tri)
     "PySide6>=6.5",
     "pyqtgraph>=0.13",

@@ -21,8 +21,10 @@ separation (PS= of the layer, or PLANE_SEP). A PLANE layer with no polygons
 at all is flooded with the outline for the net most of whose holes connect
 to it (thermal or pad there, no antipad).
 
-KiCad's exporter writes pad angles as 180 - orientation, which mirrors the
-rotation of non-square pads; that is not undone (the writer can't be told).
+KiCad's exporter is recognised (its .kicad_pcb named in BOARD, dielectrics
+named DE_<layer>) and its quirks undone: pad angles written as 180 -
+orientation, ovals as shape 0, rounded rectangles as 2 (a 25 % corner radius
+assumed, KiCad's default) and, before KiCad 9, y left pointing down.
 """
 import math
 import re
@@ -119,8 +121,19 @@ def read_hyp(path):
     u = first('UNITS')
     words = ' '.join((u.pos + list(u.kv.values())) if u else []).upper()
     k = 10.0 if 'METRIC' in words else 25.4            # file length unit -> mm
+    # KiCad's exporter: its file name in BOARD, dielectrics named DE_<layer>
+    b = first('BOARD')
+    kicad = bool(b and b.pos and b.pos[0].lower().endswith('.kicad_pcb')) or any(
+        n.upper() == 'DIELECTRIC' and re.match(r'DE\d*_', kv.get('L', ''))
+        for n, _, kv in (first('STACKUP').recs if first('STACKUP') else []))
+    # y points up, flipped here as the Board's points down; KiCad before 9
+    # wrote its own y (down, positive) unflipped
+    ys = [_num(kv[c]) for _, _, kv in (b.recs if b else []) for c in ('Y1', 'Y2') if c in kv]
+    ysign = 1.0 if kicad and ys and np.nanmean(ys) > 0 else -1.0
+    if ysign > 0:
+        notes.append('KiCad export with y unflipped (KiCad 8 or older): read as is')
     X = lambda v: _num(v) * k
-    Y = lambda v: -_num(v) * k                          # Board y points down
+    Y = lambda v: ysign * _num(v) * k
     ps = first('PLANE_SEP')
     plane_sep = X(ps.pos[0]) if ps and ps.pos else 0.0
 
@@ -174,13 +187,17 @@ def read_hyp(path):
         pads[s.pos[0] if s.pos else ''] = (drill if drill == drill else 0.0, ent)
 
     def shape(sh, sx, sy, x, y, ang):
-        """One pad shape: 0 ellipse, 1 rectangle, 2 oblong; `ang` CCW with y up,
-        which place() applies (it turns CCW on screen with y down)."""
-        if sh == '0':
-            g = affinity.scale(Point(0, 0).buffer(0.5, quad_segs=12), sx, sy)
+        """One pad shape: 0 ellipse, 1 rectangle, 2 oblong (KiCad writes its
+        circles and ovals as 0, rounded rectangles as 2); `ang` CCW as seen,
+        which place() applies. KiCad writes 180 - its pad orientation."""
+        if kicad:                               # KiCad: 0 its circle / oval, 2 roundrect
+            g = shp.pad_shape({'0': 'oval', '2': 'roundrect'}.get(sh, 'rect'), sx, sy, 0.25)
+        elif sh == '0':
+            g = (shp.pad_shape('circle', sx, sx) if abs(sx - sy) < 1e-9 else
+                 affinity.scale(Point(0, 0).buffer(0.5, quad_segs=8), sx, sy))
         else:
             g = shp.pad_shape('oval' if sh == '2' else 'rect', sx, sy)
-        return shp.place(g, x, y, ang)
+        return shp.place(g, x, y, 180.0 - ang if kicad else ang)
 
     def rows(name, layer, kinds):
         """A padstack's rows of the given kinds on `layer`; MDEF / ADEF stand in
@@ -210,6 +227,8 @@ def read_hyp(path):
         if s.head != 'NET':
             continue
         net = s.pos[0] if s.pos else ''
+        if kicad and re.fullmatch(r'EmptyNet\d+', net):
+            net = ''                           # KiCad's name for pads on no net
         polys, voids = {}, defaultdict(list)
         for rec in s.recs:
             if rec[0] == '{':                  # POLYGON / POLYVOID / POLYLINE
@@ -244,9 +263,11 @@ def read_hyp(path):
             elif name in ('VIA', 'PIN') and 'P' in a:
                 x, y = X(a['X']), Y(a['Y'])
                 geo = metal(a['P'], x, y)
+                drill = pads.get(a['P'], (0.0, []))[0]
+                if drill > 0 and all(g.bounds[2] - g.bounds[0] <= drill * 1.001 for g in geo.values()):
+                    continue                   # metal no wider than the hole: unplated
                 for l, g in geo.items():
                     parts[l, net].append(g)
-                drill = pads.get(a['P'], (0.0, []))[0]
                 if drill > 0:                  # plated hole: spans its pads' layers
                     on = sorted(cu.index(l) for l in geo) or [0, len(cu) - 1]
                     pad = max((g.bounds[2] - g.bounds[0] for g in geo.values()), default=drill)

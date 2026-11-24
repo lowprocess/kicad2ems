@@ -13,7 +13,8 @@ board, animates them and says which vias they reach.
 
 ## Install
 
-Everything comes from PyPI (Triangle and Qt as compiled wheels):
+Everything comes from PyPI as wheels for CPython 3.10–3.14 on Linux (x86_64,
+aarch64), Windows and macOS; the Triangle mesher comes compiled in meshpy:
 
 ```sh
 pip install ./tools/planemodes             # or: pip wheel ./tools/planemodes
@@ -113,6 +114,9 @@ for r in run_study(board, StudyConfig(fmin=1e9, fmax=10e9, mesh=MeshConfig(min_a
   antipad, thermal rows), tracks, arcs, vias, pins, polygons with voids and
   pen width. PLANE-type polygons are cleared round other nets by the antipad
   or the plane separation; a PLANE layer with no polygons is flooded for the
-  net whose holes connect to it. KiCad's exporter mirrors the rotation of
-  non-square pads; this is not undone.
+  net whose holes connect to it. A pad no wider than its hole is an
+  unplated hole. Files from KiCad's exporter are recognised and its quirks
+  undone (pad angles, oval and rounded-rectangle shapes, KiCad 8's unflipped
+  y, `EmptyNet` names): KiCad's ecc83 demo and an STM32 board read from their
+  .hyp match the same boards read from .kicad_pcb to 0.02 and 0.3 mm².
 - Every reader lists what it assumed in the log (and `board.notes`).
