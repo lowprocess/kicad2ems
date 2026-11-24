@@ -976,26 +976,53 @@ def test_a_transformed_z_with_asymmetric_extras_stays_whole(ldl, S_cpu):
     assert np.abs(make_sim('off').sparams(4e9) - S).max() < 1e-6
 
 
-def test_two_ports_at_one_place_keep_the_loop_tree_basis_off(clean):
-    """Two via chains at one place (two ports there: a segment cut doubled):
-    in the loop/tree basis one is a loop through the other, its row zero; the
-    plan takes the RWG basis, says why, and solves (0.1 GHz)."""
+def _strip_over_plane(ports, vias=()):
+    """A strip on M2 over a plane on M1, a via port at each end (one to M0)."""
     from shapely.geometry import box, Point
     st = LayerStack([Layer(0.2e-3, 4.3, 0.02), Layer(0.2e-3, 4.3, 0.02)])
     w, L = 0.35e-3, 8e-3
     geo2 = [box(-L / 2, -w / 2, L / 2, w / 2), Point(L / 2, 0).buffer(0.25e-3)]
     geo1 = [box(-L / 2, -2e-3, L / 2 + 1e-3,
                 2e-3).difference(Point(L / 2, 0).buffer(0.5e-3))]
-    sim = Simulation(st, {1: geo1, 2: geo2}, [
-        ViaPort(Via(-L / 2, 0, 1, 2, 0.1e-3)),
-        ViaPort(Via(-L / 2, 0, 1, 2, 0.1e-3)),
-        ViaPort(Via(L / 2, 0, 0, 2, 0.1e-3))
-    ], dmax=0.4e-3, dmax_layer={1: 0.6e-3}, w_ref={2: w, 1: 1e-3},
-        solver='direct', precision='mixed', gpu='off', verbose=False)
-    p = sim.fast.plan(1e8)
+    return Simulation(st, {1: geo1, 2: geo2}, ports, vias=list(vias),
+                      dmax=0.4e-3, dmax_layer={1: 0.6e-3},
+                      w_ref={2: w, 1: 1e-3}, solver='direct',
+                      precision='mixed', gpu='off', verbose=False)
+
+
+def test_two_ports_at_one_place_are_refused(clean):
+    """Two ports' via chains at one place (a segment cut doubled): their
+    columns the same, the matrix singular in either basis and the ports
+    without an S of their own (it had read |S21| 1.18 and S11 != S22 here,
+    and not finite on CI at an exact zero pivot): refused, the ports
+    named."""
+    L = 8e-3
+    with pytest.raises(ValueError, match='port 1 and port 2 are at one place'):
+        _strip_over_plane([ViaPort(Via(-L / 2, 0, 1, 2, 0.1e-3)),
+                           ViaPort(Via(-L / 2, 0, 1, 2, 0.1e-3)),
+                           ViaPort(Via(L / 2, 0, 0, 2, 0.1e-3))])
+    with pytest.raises(ValueError, match='port 1 and via v2 are at one place'):
+        _strip_over_plane([ViaPort(Via(-L / 2, 0, 1, 2, 0.1e-3)),
+                           ViaPort(Via(L / 2, 0, 0, 2, 0.1e-3))],
+                          [Via(-L / 2, 0, 1, 2, 0.1e-3, name='v2')])
+
+
+def test_two_plain_vias_at_one_place_keep_the_loop_tree_basis_off(clean):
+    """Two plain vias at one place (a via drawn twice): in the loop/tree basis
+    one is a loop through the other, its row zero; the plan takes the RWG
+    basis, says why, and its S is one via's (their right-hand side is
+    consistent: the ports' currents defined; 0.1 GHz)."""
+    L = 8e-3
+    ports = lambda: [ViaPort(Via(-L / 2, 0, 1, 2, 0.1e-3)),
+                     ViaPort(Via(L / 2, 0, 0, 2, 0.1e-3))]
+    one = _strip_over_plane(ports(), [Via(1e-3, 0, 1, 2, 0.1e-3)])
+    two = _strip_over_plane(ports(), [Via(1e-3, 0, 1, 2, 0.1e-3)
+                                      for _ in range(2)])
+    p = two.fast.plan(1e8)
     assert p.basis == 'rwg' and 'two via chains' in p.why
-    S = sim.sparams(1e8)
-    assert np.isfinite(S).all()
+    assert one.fast.plan(1e8).basis == 'loop/tree'
+    S1, S2 = one.sparams(1e8), two.sparams(1e8)
+    assert np.isfinite(S2).all() and np.abs(S2 - S1).max() < 1e-5
 
 
 def test_a_run_without_room_gives_its_share_back(clean, monkeypatch):

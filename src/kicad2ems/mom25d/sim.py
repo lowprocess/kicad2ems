@@ -455,6 +455,7 @@ class Simulation:
                    + [v.k_top])
             self.via_attach.append([k for k in att if k in geoms])
             self.chains += [(v, a, b) for a, b in zip(att[:-1], att[1:])]
+        self._refuse_ports_at_one_place()
 
         # ---- port sample positions and constraint lines ---------------------
         self.samples, lines = [], {k: [] for k in self.layers}
@@ -881,6 +882,35 @@ class Simulation:
             if not (len(e[0]) > 0):
                 raise ValueError(
                     f"lumped element {el.name}: no mesh edges on its line")
+
+    def _refuse_ports_at_one_place(self):
+        """A ValueError where a port's via chain and another chain share their
+        place (to 1 um) and interfaces. Their columns of the matrix are the
+        same, so it is singular in either basis, and the port has no S of its
+        own: its gap driven while the other chain there is held at 0 V. Every
+        complex64 factor fails to precondition there and the double one gives
+        |S| of 1.4 to 539, or none at an exact zero pivot (LimeRFE pieces,
+        2026-11-22/23; CI). Two plain vias at one place are left: their
+        right-hand side is consistent, the ports' currents defined."""
+        port = {id(p.via): (n, p) for n, p in enumerate(self.ports)
+                if isinstance(p, ViaPort)}
+        if not port:
+            return
+        xy = np.array([(v.x, v.y) for v, _, _ in self.chains])
+        name = lambda v: (f"port {port[id(v)][1].name or port[id(v)][0] + 1}"
+                          if id(v) in port else f"via {v.name or '(unnamed)'}")
+        for v, kb, kt in self.chains:
+            if id(v) not in port:
+                continue
+            near = np.flatnonzero(np.hypot(*(xy - (v.x, v.y)).T) < 1e-6)
+            for j in near:
+                u, ub, ut = self.chains[j]
+                if u is not v and (ub, ut) == (kb, kt):
+                    raise ValueError(
+                        f"{name(v)} and {name(u)} are at one place "
+                        f"({v.x * 1e3:.4g}, {v.y * 1e3:.4g} mm, M{kb}-M{kt}): "
+                        "a port there has no S of its own (the matrix is "
+                        "singular); make them one port")
 
     def _port_chain(self, p):
         """Index of the lowest chain of the via of a ViaPort."""

@@ -88,6 +88,9 @@ def test_the_tables_in_one_batch_are_each_alone():
                 one.cA, one.cq, one.cAi, one.cqi, one.dimg, one.K, one.npts)
             assert np.abs(g._tab.v - one._tab.v).max() <= (
                 1e-13 * np.abs(one._tab.v).max())
+            # (as the table: to its largest value; far out, where the parts
+            # are small, the two builds' rounding is ~1e-12 of their own)
             r = np.linspace(1e-5, 15e-3, 7)
-            assert np.allclose(g.total(r), one.total(r), rtol=1e-12)
+            for x, y in zip(g.total(r), one.total(r)):
+                assert np.abs(x - y).max() <= 1e-12 * np.abs(y).max()
     assert GreenTableML.batch(1e9, st, [], 20e-3) == []

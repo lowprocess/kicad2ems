@@ -130,7 +130,8 @@ breathe_default_project = 'cores'
 # the site's navigation, in index.md's order (its tables are the same pages, for
 # GitHub)
 NAV = [('Using kicad2ems', [
-    'getting-started', 'usage', 'gui', 'si', 'kicad-plugin', 'examples',
+    'getting-started', 'usage', 'gui', 'si', 'segment-studies', 'kicad-plugin',
+    'examples',
     'postprocessing', 'benchmarks', 'solver-matrix'
 ]),
        ('The solvers',

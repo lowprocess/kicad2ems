@@ -430,6 +430,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **CI green again (2026-11-24; the stack workflow red since 11-20, the docs build since 11-23).**
+  - mom25d refuses a port whose via chain shares its place and interfaces with another chain
+    (`Simulation._refuse_ports_at_one_place`, the ports named): their columns of the matrix are the same, so it is
+    singular in either basis and the port has no S of its own (its gap driven while the other chain there is held
+    at 0 V). 2026-11-22's test of it had read |S21| 1.18 and S11 != S22 on this machine, finite only by a
+    rounding-level pivot, and not finite on CI (an exact zero pivot). segment already makes such ports one
+    (`_one_port_a_place`). Two plain vias at one place still solve, in the RWG basis: their right-hand side is
+    consistent, and their S is one via's within 4e-7 (mixed precision) and 8e-12 (double).
+  - `test_the_tables_in_one_batch_are_each_alone` compares `total(r)` to its largest value, as it does the
+    table: elementwise, far out where the values are small, the batch's and the single build's rounding
+    differ by ~1e-12 of their own (1.2e-12 here, over on CI); to the largest value 1.2e-16.
+  - docs/segment-studies.md in the site's navigation (`conf.py` NAV).
 - **KiCad import: a fill over another net's via is a short to it again (2026-11-23).** 2026-11-21's stale-fill cut
   (a LimeRFE GND pour saved over its 30 MHz RX line) cut every fill back from other nets' tracks, pads and vias;
   the examples draw their grounding vias inside the ground fill (rf_interdig's resonators, the filters' line
