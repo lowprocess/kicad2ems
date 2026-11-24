@@ -1007,22 +1007,22 @@ def test_two_ports_at_one_place_are_refused(clean):
                           [Via(-L / 2, 0, 1, 2, 0.1e-3, name='v2')])
 
 
-def test_two_plain_vias_at_one_place_keep_the_loop_tree_basis_off(clean):
-    """Two plain vias at one place (a via drawn twice): in the loop/tree basis
-    one is a loop through the other, its row zero; the plan takes the RWG
-    basis, says why, and its S is one via's (their right-hand side is
-    consistent: the ports' currents defined; 0.1 GHz)."""
+def test_two_plain_vias_at_one_place_are_one(clean):
+    """Two plain vias at one place (a via drawn twice): one plated hole, the
+    second's chain left out; the plan the loop/tree basis's as with one, the
+    S one via's. Kept, the matrix had two equal columns: the RWG basis's
+    factors held it here and gave |S11| 1.14 on CI (2026-11-24)."""
     L = 8e-3
     ports = lambda: [ViaPort(Via(-L / 2, 0, 1, 2, 0.1e-3)),
                      ViaPort(Via(L / 2, 0, 0, 2, 0.1e-3))]
     one = _strip_over_plane(ports(), [Via(1e-3, 0, 1, 2, 0.1e-3)])
     two = _strip_over_plane(ports(), [Via(1e-3, 0, 1, 2, 0.1e-3)
                                       for _ in range(2)])
-    p = two.fast.plan(1e8)
-    assert p.basis == 'rwg' and 'two via chains' in p.why
-    assert one.fast.plan(1e8).basis == 'loop/tree'
+    assert len(two.chains) == len(one.chains)
+    assert two.fast.plan(1e8).basis == one.fast.plan(1e8).basis == 'loop/tree'
     S1, S2 = one.sparams(1e8), two.sparams(1e8)
-    assert np.isfinite(S2).all() and np.abs(S2 - S1).max() < 1e-5
+    # (to the mixed precision's refinement: 1.6e-9 measured)
+    assert np.abs(S2 - S1).max() < 1e-7
 
 
 def test_a_run_without_room_gives_its_share_back(clean, monkeypatch):

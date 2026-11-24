@@ -436,8 +436,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     singular in either basis and the port has no S of its own (its gap driven while the other chain there is held
     at 0 V). 2026-11-22's test of it had read |S21| 1.18 and S11 != S22 on this machine, finite only by a
     rounding-level pivot, and not finite on CI (an exact zero pivot). segment already makes such ports one
-    (`_one_port_a_place`). Two plain vias at one place still solve, in the RWG basis: their right-hand side is
-    consistent, and their S is one via's within 4e-7 (mixed precision) and 8e-12 (double).
+    (`_one_port_a_place`). Two plain vias at one place (a via drawn twice) are one plated hole: the second's chain
+    is left out, said (`_one_chain_a_place`; two with a part each are refused). Kept, their equal columns had
+    solved on this machine (S within 4e-7 of one via's) and given |S11| 1.14 on CI: a right-hand side consistent
+    with a singular matrix is no guarantee its factors hold.
   - `test_the_tables_in_one_batch_are_each_alone` compares `total(r)` to its largest value, as it does the
     table: elementwise, far out where the values are small, the batch's and the single build's rounding
     differ by ~1e-12 of their own (1.2e-12 here, over on CI); to the largest value 1.2e-16.

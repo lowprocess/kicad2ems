@@ -1191,10 +1191,10 @@ class FastOperator:
         """Whether two via chains share their place and layers: in the
         loop/tree basis one is a loop through the other, of no impedance and
         no charge, its row zero (four LimeRFE pieces with a cut doubled,
-        2026-11-22). A port's chain there is refused before
-        (`Simulation._refuse_ports_at_one_place`: singular in either basis);
-        two plain vias' right-hand side is consistent, which the RWG basis's
-        refinement takes. Once a mesh."""
+        2026-11-22). A guard: the Simulation leaves no such pair (a plain
+        via's chain there left out, `_one_chain_a_place`; a port's refused,
+        `_refuse_ports_at_one_place`: singular in either basis). Once a
+        mesh."""
         if not hasattr(self, '_coinc'):
             seen, self._coinc = set(), False
             for v, kb, kt in getattr(self.sim, 'chains', ()):

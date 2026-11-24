@@ -455,6 +455,7 @@ class Simulation:
                    + [v.k_top])
             self.via_attach.append([k for k in att if k in geoms])
             self.chains += [(v, a, b) for a, b in zip(att[:-1], att[1:])]
+        self._one_chain_a_place()
         self._refuse_ports_at_one_place()
 
         # ---- port sample positions and constraint lines ---------------------
@@ -883,6 +884,38 @@ class Simulation:
                 raise ValueError(
                     f"lumped element {el.name}: no mesh edges on its line")
 
+    def _one_chain_a_place(self):
+        """Two via chains at one place (to 1 um) between the same interfaces,
+        neither a port's: one plated hole (a via drawn twice), one of them
+        left out (said). Kept, the matrix has two equal columns, singular in
+        either basis: on this machine the RWG basis's factors held it, on CI
+        they gave |S11| 1.14 where one via's is 0.999 (2026-11-24). Of the
+        two, one with a series element (Z) is kept; two with one each are
+        refused."""
+        if len(self.chains) < 2:
+            return
+        from scipy.spatial import cKDTree
+        port = {id(p.via) for p in self.ports if isinstance(p, ViaPort)}
+        xy = np.array([(v.x, v.y) for v, _, _ in self.chains])
+        drop = set()
+        for i, j in sorted(map(tuple, cKDTree(xy).query_pairs(1e-6))):
+            (u, ua, ub), (v, va, vb) = self.chains[i], self.chains[j]
+            if ((ua, ub) != (va, vb) or i in drop or j in drop
+                    or id(u) in port or id(v) in port):
+                continue  # (a port's: _refuse_ports_at_one_place's)
+            if u.Z is not None and v.Z is not None:
+                raise ValueError(
+                    f"vias {u.name or '(unnamed)'} and {v.name or '(unnamed)'}"
+                    f" are at one place ({u.x * 1e3:.4g}, {u.y * 1e3:.4g} mm)"
+                    " and each has a part in it: one plated hole, one part")
+            drop.add(i if v.Z is not None else j)
+        if drop:
+            self.chains = [c for k, c in enumerate(self.chains)
+                           if k not in drop]
+            self.log.note(f"{len(drop)} via chain(s) at the place of another "
+                          "between the same layers left out (a via drawn "
+                          "twice: one plated hole)")
+
     def _refuse_ports_at_one_place(self):
         """A ValueError where a port's via chain and another chain share their
         place (to 1 um) and interfaces. Their columns of the matrix are the
@@ -890,8 +923,8 @@ class Simulation:
         own: its gap driven while the other chain there is held at 0 V. Every
         complex64 factor fails to precondition there and the double one gives
         |S| of 1.4 to 539, or none at an exact zero pivot (LimeRFE pieces,
-        2026-11-22/23; CI). Two plain vias at one place are left: their
-        right-hand side is consistent, the ports' currents defined."""
+        2026-11-22/23; CI). Two plain vias at one place are one
+        (_one_chain_a_place)."""
         port = {id(p.via): (n, p) for n, p in enumerate(self.ports)
                 if isinstance(p, ViaPort)}
         if not port:
