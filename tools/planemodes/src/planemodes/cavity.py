@@ -32,6 +32,8 @@ class Cavity:
     region: object            # shapely geometry (mm): both planes' reference copper
     shorts: list = field(default_factory=list)   # [(x, y, r)] ground vias
     ports: list = field(default_factory=list)    # [(x, y, r, net)] other vias
+    outer: bool = False       # one plane is an outer layer: its edges fringe into air
+    board_edge: object = None # the board outline's boundary (where buried pairs radiate)
 
     @property
     def name(self):
@@ -65,7 +67,10 @@ def make_cavity(board, top, bottom, ref_nets, hole_fill=2.0):
     region = shapely.union_all([p for p in shapely.get_parts(region)
                                 if p.geom_type == 'Polygon' and p.area > 0.05])
     d, er, tand = board.gap(top, bottom)
-    cav = Cavity(top, bottom, d, er, tand, region)
+    cl = board.copper_layers
+    cav = Cavity(top, bottom, d, er, tand, region,
+                 outer=cl[0] in (top, bottom) or cl[-1] in (top, bottom),
+                 board_edge=board.outline.boundary if board.outline is not None else None)
     if region.is_empty:
         return cav
     shapely.prepare(region)

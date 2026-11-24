@@ -6,6 +6,9 @@ from shift-invert Lanczos (ARPACK) about the window: the shifted matrix is
 factorised once (SuperLU, or PARDISO when installed) and the number of modes
 asked for grows until the window is covered - asking for a guess from the
 area alone wastes most of the time on well-stitched boards.
+
+Open edges add a fringe strip (capacitance and current beyond the edge) and
+radiate (edges.py): Q combines the dielectric, the copper and the radiation.
 """
 import math
 from dataclasses import dataclass
@@ -13,6 +16,8 @@ from dataclasses import dataclass
 import numpy as np
 import scipy.sparse as sp
 from scipy.sparse.linalg import LinearOperator, eigsh, splu
+
+from . import edges as E
 
 MU0 = 4e-7 * math.pi
 EPS0 = 8.8541878128e-12
@@ -26,18 +31,21 @@ class SolverConfig:
     backend: str = 'auto'          # 'superlu', 'pardiso' or 'auto' (see _factor)
     max_modes: int = 600           # per plane pair
     tol: float = 0.0               # ARPACK tolerance (0: machine precision)
+    fringe: bool = True            # the edges' fringing field (edges.py)
+    radiation: bool = True         # radiation loss in Q (edges.py)
 
 
 @dataclass
 class Modes:
     f: np.ndarray                  # (m,) Hz
-    Q: np.ndarray                  # (m,) dielectric + copper loss (no radiation: an upper bound)
+    Q: np.ndarray                  # (m,) dielectric + copper + radiation (if enabled)
     V: np.ndarray                  # (N, m) voltage at the nodes, RMS 1 over the cavity
     pr: np.ndarray                 # (m,) participation: 1 fills the cavity, ~0 local
     peak: np.ndarray               # (m,) max |V| (x RMS)
     coupling: np.ndarray           # (ports, m) mean |V| over each port via's ring
     zpeak: np.ndarray              # (ports, m) ohm: the cavity's impedance at the port at resonance
     capped: bool = False           # True if max_modes stopped the search early
+    Q_rad: np.ndarray = None       # (m,) radiation alone (inf: not computed)
 
 
 def assemble(nodes_mm, tris):
@@ -91,6 +99,11 @@ def k2(f, er):
 def solve_modes(mesh, cav, fmin, fmax, cfg=SolverConfig()):
     """The cavity's modes with fmin <= f <= fmax."""
     K, M, lump = assemble(mesh.nodes, mesh.tris)
+    edges = E.boundary_edges(mesh.nodes, mesh.tris, mesh.fixed)
+    if cfg.fringe:                     # the fringe strip along every open edge
+        delta, er_ext = E.fringe(cav.d, cav.er, cav.outer)
+        Kb, Mb = E.fringe_matrices(mesh.nodes, edges, delta, er_ext / cav.er)
+        K, M = K + Kb, M + Mb
     free = np.flatnonzero(~mesh.fixed)
     Kf, Mf = K[free][:, free].tocsc(), M[free][:, free].tocsc()
     lo, hi = k2(fmin, cav.er), k2(fmax, cav.er)
@@ -122,9 +135,15 @@ def solve_modes(mesh, cav, fmin, fmax, cfg=SolverConfig()):
     V[free] = X
     area = lump.sum()
     V /= np.sqrt(np.einsum('im,im->m', V, M @ V) / area)    # RMS 1 over the cavity
-    # losses: 1/Q = tan(d) + skin depth / plate spacing
-    delta = np.sqrt(2 / (2 * math.pi * np.maximum(f, 1) * MU0 * SIGMA_CU))
-    Q = 1 / (cav.tand + delta / (cav.d * 1e-3))
+    # losses: 1/Q = tan(d) + skin depth / plate spacing + 1/Q_rad
+    skin = np.sqrt(2 / (2 * math.pi * np.maximum(f, 1) * MU0 * SIGMA_CU))
+    Q_rad = np.full(len(f), np.inf)
+    if cfg.radiation and len(f):
+        rad = edges if cav.outer else _on_board_edge(mesh.nodes, edges, cav)
+        P = E.radiated_power(mesh.nodes, rad, V, f)
+        W = 0.5 * EPS0 * cav.er / (cav.d * 1e-3) * np.einsum('im,im->m', V, M @ V)
+        Q_rad = np.where(P > 0, 2 * math.pi * f * W / np.maximum(P, 1e-300), np.inf)
+    Q = 1 / (cav.tand + skin / (cav.d * 1e-3) + 1 / Q_rad)
     v2 = V ** 2
     pr = (lump @ v2) ** 2 / (area * (lump @ v2 ** 2))
     coupling = (np.array([np.abs(V[ids]).mean(0) for ids in mesh.ports]) if mesh.ports
@@ -133,4 +152,14 @@ def solve_modes(mesh, cav, fmin, fmax, cfg=SolverConfig()):
     # d V^2 Q / (area w eps0 er)
     wm = 2 * math.pi * np.maximum(f, 1)
     zpeak = cav.d * 1e-3 * coupling ** 2 * Q / (area * wm * EPS0 * cav.er)
-    return Modes(f, Q, V, pr, np.abs(V).max(0), coupling, zpeak, capped)
+    return Modes(f, Q, V, pr, np.abs(V).max(0), coupling, zpeak, capped, Q_rad)
+
+
+def _on_board_edge(nodes, edges, cav, tol=0.3):
+    """The open edges lying along the board outline (within `tol` mm)."""
+    if cav.board_edge is None or not len(edges):
+        return edges[:0]
+    import shapely
+    mid = 0.5 * (nodes[edges[:, 0]] + nodes[edges[:, 1]])
+    d = shapely.distance(cav.board_edge, shapely.points(mid))
+    return edges[d <= tol]

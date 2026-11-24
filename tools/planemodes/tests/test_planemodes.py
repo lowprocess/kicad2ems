@@ -32,7 +32,9 @@ def _closed(a, b, er, fmax):
 
 
 def test_a_rectangle_s_modes_are_the_closed_form_s():
-    cfg = StudyConfig(fmin=0.5e9, fmax=6e9, ref_nets=['GND'], mesh=MeshConfig(max_cell=0.6))
+    # the parallel-plate model alone (the edge effects are tested below)
+    cfg = StudyConfig(fmin=0.5e9, fmax=6e9, ref_nets=['GND'], mesh=MeshConfig(max_cell=0.6),
+                      solver=SolverConfig(fringe=False, radiation=False))
     (r,) = run_study(_plate(), cfg)
     want = _closed(40, 25, 4.4, 6e9)
     assert len(r.modes.f) == len(want)
@@ -188,3 +190,56 @@ def test_an_empty_frequency_window_ends_at_once():
                       solver=SolverConfig(max_modes=50))
     (r,) = run_study(_plate(), cfg)
     assert len(r.modes.f) == 0 and not r.modes.capped
+
+
+def _outer_pair(top, h, er, bottom=None):
+    """An outer pair: `top` (F.Cu GND) over a larger B.Cu GND plane."""
+    bottom = bottom or top.buffer(5 * h + 5, join_style='mitre')
+    stack = [Layer('F.Cu', 'copper', 0.035), Layer('d1', 'dielectric', h, er, 0.0),
+             Layer('B.Cu', 'copper', 0.035)]
+    return Board('test', stack, {'F.Cu': {'GND': top}, 'B.Cu': {'GND': bottom}}, [], bottom)
+
+
+def test_an_outer_layer_strip_resonates_like_a_microstrip():
+    """A half-wave strip, 0.8 x 10 mm on 0.21 mm of FR-4 (an outer pour
+    sliver): Hammerstad's eps_eff and open-end extension give its frequency.
+    The parallel-plate model alone is ~9 % low; with the fringe within 1.5 %."""
+    from planemodes.edges import microstrip
+    w, L, h, er = 0.8, 10.0, 0.21, 4.4
+    u = w / h
+    _, eeff = microstrip(u, er)
+    dl = 0.412 * h * (eeff + 0.3) * (u + 0.264) / ((eeff - 0.258) * (u + 0.8))
+    want = C0 / (2 * math.sqrt(eeff) * (L + 2 * dl) * 1e-3)
+    board = _outer_pair(shapely.box(0, 0, L, w), h, er)
+    got = {}
+    for fr in (False, True):
+        cfg = StudyConfig(fmin=4e9, fmax=10e9, ref_nets=['GND'], pairs=[('F.Cu', 'B.Cu')],
+                          mesh=MeshConfig(max_cell=0.1),
+                          solver=SolverConfig(fringe=fr, radiation=False))
+        (r,) = run_study(board, cfg)
+        got[fr] = r.modes.f[0]
+    assert got[False] / want - 1 < -0.07
+    assert abs(got[True] / want - 1) < 0.015
+
+
+def test_a_patch_s_radiation_q_is_balanis_two_slot_one():
+    """A patch on 1.6 mm FR-4, resonant along L = 30 mm (2.4 GHz), radiating
+    from its two W = 20 mm edges: Q_rad against two slots with their mutual
+    conductance (Balanis): within 10 %."""
+    from scipy.integrate import quad
+    from scipy.special import j0
+    W, L, h, er = 20.0, 30.0, 1.6, 4.4
+    board = _outer_pair(shapely.box(0, 0, L, W), h, er)
+    cfg = StudyConfig(fmin=1.5e9, fmax=3e9, ref_nets=['GND'], pairs=[('F.Cu', 'B.Cu')],
+                      mesh=MeshConfig(max_cell=0.8),
+                      solver=SolverConfig(fringe=False, radiation=True))
+    (r,) = run_study(board, cfg)
+    f = r.modes.f[0]                                   # TM10: along L (x)
+    k0 = 2 * math.pi * f / C0
+    s = lambda t: (math.sin(k0 * W * 1e-3 / 2 * math.cos(t)) / math.cos(t)) ** 2 * math.sin(t) ** 3
+    G1 = quad(s, 0, math.pi, points=[math.pi / 2])[0] / (120 * math.pi ** 2)
+    G12 = quad(lambda t: s(t) * j0(k0 * L * 1e-3 * math.sin(t)), 0, math.pi,
+               points=[math.pi / 2])[0] / (120 * math.pi ** 2)
+    eps0 = 8.8541878128e-12
+    q_balanis = 2 * math.pi * f * eps0 * er * W * L * 1e-3 / (2 * h * 2 * (G1 + G12))
+    assert abs(r.modes.Q_rad[0] / q_balanis - 1) < 0.10
