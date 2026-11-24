@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "planemodes"
+version = "0.1.0"
+description = "Plane-pair cavity eigenmodes of PCBs from KiCad or ODB++ files, with a Qt viewer"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+# Everything is on PyPI; 'triangle' (the Triangle mesher) and PySide6 ship as
+# compiled wheels.
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "shapely>=2.0",
+    "triangle>=20230923",
+    "matplotlib>=3.7",     # point location for the field raster (matplotlib.tri)
+    "PySide6>=6.5",
+    "pyqtgraph>=0.13",
+]
+
+[project.optional-dependencies]
+pardiso = ["pypardiso>=0.4"]   # multithreaded sparse solver (Intel MKL)
+test = ["pytest"]
+
+[project.scripts]
+planemodes = "planemodes.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
