@@ -1,8 +1,9 @@
 # planemodes
 
 Plane-pair cavity eigenmodes of printed circuit boards, read from **KiCad**
-(`.kicad_pcb`, versions 6–10) or **ODB++** (job folder, `.tgz`, `.tar` or `.zip`,
-with net data), in a native Qt viewer or from the command line.
+(`.kicad_pcb`, versions 6–10), **ODB++** (job folder, `.tgz`, `.tar` or `.zip`,
+with net data) or **HyperLynx** (`.hyp`), in a native Qt viewer or from the
+command line.
 
 Between two ground planes a few tenths of a millimetre apart, the field is one
 voltage V(x, y) between them. The planes' overlap resonates where it is not
@@ -30,14 +31,15 @@ python -m planemodes ...                    # the same without the entry point
 
 In the viewer:
 
-1. **Open** a KiCad file or an ODB++ archive/folder. Ground nets are guessed
+1. **Open** a KiCad or HyperLynx file, or an ODB++ archive/folder. Ground nets are guessed
    from their names (GND, AGND, VSS…); edit the list if needed.
 2. **Plane pairs** lists every pair of adjacent copper layers with its
    dielectric and ground coverage; the pairs with ground on both are ticked.
    Run one pair or many.
 3. Set the **frequency** range, **mesh** (largest cell, or cells per
    wavelength; minimum triangle angle; refinement of narrow copper) and
-   **solver** (SuperLU, or PARDISO if installed; mode limit), then **Run**.
+   **solver** (SuperLU, or PARDISO if installed; mode limit; edge fringing
+   and radiation on or off), then **Run**.
 4. Pick a **mode** with the slider or the table. Colour by signed V (the
    nodes show), |V|, or the plane current; linear or log; each mode's own
    scale or a fixed one. Arrows show the current on the chosen plane.
@@ -59,10 +61,11 @@ for r in run_study(board, StudyConfig(fmin=1e9, fmax=10e9, mesh=MeshConfig(min_a
 | Module | Does |
 |---|---|
 | `model.py` | the board: stack-up, copper per layer and net (shapely), vias, outline |
-| `readers/` | `kicad.py` (+ `sexpr.py`), `odbpp.py` (+ `lzw.py` for `.Z` files), shared `shapes.py` |
+| `readers/` | `kicad.py` (+ `sexpr.py`), `odbpp.py` (+ `lzw.py` for `.Z` files), `hyp.py`, shared `shapes.py` |
 | `cavity.py` | a plane pair's overlap region, dielectric, ground vias (shorts) and other vias (ports) |
 | `mesh.py` | Triangle meshes: wavelength sizing, quality angle, narrow-copper refinement |
 | `solver.py` | finite elements, shift-invert eigen-solve in the frequency window, Q, via coupling |
+| `edges.py` | the open edges: fringing field (microstrip model) and radiated power |
 | `study.py` | configuration and the run over plane pairs |
 | `export.py`, `raster.py` | files out; mode fields as images and arrows (shared by the GUI) |
 | `gui/` | Qt only: `app.py` (main window), `board_view.py`, `panels.py`, `worker.py` |
@@ -70,7 +73,20 @@ for r in run_study(board, StudyConfig(fmin=1e9, fmax=10e9, mesh=MeshConfig(min_a
 ## Model and accuracy
 
 - 2D parallel-plate cavity per plane pair: exact while the planes are close
-  against the wavelength; edges open (no radiation, so Q is an upper bound).
+  against the wavelength.
+- **Edge fringing.** The field spills past every open copper edge, into air
+  on an outer layer and into the dielectric on a buried one. It is added as
+  a thin strip along each edge whose width and permittivity come from the
+  Hammerstad–Jensen microstrip formulas (width 1.3 h, effective εr 2.2 for
+  FR-4 on an outer layer). A 1 mm wide, 20 mm long outer-layer strip on
+  0.2 mm FR-4 resonates within 0.5 % of the microstrip formula with it, and
+  8.6 % low without it.
+- **Radiation.** The edge voltages act as magnetic currents over a ground
+  plane; their exact free-space coupling gives the radiated power and a
+  Q_rad, combined with dielectric and conductor loss in Q. Outer pairs
+  radiate from every open edge, buried ones only where they reach the board
+  outline. A 20 × 30 mm patch on 1.6 mm FR-4 comes within 2 % of Balanis's
+  two-slot Q_rad. The table shows Q and Q_rad.
 - Ground vias are holes held at V = 0; holes under 2 mm² in a plane are
   filled; signal vias report the cavity's peak impedance at them.
 - Accuracy is set by the copper's corners and slivers more than by the
@@ -79,8 +95,24 @@ for r in run_study(board, StudyConfig(fmin=1e9, fmax=10e9, mesh=MeshConfig(min_a
   default 25° minimum angle +1.9 % (13 s); 28° and copper under 2 mm refined
   to 0.15 mm +1.0 % (3 min). Frequencies come out high, and fall as the mesh
   is refined: check a result by raising the angle or refining.
-- Outer-layer pours (microstrip-like) see part of their field in air; their
-  modes sit higher than this model gives, by up to ~10 % for narrow slivers.
-- KiCad zones saved without fills are filled approximately (outline minus
-  other nets' copper and the zone clearance): refill in KiCad for exact copper.
-  ODB++ thermal-relief symbols are read as plain rings.
+
+## Readers
+
+- **KiCad**: zones saved without fills are filled approximately (outline
+  minus other nets' copper and the zone clearance): refill in KiCad for
+  exact copper.
+- **ODB++**: every standard symbol, including thermals with their spokes.
+  NEGATIVE plane layers are the profile with their features clearing it;
+  the plane's net is taken from `.eda_layers`, else from the vias that land
+  on copper, else from the layer name. The stack-up comes from
+  `matrix/stackup.xml` (ODB++ 8.1) when it names every copper layer, else
+  from the matrix and layer attributes (including Altium's dielectric
+  thickness on copper layers). Copper layers outside every drill span
+  (unused layers some exporters write) are left out.
+- **HyperLynx**: stack-up (DIELECTRIC `C=` is εr), outline, padstacks (metal,
+  antipad, thermal rows), tracks, arcs, vias, pins, polygons with voids and
+  pen width. PLANE-type polygons are cleared round other nets by the antipad
+  or the plane separation; a PLANE layer with no polygons is flooded for the
+  net whose holes connect to it. KiCad's exporter mirrors the rotation of
+  non-square pads; this is not undone.
+- Every reader lists what it assumed in the log (and `board.notes`).

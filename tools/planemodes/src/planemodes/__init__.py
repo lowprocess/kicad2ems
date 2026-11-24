@@ -1,7 +1,7 @@
 """planemodes: plane-pair cavity eigenmodes of printed circuit boards.
 
     from planemodes import load_board, StudyConfig, run_study
-    board = load_board('board.kicad_pcb')          # or an ODB++ dir / .tgz / .zip
+    board = load_board('board.kicad_pcb')          # or .hyp, an ODB++ dir / .tgz / .zip
     results = run_study(board, StudyConfig(fmin=1e9, fmax=10e9))
 """
 from .model import Board, Layer, Via

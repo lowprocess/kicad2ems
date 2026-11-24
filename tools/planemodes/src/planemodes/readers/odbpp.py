@@ -1,9 +1,11 @@
 """ODB++ (a job directory, .tgz/.tar or .zip) -> Board, with nets.
 
-Read: matrix/matrix (layer order, types, drill spans), the step's copper
-layers (features: lines, pads, arcs, surfaces; negative polarity clears),
-drill layers (vias), eda/data (which net each feature belongs to), the
-dielectric layers' attributes (thickness, er, loss tangent) and the profile
+Read: matrix/matrix (layer order, types, polarity, drill spans), the step's
+copper layers (features: lines, pads, arcs, surfaces with every standard
+symbol, thermals with their spokes; negative features clear), NEGATIVE plane
+layers (the profile filled, features clearing it), drill layers (vias),
+eda/data (which net each feature belongs to), the stack-up from
+matrix/stackup.xml or else the layers' attributes, and the profile
 (outline). ODB++ has y up; the Board gets y down like KiCad.
 """
 import gzip
@@ -14,13 +16,14 @@ import re
 import tarfile
 import tempfile
 import zipfile
+import xml.etree.ElementTree as ET
 from collections import defaultdict
 from contextlib import contextmanager
 
 import numpy as np
 import shapely
 from shapely import affinity
-from shapely.geometry import LineString, Point, Polygon
+from shapely.geometry import LineString, Point, Polygon, box
 
 from ..model import Board, Layer, Via
 from . import lzw, shapes as shp
@@ -103,6 +106,122 @@ def _matrix(text):
 _UNITS = {'INCH': (25.4, 0.0254), 'MM': (1.0, 0.001)}   # coordinates, symbol sizes
 
 
+def _ring(outer, inner):
+    return outer.difference(inner)
+
+
+def _thermal(ring, angle, spokes, gap):
+    """A thermal relief: `ring` with `spokes` straight slots of width `gap`
+    cut at angle + k 360/spokes (degrees, counter-clockwise from +x)."""
+    reach = 2 * max(abs(c) for c in ring.bounds) + 1.0
+    for k in range(max(int(spokes), 0)):
+        slot = affinity.rotate(box(0, -gap / 2, reach, gap / 2),
+                               angle + k * 360.0 / spokes, origin=(0, 0))
+        ring = ring.difference(slot)
+    return ring
+
+
+def _rect(w, h, rad=0.0, cham=0.0):
+    """A w x h rectangle, corners rounded by `rad` or cut by `cham`."""
+    if rad > 0:
+        r = min(rad, min(w, h) / 2 - 1e-9)
+        return box(-w / 2 + r, -h / 2 + r, w / 2 - r, h / 2 - r).buffer(r, quad_segs=4)
+    if cham > 0:
+        c = min(cham, min(w, h) / 2)
+        return Polygon([(-w / 2 + c, -h / 2), (w / 2 - c, -h / 2), (w / 2, -h / 2 + c),
+                        (w / 2, h / 2 - c), (w / 2 - c, h / 2), (-w / 2 + c, h / 2),
+                        (-w / 2, h / 2 - c), (-w / 2, -h / 2 + c)])
+    return box(-w / 2, -h / 2, w / 2, h / 2)
+
+
+def _standard_symbol(name, size_unit):
+    """A standard ODB++ symbol (spec section "Standard Symbols") as geometry
+    at the origin (y up), or None if `name` is not one. Sizes are scaled by
+    `size_unit` (mils or microns to mm); angles and spoke counts are not.
+    Thermals are the copper ring between their outer and inner size with
+    the spoke slots cut out (rounded line ends are drawn square)."""
+    m = re.fullmatch(r'([a-z_]+)([\d.].*)?', name.lower())
+    if not m:
+        return None
+    kind, args = m.group(1), (m.group(2) or '').split('x')
+    v, tag = [], {}
+    for a in args:                              # positional numbers, then xr<rad> / xc<cut>
+        if re.fullmatch(r'[\d.]+', a) and not tag:
+            v.append(float(a))
+        elif re.fullmatch(r'[rc][\d.]+', a):
+            tag[a[0]] = float(a[1:]) * size_unit
+    L = lambda i: v[i] * size_unit             # a length parameter
+    circ = lambda d: Point(0, 0).buffer(d / 2, quad_segs=16)
+    try:
+        if kind == 'null':
+            return Polygon()
+        if kind in ('r', 'hole', 'bfr') and v:
+            g = circ(L(0))
+            if kind == 'bfr':                   # butterfly: the 1st and 3rd quadrants
+                d = L(0)
+                g = g.intersection(box(0, 0, d, d).union(box(-d, -d, 0, 0)))
+            return g
+        if kind in ('s', 'bfs') and v:
+            g = _rect(L(0), L(0))
+            if kind == 'bfs':
+                d = L(0)
+                g = g.intersection(box(0, 0, d, d).union(box(-d, -d, 0, 0)))
+            return g
+        if kind == 'rect':
+            return _rect(L(0), L(1), tag.get('r', 0.0), tag.get('c', 0.0))
+        if kind in ('oval', 'oval_h'):
+            return shp.pad_shape('oval', L(0), L(1))
+        if kind == 'di':
+            return shp.pad_shape('diamond', L(0), L(1))
+        if kind == 'oct':                       # corner: the cut along each side
+            return _rect(L(0), L(1), cham=L(2) if len(v) > 2 else min(L(0), L(1)) * 0.29)
+        if kind == 'el':
+            return affinity.scale(circ(1.0), L(0), L(1))
+        if kind == 'tri':
+            return Polygon([(-L(0) / 2, -L(1) / 2), (L(0) / 2, -L(1) / 2), (0, L(1) / 2)])
+        if kind in ('hex_l', 'hex_s'):
+            w, h, r = L(0), L(1), L(2)
+            pts = [(-w / 2, 0), (-w / 2 + r, h / 2), (w / 2 - r, h / 2), (w / 2, 0),
+                   (w / 2 - r, -h / 2), (-w / 2 + r, -h / 2)]
+            if kind == 'hex_s':
+                pts = [(-w / 2, -h / 2 + r), (-w / 2, h / 2 - r), (0, h / 2), (w / 2, h / 2 - r),
+                       (w / 2, -h / 2 + r), (0, -h / 2)]
+            return Polygon(pts)
+        if kind == 'donut_r':
+            return _ring(circ(L(0)), circ(L(1)))
+        if kind == 'donut_s':
+            r = tag.get('r', 0.0)
+            return _ring(_rect(L(0), L(0), r), _rect(L(1), L(1), max(r - (L(0) - L(1)) / 2, 0)))
+        if kind == 'donut_sr':
+            return _ring(_rect(L(0), L(0)), circ(L(1)))
+        if kind == 'donut_rc':
+            w, h, lw = L(0), L(1), L(2)
+            return _ring(_rect(w, h, tag.get('r', 0.0)), _rect(w - 2 * lw, h - 2 * lw))
+        if kind == 'donut_o':
+            w, h, lw = L(0), L(1), L(2)
+            return _ring(shp.pad_shape('oval', w, h), shp.pad_shape('oval', w - 2 * lw, h - 2 * lw))
+        # thermals: (outer, inner | ring width) x angle x spokes x gap
+        if kind in ('thr', 'ths'):
+            return _thermal(_ring(circ(L(0)), circ(L(1))), v[2], v[3], L(4))
+        if kind in ('s_ths', 's_tho', 's_thr'):
+            ring = _ring(_rect(L(0), L(0), tag.get('r', 0.0)), _rect(L(1), L(1)))
+            return _thermal(ring, 45.0 if kind == 's_thr' else v[2],
+                            4 if kind == 's_thr' else v[3], L(4))
+        if kind == 'sr_ths':
+            return _thermal(_ring(_rect(L(0), L(0)), circ(L(1))), v[2], v[3], L(4))
+        if kind in ('rc_ths', 'rc_tho'):
+            w, h, lw = L(0), L(1), L(5)
+            ring = _ring(_rect(w, h, tag.get('r', 0.0)), _rect(w - 2 * lw, h - 2 * lw))
+            return _thermal(ring, v[2], v[3], L(4))
+        if kind in ('o_ths', 'oblong_ths'):
+            w, h, lw = L(0), L(1), L(5)
+            ring = _ring(shp.pad_shape('oval', w, h), shp.pad_shape('oval', w - 2 * lw, h - 2 * lw))
+            return _thermal(ring, v[2], v[3], L(4))
+    except (IndexError, ValueError):
+        return None
+    return None
+
+
 class _Features:
     """Parses feature files into [(index, geometry mm (y up), positive)].
     Standard symbol sizes are mils (inch files) or microns (mm files);
@@ -113,39 +232,17 @@ class _Features:
 
     def symbol(self, name, size_unit):
         key = (name, size_unit)
-        if key in self.cache:
-            return self.cache[key]
-        n = [float(x) * size_unit for x in re.findall(r'[\d.]+', name)]
-        g = None
-        if re.fullmatch(r'r[\d.]+', name):
-            g = Point(0, 0).buffer(n[0] / 2, quad_segs=8)
-        elif re.fullmatch(r's[\d.]+', name):
-            g = shp.pad_shape('rect', n[0], n[0])
-        elif name.startswith('rect') and len(n) >= 2:
-            rr = n[2] / min(n[:2]) if 'xr' in name and len(n) > 2 else 0.0
-            g = shp.pad_shape('roundrect' if rr else 'rect', n[0], n[1], rr)
-        elif name.startswith('oval') and len(n) >= 2:
-            g = shp.pad_shape('oval', n[0], n[1])
-        elif name.startswith('di') and len(n) >= 2:
-            g = shp.pad_shape('diamond', n[0], n[1])
-        elif name.startswith('oct') and len(n) >= 2:
-            g = shp.pad_shape('octagon', n[0], n[1])
-        elif name.startswith(('donut_r', 'thr', 'ths', 's_th', 'donut_s')) and len(n) >= 2:
-            # rings and thermal reliefs: an annulus (a thermal's spokes ignored)
-            outer = Point(0, 0).buffer(n[0] / 2, quad_segs=8)
-            g = outer.difference(Point(0, 0).buffer(n[1] / 2, quad_segs=8))
-        elif name.startswith('el') and len(n) >= 2:
-            g = affinity.scale(Point(0, 0).buffer(0.5, quad_segs=8), n[0], n[1])
-        else:                                   # a user-defined symbol
-            d = _ci(os.path.join(self.job, 'symbols'), name)
-            text = _text(os.path.join(d, 'features')) if d else None
-            if text is not None:
-                feats = self.parse(text)
-                g = shapely.Polygon()
-                for _, geom, pos in feats:
-                    g = g.union(geom) if pos else g.difference(geom)
-        self.cache[key] = g
-        return g
+        if key not in self.cache:
+            g = _standard_symbol(name, size_unit)
+            if g is None:                       # a user-defined symbol
+                d = _ci(os.path.join(self.job, 'symbols'), name)
+                text = _text(os.path.join(d, 'features')) if d else None
+                if text is not None:
+                    g = shapely.Polygon()
+                    for _, geom, pos in self.parse(text):
+                        g = g.union(geom) if pos else g.difference(geom)
+            self.cache[key] = g
+        return self.cache[key]
 
     def parse(self, text):
         unit, size_unit = _UNITS['INCH']
@@ -258,6 +355,118 @@ def _flip(g):
     return affinity.scale(g, 1, -1, origin=(0, 0))
 
 
+_XML_UNITS = {'MM': 1.0, 'MICRON': 0.001, 'INCH': 25.4, 'MIL': 0.0254}
+
+
+def _stackup_xml(path, copper):
+    """matrix/stackup.xml (ODB++ 8.1) -> [Layer] top to bottom, or None if it
+    is missing or does not name every copper layer of the matrix (the matrix
+    wins). A layer's material comes from SpecRef -> Spec -> Material; a
+    length's units are the nearest Units attribute, then DefaultUnits."""
+    if not path:
+        return None
+    root = ET.parse(path).getroot()
+    tag = lambda e: e.tag.rsplit('}', 1)[-1]     # without any XML namespace
+    default = _XML_UNITS.get(root.get('DefaultUnits', 'MIL').upper(), 0.0254)
+    eda = next((e for e in root if tag(e) == 'EdaData'), None)
+    if eda is None:
+        return None
+    mats = {}                                   # (spec, material) -> (thickness mm, er, tand, oz)
+    for spec in (e for e in eda.iter() if tag(e) == 'Spec'):
+        for mat in (e for e in spec if tag(e) == 'Material'):
+            t, er, tand, oz = None, None, None, None
+            for e in mat.iter():
+                u = _XML_UNITS.get((e.get('Units_Thickness') or e.get('Units') or '').upper(), default)
+                if tag(e) == 'Default_Thickness' and t is None:
+                    t = float(e.get('Thickness', 0)) * u
+                elif tag(e) == 'Property':
+                    if e.get('Thickness'):
+                        t = float(e.get('Thickness')) * u
+                    if er is None and e.get('DielectricConstant_Dk'):
+                        er = float(e.get('DielectricConstant_Dk'))
+                        tand = float(e.get('LossTangent_Df') or 0.02)
+                elif tag(e) == 'Conductor' and e.get('CopperWeight_oz_ft2'):
+                    oz = float(e.get('CopperWeight_oz_ft2'))
+            mats[spec.get('SpecName'), mat.get('MaterialName')] = (t, er, tand, oz)
+    stackup = next((e for e in eda.iter() if tag(e) == 'Stackup'), None)
+    if stackup is None:
+        return None
+    out = []
+    for lay in (e for e in stackup.iter() if tag(e) == 'Layer'):
+        name, ltype = (lay.get('LayerName') or '').lower(), (lay.get('LayerType') or '').upper()
+        ref = next((e for e in lay.iter() if tag(e) == 'SpecRef'), None)
+        m = next((e for e in ref.iter() if tag(e) == 'Material'), None) if ref is not None else None
+        t, er, tand, oz = mats.get((ref.get('MaterialSpecName') if ref is not None else None,
+                                    m.get('MaterialName') if m is not None else None),
+                                   (None, None, None, None))
+        if name in copper:
+            out.append(Layer(name, 'copper', t if t else 0.0347 * (oz or 1.0)))
+        elif ltype == 'DIELECTRIC' and t:
+            out.append(Layer(name, 'dielectric', t, er or 4.4, tand if tand is not None else 0.02))
+    if sorted(l.name for l in out if l.kind == 'copper') != sorted(copper):
+        return None
+    return out
+
+
+def _attr_stack(board_layers, copper, attrs):
+    """The stack-up from the matrix's layer order and the layers' attributes
+    (.layer_dielectric, .dielectric_constant, .loss_tangent, .copper_weight).
+    Some writers (Altium) put no DIELECTRIC rows in the matrix and give each
+    copper layer the .layer_dielectric below it instead."""
+    stack, notes = [], []
+    below = {}                                  # copper layer -> its dielectric below
+    for l in board_layers:
+        name, kind = l['NAME'].lower(), l.get('TYPE', '').upper()
+        a = attrs(name)
+        mm = a.get('UNITS', 'INCH').upper() == 'MM'
+        unit = 1.0 if mm else 25.4
+        num = lambda k, d: float(a.get(k) or d)
+        if name in copper:
+            w = num('.COPPER_WEIGHT', 0.0)      # um in MM jobs, oz/ft^2 in INCH jobs
+            stack.append(Layer(name, 'copper', (w / 1000 if mm else 0.0347 * w) if w else 0.035))
+            if a.get('.LAYER_DIELECTRIC'):
+                below[name] = Layer(f'dielectric below {name}', 'dielectric',
+                                    num('.LAYER_DIELECTRIC', 0) * unit,
+                                    num('.DIELECTRIC_CONSTANT', 4.4), num('.LOSS_TANGENT', 0.02))
+        elif kind == 'DIELECTRIC':
+            t = num('.LAYER_DIELECTRIC', 0) * unit
+            stack.append(Layer(name, 'dielectric', t or 0.1,
+                               num('.DIELECTRIC_CONSTANT', 4.4), num('.LOSS_TANGENT', 0.02)))
+            if not t:
+                notes.append(f'{name}: no thickness given, 0.1 mm assumed')
+    out = []
+    for l in stack:                             # fill gaps between copper layers
+        if l.kind == 'copper' and out and out[-1].kind == 'copper':
+            up = out[-1].name
+            if up in below and below[up].thickness > 0:
+                out.append(below[up])
+            else:
+                out.append(Layer(f'dielectric ({up}/{l.name})', 'dielectric', 0.1))
+                notes.append(f'no dielectric between {up} and {l.name}: 0.1 mm, er 4.4 assumed')
+        out.append(l)
+    return out, notes
+
+
+def _plane_net(name, attrs, nets, via_votes):
+    """The net of a negative plane layer. ODB++ does not record it, so: the
+    net named in .eda_layers (Altium writes "GroundPlane1(GND)"), else the
+    net most of whose holes through the layer land on copper (no clearance
+    there), else a net named in the layer name (INT1__GND_)."""
+    norm = lambda s: re.sub(r'[^a-z0-9]+', '_', s.lower()).strip('_')
+    by_norm = {norm(n): n for n in nets if n}
+    m = re.search(r'\(([^)]+)\)', attrs.get('.EDA_LAYERS', ''))
+    if m and norm(m.group(1)) in by_norm:
+        return by_norm[norm(m.group(1))]
+    if via_votes:
+        return max(via_votes, key=via_votes.get)
+    parts = norm(name).split('_')
+    for n in sorted(by_norm, key=len, reverse=True):
+        k = n.split('_')
+        if any(parts[i:i + len(k)] == k for i in range(len(parts))):
+            return by_norm[n]
+    return ''
+
+
 def read_odbpp(path, step=None):
     """Read an ODB++ job (directory or archive) into a Board. `step`: the step
     to read (default: the first, usually the board)."""
@@ -269,80 +478,49 @@ def read_odbpp(path, step=None):
         if sdir is None:
             raise FileNotFoundError(f'step {step!r} not found')
         board_layers = [l for l in mlayers if l.get('CONTEXT', '').upper() == 'BOARD']
-        copper = [l['NAME'].lower() for l in board_layers
-                  if l.get('TYPE', '').upper() in COPPER_TYPES]
+        is_cu = lambda l: l.get('TYPE', '').upper() in COPPER_TYPES
+        copper = [l['NAME'].lower() for l in board_layers if is_cu(l)]
         if not copper:
             raise ValueError('no copper layers in the matrix')
+
         def lfile(name, fname):
             """A file of a layer's folder (None if the layer has no folder)."""
             d = _ci(os.path.join(sdir, 'layers'), name)
             return _text(os.path.join(d, fname)) if d else None
+        attrs = lambda name: _keyvals(lfile(name, 'attrlist'))
 
-        # stack-up: copper and dielectric layers in matrix order
-        stack = []
+        # drill layers: their spans; copper outside every span is not in the board
+        drills = []
         for l in board_layers:
-            name, kind = l['NAME'].lower(), l.get('TYPE', '').upper()
-            a = _keyvals(lfile(name, 'attrlist'))
-            unit = _UNITS.get(a.get('UNITS', 'INCH').upper(), _UNITS['INCH'])[0]
-            if kind in COPPER_TYPES:
-                oz = float(a.get('.COPPER_WEIGHT', 1) or 1)
-                stack.append(Layer(name, 'copper', 0.0347 * oz))
-            elif kind == 'DIELECTRIC':
-                t = float(a.get('.LAYER_DIELECTRIC', 0) or 0) * unit
-                stack.append(Layer(name, 'dielectric', t or 0.1,
-                                   float(a.get('.DIELECTRIC_CONSTANT', 4.4) or 4.4),
-                                   float(a.get('.LOSS_TANGENT', 0.02) or 0.02)))
-        # a gap with no dielectric layer gets an assumed one
-        out, prev = [], None
-        for l in stack:
-            if l.kind == 'copper' and prev == 'copper':
-                out.append(Layer(f'dielectric ({out[-1].name}/{l.name})', 'dielectric', 0.1))
-                notes.append(f'no dielectric between {out[-2].name} and {l.name}: 0.1 mm, er 4.4 assumed')
-            out.append(l)
-            prev = l.kind
-        stack = out
+            if l.get('TYPE', '').upper() == 'DRILL':
+                top = (l.get('START_NAME') or copper[0]).lower()
+                bot = (l.get('END_NAME') or copper[-1]).lower()
+                if top not in copper or bot not in copper:
+                    top, bot = copper[0], copper[-1]
+                drills.append((l['NAME'].lower(), top, bot))
+        if drills:
+            lo = min(min(copper.index(t), copper.index(b)) for _, t, b in drills)
+            hi = max(max(copper.index(t), copper.index(b)) for _, t, b in drills)
+            dropped = copper[:lo] + copper[hi + 1:]
+            if dropped:
+                notes.append(f'left out copper layers outside every drill span: {", ".join(dropped)}')
+                copper = copper[lo:hi + 1]
+                board_layers = [l for l in board_layers if not is_cu(l) or l['NAME'].lower() in copper]
 
-        # nets of the features
+        # stack-up: stackup.xml if there is one, else the matrix and attributes
+        stack = _stackup_xml(_ci(os.path.join(job, 'matrix'), 'stackup.xml'), copper)
+        if stack:
+            notes.append('stack-up read from matrix/stackup.xml')
+        else:
+            stack, more = _attr_stack(board_layers, copper, attrs)
+            notes += more
+
         netmap = _nets(_text(os.path.join(sdir, 'eda', 'data')))
         parser = _Features(job)
-        cu = {}
-        for name in copper:
-            feats = parser.parse(lfile(name, 'features') or '')
-            acc, pending = defaultdict(list), defaultdict(list)
-
-            def flush():
-                for n, gs in pending.items():
-                    acc[n] = [shapely.union_all(acc[n] + gs)]
-                pending.clear()
-            negs = []
-            for idx, g, pos in feats:
-                if pos:
-                    if negs:                    # a run of clears ends: cut everything so far
-                        flush()
-                        cut = shapely.union_all(negs)
-                        for n in acc:
-                            acc[n] = [acc[n][0].difference(cut)] if acc[n] else []
-                        negs = []
-                    pending[netmap.get((name, idx), '')].append(g)
-                else:
-                    negs.append(g)
-            flush()
-            if negs:
-                cut = shapely.union_all(negs)
-                for n in acc:
-                    acc[n] = [acc[n][0].difference(cut)] if acc[n] else []
-            cu[name] = {n: _flip(shp.clean(gs[0])) for n, gs in acc.items() if gs}
 
         # vias: drill layers' holes, spanning START_NAME..END_NAME
         vias = []
-        for l in board_layers:
-            if l.get('TYPE', '').upper() != 'DRILL':
-                continue
-            name = l['NAME'].lower()
-            top = (l.get('START_NAME') or copper[0]).lower()
-            bot = (l.get('END_NAME') or copper[-1]).lower()
-            if top not in copper or bot not in copper:
-                top, bot = copper[0], copper[-1]
+        for name, top, bot in drills:
             for idx, g, pos in parser.parse(lfile(name, 'features') or ''):
                 c = g.centroid
                 d = 2 * math.sqrt(g.area / math.pi)
@@ -350,7 +528,61 @@ def read_odbpp(path, step=None):
 
         # outline: the step profile's surface
         prof = parser.parse(_text(os.path.join(sdir, 'profile')) or '')
-        outline = _flip(shapely.union_all([g for _, g, p in prof if p])) if prof else None
+        outline_up = shapely.union_all([g for _, g, p in prof if p]) if prof else None
+
+        # copper, per net. Features apply in file order: positive adds, negative
+        # clears. A NEGATIVE layer is the reverse: the profile is copper and
+        # its features (antipads, thermal rings) clear it.
+        polarity = {l['NAME'].lower(): l.get('POLARITY', 'POSITIVE').upper() for l in board_layers}
+        cu = {}
+        for name in copper:
+            feats = parser.parse(lfile(name, 'features') or '')
+            neg_layer = polarity.get(name) == 'NEGATIVE'
+            if neg_layer:
+                if outline_up is None:
+                    notes.append(f'{name}: negative layer but no profile; left empty')
+                    cu[name] = {}
+                    continue
+                feats = [(-1, outline_up, True)] + [(i, g, not p) for i, g, p in feats]
+            acc, pending, negs = defaultdict(list), defaultdict(list), []
+
+            def flush():
+                for n, gs in pending.items():
+                    acc[n] = [shapely.union_all(acc[n] + gs)]
+                pending.clear()
+
+            def cut():
+                c = shapely.union_all(negs)
+                for n in acc:
+                    acc[n] = [acc[n][0].difference(c)] if acc[n] else []
+                negs.clear()
+            for idx, g, pos in feats:
+                if pos:
+                    if negs:                    # a run of clears ends: cut everything so far
+                        flush(); cut()
+                    pending[netmap.get((name, idx), '') if idx >= 0 else None].append(g)
+                else:
+                    negs.append(g)
+            flush()
+            if negs:
+                cut()
+            if neg_layer:                       # the background's net
+                if outline_up is not None:
+                    for n in acc:
+                        acc[n] = [acc[n][0].intersection(outline_up)] if acc[n] else []
+                plane = acc.pop(None, [])
+                votes = defaultdict(int)
+                if plane:
+                    for v in vias:
+                        if (copper.index(v.top) <= copper.index(name) <= copper.index(v.bottom)
+                                and v.net and plane[0].contains(Point(v.x, -v.y))):
+                            votes[v.net] += 1
+                net = _plane_net(name, attrs(name), set(netmap.values()), votes)
+                notes.append(f'{name}: negative plane layer, net {net or "unknown"}')
+                if plane:
+                    acc[net] = [shapely.union_all(acc.get(net, []) + plane)]
+            cu[name] = {n: _flip(shp.clean(gs[0])) for n, gs in acc.items() if gs}
+        outline = _flip(outline_up) if outline_up is not None else None
     if not any(n for per in cu.values() for n in per):
         notes.append('no net data (eda/data) found: copper has no nets')
     return Board(str(path), stack, cu, vias, outline, notes)

@@ -83,7 +83,7 @@ class MainWindow(QMainWindow):
     # ---- loading ---------------------------------------------------------------
     def open_dialog(self):
         p, _ = QFileDialog.getOpenFileName(
-            self, 'Open board', '', 'Boards (*.kicad_pcb *.tgz *.tar.gz *.tar *.zip);;All files (*)')
+            self, 'Open board', '', 'Boards (*.kicad_pcb *.hyp *.HYP *.tgz *.tar.gz *.tar *.zip);;All files (*)')
         if p:
             self.load(p)
 

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "planemodes"
 version = "0.1.0"
-description = "Plane-pair cavity eigenmodes of PCBs from KiCad or ODB++ files, with a Qt viewer"
+description = "Plane-pair cavity eigenmodes of PCBs from KiCad, ODB++ or HyperLynx files, with a Qt viewer"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

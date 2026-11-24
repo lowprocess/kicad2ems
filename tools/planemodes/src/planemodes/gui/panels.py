@@ -32,7 +32,7 @@ class StudyPanel(QWidget):
 
         box = QGroupBox('Board'); f = QVBoxLayout(box)
         self.file = QLabel('No board loaded'); self.file.setWordWrap(True)
-        b = QPushButton('Open KiCad / ODB++…'); b.clicked.connect(self.open_requested)
+        b = QPushButton('Open KiCad / ODB++ / HyperLynx…'); b.clicked.connect(self.open_requested)
         f.addWidget(self.file); f.addWidget(b)
         lay.addWidget(box)
 

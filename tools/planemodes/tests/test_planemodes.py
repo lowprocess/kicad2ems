@@ -1,5 +1,5 @@
-"""planemodes: the physics against closed forms, and both readers on small
-boards written here."""
+"""planemodes: the physics against closed forms, and the readers (KiCad,
+ODB++, HyperLynx) on small boards written here."""
 import math
 import os
 import tarfile
@@ -141,6 +141,119 @@ def test_the_odbpp_reader(tmp_path, archive):
     assert v.net == 'GND' and (v.top, v.bottom) == ('top', 'gnd2')
     assert v.drill == pytest.approx(0.3048, rel=2e-2)
     assert (v.x, v.y) == pytest.approx((12.7, -12.7), abs=1e-6)     # y flipped to point down
+
+
+STACKUP_XML = """<?xml version="1.0"?>
+<StackupFile Version="8.1" DefaultUnits="MM"><EdaData CompanyName="">
+ <Specs><Spec SpecName="pcb">
+  <Material MaterialName="TOP"><Conductor ConductorType="COPPER" CopperWeight_oz_ft2="1"/>
+   <Default_Thickness Thickness="0.035"/></Material>
+  <Material MaterialName="CORE"><Dielectric DielectricType="CORE"><Properties PropertyName="d">
+   <Property FrequencyVal="1" DielectricConstant_Dk="3.0" LossTangent_Df="0.003"/></Properties></Dielectric>
+   <Default_Thickness Thickness="12" Units="MIL"/></Material>
+ </Spec></Specs>
+ <Stackup StackupName="pcb"><Group GroupName="g">
+  <Layer LayerName="TOP" LayerType="SIGNAL"><SpecRef MaterialSpecName="pcb"><Material MaterialName="TOP"/></SpecRef></Layer>
+  <Layer LayerName="CORE" LayerType="DIELECTRIC"><SpecRef MaterialSpecName="pcb"><Material MaterialName="CORE"/></SpecRef></Layer>
+  <Layer LayerName="GND2" LayerType="POWER_GROUND"><SpecRef MaterialSpecName="pcb"><Material MaterialName="TOP"/></SpecRef></Layer>
+ </Group></Stackup></EdaData></StackupFile>"""
+
+
+def test_odbpp_negative_plane_thermals_and_stackup_xml(tmp_path):
+    """GND2 made NEGATIVE: the profile is copper, a thermal (45 deg spokes)
+    joins the GND via, an antipad clears the SIG via; the stack-up comes
+    from matrix/stackup.xml (12 mil of er 3.0) over the matrix's D1."""
+    _odb_job(str(tmp_path))
+    m = tmp_path / 'matrix' / 'matrix'
+    m.write_text(m.read_text().replace('NAME=GND2\n', 'NAME=GND2\n POLARITY=NEGATIVE\n'))
+    (tmp_path / 'matrix' / 'stackup.xml').write_text(STACKUP_XML)
+    (tmp_path / 'steps/pcb/layers/gnd2/features').write_text(
+        'UNITS=INCH\n$0 ths40x30x45x4x8\n$1 r40\nP 0.5 0.5 0 P 0 0\nP 0.2 0.2 1 P 0 0\n')
+    (tmp_path / 'steps/pcb/layers/drill/features').write_text(
+        'UNITS=INCH\n$0 r12\nP 0.5 0.5 0 P 0 0\nP 0.2 0.2 0 P 0 0\n')
+    eda = tmp_path / 'steps/pcb/eda/data'
+    eda.write_text(eda.read_text() + 'FID H 2 1\n')
+    b = load_board(tmp_path)
+    assert b.gap('top', 'gnd2') == pytest.approx((12 * 0.0254, 3.0, 0.003))
+    plane = b.copper['gnd2']['GND']
+    mm = lambda x, y: shapely.Point(x * 25.4, -y * 25.4)
+    assert plane.contains(mm(0.5, 0.5))                  # inside the thermal: the pad
+    assert not plane.contains(mm(0.2, 0.2))              # the SIG via's antipad
+    r = 0.0175                                           # in the thermal's air gap ring
+    c, s = math.cos(math.radians(45)), math.sin(math.radians(45))
+    assert plane.contains(mm(0.5 + r * c, 0.5 + r * s))  # a spoke
+    assert not plane.contains(mm(0.5 + r, 0.5))          # between spokes
+    ring = math.pi / 4 * (40 ** 2 - 30 ** 2) - 4 * 8 * 5   # thermal ring less its spokes, mil^2
+    hole = math.pi / 4 * 40 ** 2
+    want = (1000 * 800 - ring - hole) * 0.0254 ** 2
+    assert plane.area == pytest.approx(want, rel=2e-3)
+
+
+HYP = """{VERSION=2.0}
+{UNITS=ENGLISH LENGTH}
+* a comment line
+{PLANE_SEP=0.005}
+{BOARD
+(PERIMETER_SEGMENT X1=0 Y1=0 X2=1 Y2=0)
+(PERIMETER_SEGMENT X1=1 Y1=0 X2=1 Y2=0.8)
+(PERIMETER_SEGMENT X1=1 Y1=0.8 X2=0 Y2=0.8)
+(PERIMETER_SEGMENT X1=0 Y1=0.8 X2=0 Y2=0)
+}
+{STACKUP
+(SIGNAL T=0.0014 L=Top)
+(DIELECTRIC T=0.008 C=3.5 LT=0.004 L=D1)
+(PLANE T=0.0014 L=Bottom)
+}
+{PADSTACK=gv, 0.012
+(MDEF, 0, 0.024, 0.024, 0, M)
+}
+{PADSTACK=sv, 0.012
+(MDEF, 0, 0.024, 0.024, 0, M)
+(ADEF, 0, 0.040, 0.040, 0, A)
+}
+{PADSTACK=smd
+(Top, 1, 0.04, 0.02, 90)
+}
+{NET=GND
+(VIA X=0.5 Y=0.4 P=gv)
+{POLYGON L=Top T=POUR W=0 ID=1 X=0.6 Y=0.1
+(LINE X=0.9 Y=0.1)
+(CURVE X1=0.9 Y1=0.1 X2=0.9 Y2=0.3 XC=0.9 YC=0.2 R=0.1)
+(LINE X=0.6 Y=0.3)
+}
+{POLYVOID ID=1 X=0.7 Y=0.15
+(LINE X=0.8 Y=0.15)
+(LINE X=0.8 Y=0.25)
+(LINE X=0.7 Y=0.25)
+}
+}
+{NET=SIG
+(SEG X1=0.1 Y1=0.6 X2=0.9 Y2=0.6 W=0.01 L=Top
+(VIA X=0.2 Y=0.2 P=sv)
+(PIN X=0.3 Y=0.7 R=R1.1 P=smd)
+}
+"""
+
+
+def test_the_hyperlynx_reader(tmp_path):
+    p = tmp_path / 'b.hyp'
+    p.write_text(HYP)
+    b = load_board(p)
+    assert b.copper_layers == ['Top', 'Bottom']
+    assert b.gap('Top', 'Bottom') == pytest.approx((0.2032, 3.5, 0.004))   # C= is er here
+    mm = lambda x, y: shapely.Point(x * 25.4, -y * 25.4)               # y flipped
+    assert b.outline.area == pytest.approx(25.4 ** 2 * 0.8)
+    pour = b.copper['Top']['GND']                     # a box with a half-round end, a void
+    assert pour.contains(mm(0.95, 0.2)) and not pour.contains(mm(0.75, 0.2))
+    assert pour.area == pytest.approx(25.4 ** 2 * (0.3 * 0.2 + math.pi * 0.01 / 2 - 0.01)
+                                      + math.pi * (0.012 * 25.4) ** 2, rel=5e-3)
+    sig = b.copper['Top']['SIG']                      # the track (missing ')') and the pin
+    assert sig.contains(mm(0.5, 0.6)) and sig.contains(mm(0.3, 0.7 + 0.018))  # 90 deg pad
+    # the empty PLANE layer: flooded for GND, the SIG via's antipad cleared
+    plane = b.copper['Bottom']['GND']
+    assert plane.contains(mm(0.5, 0.4)) and not plane.contains(mm(0.2 + 0.015, 0.2))
+    assert {(v.net, v.top, v.bottom) for v in b.vias} == {('GND', 'Top', 'Bottom'),
+                                                         ('SIG', 'Top', 'Bottom')}
 
 
 def _compress(data, maxbits=16):
