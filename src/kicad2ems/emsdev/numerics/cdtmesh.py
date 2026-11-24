@@ -70,16 +70,21 @@ def triangulate(core, V, segs, min_angle=0.0, max_steiner=0):
 
 
 def _seg_distance(V, segs):
-    """A function: the distance (dmax) from points to the nearest segment."""
+    """A function: the distance (dmax) from points to the nearest segment.
+    within: only distances below it matter (the callers compare against a
+    threshold no larger): the search stops there and a point with no segment
+    that near reads inf - the same answers, without walking the tree out to
+    far segments (half the smoothing's time on a fine mesh)."""
     if not len(segs):
-        return lambda P: np.full(len(P), np.inf)
+        return lambda P, within=None: np.full(len(P), np.inf)
     tree = shapely.STRtree(shapely.linestrings(V[np.asarray(segs)]))
 
-    def dist(P):
+    def dist(P, within=None):
         if not len(P):
             return np.zeros(0)
+        kw = {} if within is None else dict(max_distance=float(within))
         idx, d = tree.query_nearest(shapely.points(P), return_distance=True,
-                                    all_matches=False)
+                                    all_matches=False, **kw)
         out = np.full(len(P), np.inf)
         out[idx[0]] = d
         return out
@@ -173,7 +178,8 @@ def _hex_seed(V, limit, inside, frozen, dseg, sizes):
         return P
 
     def clear(P, sd):
-        ok = (dseg(P) >= 0.5 * sd) & (vt.query(P)[0] >= 0.6 * sd)
+        ok = ((dseg(P, within=0.5 * np.max(sd)) >= 0.5 * sd)
+              & (vt.query(P)[0] >= 0.6 * sd))
         if out:
             ok &= cKDTree(np.vstack(out)).query(P)[0] >= 0.8 * sd
         return ok
@@ -227,7 +233,8 @@ def _smooth(core, V, extra, segs, limit, inside, frozen, dseg, passes):
     where that lies outside), at most MOVE cells a pass, kept clear of the
     segments; the outlines' points and those on segments stay."""
     nV = len(V)
-    movable = dseg(extra) > 1e-9 if len(extra) else np.zeros(0, bool)
+    movable = (dseg(extra, within=1e-6) > 1e-9 if len(extra)
+               else np.zeros(0, bool))
     for _ in range(passes):
         if not movable.any():
             break
@@ -260,7 +267,8 @@ def _smooth(core, V, extra, segs, limit, inside, frozen, dseg, passes):
         L = np.linalg.norm(d, axis=1)
         new = (cur
                + d * np.minimum(1.0, MOVE * h / np.maximum(L, 1e-300))[:, None])
-        ok = movable & inside(new) & (dseg(new) >= 0.35 * h)
+        ok = (movable & inside(new)
+              & (dseg(new, within=0.35 * float(h.max())) >= 0.35 * h))
         if frozen is not None:
             ok &= ~frozen(new)
         extra = np.where(ok[:, None], new, cur)
@@ -314,7 +322,8 @@ def _rounds(core, V, extra, segs, limit, inside, frozen, dseg, tol):
         cc = _circumcentres(Pb)
         fine = np.isfinite(cc).all(1)
         cc[~fine] = Cb[~fine]
-        ok = inside(cc) & (dseg(cc) >= EDGE_SEP * h)
+        ok = inside(cc) & (dseg(cc, within=EDGE_SEP * float(np.max(h)))
+                           >= EDGE_SEP * h)
         if frozen is not None:
             ok &= ~frozen(cc)
         cand = np.where(ok[:, None], cc, Cb)

@@ -263,11 +263,13 @@ def mesh_sheet(geom, points=(), dmax=1.0, w_ref=None, coarsen=None, regions=(),
                                      lines=lines, quality=quality, **kw)
     nodes = nodes * 1e3
     rings = [None] * len(points)
+    # each via's centre and ring vertices from a k-d tree (the distance to
+    # every vertex for every via had been O(vertices x vias))
+    tree = cKDTree(nodes)
     for i, v in zip(inside, vid):
         x, y, r = points[i]
-        d = np.hypot(nodes[:, 0] - x, nodes[:, 1] - y)
-        ids = np.flatnonzero(d <= r * grow_r * 1.02 + 1e-9)
-        c = int(np.argmin(d))
+        c = int(tree.query((x, y))[1])
+        ids = sorted(tree.query_ball_point((x, y), r * grow_r * 1.02 + 1e-9))
         rings[i] = [c] + [int(k) for k in ids if k != c]
     for i, h in merged.items():
         rings[i] = rings[h]

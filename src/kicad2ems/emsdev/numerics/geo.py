@@ -445,7 +445,7 @@ def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(),
         linework += [
             LineString([p0, p1]).intersection(geom) for p0, p1 in st_lines
         ]
-    vpts = []
+    vpts, vrings = [], []
     for i, via in enumerate(vias):
         x, y, r = via[:3]
         vpts.append((x, y))
@@ -456,7 +456,24 @@ def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(),
         if r > 0 and i not in snapped:
             ring = (ngon(x, y, r, int(via[3]), closed=True) if len(via) > 3 else
                 Point(x, y).buffer(r, quad_segs=2).exterior.coords)
-            linework.append(LineString(ring).intersection(geom))
+            vrings.append(LineString(ring))
+    if vrings:
+        # a ring wholly inside the copper is its own intersection with it:
+        # one prepared, vectorised test for all of them, and the few that
+        # cross an edge cut against the copper near them only (each against
+        # the whole outline had been half the mesher's time on a board of
+        # thousands of vias: 4.6 s of 9.6 on the LibreVNA's F.Cu/In1.Cu)
+        shapely.prepare(geom)
+        whole = shapely.contains_properly(geom, vrings)
+        for ring, inside_ in zip(vrings, whole):
+            if inside_:
+                linework.append(ring)
+            else:
+                x0, y0, x1, y1 = ring.bounds
+                pad = 1e-6 + 1e-3 * max(x1 - x0, y1 - y0)
+                near = shapely.clip_by_rect(geom, x0 - pad, y0 - pad,
+                                            x1 + pad, y1 + pad)
+                linework.append(ring.intersection(near))
     runs_u = shapely.unary_union(run_polys).buffer(tol) if run_polys else None
     # snap-rounding noding: T-junctions (port lines ending on edges) must split
     # the edge exactly
@@ -540,7 +557,9 @@ def mesh_polygons(geom, dmax, w_ref, ncross=6, grade=1.0, lines=(), vias=(),
             stacklevel=2)
     nodes, tris = T['vertices'] * dmax + org, T['triangles']
     cent = nodes[tris].mean(1)
-    tris = tris[shapely.contains_xy(geom.buffer(tol), cent[:, 0], cent[:, 1])]
+    g_tol = geom.buffer(tol)
+    shapely.prepare(g_tol)
+    tris = tris[shapely.contains_xy(g_tol, cent[:, 0], cent[:, 1])]
     # drop unused nodes, fix orientation
     used = np.unique(tris)
     remap = -np.ones(len(nodes), int)
@@ -584,6 +603,7 @@ def _cdt(V, segs, geom, tol, dmax, org, amax, hfield, fine_parts, fine_u,
             "python -m kicad2ems.pcbqs.core.build (needs a C++17 compiler and "
             "pybind11)")
     g_in = geom.buffer(tol)
+    shapely.prepare(g_in)   # tested a few dozen times below: prepared once
     to_m = lambda c: np.asarray(c) * dmax + org
     afine = 0.5 * (dmax_fine / dmax) ** 2 if fine_parts else None
 
