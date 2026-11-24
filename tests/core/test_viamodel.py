@@ -1,0 +1,91 @@
+"""The physics-based via model (kicad2ems.core.viamodel): a cavity left to the
+join (each of its segments a port) and joined again is the model."""
+import math
+import os
+import subprocess
+import sys
+
+import numpy as np
+import pytest
+
+from kicad2ems.core import segment as SG
+from kicad2ems.core import viamodel as VM
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
+    __file__))))
+
+
+def _via_pieces(tmp, name, nets):
+    """The example's via pieces' (board file, vias)."""
+    from kicad2ems.core.config import build_settings
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    from kicad2ems.core.pipeline import board_from_settings
+    subprocess.check_call([sys.executable,
+                           os.path.join(ROOT, 'examples', 'make_rf_examples.py'),
+                           name, str(tmp / f"rf_{name}")],
+                          stdout=subprocess.DEVNULL)
+    s = build_settings(dict(board=str(tmp / f"rf_{name}.kicad_pcb"),
+                            nets=nets))
+    m = board_from_settings(s, log=lambda *x: None)
+    kb = KiCadBoard(s.board)
+    parts, _ = SG.pieces(m, kb, kb, set(m.sel or [
+        n for ns in m.copper_nets.values() for n in ns]))
+    return [(SG._to_dict(p['board'], p), p['vias']) for p in parts
+            if p['kind'] == 'via']
+
+
+def _infinite(model, pair, f, z0=50.0):
+    """The cavity `pair` (upper plane, lower) between the model's cavity
+    ports as the model has it: the infinite planes' w mu0 d / 4 H0^(2)(k rho)
+    between every segment and the box's ground vias, each segment weighted by
+    its share of the height, the ground vias shorted. S (nf, n, n) at z0."""
+    from scipy.special import hankel2
+    pz, sig = model['pz'], model['sig']
+    hi, lo = pz[pair[0]], pz[pair[1]]
+    cp = [c for c in model['cavity_ports'] if c['cavity'] == pair]
+    gs = [g for g in model['gv'] if set(pair) <= set(g['joined'])]
+    mem = ([(c['x'], c['y'], sig[c['via']]['a'], c['w'], c['via'])
+            for c in cp] + [(g['x'], g['y'], g['a'], 1.0, None) for g in gs])
+    e = VM.eps_between(model['diel'], lo, hi)
+    n = len(cp)
+    out = np.empty((len(f), n, n), complex)
+    for i, fi in enumerate(f):
+        w = 2 * math.pi * fi
+        k = w * math.sqrt(VM.MU0 * VM.EPS0) * np.sqrt(e)
+        Z = np.empty((len(mem), len(mem)), complex)
+        for a, (xa, ya, ra, wa, va) in enumerate(mem):
+            for b, (xb, yb, rb, wb, vb) in enumerate(mem):
+                same = a == b or (va is not None and va == vb)
+                rho = (ra if same else math.hypot(xa - xb, ya - yb)) * 1e-3
+                Z[a, b] = (wa * wb * w * VM.MU0 * (hi - lo) * 1e-3 / 4
+                           * hankel2(0, k * rho))
+        Zs = Z[:n, :n] - Z[:n, n:] @ np.linalg.solve(Z[n:, n:], Z[n:, :n])
+        out[i] = np.eye(n) - 2 * z0 * np.linalg.inv(Zs + z0 * np.eye(n))
+    return out
+
+
+@pytest.mark.parametrize('name, nets', [('msvia', ['RF', 'GND']),
+                                        ('diffvia', None)])
+def test_a_cavity_left_to_the_join_and_joined_again_is_the_model(
+        tmp_path, name, nets):
+    """Each cavity the via model crosses left to the join (its segments
+    ports, the box's ground vias in it left out) and the infinite planes'
+    coupling joined there again: the model's S to rounding (the ports'
+    signs, terminals and weights the join's)."""
+    f = np.linspace(0.1e9, 10e9, 23)
+    for d, vias in _via_pieces(tmp_path, name, nets):
+        S0, n0 = VM.solve(VM.build(d, vias), f)
+        planes = VM.planes_of(d)
+        for pair in zip(planes[:-1], planes[1:]):
+            model = VM.build(d, vias, cavities=[pair])
+            S, names = VM.solve(model, f)
+            cp = [c['name'] for c in model['cavity_ports']]
+            if not cp:
+                continue
+            assert names == n0 + cp
+            B = _infinite(model, pair, f)
+            J, ext = SG.join([(S, [f"v:{x}" for x in names]),
+                              (B, [f"c:{x}" for x in cp])],
+                             [(f"v:{x}", f"c:{x}") for x in cp])
+            assert ext == [f"v:{x}" for x in n0]
+            assert np.abs(J - S0).max() < 1e-9

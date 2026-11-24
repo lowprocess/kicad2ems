@@ -267,6 +267,62 @@ def test_a_physics_based_via_model(tmp_path):
     assert np.sqrt(np.mean(d ** 2)) < 0.25
 
 
+def test_the_board_s_cavity_joined_to_the_via_models(tmp_path):
+    """--cavities: rf_msvia with its four ground vias 4.5 mm out, not 1 mm
+    (the In1.Cu/In2.Cu cavity's modes then reach the signal via: 100 ohm at
+    7.9 GHz there). The whole board on mom25d has a notch in S21 there (-7.1
+    dB at 7.95 GHz; gfdtd's -7.0 at 7.90), which the via model's infinite
+    planes miss (-1.2 dB at most in band); with the board's cavity joined in
+    their place the notch within 0.1 GHz and 1 dB (measured -7.4 dB at 7.95)
+    and S21 within 0.4 dB rms over 1-10 GHz (measured 0.24, 0.85 without)."""
+    pytest.importorskip('kicad2ems.mom25d.core')
+    from kicad2ems.core.touchstone import read_touchstone
+    board = tmp_path / 'rf_msvia_far.kicad_pcb'
+    subprocess.check_call([sys.executable, '-c',
+                           "import sys; sys.path.insert(0, sys.argv[1]); "
+                           "import make_rf_examples as X; "
+                           "X.msvia(sys.argv[2], ret=4.5)",
+                           os.path.join(ROOT, 'examples'), str(board)])
+    cfg = tmp_path / 'rf_msvia_far.toml'
+    cfg.write_text(open(os.path.join(ROOT, 'examples', 'rf_msvia.toml'))
+                   .read().replace('rf_msvia.kicad_pcb', board.name))
+    env = dict(os.environ, MOM25D_GPU='off', QT_QPA_PLATFORM='offscreen')
+    common = ['--fmin', '1', '--fmax', '10', '--points', '361']
+    got = {}
+    for name, extra in (('seg', []), ('cav', ['--cavities'])):
+        p = subprocess.run([sys.executable, '-m', 'kicad2ems.core.segment',
+                            str(cfg), '--edges', 'coarse', '--via-solver',
+                            'pbm', '--out', str(tmp_path / name)]
+                           + extra + common,
+                           capture_output=True, text=True, env=env)
+        assert p.returncode == 0, (p.stdout + p.stderr)[-3000:]
+        res = json.load(open(tmp_path / name / SG.RESULT))
+        got[name] = read_touchstone(str(tmp_path / name / res['touchstone']))
+    assert ([set(c['layers']) for c in res['cavities']]
+            == [{'In1.Cu', 'In2.Cu'}])
+    p = subprocess.run([sys.executable, '-m', 'kicad2ems', str(cfg),
+                        '--solvers', 'mom25d', '--no-report', '--out',
+                        str(tmp_path / 'whole')] + common,
+                       capture_output=True, text=True, env=env)
+    assert p.returncode == 0, (p.stdout + p.stderr)[-3000:]
+    f0, S0 = read_touchstone(str(tmp_path / 'whole' /
+                                 'rf_msvia_far_mom25d.s2p'))
+    db = lambda x: 20 * np.log10(np.abs(x))
+    w0 = db(S0[:, 1, 0])
+    i0 = int(np.argmin(w0))
+    assert 7.5e9 < f0[i0] < 8.5e9 and w0[i0] < -5.0
+    rms = {}
+    for name, (f, S) in got.items():
+        s21 = np.interp(f0, f, db(S[:, 1, 0]))
+        rms[name] = np.sqrt(np.mean((s21 - w0) ** 2))
+    assert got['seg'][1].shape == got['cav'][1].shape
+    f, S = got['cav']
+    i = int(np.argmin(db(S[:, 1, 0])))
+    assert abs(f[i] - f0[i0]) < 0.1e9
+    assert abs(db(S[i, 1, 0]) - w0[i0]) < 1.0
+    assert rms['cav'] < 0.4 < rms['seg']
+
+
 def test_the_overlay_figure(tmp_path):
     """segment.plot_overlay: the channels' tracks coloured by their crosstalk
     and their loss over the board's outline, the via models circled."""

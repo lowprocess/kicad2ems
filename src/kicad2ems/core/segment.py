@@ -1489,6 +1489,109 @@ def junction(fW, SW, fA, SA):
     return abcd_to_s(X, 50.0)
 
 
+# ---- the board's cavities in the join (--cavities) --------------------------
+def _nearest(pts, x, y, tol=1e-3):
+    """The index of the point [(x, y), ...] within tol mm of (x, y), or
+    None."""
+    if not len(pts):
+        return None
+    d = np.hypot(pts[:, 0] - x, pts[:, 1] - y)
+    i = int(np.argmin(d))
+    return i if d[i] <= tol else None
+
+
+def cavities_for(m, parts, echo=print):
+    """--cavities: the board's plane-pair cavities (core.cavities: the whole
+    board's planes, every ground via in them a short), and each via piece's
+    piece['cavities']: the plane pairs whose cavity the physics-based model
+    leaves to the join (viamodel.build's), those of whose vias (its ports:
+    the vias through it that are no ground via) every via of the piece that
+    crosses it is one. [Cavity], their meshes not built."""
+    from . import cavities as CV
+    bd = m.to_dict(prims=False)
+    cavs = CV.cavities(bd, log=lambda *x: None)
+    recs = bd.get('vias') or []
+    for c in cavs:
+        c._at = np.array([(q['x'], q['y']) for q in c.ports]).reshape(-1, 2)
+    for p in parts:
+        if p['kind'] != 'via':
+            continue
+        p['cavities'] = []
+        spans = []
+        for v in p['vias']:
+            rec = min((u for u in recs if u.get('net') == v['net']),
+                      key=lambda u: math.hypot(u['x'] - v['x'],
+                                               u['y'] - v['y']),
+                      default=None)
+            spans.append(sorted((float(rec['z0']), float(rec['z1'])))
+                         if rec else None)
+        for c in cavs:
+            za, zb = c.zs
+            cross = [v for v, s in zip(p['vias'], spans)
+                     if s and s[0] < zb - 1e-6 and s[1] > za + 1e-6]
+            if cross and all(_nearest(c._at, v['x'], v['y']) is not None
+                             for v in cross):
+                p['cavities'].append(tuple(c.layers))
+    used = {l for p in parts if p['kind'] == 'via' for l in p['cavities']}
+    echo(f"segment: {len(cavs)} plane-pair "
+         f"cavit{'y' if len(cavs) == 1 else 'ies'}"
+         + (f" ({', '.join(c.name for c in cavs)})" if cavs else '')
+         + f"; {len(used)} joined to the via models")
+    return cavs
+
+
+def cavity_blocks(cavs, parts, done, f, echo=print, z0=50.0):
+    """--cavities: each cavity's block for the join between the physics-based
+    via models' ports in it (viamodel's cavity_ports: each a segment of a
+    barrel in it, weighted by its share of the cavity's height): Z = W
+    Zc W^T, Zc the board's cavity between those vias (Cavity.impedance: its
+    resonances, every ground via on the board). (blocks, links (via model
+    port, block port), records)."""
+    import time
+    blocks, links, recs = [], [], []
+    for j, c in enumerate(cavs):
+        key = set(c.layers)
+        mine = []  # (the via model's port, the cavity's via, weight)
+        for p in parts:
+            got = done.get(p['name'])
+            if p['kind'] != 'via' or not isinstance(got, tuple):
+                continue
+            for cp in (got[3].get('model') or {}).get('cavity_ports', ()):
+                if set(cp['cavity']) != key:
+                    continue
+                i = _nearest(c._at, cp['x'], cp['y'])
+                if i is None:
+                    raise ValueError(
+                        f"{p['name']}: its via at ({cp['x']:.3f}, "
+                        f"{-cp['y']:.3f}) mm is in no via of cavity {c.name}")
+                mine.append((f"{p['name']}:{cp['name']}", i, float(cp['w'])))
+        if not mine:
+            continue
+        t = time.time()
+        if c.mesh is None:
+            c.build(float(np.max(f)))
+        idx = sorted({i for _, i, _ in mine})
+        col = {i: k for k, i in enumerate(idx)}
+        W = np.zeros((len(mine), len(idx)))
+        for r, (_, i, w) in enumerate(mine):
+            W[r, col[i]] = w
+        n = len(mine)
+        S = np.empty((len(f), n, n), complex)
+        for k, fk in enumerate(f):
+            Zc = c.impedance([fk], idx)[0]
+            Zb = W @ Zc @ W.T
+            S[k] = np.eye(n) - 2 * z0 * np.linalg.inv(Zb + z0 * np.eye(n))
+        name = f"cavity{j}"
+        blocks.append((S, [f"{name}:{g}" for g, _, _ in mine]))
+        links += [(g, f"{name}:{g}") for g, _, _ in mine]
+        dt = time.time() - t
+        recs.append(dict(cavity=c.name, layers=list(c.layers), vias=len(idx),
+                         ports=n, unknowns=int(c.n), seconds=round(dt, 1)))
+        echo(f"{c.name}: the board's cavity between {len(idx)} vias of the "
+             f"via models ({n} ports, {c.n:,} unknowns), {dt:.0f} s")
+    return blocks, links, recs
+
+
 def solve_piece(piece, folder, band, solver='mom25d', echo=print,
                 thickness=None, dmax=None, layer_solver=None, via_solver=None,
                 edges=None, env=None, started=None):
@@ -1522,7 +1625,7 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
         from . import viamodel
         from .touchstone import write_touchstone
         f = np.linspace(band['fmin'], band['fmax'], int(band['points'])) * 1e9
-        model = viamodel.build(d, piece['vias'])
+        model = viamodel.build(d, piece['vias'], piece.get('cavities') or ())
         S, names = viamodel.solve(model, f)
         ts = os.path.join(folder, f"{piece['name']}_pbm.s{len(names)}p")
         write_touchstone(ts, f, S, 50.0,
@@ -1530,7 +1633,8 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
         return f, S, names, dict(ports=names, solved={'pbm': dict(
             touchstone=os.path.basename(ts))}, model=dict(
                 planes=model['planes'], vias=len(model['sig']),
-                ground_vias=len(model['gv'])))
+                ground_vias=len(model['gv']),
+                cavity_ports=model['cavity_ports']))
     cli = dict(out=folder, solvers=solver, no_report=True, lean=True, **band)
     if solver == 'mom25d':
         cli['mom_port'] = PORT
@@ -1751,6 +1855,12 @@ def run(a, echo=print):
     echo(f"segment: {sum(p['kind'] == 'layer' for p in parts)} layer(s), "
          f"{sum(p['kind'] == 'via' for p in parts)} via model(s), "
          f"{len(allcuts)} cut(s)")
+    cavs = []
+    if getattr(a, 'cavities', False):
+        if a.via_solver not in (None, 'pbm'):
+            echo(f"segment: --cavities joins the physics-based via models "
+                 f"alone: --via-solver {a.via_solver}'s are meshed boxes")
+        cavs = cavities_for(m, parts, echo)
     blocks, links, f0, info, cut_of = [], {}, None, [], {}
     wins, win_links = {}, {}
     done = _solve_all(parts, out, band, a, echo)
@@ -1856,6 +1966,19 @@ def run(a, echo=print):
         echo(f"segment: {len(opened)} cut(s) with one side open (their legs' "
              "other side in no piece)")
     pairs = nodes(blocks, pairs, len(f0), echo)
+    cav_recs = []
+    if cavs:
+        boxed = [p['name'] for p in parts if p['kind'] == 'via'
+                 and p.get('cavities') and not (
+                     done[p['name']][3].get('model') or {}).get(
+                         'cavity_ports')]
+        if boxed:
+            echo(f"segment: {len(boxed)} via model(s) meshed boxes, their "
+                 "vias not joined to the cavities: " + ", ".join(boxed[:8])
+                 + (" ..." if len(boxed) > 8 else ''))
+        cb, cl, cav_recs = cavity_blocks(cavs, parts, done, f0, echo)
+        blocks += cb
+        pairs += cl
     S, names = join(blocks, pairs)
     ext = [n.split(':', 1)[1] for n in names]
     order = sorted(range(len(ext)), key=lambda i: _num(ext[i]))
@@ -1884,7 +2007,8 @@ def run(a, echo=print):
                touchstone=os.path.relpath(ts, out),
                cuts=[dict(k=c['k'], layer=c['layer'], net=c['net'],
                           at=c['at']) for c in allcuts],
-               pieces=info, seconds=round(time.time() - t0, 1))
+               pieces=info, cavities=cav_recs,
+               seconds=round(time.time() - t0, 1))
     with open(os.path.join(out, RESULT), 'w', encoding='utf-8') as fh:
         json.dump(res, fh, indent=1)
     if report:
@@ -2758,6 +2882,13 @@ def parser():
                    "Unset, a via model that is no meshed box (a port with no "
                    "plane under it, fewer than 2 ground vias in its box) is "
                    "pbm's, said")
+    p.add_argument('--cavities', action='store_true',
+                   help="the board's plane-pair cavities solved whole "
+                   "(core.cavities: their edges, every ground via) and "
+                   "joined to the physics-based via models in place of "
+                   "their infinite planes: the cavities' resonances, and "
+                   "the coupling between vias through them across the "
+                   "board (meshed via models keep their boxes)")
     p.add_argument('--dmax', type=float, default=None,
                    help="mom25d's largest cell along the copper, mm "
                    "(--mom-dmax)")

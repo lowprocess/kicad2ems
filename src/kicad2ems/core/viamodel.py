@@ -23,6 +23,14 @@ at every plane it passes through and every signal layer it has a pad on:
 The planes are infinite (no edge, no cavity resonance of a finite board), a
 cavity carries its TEM mode alone (thin against the wavelength), losses are the
 dielectric's. Unknowns: the vias' nodes and segments, a few hundred at most.
+
+A cavity named in build's `cavities` (a pair of plane layers: segment.py's
+--cavities, the board's plane pair solved whole by core.cavities) is the
+model's no longer: each of its segments a port instead (its + at the upper
+node, the voltage across it the cavity's at the via, its current the barrel's
+from the upper plane to the lower), and the box's ground vias in it not
+modelled (the board's cavity holds every one). The join then puts the board's
+cavity there: its resonances, its coupling to every other via model's vias.
 """
 import math
 
@@ -150,10 +158,11 @@ def _hole(d, layer, ground, x, y):
     return min((p.distance(pt) for p in ps), default=None)
 
 
-def build(d, vias):
+def build(d, vias, cavities=()):
     """The model of a via piece's board file d (segment._to_dict's) and its
     signal vias [dict(x, y, net, pad, r)] (segment.via_groups'): a dict the
-    solve takes. mm throughout."""
+    solve takes. mm throughout. cavities: plane-layer pairs whose cavity is
+    left to the join, each segment in it a port (the module's docstring)."""
     cz, diel = _layers(d)
     ground = set(d.get('ground_nets') or ())
     planes = planes_of(d)
@@ -206,7 +215,7 @@ def build(d, vias):
                                      diel)))
         s['pads'].setdefault(p['layer'], s['a'])
     return dict(cz=cz, diel=diel, planes=planes, pz=pz, sig=sig, gv=gv,
-                ports=ports)
+                ports=ports, expose={frozenset(c) for c in cavities})
 
 
 def _line(layer, w, cz, pz, diel):
@@ -237,7 +246,11 @@ def _outer_l(h, a):
 
 
 def solve(model, freqs, z0=50.0):
-    """S (nf, n, n) at z0 of the model's ports, and their names."""
+    """S (nf, n, n) at z0 of the model's ports, and their names: the trace
+    ports, then a port for each segment in a cavity left to the join
+    (model['cavity_ports'] then lists them: dict(name, cavity (the upper
+    plane, the lower), via (its index in model['sig']), x, y, w (its height's
+    share of the cavity's)))."""
     from scipy.special import hankel2
     from .deembed import abcd_to_s, connect, line_abcd
     sig, gv, pz, cz = model['sig'], model['gv'], model['pz'], model['cz']
@@ -263,13 +276,29 @@ def solve(model, freqs, z0=50.0):
         return None
     for sg in segs:
         sg['cav'] = region(sg['zu'], sg['zl'])
+    zname = {z: l for l, z in pz.items()}
+    expose = model.get('expose') or set()
+    joined = lambda cav: (cav is not None
+                          and frozenset((zname[cav[0]], zname[cav[1]]))
+                          in expose)
     # ground vias: a shorted segment in each cavity whose two planes they join
+    # (not in one left to the join: the board's cavity has them all)
     gsegs = []
     for gi, g in enumerate(gv):
         jz = {pz[l] for l in g['joined']}
         for hi, lo in zip(zp_sorted[:-1], zp_sorted[1:]):
-            if hi in jz and lo in jz:
+            if hi in jz and lo in jz and not joined((hi, lo)):
                 gsegs.append(dict(g=gi, cav=(hi, lo)))
+    # the segments in a cavity left to the join: a port each
+    cports = [k for k, sg in enumerate(segs) if joined(sg['cav'])]
+    model['cavity_ports'] = []
+    for k in cports:
+        sg = segs[k]
+        up, low = zname[sg['cav'][0]], zname[sg['cav'][1]]
+        model['cavity_ports'].append(dict(
+            name=f"cav_{up}_{low}_v{sg['via']}_{k}", cavity=(up, low),
+            via=sg['via'], x=sig[sg['via']]['x'], y=sig[sg['via']]['y'],
+            w=(sg['zu'] - sg['zl']) / (sg['cav'][0] - sg['cav'][1])))
     # each node's capacitance: a plane's share at the via's node nearest it
     Cn = np.zeros(len(nodes))
     for i, s in enumerate(sig):
@@ -281,7 +310,8 @@ def solve(model, freqs, z0=50.0):
     N = nn + ns + ng
     ports = model['ports']
     pn = [sig[p['via']]['nodes'][cz[p['layer']]] for p in ports]
-    out = np.empty((len(freqs), len(ports), len(ports)), complex)
+    npt = len(ports) + len(cports)
+    out = np.empty((len(freqs), npt, npt), complex)
     # positions and radii of everything that crosses each cavity
     cavs = sorted({sg['cav'] for sg in segs if sg['cav']} |
                   {gs['cav'] for gs in gsegs}, reverse=True)
@@ -299,6 +329,8 @@ def solve(model, freqs, z0=50.0):
             A[nn + k, sg['lo']] -= 1.0
         # the EMFs: cavities' couplings and the outer inductances
         for hi, lo in cavs:
+            if joined((hi, lo)):
+                continue  # (the join's: its segments are ports)
             dmm = hi - lo
             e = eps_between(model['diel'], lo, hi)
             kk = w * math.sqrt(MU0 * EPS0) * np.sqrt(e)
@@ -321,14 +353,28 @@ def solve(model, freqs, z0=50.0):
             if sg['cav'] is None:
                 A[nn + k, nn + k] -= 1j * w * _outer_l(
                     sg['zu'] - sg['zl'], sig[sg['via']]['a'])
-        # unit current into each port's node: the port impedances
-        B = np.zeros((N, len(ports)), complex)
+        # every port terminated in z0 and driven by a unit current in turn:
+        # the loaded port voltages Z_L, S = 2 Z_L / z0 - I (a node between two
+        # cavity ports has no other path: open-circuit Z has none there)
+        G = 1.0 / z0
+        B = np.zeros((N, npt), complex)
         for k, n in enumerate(pn):
+            A[n, n] -= G
             B[n, k] = -1.0  # (KCL row: ... + J = 0 -> A x = -J)
+        for j, k in enumerate(cports):
+            up, lo = segs[k]['up'], segs[k]['lo']
+            A[nn + k, :] = 0.0
+            A[nn + k, nn + k] = 1.0  # (its barrel open: the port carries it)
+            A[up, up] -= G
+            A[up, lo] += G
+            A[lo, lo] -= G
+            A[lo, up] += G
+            B[up, len(ports) + j] = -1.0
+            B[lo, len(ports) + j] = 1.0
         X = np.linalg.solve(A, B)
-        Z = X[pn, :]
-        I = np.eye(len(ports))
-        out[fi] = (Z - z0 * I) @ np.linalg.inv(Z + z0 * I)
+        ZL = np.concatenate([X[pn, :]] + [
+            X[[segs[k]['up']], :] - X[[segs[k]['lo']], :] for k in cports])
+        out[fi] = 2.0 / z0 * ZL - np.eye(npt)
     # each port's stub, from the cut to the pad
     S = out
     for k, p in enumerate(ports):
@@ -336,4 +382,5 @@ def solve(model, freqs, z0=50.0):
         G = abcd_to_s(line_abcd(zc, ee, p['stub'] * 1e-3, np.asarray(freqs),
                                 tand), z0)
         S = connect(S, k, G)
-    return S, [p['name'] for p in ports]
+    return S, ([p['name'] for p in ports]
+               + [c['name'] for c in model['cavity_ports']])

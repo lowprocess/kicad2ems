@@ -54,6 +54,36 @@ HOLE_FILL = 2.0
 # fmax (and never above DMAX_CAP mm)
 CELLS_PER_WAVE = 12
 DMAX_CAP = 2.0
+# the mesh's smallest angle (degrees): the cells graded round the vias' discs.
+# Without it a disc's octagon fans out to far vertices and the linear elements
+# miss the log field round it: a via's loop inductance to a ground via 0.5-5
+# mm away was 36-71 % of the two-wire formula's (2026-11-24)
+QUALITY = 30
+# each via's disc meshed at this x its radius: the linear elements' field round
+# a disc is that of one ~1.16 x wider (per disc, ln(a_eff / a) = 0.14-0.16 over
+# radii 0.1-0.25 mm and cells to 2 mm), so meshed smaller it is the barrel's:
+# the loop inductance then within 2 % of the two-wire formula's, 0.5-10 mm
+RING = math.exp(-0.15)
+# ... those discs every via's where a cavity has at most DISCS ground vias;
+# past that, every via's that is no ground via and the ground vias' within NEAR
+# mm of one. Each other ground via is a vertex alone, where it is (no disc for
+# the refinement: on ThunderScope's In4.Cu/B.Cu, 3,211 ground vias, the mesh
+# had 268k vertices with every one a graded disc), tied to the planes as a
+# well is in a reservoir model (Peaceman): a vertex alone is a disc of radius
+# r_eq to the linear elements, ln r_eq = (sum_j w_j ln r_j - theta) / sum_j
+# w_j over its neighbours j (w_j = -K_vj, theta its angle), so the barrel's
+# radius a < r_eq is the inductance mu0 d / theta ln(r_eq / a) more between
+# the vertex and the planes: theta / ln(r_eq / a) on K's diagonal there (V = 0
+# where r_eq is not above a). Held at V = 0 alone, such a vertex had been a
+# disc of no set radius (ThunderScope's mode lists tens of % off)
+DISCS = 400
+NEAR = 3.0
+# the outline simplified to this (mm) before meshing: its points closer than
+# that to a line through their neighbours had the minimum angle refine round
+# them (ThunderScope's In4.Cu/B.Cu: 151k unknowns, 78k so, its first six modes
+# within 0.6 % of every disc graded on the outline as drawn). Opened and closed
+# instead (0.1 mm), its narrow strips went, and the modes that live in them
+SMOOTH = 0.02
 # at most this many modes a cavity (Lanczos's memory and time)
 MAX_MODES = 600
 # a via couples to a mode where |V| there >= this x the mode's RMS
@@ -171,6 +201,33 @@ def ground_spot(cav, x, y, rmin=0.5, rmax=5.0, clear=0.3, step=0.1):
     return None
 
 
+def _well(Kn, nodes, tris, v, a):
+    """The conductance (K's units) that ties vertex v to the planes through a
+    via of radius a (mm) there: theta / ln(r_eq / a), r_eq the radius the
+    linear elements' vertex alone stands for (Peaceman's well model: see
+    DISCS); None where r_eq is not above a (hold it at V = 0)."""
+    row = Kn.getrow(v)
+    j, k = row.indices, row.data
+    m = j != v
+    j, w = j[m], -k[m]
+    r = np.hypot(*(nodes[j] - nodes[v]).T)
+    # its angle: the triangles round it
+    tv = tris[(tris == v).any(1)]
+    theta = 0.0
+    for t in tv:
+        o = [u for u in t if u != v]
+        e1, e2 = nodes[o[0]] - nodes[v], nodes[o[1]] - nodes[v]
+        theta += math.acos(max(-1.0, min(1.0, float(
+            e1 @ e2 / (np.hypot(*e1) * np.hypot(*e2))))))
+    sw = float(w.sum())
+    if sw <= 0 or theta <= 0:
+        return None
+    lnr = (float(w @ np.log(r)) - theta) / sw
+    if lnr <= math.log(a) + 0.05:
+        return None
+    return theta / (lnr - math.log(a))
+
+
 class Cavity:
     """A plane pair (bottom, top): its geometry (mm), dielectric (d mm, er,
     tand), the signal layers inside it, and the vias through it: shorts (V = 0:
@@ -203,25 +260,52 @@ class Cavity:
         self.mesh = None
 
     # ---- the mesh and its matrices --------------------------------------
-    def build(self, fmax, dmax=None):
-        """Mesh the cavity for modes up to fmax (Hz) and assemble K (the
-        stiffness, dimensionless) and M (the consistent mass, m2) on the free
-        unknowns: the shorts' discs out (V = 0), each port's disc one
-        unknown."""
+    def build(self, fmax, dmax=None, cells=CELLS_PER_WAVE):
+        """Mesh the cavity for modes up to fmax (Hz), `cells` a wavelength
+        there (or dmax mm), and assemble K (the stiffness, dimensionless) and
+        M (the mass, m2) on the free unknowns: the shorts' discs out (V = 0),
+        each port's disc one unknown. M is the consistent and the lumped mass
+        averaged: their dispersion errors cancel (a rectangle's 60 modes at
+        lambda / 10, 1.1 % high with either alone, 0.03 % so; 2026-11-24)."""
         from scipy.sparse import coo_matrix
         from kicad2ems.pcbqs.pdn.mesh import mesh_sheet, stiffness, mass
         lam = C0 / (fmax * math.sqrt(self.er)) * 1e3  # mm
-        dmax = dmax or min(DMAX_CAP, lam / CELLS_PER_WAVE)
-        pts = ([(s['x'], s['y'], s['r']) for s in self.shorts]
-               + [(p['x'], p['y'], p['r']) for p in self.ports])
-        nodes, tris, rings, _ = mesh_sheet(self.geom, pts, dmax)
+        dmax = dmax or min(DMAX_CAP, lam / cells)
+        near = np.ones(len(self.shorts), bool)
+        if len(self.shorts) > DISCS and self.ports:
+            from scipy.spatial import cKDTree
+            near = cKDTree([(p['x'], p['y']) for p in self.ports]).query(
+                [(q['x'], q['y']) for q in self.shorts])[0] <= NEAR
+        pts = ([(q['x'], q['y'], RING * q['r'] if n else 0.0)
+                for q, n in zip(self.shorts, near)]
+               + [(p['x'], p['y'], RING * p['r']) for p in self.ports])
+        self.wells = int((~near).sum())
+        geom = self.geom.simplify(SMOOTH) if SMOOTH else self.geom
+        nodes, tris, rings, _ = mesh_sheet(geom, pts, dmax, quality=QUALITY)
+        # (a vertex no triangle has is no unknown: the refinement's stray
+        # points at a degenerate corner had left ThunderScope's K + M
+        # singular)
+        used = np.zeros(len(nodes), bool)
+        used[np.asarray(tris).ravel()] = True
+        rings = [None if r is None else ([v for v in r if used[v]] or None)
+                 for r in rings]
         ns = len(self.shorts)
         dof = -np.ones(len(nodes), int)
         fixed = np.zeros(len(nodes), bool)
+        Kn = stiffness(nodes, tris).tocsr()
+        well = {}  # vertex -> the conductance its ground vias add (K's)
         for k, r in enumerate(rings[:ns]):
-            if r is not None:
+            if r is None:
+                continue
+            if near[k]:
                 fixed[r] = True
-        port_dof = []
+                continue
+            g = _well(Kn, nodes, tris, r[0], self.shorts[k]['r'])
+            if g is None:
+                fixed[r[0]] = True
+            else:
+                well[r[0]] = well.get(r[0], 0.0) + g
+        port_dof, nport = [], 0
         for k, r in enumerate(rings[ns:]):
             if r is None or fixed[r].any():
                 port_dof.append(-1)  # (off the mesh, or merged with a short)
@@ -229,19 +313,29 @@ class Cavity:
             if (dof[r] >= 0).any():  # (merged with another port's ring)
                 port_dof.append(int(dof[r][dof[r] >= 0][0]))
                 continue
-            dof[r] = len(port_dof)
-            port_dof.append(len(port_dof))
-        # (ports first, numbered by their place; then every free vertex)
-        nport = max(port_dof, default=-1) + 1
-        rest = np.flatnonzero((dof < 0) & ~fixed)
+            # (numbered apart from those off the mesh: numbered by their place
+            # in the list, one off the mesh had left an unknown of no vertex)
+            dof[r] = nport
+            port_dof.append(nport)
+            nport += 1
+        # (ports first; then every free vertex)
+        rest = np.flatnonzero((dof < 0) & ~fixed & used)
         dof[rest] = nport + np.arange(len(rest))
         n = nport + len(rest)
         keep = dof >= 0
         P = coo_matrix((np.ones(int(keep.sum())),
                         (np.flatnonzero(keep), dof[keep])),
                        shape=(len(nodes), n)).tocsr()
-        self.K = (P.T @ stiffness(nodes, tris) @ P).tocsc()
-        self.M = (P.T @ mass(nodes, tris, lumped=False) @ P).tocsc() * 1e-6
+        if well:
+            from scipy.sparse import diags
+            add = np.zeros(len(nodes))
+            for v, g in well.items():
+                add[v] += g
+            Kn = Kn + diags(add)
+        self.K = (P.T @ Kn @ P).tocsc()
+        self.M = (P.T @ (0.5 * (mass(nodes, tris, lumped=False)
+                             + mass(nodes, tris, lumped=True))) @ P
+                  ).tocsc() * 1e-6
         self.W = np.asarray(P.T @ mass(nodes, tris).diagonal() * 1e-6)
         self.area = float(self.W.sum())
         self.nodes, self.tris, self.dof, self.n = nodes, tris, dof, n
@@ -300,6 +394,46 @@ class Cavity:
                / (self.area * wm[None, :] * EPS0 * self.er))
         return dict(f=f, Q=Q, k2=w, V=V, pr=pr, coupling=cpl, z_peak=zpk,
                     static=static, more=more)
+
+    # ---- the impedance between its vias ----------------------------------
+    def impedance(self, freqs, which=None, sigma_cu=SIGMA_CU, log=None):
+        """The cavity's impedance matrix (nf, k, k) between its ports `which`
+        (indices into self.ports; default all) at freqs (Hz): the voltage
+        between the planes at port i per current through port j's via (from
+        the top plane to the bottom: segment.py's via models' convention),
+        the other ports open, the shorts (ground vias) at V = 0:
+            Z = j w mu0 d (K - k^2 M)^-1 at the ports' discs,
+            k^2 = w^2 mu0 eps0 er (1 - j tan d) (1 - j delta / d)
+        (the modal sum of `modes` with every mode, and the losses its Q
+        has). A port merged with a short (its disc on one) is 0. The mesh
+        `build`'s, for max(freqs) where not built."""
+        from scipy.sparse.linalg import splu
+        freqs = np.atleast_1d(np.asarray(freqs, float))
+        if self.mesh is None:
+            self.build(float(freqs.max()))
+        which = (np.arange(len(self.ports)) if which is None
+                 else np.asarray(which, int))
+        pd = self.port_dof[which]
+        live = np.flatnonzero(pd >= 0)
+        cols = np.unique(pd[live])
+        at = np.searchsorted(cols, pd[live])
+        E = np.zeros((self.n, len(cols)))
+        E[cols, np.arange(len(cols))] = 1.0
+        out = np.zeros((len(freqs), len(which), len(which)), complex)
+        K, M = self.K.astype(complex), self.M.astype(complex)
+        d = self.d * 1e-3
+        for i, f in enumerate(freqs):
+            w = 2 * math.pi * f
+            delta = math.sqrt(2.0 / (w * MU0 * sigma_cu))
+            k2 = (w * w * MU0 * EPS0 * self.er * (1 - 1j * self.tand)
+                  * (1 - 1j * delta / d))
+            X = splu((K - k2 * M).tocsc()).solve(E.astype(complex))
+            Zc = 1j * w * MU0 * d * X[cols]  # (cols x cols)
+            out[i][np.ix_(live, live)] = Zc[np.ix_(at, at)]
+        if log:
+            log(f"{self.name}: its impedance between {len(which)} vias at "
+                f"{len(freqs)} frequencies ({self.n:,} unknowns)")
+        return out
 
     def _empty(self):
         z = np.zeros(0)
@@ -537,7 +671,9 @@ def parser():
     p.add_argument('--suggest', action='store_true',
                    help='for each via with a peak, a ground via at the '
                    'nearest place on both planes\' copper, and the peak then '
-                   '(the cavity solved again with them)')
+                   '(the cavity solved again with them). The two planes '
+                   'alone are checked: a through via must clear every other '
+                   'layer too')
     p.add_argument('--out', default='cavities')
     return p
 

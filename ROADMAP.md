@@ -6,7 +6,7 @@ benchmarks or a validation showed. Finished items leave this file: what was done
 in CHANGELOG.md (pcbqs's history before the merge: docs/pcbqs/CHANGELOG.md). C, I and U numbers are findings of
 docs/pcbqs/power-tools-review.md; R numbers (R-A1, R-D12, ...) are the whole stack's review of 2026-11-14,
 `REVIEW-2026-11-14.md` in kicad2ems-project (the superproject before the merge), which has each one's evidence;
-estimates are working days. Last updated 2026-11-19.
+estimates are working days. Last updated 2026-11-24.
 
 ## CI and release
 
@@ -287,18 +287,24 @@ taken back); nothing below may fix a panel in place. Left:
    if the mesh's 0.2 s at worst becomes the limit. `mom25d/multilayer.py` has the stack but a dynamic kernel; the
    static 2D one needs deriving.
 
-## Plane-pair cavities (2026-11-23, the user's question)
+## Plane-pair cavities (2026-11-23, the user's question; set aside by the user 2026-11-24)
 
-`kicad2ems.core.cavities` finds each plane pair's modes and the signal vias they reach (docs/si.md). Next, in order:
-1. ~~**A check against Palace**~~ done (2026-11-23: rf_msvia's six cavity modes within 2.5 % of Palace's 3D
-   eigenmodes, docs/si.md; a metal can, 34 min; the open box's eigenproblem had taken an hour for one mode).
-2. **Each cavity as a network in the segment study's join:** the cavity's impedance matrix between the vias
-   through it (the modal sum, or the 2D solve at each frequency) in place of the via models' infinite planes, so
-   the joined S carries the cavity's resonances and its via-to-via coupling.
-3. The power planes' decoupling capacitors as the PDN tool attaches them (their ESL, ESR), and the cavity's
+`kicad2ems.core.cavities` finds each plane pair's modes and the signal vias they reach, and segment's `--cavities`
+joins each cavity to the physics-based via models (docs/si.md; CHANGELOG 2026-11-24: on the Thor carrier 83 of 93
+channels within 0.1 dB of the infinite planes', 10 moved, one 3.1 dB). Left, not to be taken up for now:
+1. **The cavities' cost on a large board:** the Thor carrier's five blocks 26 min of a 56 min run (a sparse factor
+   of 85-94k unknowns at each of 201 frequencies). Each cavity's modes once (to ~1.5 fmax) and each frequency a
+   sum over them, the rest from a factor or two (the remainder linear in k^2), would make it minutes. The cavity
+   study with `--suggest` slower the same way (578 s on the Thor carrier, 148 before: its signal vias' graded
+   discs, 650-1,400 a cavity).
+2. **`--suggest` checks the cavity's two planes alone**: a through via there must clear every other layer's
+   copper too (it is said; worth it only where that is checked, or with blind and buried vias).
+3. The far-return rf_msvia's notch: its upper flank -1.9 dB at 8.5 GHz against the whole board's -1.0.
+4. The meshed via models (mom25d, gfdtd) not joined to the cavities (their boxes kept).
+5. The power planes' decoupling capacitors as the PDN tool attaches them (their ESL, ESR), and the cavity's
    edges' radiation in Q.
-4. ~~A ground via's place suggested for each flagged via~~ done (2026-11-23, `--suggest`: the Thor carrier's 13 in
-   In4.Cu/In6.Cu, each then 0-16 ohm).
+6. Why the Thor run with `--cavities` solved every piece again rather than taking thor5's (the same board and
+   settings: their hashes to compare).
 
 ## mom25d: speed (2026-11-19)
 

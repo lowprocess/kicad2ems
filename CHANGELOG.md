@@ -10,6 +10,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **segment `--cavities`: the board's plane-pair cavities in the join (2026-11-24).** The physics-based via models'
+  planes were infinite; now each leaves each cavity its vias cross to the join (`viamodel.build(cavities=)`: each
+  barrel segment in it a port, + at its upper node, the box's ground vias there not modelled), and each cavity is
+  one block between every via model's ports in it, Z = W Zc W^T: Zc the board's cavity between those vias at each
+  frequency (`Cavity.impedance`: jw mu0 d (K - k^2 M)^-1 at their discs, every ground via on the board a short,
+  k^2 with the dielectric's and the planes' loss), W each segment's share of the cavity's height. The via model
+  now gives S with every port terminated (2 Z_L / z0 - I): a stripline pad between two cavity ports has no other
+  path, and open-circuit Z none (the same S as before to 4e-14 without cavities). Checked: leaving a cavity to
+  the join and joining the infinite planes' coupling back is the model to 1e-15 (rf_msvia, rf_diffvia); on
+  rf_msvia with its ground vias 4.5 mm out (the cavity 100 ohm at the via at 7.9 GHz) the whole board's S21 notch
+  (mom25d -7.1 dB at 7.95 GHz, gfdtd -7.0 at 7.90), which the infinite planes miss (-1.2 dB at most), is -7.4 dB
+  at 7.95 GHz with the cavity, S21 0.24 dB rms from mom25d's whole board over 1-10 GHz (0.85 without); rf_msvia
+  itself (ground vias at 1 mm) unchanged (0.117 / 0.120 dB rms from gfdtd's). On the Thor carrier's pairs: 56 min
+  against 25 (the five cavities' blocks 26 min: a sparse factor of 85-94k unknowns at each of 201 frequencies);
+  83 of 93 channels within 0.1 dB of the infinite planes' (median 0.005 dB), the worst NEXT 0.835 -> 0.837 %; the
+  ten that move have vias 1-2.5 mm from a ground via (`USBC4_D` 3.1 dB at 9.85 GHz; `PCIe_{C2x1}.CLK` -6.27 ->
+  -3.78 dB at 10 GHz, the power the infinite planes had taken as radiated away coming back). Left: the
+  cavities' cost on a large board, the notch's upper flank (-1.9 dB at 8.5 GHz against the whole board's -1.0),
+  the meshed via models (their boxes kept).
 - **Plane-pair cavities and their resonances (`kicad2ems.core.cavities`, 2026-11-23; the user's question: resonances
   from signal and ground via placement).** Each pair of adjacent reference planes a 2D cavity (the voltage between
   them, -div grad V = k^2 V over the area both cover, open edges; the PDN tool's mesher and matrices, the consistent
@@ -765,6 +784,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **cavities: the field round each via resolved, and the mesh's dispersion cancelled (2026-11-24).** A via's
+  disc fanned out to far vertices: its loop inductance to a ground via 0.5-5 mm away was 36-71 % of the two-wire
+  formula's (the linear elements miss the log field round a small disc); the ground vias shorted too much round
+  them (a ground via 0.7 mm from a via had taken its peak down 12x, 7.7-8.6x converged). Now the mesh's smallest
+  angle 30 degrees (cells graded round the discs) and each disc meshed at e^-0.15 of its radius (the linear
+  elements' field round a disc is that of one 1.16x wider): the loop inductance within 2 % of the two-wire
+  formula's over radii 0.1-0.25 mm, spacings 0.5-10 mm and cells to 2 mm. The mass matrix the consistent and the
+  lumped averaged, whose dispersion errors cancel: a rectangle's 60 modes at lambda / 10 within 0.03 % (1.1 % with
+  either alone). rf_msvia's six modes against Palace's 3D eigenmodes at the default cells: within 2.7 % (2.741 /
+  2.741 GHz for the first; the old mesh there up to 4 % high). The graded discs only where they matter: every via
+  that is no ground via's, and past 400 ground vias in a cavity those within 3 mm of one; each other ground via a
+  vertex alone tied to the planes as a well (Peaceman: the inductance between the radius a vertex alone stands for
+  and the barrel's), and the outline simplified to 0.02 mm. ThunderScope's five cavities (3,211 ground vias) then
+  52-83k unknowns where every disc graded took 268k, their modes within 0.2-0.7 % of those (median; the old mesh's
+  4-6 %), 60 s (163 graded, 46 before). Held at V = 0 alone such a vertex had moved the modes tens of %, and
+  opening and closing the outline (0.1 mm) had lost the modes of its narrow strips. Two faults of the unknowns'
+  numbering fixed on the way: a port off the mesh left an unknown of no vertex, and so did the refinement's stray
+  vertices (both K + M singular). The reference boards again (docs/si.md): the Thor carrier's vias flagged in all
+  five cavities now (`DP1.AUX_C+` 214 ohm at 8.84 GHz; before, 13 in In4.Cu/In6.Cu alone), 578 s with `--suggest`
+  (50 ground vias suggested: their peaks then 3-4 ohm at the median). `--suggest` checks the cavity's two planes
+  alone: a through via must clear every other layer too (said in its help and the docs).
 - **mom25d: the block low-rank solver 3-11x faster in a fifth to a tenth of its factor's memory (2026-11-22).**
   GMRES's products were the exact matrix-free operator (the far field's kernels recomputed each product: 215 s of
   a 221 s solve on the Thor's In7 group, 24.9k unknowns, 106 ports, 5 GHz). Now its operator is the matrix
