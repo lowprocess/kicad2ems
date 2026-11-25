@@ -22,7 +22,15 @@ def rlc(boards):
                                         ('100n 50V X7R', 1e-7), ('4k7', 4700.0),
                                         ('1,5p', 1.5e-12), ('0', 0.0),
                                         ('DNP', None), ('R', None),
-                                        ('tbd', None), ('1.2.3', None)])
+                                        ('tbd', None), ('1.2.3', None),
+                                        # a space before the prefix, the unit
+                                        # in any case, SPICE's Meg (had read
+                                        # 10 ohm, 2.2 ohm, 0.1 F)
+                                        ('10 kOhm', 1e4), ('2.2 MOhm', 2.2e6),
+                                        ('2 mOhm', 2e-3), ('5mOHM', 5e-3),
+                                        ('0.1 uF', 1e-7), ('100 nF', 1e-7),
+                                        ('4.7 uH', 4.7e-6), ('100nF/50V', 1e-7),
+                                        ('1Meg', 1e6), ('10f', 1e-14)])
 def test_parse_value(text, value):
     v = parse_value(text)
     assert v == pytest.approx(value) if value is not None else v is None
@@ -32,6 +40,13 @@ def test_parse_value(text, value):
                          [('C35', 'C_22u_16V_0603', 'C', 22e-6),
                           ('R54', 'R_45k3_0402', 'R', 45.3e3),
                           ('L1', 'L_2u2', 'L', 2.2e-6),
+                          # the package code is no value (had been 402 F,
+                          # 603 ohm, 603 H)
+                          ('C2', 'C_0402_100nF', 'C', 1e-7),
+                          ('R2', 'R_0603_10k', 'R', 1e4),
+                          ('L2', 'L_0603_10nH', 'L', 1e-8),
+                          ('R3', '10 kOhm', 'R', 1e4),
+                          ('R4', 'R_1%_0402', None, None),
                           ('C1', 'X_22u', None, None),
                           ('R1', 'C_10k', None, None)])
 def test_a_librarys_kind_then_value(ref, value, kind, v):

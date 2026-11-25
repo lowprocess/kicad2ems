@@ -726,3 +726,28 @@ def test_cli_vendor_models_derating_ports_and_spice(tmp_path):
     d = json.loads((tmp_path / 'd' / 'pdn.json').read_text())
     assert (not (tmp_path / 'd' / 'pdn_ports.sub').exists()
             and any('vector fit missed' in n for n in d['notes']))
+
+
+@pytest.mark.parametrize('text,v', [('0.1 uF', 1e-7), ('100 nF', 1e-7),
+                                    ('4.7 uH', 4.7e-6), ('2 mOhm', 2e-3),
+                                    ('100nF/50V', 1e-7), ('R_0603_10k', 1e4),
+                                    ('C_0402_100nF', 1e-7),
+                                    ('R_0R001_0805', 1e-3),
+                                    ('BLM18_0603', None)])
+def test_a_parts_value_as_libraries_and_boms_write_it(text, v):
+    """A space before the prefix ('0.1 uF' had been 0.1 F, '4.7 uH' 4.7 H,
+    '2 mOhm' 2 ohm) and a package code ('R_0603_10k' had been 603 ohm)."""
+    from kicad2ems.pcbqs.pdn.rail import part_value
+    got = part_value(dict(props={'Value': text}, value=text))
+    assert got == pytest.approx(v) if v is not None else got is None
+
+
+@pytest.mark.parametrize('text,v', [('5mOhm', 5e-3), ('5 mOhm', 5e-3),
+                                    ('5 mΩ', 5e-3), ('2.2 nH', 2.2e-9),
+                                    ('0.012', 0.012), ('n/a', None)])
+def test_a_parts_esr_and_esl_fields_in_any_case_and_spacing(text, v):
+    """ESR / ESL / DCR fields: the unit in any case, a space before the prefix
+    (had been None, and the package's defaults used)."""
+    from kicad2ems.pcbqs.pdn.rail import field_value
+    got = field_value(dict(props={'ESR': text}, value=''), 'ESR')
+    assert got == pytest.approx(v) if v is not None else got is None

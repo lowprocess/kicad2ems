@@ -19,7 +19,7 @@ between the pads, in their copper plane (units mm, y up, like the Board).
 import re
 import numpy as np
 
-from .units import parse_value
+from .units import parse_value, part_value
 
 __all__ = ['kind_value', 'not_fitted']
 
@@ -178,22 +178,19 @@ def kind_value(fp):
         # a ferrite bead: its rated impedance as a resistance (it blocks at RF:
         # 'FB_600R_0805_MPZ2012S601AT000', '600_Ohm_@_100MHz')
         for w in words:
-            mo = re.fullmatch(r'(\d+(?:\.\d+)?)(R|Ohm|ohm)', w)
+            mo = re.fullmatch(r'(\d+(?:\.\d+)?)(R|ohms?)', w, re.I)
             if mo:
                 return 'R', float(mo.group(1))
         return None, f"ferrite '{fp['value']}' without its impedance"
     mt = re.match(r'^([RLC])\d', fp['ref'])
     if not mt:
         return None, None
-    v = parse_value(fp['value'])
-    # a library's 'C_22u_16V_0603', 'R_45k3_0402': the kind's letter, then
-    # the value (all 788 R / L / C of the Jetson board); or the value first,
-    # then the package and part number: '1000pF_0402_GRM1555C1H102GA01D',
-    # '0R_0402_RC0402JR-070RL' (a LimeRFE's)
-    if v is None and len(words) > 1 and words[0].upper() == mt.group(1):
-        v = parse_value(words[1])
-    if v is None and len(words) > 1:
-        v = parse_value(words[0])
+    # the value first, then the package and part number:
+    # '1000pF_0402_GRM1555C1H102GA01D', '0R_0402_RC0402JR-070RL' (a LimeRFE's);
+    # or a library's 'C_22u_16V_0603', 'R_45k3_0402', 'R_0603_10k': the kind's
+    # letter, then the value (all 788 R / L / C of the Jetson board), a package
+    # code passed over (it had been read as 603 ohm)
+    v = part_value(fp['value'], mt.group(1))
     return ((mt.group(1), v) if v is not None else
             (None, f"value '{fp['value']}' not understood"))
 

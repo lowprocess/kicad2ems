@@ -26,7 +26,8 @@ def engineering_value(value):
     else:
         text=str(value).strip().replace('μ','u').replace('µ','u')
         text=re.sub(r'(?<=\d)\s+(?=[fpnumkKMGRr])','',text)
-        text=re.sub(r'\s*(ohms?|Ω|[FHAaVv])\s*$', '',text,flags=re.I).strip()
+        # the unit (ohm in any case; F, H, A, V as written: '10f' is 10 fF)
+        text=re.sub(r'\s*((?i:ohms?)|Ω|[FHAVav])\s*$', '',text).strip()
         try:number=float(text)
         except ValueError:number=units.value(text)
     if (number is None or not math.isfinite(number)):

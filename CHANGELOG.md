@@ -449,6 +449,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **Part values as libraries and BOMs write them (2026-11-25; the whole-repo review, F01 F02 F50 F51).** Three
+  parsers read a part's value, and each had its own gaps, silently. `core.units.value` took no space before the
+  prefix and matched the unit in one case, and both fallbacks took the first word that read as a number, which
+  is often the package: pcbqs's `part_value` read `0.1 uF` as 0.1 F, `100 nF` as 100 F, `4.7 uH` as 4.7 H and
+  `2 mOhm` as 2 ohm (the PDN's decaps, the rail tree's series parts, the converter's ngspice model); core's
+  `kind_value` read `10 kOhm` as 10 ohm, `2.2 MOhm` as 2.2 ohm, `C_0402_100nF` as 402 F and `R_0603_10k` as
+  603 ohm (openEMS's lumped parts, segment's series blocks); `field_value` gave None for `5mOhm`, `5 mOhm` and
+  `2.2 nH` (an ESR, ESL or DCR field ignored, the package's default used); `engineering_value` read `10f` as 10.
+  Now `value` takes a space before the prefix or unit, the unit (ohm, F, H, R) in any case and SPICE's `Meg`;
+  the new `units.part_value` is the first word, else the first word that is a value and not a package code
+  (`units.PACKAGES`), after the kind's letter when one is given; pcbqs's `part_value` and `field_value` and
+  core's `kind_value` use it, and a ferrite's `600OHM` reads too. Tests: each spelling above, in
+  tests/core/test_parts.py, tests/pcbqs/test_pdn_rail.py and tests/pcbqs/test_schematic.py.
 - **CI green again (2026-11-24; the stack workflow red since 11-20, the docs build since 11-23).**
   - mom25d refuses a port whose via chain shares its place and interfaces with another chain
     (`Simulation._refuse_ports_at_one_place`, the ports named): their columns of the matrix are the same, so it is

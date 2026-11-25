@@ -44,17 +44,14 @@ DEFAULT_INDUCTOR_DCR = 0.01
 
 
 def part_value(fp):
-    """The first value among a footprint's Val / Value fields and their
-    '_'-separated pieces ('R_0R001_0805'), or None. fp: a footprint dict or a
-    Part."""
+    """The first value among a footprint's Val / Value fields, as libraries
+    and BOMs write it ('0.1 uF', '100nF/50V', 'R_0R001_0805', 'R_0603_10k': a
+    package code is no value), or None. fp: a footprint dict or a Part."""
     props, value = _pv(fp)
     for v in (props.get('Val'), props.get('Value'), value):
-        if not v:
-            continue
-        for tok in [v] + re.split(r'[_\s]+', str(v)):
-            x = units.value(tok)
-            if x is not None:
-                return x
+        x = units.part_value(v) if v else None
+        if x is not None:
+            return x
     return None
 
 
@@ -70,9 +67,8 @@ def field_value(fp, *keys):
     for k in keys:
         for kk in (k, k.upper(), k.lower(), 'sim.' + k.lower()):
             if props.get(kk) not in (None, ''):
-                x = units.value(
-                    re.sub(r'(ohms?|Ω|H|F)$', '',
-                           str(props[kk]).strip()))
+                # ('5 mOhm', '2.2 nH', '10m'; the unit in any case)
+                x = units.parse_value(str(props[kk]))
                 if x is not None:
                     return x
     return None

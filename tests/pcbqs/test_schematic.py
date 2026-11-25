@@ -61,7 +61,10 @@ def netlist(tmp_path):
 @pytest.mark.parametrize('text,expected', [('33n', 33e-9), ('24 µH', 24e-6),
                                            ('110 mΩ', .11), ('4k7', 4700),
                                            ('1e-6 F', 1e-6), ('5mOhm', .005),
-                                           ('1R0', 1), ('0R', 0)])
+                                           ('1R0', 1), ('0R', 0),
+                                           # femto, not farads; SPICE's Meg
+                                           ('10f', 1e-14), ('1Meg', 1e6),
+                                           ('2 MOhm', 2e6)])
 def test_engineering_values(text, expected):
     assert (engineering_value(text) == pytest.approx(expected))
 
