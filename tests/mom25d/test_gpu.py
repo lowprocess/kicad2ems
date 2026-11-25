@@ -744,12 +744,22 @@ def test_a_half_whose_factors_do_not_precondition_is_solved_in_double(
     assert ('rwg', 'cpu-c64') in sim.fast.history
     sim.reuse = 'off'
     assert not sim.fast.plan(4.5e9).half
-    # where the whole does not fit: the half's own LDL^T in double, in place
+    # where the whole does not fit: the half's own LDL^T in double, in place,
+    # refined against the exact operator (its solve had been the answer
+    # unchecked, on the near singular matrices that reach it)
     half.setattr(fast, 'DOUBLE_WHOLE', False)
     sim = make_sim('off')
     assert np.abs(sim.sparams(4e9) - S_cpu).max() < 1e-6
     assert any(r[0] == 'LDL^T factor' and 'complex128' in r[2]
                for r in sim.log.records)
+    assert not any('is not its matrix' in n for n in sim.log.notes)
+    # a factor that is not its matrix's (unpivoted on a near singular one):
+    # said, not taken for the answer quietly
+    real = fast.ldl_mul
+    half.setattr(fast, 'ldl_mul', lambda F, V: 1.5 * real(F, V))
+    sim = make_sim('off')
+    sim.sparams(4e9)
+    assert any('is not its matrix' in n for n in sim.log.notes)
 
 
 def lossy_edges(clean):

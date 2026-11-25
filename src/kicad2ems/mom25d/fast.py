@@ -85,6 +85,9 @@ BLR_OP_TOL = 1e-8
 # it (_ladder: where every complex64 factor failed the half's LDL^T without
 # pivoting is unstable); off: the half's LDL^T in place
 DOUBLE_WHOLE = os.environ.get('MOM25D_DOUBLE_WHOLE', 'on') != 'off'
+# the double LDL^T's products against its matrix's, relative (a stable factor:
+# ~1e-14; an unpivoted one on a near singular matrix: of order 1)
+LDL_CHECK = 1e-8
 # the operator by its tiles on and above the diagonal (Z symmetric; the extras
 # too): the others their transposes, half its bytes and assembly
 BLR_OP_SYM = os.environ.get('MOM25D_BLR_OP_SYM', 'on') != 'off'
@@ -1068,7 +1071,11 @@ class FastOperator:
                 return _lu_solve(_lu(W), B)
         if isinstance(Z, Half):
             # the half's own LDL^T in double, in place; where that has no
-            # factor, the frequency again (its plan the double LU's now)
+            # factor, the frequency again (its plan the double LU's now).
+            # Z's products with two vectors first, to check the factor by
+            # (in place, it replaces Z, and the operator's products with it)
+            P = np.random.default_rng(0).standard_normal((len(dsc), 2)) + 0j
+            ZP = A(P) if self._Sa is None else None
             Z.scale(dsc)
             with sim.log.timer('LDL^T factor', f"N={len(dsc)}, complex128"):
                 try:
@@ -1079,6 +1086,18 @@ class FastOperator:
                     return None
             Sa = self._Sa
             if Sa is None:
+                # the factor's products against Z's from before it: without
+                # pivoting this factor is unstable on the near singular
+                # matrices that reach this rung, and its solve had been the
+                # answer unchecked
+                err = (np.linalg.norm(ldl_mul(F, P) - ZP)
+                       / max(np.linalg.norm(ZP), 1e-300))
+                if not err <= LDL_CHECK:
+                    sim.log.note(
+                        f"WARNING the double LDL^T at {f / 1e9:.4g} GHz is "
+                        f"not its matrix's (its products {err:.1e} off, "
+                        "unpivoted on a near singular matrix): its S is not "
+                        "to be trusted")
                 return ldl_solve(F, B)
             # the extras' antisymmetric rest is not in the half: GMRES on the
             # factor's own products (Z is the factor now) and the rest's,

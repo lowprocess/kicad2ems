@@ -449,6 +449,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **mom25d's last rung, the double LDL^T, checked (2026-11-25; the review, F15).** Where every complex64 factor had
+  failed and the whole matrix did not fit for the pivoted LU, the half's own LDL^T in double, without pivoting,
+  gave the answer with no check: the rung is reached on near-singular matrices, where such a factor can be far
+  from its matrix (the code's own comment: |S| from 1.4 to 539 run to run). The factor replaces Z in place, so the
+  operator's products with two vectors are taken before it and compared with the factor's after it
+  (`LDL_CHECK`, 1e-8 relative; a stable factor is below 1e-12): a factor that is not its matrix's is said, a
+  WARNING that its S is not to be trusted. Test: tests/mom25d/test_gpu.py (the 980 Ti and the CPU).
 - **The KiCad plugin's Reload (2026-11-25; the review, F12 F13).** With KiCad's API not up when the window opened,
   Reload did nothing and the window had to be opened again; it connects now. With another board opened in the
   same editor, Reload read it but kept the last board's stem, folder and session: that board's region and ports
