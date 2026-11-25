@@ -897,3 +897,27 @@ def test_another_board_in_the_editor_is_a_change():
     assert not live.changed()
     live.kicad = type('K', (), dict(get_board=lambda self: B('b.kicad_pcb')))()
     assert live.changed()
+
+
+def test_closing_the_window_leaves_no_map_running(tmp_path, monkeypatch):
+    """The board's read ending after the window closed (its signal queued) had
+    started the impedance map, which ran on to the process's exit: a QThread
+    destroyed running aborts the process (the plugin's at its close; this
+    suite's after its last test, CI's step failing with every test passed).
+    Closed, the window starts no map and waits for its loader."""
+    import time
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    from PySide6.QtWidgets import QApplication
+    from kicad2ems.ipc import ipc
+    from kicad2ems.ipc.window import Window
+    app = QApplication.instance() or QApplication([])
+    live = FakeLive(str(tmp_path))
+    monkeypatch.setattr(ipc.Live, 'connect', staticmethod(lambda: live))
+    w = Window()
+    w.reload()                # the board's read, in its thread
+    w.close()
+    for _ in range(50):       # the read's queued signals delivered
+        app.processEvents()
+        time.sleep(0.02)
+    assert w.loader is None or w.loader.isFinished()
+    assert w.plan is None     # (its read ended after the close: not taken)

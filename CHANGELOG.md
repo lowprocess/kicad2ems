@@ -449,6 +449,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **The KiCad plugin's window closed with its map running (2026-11-25; found from CI's red `ipc-as-installed`
+  runs, F91).** The board's read ending after the window closed (its signal queued) started the impedance map,
+  and closing waited 2 s for a map's current group (a group of nets in the line model, often longer); the map's
+  thread then ran on to the process's exit, where a QThread destroyed while running aborts the process: the
+  plugin's when its window closes, and the test suite's after its last test (all 28 passed, the step failed:
+  13 of 15 local runs aborted). Closed, the window starts no map (`_closing`), stops its map timer and waits for
+  its loader (a map stops at its group's end). The suite: 12 of 12 runs clean. Test: tests/ipc/test_plugin.py.
 - **Elmer's via barrels each their own plating (2026-11-25; the review, F57).** The layered mesh drew every barrel
   as its drill's cylinder and gave all of them one copper fraction, the mean of their plated fractions, so on a
   board with drills of several sizes each barrel's conductance (and its heat path) was the mean's: 25 µm plating is

@@ -767,6 +767,8 @@ class Window(QMainWindow):
         self.loader.start()
 
     def _loaded(self, plan):
+        if getattr(self, '_closing', False):
+            return
         self.plan = plan
         self.lines['port_z0'] = dict(plan.lines['port_z0'])
         m = plan.m
@@ -873,7 +875,7 @@ class Window(QMainWindow):
     def _filter_changed(self, *_):
         """Show what the filter asks for; map (in the background) the nets of it
         that are not mapped yet."""
-        if self.plan is None:
+        if self.plan is None or getattr(self, '_closing', False):
             return
         self.session.classes = self._checked_classes()
         self._save()
@@ -1307,9 +1309,16 @@ class Window(QMainWindow):
                     kill_tree(pid)
                 self.proc.kill()
                 self.proc.waitForFinished(2000)
+        # no map after this (the board's read, ending after the close, had
+        # started one: it ran on to the process's exit, where a QThread
+        # destroyed running aborts it: the plugin's, the test suite's)
+        self._closing = True
+        self.map_timer.stop()
         if self.loader is not None:
             self.loader.stop()
-            self.loader.wait(2000)
+            # (a map stops at its group's end: waited for, not 2 s)
+            self.statusBar().showMessage('Stopping the impedance map ...')
+            self.loader.wait()
         super().closeEvent(ev)
 
 
