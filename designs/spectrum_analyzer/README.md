@@ -17,12 +17,11 @@ it stands is kept in [results/report.md](results/report.md).
 
 ## The design
 
-```
-IN - DC block - PE43711 - SW1 -+- A:  2x LFCN-2250+ - pad - MIX1 - pad - IF1 BPF - PMA3-83LN+ - LPF -+
-                               +- B1: 2.3-3.5 GHz BPF - LPF -+- SW3 - preamp or bypass --------------+- SW2 - MIX2
-                               +- B2: 3.4-5.5 GHz BPF - LPF -+
-MIX2 - diplexer - LMH6629 - PE43711 - anti-alias LPF - LMH6629 - THS4541 - ADC12040 (40 MSPS)
-```
+![Block diagram: a step attenuator and band switch; band A through the first
+mixer to a 3.21 GHz IF; bands B1 and B2 through a preselector; all three into
+the second mixer, a 10 MHz IF, a 40 MSPS ADC and an RP2350](block_diagram.svg)
+
+`make_block_diagram.py` draws it.
 
 | band | range | path |
 |---|---|---|
