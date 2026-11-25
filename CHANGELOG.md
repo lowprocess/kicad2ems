@@ -449,6 +449,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **CI's `ipc-as-installed` job tests its own commit (2026-11-25; F92).** It installed kicad2ems from the
+  plugin's requirements as KiCad does, an archive of `main`, so a run tested its commit's `tests/ipc` against
+  whichever commit `main` served then (pushes minutes apart, or an archive cached): code older than its tests.
+  The job now installs the same requirements with the archive of the run's own commit.
 - **The KiCad plugin's window closed with its map running (2026-11-25; found from CI's red `ipc-as-installed`
   runs, F91).** The board's read ending after the window closed (its signal queued) started the impedance map,
   and closing waited 2 s for a map's current group (a group of nets in the line model, often longer); the map's
