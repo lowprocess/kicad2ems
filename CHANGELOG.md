@@ -449,6 +449,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **mom25d's Gram matrix sparse from the start (2026-11-25; the review, F14).** A surface impedance's term
+  (`--sigma`, `fast.py`'s extra blocks, the block low-rank path too) took `gram_matrix`, which built four dense
+  Nt x Nt diagonals and summed seven dense Ne x Ne products before the caller made it sparse: about 5 x 8 Ne^2
+  bytes on the first frequency (the review measured 836 MB at 4,485 unknowns; ~65 GB at 40k), none of it in
+  the memory plan, and on the very path chosen because memory is short. Its triangle moments are diagonal (a
+  basis function meets another only on the triangles they share), so it is the same sum with sparse diagonals
+  now, CSR throughout: the same numbers (difference 0 on a 3,605-unknown grid), peak 1.5 MB against 541 MB
+  there. Test: tests/mom25d/test_gram.py; tests/mom25d (CPU) and test_gpu.py (the 980 Ti) pass.
 - **Stopping a run ends what it started (2026-11-25; the review, F06 F11 F71).** The window's second Stop, its
   grace kill after a first Stop and closing the window all killed the run's process alone (QProcess.kill):
   fem's Palace and Elmer ranks run in sessions of their own and their guard stops them only at exit or on

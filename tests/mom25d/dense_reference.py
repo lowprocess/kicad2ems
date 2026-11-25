@@ -111,7 +111,7 @@ def impedance(sim, f):
     if sim.metal is not None:
         zs = sim.metal.zs_edges(f, sim.edge_layer)
         Z[:sim.Ne, :sim.Ne] += ((zs[:, None] if np.ndim(zs) else zs)
-                                * gram_matrix(r))
+                                * gram_matrix(r).toarray())
     return _sym(Z)
 
 

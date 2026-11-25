@@ -75,11 +75,21 @@ def singular_moments(rwg, nb=16):
 
 
 def gram_matrix(rwg):
-    """int f_m . f_n dS  (for a surface-impedance term Zs * Gram)."""
+    """int f_m . f_n dS (for a surface-impedance term Zs * Gram), sparse (CSR):
+    combine's sum with its triangle-pair moments diagonal (a basis function
+    overlaps another only on the triangles they share). Built from dense
+    Nt x Nt diagonals and Ne x Ne products it had taken 5 x 8 Ne^2 bytes (836 MB
+    at 4,485 unknowns, ~65 GB at 40k) on the first frequency with --sigma."""
+    from scipy import sparse
     Ar, P = rwg.area, quad_pts(rwg, _BAR3)
-    m = lambda v: np.diag(Ar * (_W3[None, :] * v).sum(1))
-    return combine(rwg, m((P**2).sum(-1)), m(P[..., 0]), m(P[..., 1]),
-                   np.diag(Ar))
+    m = lambda v: sparse.diags(Ar * (_W3[None, :] * v).sum(1))
+    Mrr, Mrx, Mry, M0 = (m((P**2).sum(-1)), m(P[..., 0]), m(P[..., 1]),
+                         sparse.diags(Ar))
+    A, Bx, By = (sparse.csr_matrix(x) for x in (rwg.Aal, rwg.Bx, rwg.By))
+    # combine's terms, M^T = M
+    G = (A.T @ Mrr @ A - A.T @ Mrx @ Bx - A.T @ Mry @ By - Bx.T @ Mrx @ A
+         - By.T @ Mry @ A + Bx.T @ M0 @ Bx + By.T @ M0 @ By)
+    return sparse.csr_matrix(G)
 
 
 # ---- The wave fits on a port's feed line ------------------------------------
