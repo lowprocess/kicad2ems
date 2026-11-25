@@ -10,6 +10,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **IBIS buffers as the channel's terminations (`kicad2ems.core.ibis`, 2026-11-25; the time-domain question's
+  second part).** `read`/`parse` take an IBIS file's [Model]s (Model_type, Polarity, C_comp, the references and
+  [Voltage Range], [Pulldown], [Pullup], [GND Clamp], [POWER Clamp], [Ramp], [Rising/Falling Waveform] with
+  their fixtures), its [Pin] table's R/L/C and [Package], typ/min/max with NA as typ's and the scale letters.
+  `Driver(model, bits, ui)` is the buffer at its die (Ku(t) Ipu(Vcc − V) + Kd(t) Ipd(V) + the clamps + C_comp)
+  behind its package (R and L in series, C at the pin), its switching from two V-T tables an edge (both
+  coefficients) or one or [Ramp] (Kd = 1 − Ku), each new edge started where its Ku is the present one;
+  `Receiver(model)` its clamps and C_comp; both terminations for `core.macromodel.simulate`. Checked: a
+  resistive buffer from [Ramp] through a 50 mm line as a Thevenin source of Ku(t) Vcc behind its resistance (to
+  1e-6), its edge into R_load the [Ramp]'s slope (2 %); Ku and Kd made not complementary found again from two
+  V-T tables (1e-3); a 2 pF input's rise 2.2 RC (10 %); a package's resistance in the DC level, an inverting
+  buffer. Not read: [Driver Schedule], [Submodel], EBD, [Model Spec]. Test: tests/core/test_ibis.py.
 - **A passive rational macromodel of S-parameters, and its transient (`kicad2ems.core.macromodel`, 2026-11-25;
   the time-domain SI question's first part).** `fit(f, S)` is relaxed vector fitting with every entry on common
   poles (the fewest of 8, 12, 16 ... within 2e-3 RMS of the largest |S|), stable poles (a causal model), and a DC
