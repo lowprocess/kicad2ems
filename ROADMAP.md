@@ -232,14 +232,17 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    the problems that cannot be split. To prototype and measure on a case just over RAM (~60,000 unknowns) against
    the block low-rank path before it earns a place.
 6. **The time grid, the rest** (R-E16). The grid holds the longest trace (`si.time_grid`, 16 samples a ripple:
-   CHANGELOG 2026-11-14), and `coupling` uses it too. Left: S to DC for a step's settled value and TDR (item 8),
-   and whether 1 / rise as fmax (the top 20 % faded) loses an edge's corner on short, fast traces: to measure
-   against a grid to 3 / rise before changing it.
-7. **Drivers and receivers.** A source impedance and a receiver's load in place of `z0` at every end (an
-   unterminated receiver doubles what arrives; NEXT reflected at the driver arrives at the far end), and an eye
-   for a bit pattern (the edge response is there: superposed).
-8. **A trace's own quality:** its impedance along its length (the line model has it: *Trace impedances*), the
-   reflections of its discontinuities for the edge (TDR from S11), its loss at the data rate.
+   CHANGELOG 2026-11-14), and `coupling` uses it too. Left: whether 1 / rise as fmax (the top 20 % faded) loses an
+   edge's corner on short, fast traces: to measure against a grid to 3 / rise before changing it. (S to DC, the
+   TDR: the time-domain question's macromodel, 2026-11-25.)
+7. **The time-domain question, the rest** (`kicad2ems.core.timedomain`, docs/timedomain.md, 2026-11-25: TDR,
+   step, eye; a passive macromodel; ideal and IBIS buffers). Left: jitter and noise (a BER contour, a bathtub, a
+   statistical eye), equalization (CTLE, FFE, DFE) and IBIS-AMI, a floating differential termination, IBIS's
+   [Driver Schedule] / [Submodel], crosstalk and coupling's edge responses through the same buffers (their `z0`
+   at every end), a SPICE subcircuit of the macromodel for the circuit question, and the eye checked against a
+   commercial tool's on a real channel.
+8. **A trace's own quality:** its impedance along its length (the line model has it: *Trace impedances*; the
+   time-domain question's TDR from the channel's S), its loss at the data rate.
 9. **The coupled stretches drawn on the plan**, coloured by their share (the traces are picked on the board
    already).
 10. **Broadside pairs** on adjacent layers: the groups are of one layer, so such a pair is not coupled at all (it

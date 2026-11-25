@@ -820,12 +820,15 @@ def same_config(a, b):
 
 def latest_results(base, board, config=None, runs=None):
     """{analysis: the folder of its newest finished run on this board under
-    base}, a run of `config` (None: of none) before the others: what an
-    analysis that starts from another's result is given (Analysis.command's
-    results). runs: the index, when read already."""
+    base}, a run of `config` (None: of none) before the others, and the
+    newest solvers' run as 'sparams': what an analysis that starts from
+    another's result is given (Analysis.command's results). runs: the index,
+    when read already."""
     rs = index(base, board) if runs is None else runs
     out = {}
     for r in [r for r in rs if same_config(r.config, config)] + rs:
-        if r.ok and not r.preview and r.kind != RF:
-            out.setdefault(r.kind, r.folder)
+        if r.ok and not r.preview:
+            # (a solvers' run: as 'sparams', the S-parameters the time-domain
+            # question starts from)
+            out.setdefault(r.kind if r.kind != RF else 'sparams', r.folder)
     return out

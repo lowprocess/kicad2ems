@@ -102,6 +102,13 @@ QUESTIONS = {
             "NEXT <victim>, FEXT <victim> [(<layer>)]: all its aggressors on "
             "its layer together, % of the swing"),
         Question(
+            'timedomain', 'Time domain', 'Signal integrity',
+            "a channel's TDR, step response and eye for a bit pattern, from "
+            "its S-parameters' macromodel, ideal or IBIS buffers", order=20,
+            figures="eye height, mV; eye width, ps; TDR min, TDR max: the "
+            "impedance along the channel, ohm; delay, rise: the step's at the "
+            "far end, ps"),
+        Question(
             'dc', 'Rail drop', 'Power',
             "a rail's DC drop, its current density and its loss", order=10,
             figures="drop <load>: the rail's own copper from the source to the "

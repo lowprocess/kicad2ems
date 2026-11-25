@@ -64,7 +64,8 @@ def test_every_solver_and_analysis_listed_loads(listed):
         'scikit'
     ]
     assert [a['name'] for a in listed['analyses']] == [
-        'crosstalk', 'coupling', 'pdn', 'elmer_dc', 'mqs', 'palace_loop',
+        'crosstalk', 'coupling', 'timedomain', 'pdn', 'elmer_dc', 'mqs',
+        'palace_loop',
         'palace_pdn',
         'circuit', 'elmer_mag', 'thermal', 'elmer_thermal', 'palace_cap'
     ]

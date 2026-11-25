@@ -122,11 +122,13 @@ thermal analyses, the Elmer and Palace tools).
 
 An analysis is a subclass of `Analysis`, listed by its module and class in
 `kicad2ems.core.analyses.ANALYSES` (imported on the first `registry()` call),
-the [crosstalk between traces](si.md) and [a board's coupling](si.md#coupling) among them:
+the [crosstalk between traces](si.md), [a board's coupling](si.md#coupling) and [a channel in
+time](timedomain.md) among them:
 
 ```python
 ANALYSES = ('kicad2ems.core.si:Crosstalk',
             'kicad2ems.core.coupling:Coupling',
+            'kicad2ems.core.timedomain:TimeDomain',
             'kicad2ems.pcbqs.analyses:PowerIntegrity', ...)
 ```
 

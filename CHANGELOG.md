@@ -10,6 +10,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **The time-domain question: a channel's TDR, step response and eye (`kicad2ems.core.timedomain`,
+  docs/timedomain.md, 2026-11-25; the user's ask, with a macromodel and IBIS drivers).** A channel's S-parameters
+  (a Touchstone file, a run's folder, the study's S-parameter run, or the board solved here on the line model or
+  mom25d down to fmax / points) through `core.macromodel`'s passive model, driven and received by ideal buffers (a
+  source behind its resistance; z0, R to Vtt beside C, open) or IBIS ones (`core.ibis`), a pair by complementary
+  drivers: the TDR (the impedance along the channel), the step at the far end (delay, rise, overshoot), the eye
+  for a PRBS at a data rate (inner height at the best phase, width at the threshold, levels) and every other
+  port's peak during it. A study question (*Time domain*, Signal integrity; engines: the line model, mom25d), its
+  figures eye height and width, TDR min and max, delay and rise; `runs.latest_results` gives the study's
+  S-parameter run as `sparams`. On rf_msvia (the line model from 20 MHz, 0.7 s): TDR 46.7-50.3 Ω (the via's dip),
+  delay 144 ps, eyes of 495 / 485 / 262 mV by 200 / 100 / 47 ps at 5 / 10 / 20 Gb/s. Checked: a 50-75-50 Ω line's
+  TDR at 75 Ω (2 %), a pair at 100 Ω; the PRBS7 eye of a lossy line at 8 Gb/s the peak-distortion analysis' of
+  its own step response (2 % of the swing); IBIS buffers through a pair end to end; a board solved on the line
+  model. Left (ROADMAP, Signal integrity 7): jitter and noise, equalization and IBIS-AMI, a floating differential
+  termination. Test: tests/core/test_timedomain.py.
 - **IBIS buffers as the channel's terminations (`kicad2ems.core.ibis`, 2026-11-25; the time-domain question's
   second part).** `read`/`parse` take an IBIS file's [Model]s (Model_type, Polarity, C_comp, the references and
   [Voltage Range], [Pulldown], [Pullup], [GND Clamp], [POWER Clamp], [Ramp], [Rising/Falling Waveform] with
