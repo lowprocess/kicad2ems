@@ -1836,8 +1836,16 @@ def run(a, echo=print):
                                             a.apart, echo)
     out = os.path.abspath(a.out)
     os.makedirs(out, exist_ok=True)
-    band = dict(fmin=a.fmin or s.fmin, fmax=a.fmax or s.fmax,
-                points=a.points or s.points)
+    # (given on the command line, a value is taken as given: --fmin 0 or
+    # --points 0 had been the config's, without a word)
+    band = dict(fmin=s.fmin if a.fmin is None else a.fmin,
+                fmax=s.fmax if a.fmax is None else a.fmax,
+                points=s.points if a.points is None else a.points)
+    if band['fmin'] <= 0 or band['fmin'] >= band['fmax'] or band['points'] < 2:
+        raise SystemExit(
+            f"segment: the band {band['fmin']:g}-{band['fmax']:g} GHz, "
+            f"{band['points']} points: fmin above 0 and below fmax, at least "
+            "2 points")
     if ends:
         bad = unrouted(parts, allcuts, ends)
         if bad:

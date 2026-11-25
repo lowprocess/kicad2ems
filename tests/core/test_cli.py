@@ -61,6 +61,10 @@ def test_toml_lists_and_strings(tmp_path):
 
 @pytest.mark.parametrize('values,match',
                          [(dict(fmin=5, fmax=2), 'below fmax'),
+                          # (a linear sweep from DC: NaN or a division by
+                          # zero in the solvers, had been accepted)
+                          (dict(fmin=0, fmax=2), 'above 0'),
+                          (dict(fmin=-1, fmax=2), 'above 0'),
                           (dict(region='1,2,3'), 'region'),
                           (dict(points='many'), 'points'),
                           (dict(curves='round'), 'choose one of'),

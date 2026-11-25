@@ -449,6 +449,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **A band from 0 Hz refused (2026-11-25; the review, F16).** `fmin <= 0` was refused for a log sweep only: a
+  linear one from DC (or below) went on to a ZeroDivisionError in the cavity model, NaN in the via model and
+  in mom25d's Sommerfeld contour ("cannot convert float NaN to integer"), and an FDTD end check that never
+  fired. The settings now say fmin must be above 0. segment's `--fmin 0` and `--points 0` had been passed over
+  for the config's (`a.fmin or s.fmin`) without a word; a value given is taken as given, and a band that is
+  not one is refused. Tests: tests/core/test_cli.py.
 - **mom25d's Gram matrix sparse from the start (2026-11-25; the review, F14).** A surface impedance's term
   (`--sigma`, `fast.py`'s extra blocks, the block low-rank path too) took `gram_matrix`, which built four dense
   Nt x Nt diagonals and summed seven dense Ne x Ne products before the caller made it sparse: about 5 x 8 Ne^2

@@ -675,6 +675,12 @@ def build_settings(cli=None, config=None):
             raise ConfigError(str(e)) from None
     if s.sweep == 'log' and s.fmin <= 0:
         raise ConfigError(f"sweep = log: fmin ({s.fmin:g} GHz) must be above 0")
+    # (a linear sweep too: at 0 Hz the cavity model divides by zero, the via
+    # model and mom25d give NaN, the FDTD's end check never fires)
+    if s.fmin <= 0:
+        raise ConfigError(
+            f"fmin ({s.fmin:g} GHz) must be above 0: S-parameters start above "
+            "DC (e.g. fmin = 0.001; pcbqs's DC drop is its own analysis)")
     if s.rough is not None and s.rough < 0:
         raise ConfigError(f"rough = {s.rough:g}: um RMS, at least 0")
     # (accepted before: a negative conductivity)
