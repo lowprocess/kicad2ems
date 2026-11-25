@@ -449,12 +449,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
-- **segment says what its pieces do not take from the config (2026-11-25; the review, F17).** Each piece runs
-  with the band and the mom25d options alone: a config's `sigma`, `rough`, `finish` and `sweep = log` never
-  reached it, so `segment` solved lossless copper on a linear sweep where a whole-board run of the same config is
-  lossy, and nothing said so. It is a WARNING now (`unused_settings`), naming each. Passing them on is left: the
-  via models and the join take a linear grid, and the reference studies' numbers would move. Test:
-  tests/core/test_segment.py.
+- **segment's pieces with the config's copper and sweep (2026-11-25; the review, F17).** Each piece ran with the
+  band and the mom25d options alone: a config's `sigma`, `rough`, `finish` and `sweep = log` never reached it, so
+  `segment` solved lossless copper on a linear sweep where a whole-board run of the same config is lossy, and
+  nothing said so. Every piece's run now takes them (`piece_settings`; only those set, so a lossless linear
+  study's pieces and their `piece.sha256` keys are as before), the physics-based via model is solved on the
+  sweep's own grid (`band_freqs`: it had built a linear one) with the planes' copper in each cavity
+  (`viamodel.solve(sigma=, rough=)`: k^2 (1 + (1 - j) delta / d), the planes' surface impedance), and
+  `--cavities`' blocks take the config's conductivity (with `rough`, Hammerstad's factor at each frequency) in
+  place of `cavities.SIGMA_CU`. The run says which settings its pieces have. On rf_msvia with `sigma = 5.8e7`,
+  `rough = 1` and a log sweep over 1-10 GHz (`--thickness grow`, as the studies): the copper takes 0.219 dB from
+  S21 at 10 GHz in pieces, 0.407 dB on the whole board on mom25d, 0.349 dB on the line model; S21 0.145 dB rms
+  from the whole board's, as lossless. The pieces' share is low because a layer piece's ideal planes have no loss
+  of their own. With mom25d's default `sides` thickness the same run gives 0.117 dB against the whole board's
+  0.813: its side plates carry no surface impedance (the review, F86, below). Tests:
+  tests/core/test_segment.py (the run in pieces against the whole board), tests/core/test_viamodel.py.
 - **A part-value sweep of an inductor with its ESR, and of 0 F (2026-11-25; the review, F23).** `--part-value`
   took a part's kind from which of R, L and C it has, an L with no R: an inductor with an ESR field was a
   resistor, and the sweep's values replaced its ESR. It is Part.kind's rule now (an inductance: an inductor).

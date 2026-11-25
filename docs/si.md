@@ -278,6 +278,12 @@ python -m kicad2ems.core.segment board.kicad_pcb --nets 'PCIE*,HDMI*' --out out/
   crosstalk between lanes further apart is missing, so treat its coupling figures as a lower bound.
 - **Resumed:** a piece solved before from the same board file and settings is taken as it is (`piece.sha256` in
   its folder), so a run stopped at one piece goes on from it. `--dmax` sets mom25d's cell size.
+- **The config's copper and sweep:** every piece's run takes the config's `sigma`, `rough`, `finish` and a log
+  `sweep`; the physics-based via models are solved on the same grid, with the planes' copper loss in each
+  cavity (k^2 (1 + (1 - j) delta / d)), and `--cavities` with the config's conductivity. A layer piece's planes
+  are ideal: their own loss is not in it. On rf_msvia (`sigma = 5.8e7`, `rough = 1`, `--thickness grow`) the
+  copper takes 0.22 dB from S21 at 10 GHz in pieces, 0.41 dB on the whole board on mom25d, 0.35 dB on the line
+  model.
 - **Each piece in a process of its own**, so the memory one took is free for the next. mom25d stops a piece that
   will not fit, saying so (`--thickness grow` has no copper-side unknowns: a large piece).
 

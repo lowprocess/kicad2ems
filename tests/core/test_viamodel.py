@@ -112,3 +112,23 @@ def test_barrels_at_one_place_are_one(tmp_path):
     S, _ = VM.solve(model, f)
     assert np.abs(S - S0).max() < 1e-12
     assert any("signal via's barrel" in n for n in model['notes'])
+
+
+def test_the_planes_copper_loss(tmp_path):
+    """solve's sigma: each cavity's k^2 times (1 + (1 - j) delta / d) (the
+    planes' surface impedance), rough's factor on delta: more loss at the top
+    of the band (at 1 GHz within 1e-7: the internal inductance's change of
+    the match), still passive; without sigma the model as before (lossless
+    copper)."""
+    f = np.linspace(1e9, 10e9, 4)
+    d, vias = _via_pieces(tmp_path, 'msvia', ['RF', 'GND'])[0]
+    model = VM.build(d, vias)
+    S0, _ = VM.solve(model, f)
+    assert np.abs(VM.solve(model, f, sigma=None)[0] - S0).max() == 0
+    lost = lambda S: 1 - (np.abs(S[:, :, 0]) ** 2).sum(1)
+    S1, _ = VM.solve(model, f, sigma=5.8e7)
+    S2, _ = VM.solve(model, f, sigma=5.8e7, rough=1.0)
+    assert (lost(S1) - lost(S0) > -1e-7).all() and (lost(S2) - lost(S1)
+                                                     > -1e-7).all()
+    assert lost(S0)[-1] < lost(S1)[-1] < lost(S2)[-1]
+    assert np.linalg.svd(S2, compute_uv=False).max() <= 1 + 1e-12

@@ -69,7 +69,9 @@ The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in 
    cached by its geometry; the pieces joined as one network: each net's S end to end across its layer changes,
    and the crosstalk through the vias. Validated against whole-board full-wave runs on `rf_diffvia` and the DDR
    example's lane 1, then the CM5 Minima. Its limits to report: a plane's cavity between sparse stitching vias,
-   apertures under a trace (the ideal plane has none), broadside coupling between layers. **Started 2026-11-20**
+   apertures under a trace (the ideal plane has none), broadside coupling between layers, the ideal planes' own
+   copper loss (a lossy config's pieces take the copper since 2026-11-25: rf_msvia 0.22 dB at 10 GHz against
+   the whole board's 0.41). **Started 2026-11-20**
    (`kicad2ems.core.segment`, docs/si.md): rf_msvia and rf_diffvia within the whole board's spread of solvers.
    Left: the extra reflection near 10 GHz (2-3 dB in S11: the via model's, to find), DDR lane 1 (no port
    footprints: its ends), crosstalk figures from the joined S (as Board coupling's), the window. **On the CM5

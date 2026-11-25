@@ -22,7 +22,10 @@ at every plane it passes through and every signal layer it has a pad on:
 
 The planes are infinite (no edge, no cavity resonance of a finite board), a
 cavity carries its TEM mode alone (thin against the wavelength), losses are the
-dielectric's. Unknowns: the vias' nodes and segments, a few hundred at most.
+dielectric's and, with solve's sigma, the planes' copper (their surface
+impedance (1 + j) Rs: k^2 (1 + (1 - j) delta / d), Q_c = d / delta; with rough,
+Hammerstad's factor on delta). The stubs' copper is lossless (a millimetre or
+so). Unknowns: the vias' nodes and segments, a few hundred at most.
 
 A cavity named in build's `cavities` (a pair of plane layers: segment.py's
 --cavities, the board's plane pair solved whole by core.cavities) is the
@@ -296,13 +299,15 @@ def _outer_l(h, a):
         0.0, math.asinh(x) - math.sqrt(1 + 1 / x ** 2) + 1 / x)
 
 
-def solve(model, freqs, z0=50.0):
+def solve(model, freqs, z0=50.0, sigma=None, rough=None):
     """S (nf, n, n) at z0 of the model's ports, and their names: the trace
     ports, then a port for each segment in a cavity left to the join
     (model['cavity_ports'] then lists them: dict(name, cavity (the upper
     plane, the lower), via (its index in model['sig']), x, y, w (its height's
-    share of the cavity's)))."""
+    share of the cavity's))). sigma (S/m; rough, um RMS): the planes' copper
+    loss in each cavity, else none."""
     from scipy.special import hankel2
+    from .roughness import rough_sigma
     from .deembed import abcd_to_s, connect, line_abcd
     sig, gv, pz, cz = model['sig'], model['gv'], model['pz'], model['cz']
     planes = model['planes']
@@ -384,6 +389,12 @@ def solve(model, freqs, z0=50.0):
                 continue  # (the join's: its segments are ports)
             dmm = hi - lo
             e = eps_between(model['diel'], lo, hi)
+            if sigma:
+                # the planes' copper, Zs = (1 + j) Rs on each: k^2 (1 + (1 -
+                # j) delta / d) (its loss and its internal inductance)
+                sc = rough_sigma(sigma, rough, f) if rough else sigma
+                e = e * (1 + (1 - 1j) * math.sqrt(2 / (w * MU0 * sc))
+                         / (dmm * 1e-3))
             kk = w * math.sqrt(MU0 * EPS0) * np.sqrt(e)
             members = ([(nn + k, sig[sg['via']], (sg['zu'] - sg['zl']) / dmm)
                         for k, sg in enumerate(segs) if sg['cav'] == (hi, lo)]

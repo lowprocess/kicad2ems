@@ -1540,14 +1540,19 @@ def cavities_for(m, parts, echo=print):
     return cavs
 
 
-def cavity_blocks(cavs, parts, done, f, echo=print, z0=50.0):
+def cavity_blocks(cavs, parts, done, f, echo=print, z0=50.0, sigma=None,
+                  rough=None):
     """--cavities: each cavity's block for the join between the physics-based
     via models' ports in it (viamodel's cavity_ports: each a segment of a
     barrel in it, weighted by its share of the cavity's height): Z = W
     Zc W^T, Zc the board's cavity between those vias (Cavity.impedance: its
-    resonances, every ground via on the board). (blocks, links (via model
-    port, block port), records)."""
+    resonances, every ground via on the board). Its planes' copper the
+    config's sigma (with rough, Hammerstad's factor at each frequency), else
+    cavities.SIGMA_CU. (blocks, links (via model port, block port),
+    records)."""
     import time
+    from .cavities import SIGMA_CU
+    from .roughness import rough_sigma
     blocks, links, recs = [], [], []
     for j, c in enumerate(cavs):
         key = set(c.layers)
@@ -1578,7 +1583,9 @@ def cavity_blocks(cavs, parts, done, f, echo=print, z0=50.0):
         n = len(mine)
         S = np.empty((len(f), n, n), complex)
         for k, fk in enumerate(f):
-            Zc = c.impedance([fk], idx)[0]
+            sc = (SIGMA_CU if not sigma else rough_sigma(sigma, rough, fk)
+                  if rough else sigma)
+            Zc = c.impedance([fk], idx, sigma_cu=sc)[0]
             Zb = W @ Zc @ W.T
             S[k] = np.eye(n) - 2 * z0 * np.linalg.inv(Zb + z0 * np.eye(n))
         name = f"cavity{j}"
@@ -1592,18 +1599,29 @@ def cavity_blocks(cavs, parts, done, f, echo=print, z0=50.0):
     return blocks, links, recs
 
 
-def unused_settings(s):
-    """What the pieces' runs do not take from the config (its copper loss, a
-    log sweep), as 'key = value': said, since they had been dropped without a
-    word, the pieces solved lossless on a linear sweep where a whole-board run
-    of the same config is lossy."""
-    out = [f"{k} = {getattr(s, k)!r}" for k in ('sigma', 'rough')
-           if getattr(s, k, None)]
-    if getattr(s, 'sigma', None) and getattr(s, 'finish', 'auto') != 'auto':
-        out.append(f"finish = {s.finish!r}")
+def piece_settings(s):
+    """The config's settings every piece's run takes beside its band: its
+    copper loss (sigma, with rough and finish) and a log sweep, those set
+    alone (a lossless linear config's pieces: their runs and cache keys as
+    before). They had not been passed on: the pieces of a lossy config solved
+    lossless on a linear sweep, where a whole-board run of it is lossy."""
+    out = {}
+    if getattr(s, 'sigma', None):
+        out['sigma'] = s.sigma
+        if getattr(s, 'rough', None):
+            out['rough'] = s.rough
+        if getattr(s, 'finish', 'auto') != 'auto':
+            out['finish'] = s.finish
     if getattr(s, 'sweep', 'linear') == 'log':
-        out.append("sweep = 'log'")
+        out['sweep'] = 'log'
     return out
+
+
+def band_freqs(band):
+    """The band's frequencies (Hz) as a piece's run has them: its sweep's
+    (linear, or 'log': evenly on a log scale)."""
+    fn = np.geomspace if band.get('sweep') == 'log' else np.linspace
+    return fn(band['fmin'], band['fmax'], int(band['points'])) * 1e9
 
 
 def solve_piece(piece, folder, band, solver='mom25d', echo=print,
@@ -1638,11 +1656,12 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
         # the physics-based via model (viamodel.py): no mesh, no run
         from . import viamodel
         from .touchstone import write_touchstone
-        f = np.linspace(band['fmin'], band['fmax'], int(band['points'])) * 1e9
+        f = band_freqs(band)
         model = viamodel.build(d, piece['vias'], piece.get('cavities') or ())
         for note in model['notes']:
             echo(f"{piece['name']}: {note}")
-        S, names = viamodel.solve(model, f)
+        S, names = viamodel.solve(model, f, sigma=band.get('sigma'),
+                                  rough=band.get('rough'))
         ts = os.path.join(folder, f"{piece['name']}_pbm.s{len(names)}p")
         write_touchstone(ts, f, S, 50.0,
                          comment=f"kicad2ems viamodel: ports {' '.join(names)}")
@@ -1860,11 +1879,11 @@ def run(a, echo=print):
             f"segment: the band {band['fmin']:g}-{band['fmax']:g} GHz, "
             f"{band['points']} points: fmin above 0 and below fmax, at least "
             "2 points")
-    unused = unused_settings(s)
-    if unused:
-        echo("segment: WARNING: the config's " + ', '.join(unused) + " not "
-             "used: the pieces are solved with lossless copper on a linear "
-             "sweep (a whole-board run of the config takes them)")
+    # (the config's copper and sweep: every piece's, as a whole-board run's)
+    band.update(piece_settings(s))
+    if len(band) > 3:
+        echo("segment: the pieces with the config's "
+             + ', '.join(f"{k} = {band[k]!r}" for k in list(band)[3:]))
     if ends:
         bad = unrouted(parts, allcuts, ends)
         if bad:
@@ -2005,7 +2024,9 @@ def run(a, echo=print):
             echo(f"segment: {len(boxed)} via model(s) meshed boxes, their "
                  "vias not joined to the cavities: " + ", ".join(boxed[:8])
                  + (" ..." if len(boxed) > 8 else ''))
-        cb, cl, cav_recs = cavity_blocks(cavs, parts, done, f0, echo)
+        cb, cl, cav_recs = cavity_blocks(cavs, parts, done, f0, echo,
+                                         sigma=band.get('sigma'),
+                                         rough=band.get('rough'))
         blocks += cb
         pairs += cl
     S, names = join(blocks, pairs)

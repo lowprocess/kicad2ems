@@ -617,16 +617,70 @@ def test_a_via_model_that_is_no_meshed_box():
         'port P1001 over signal copper, no plane under')
 
 
-def test_what_the_pieces_do_not_take_from_the_config_is_said():
-    """A config's copper loss and log sweep: named (the pieces had been
-    solved lossless on a linear sweep without a word); a lossless linear
-    config: nothing."""
+def test_the_pieces_take_the_config_s_copper_and_sweep():
+    """piece_settings: a config's copper loss (sigma, with rough and finish)
+    and a log sweep, for every piece's run (the pieces had been solved
+    lossless on a linear sweep); a lossless linear config's: none (its pieces'
+    runs and cache keys as before). band_freqs: the sweep's grid."""
     from types import SimpleNamespace
-    from kicad2ems.core.segment import unused_settings
     lossy = SimpleNamespace(sigma=5.8e7, rough=0.5, finish='enig',
                             sweep='log')
-    assert unused_settings(lossy) == ["sigma = 58000000.0", "rough = 0.5",
-                                      "finish = 'enig'", "sweep = 'log'"]
-    plain = SimpleNamespace(sigma=None, rough=None, finish='auto',
+    assert SG.piece_settings(lossy) == dict(sigma=5.8e7, rough=0.5,
+                                            finish='enig', sweep='log')
+    plain = SimpleNamespace(sigma=None, rough=0.5, finish='enig',
                             sweep='linear')
-    assert unused_settings(plain) == []
+    assert SG.piece_settings(plain) == {}
+    band = dict(fmin=1, fmax=10, points=5)
+    assert SG.band_freqs(band) == pytest.approx(
+        np.linspace(1e9, 10e9, 5))
+    assert SG.band_freqs(dict(band, sweep='log')) == pytest.approx(
+        np.geomspace(1e9, 10e9, 5))
+
+
+def test_a_lossy_config_on_a_log_sweep_in_pieces(tmp_path):
+    """rf_msvia with sigma, rough and a log sweep (the studies' --thickness
+    grow): every piece on the log grid (the via model's too: it had built a
+    linear one), the layer pieces with the copper loss; the copper takes
+    0.15 dB or more from S21 at 10 GHz (measured 0.219; the whole board on
+    mom25d 0.407, the line model 0.349: the layer pieces' ideal planes have
+    no loss of their own), and S21 within 0.25 dB rms of the whole board's
+    with the same copper (measured 0.145, as lossless)."""
+    pytest.importorskip('kicad2ems.mom25d.core')
+    import glob
+    from kicad2ems.core.touchstone import read_touchstone
+    cfg = _example(tmp_path, 'msvia')
+    lossy = tmp_path / 'lossy.toml'
+    lossy.write_text(cfg.read_text().replace(
+        'fmax    = 10', 'fmax    = 10\nsigma   = 5.8e7\nrough   = 1.0\n'
+        'sweep   = "log"'))
+    env = dict(os.environ, MOM25D_GPU='off', QT_QPA_PLATFORM='offscreen')
+    common = ['--fmin', '1', '--fmax', '10', '--points', '31']
+    got = {}
+    for name, c in (('plain', cfg), ('lossy', lossy)):
+        p = subprocess.run([sys.executable, '-m', 'kicad2ems.core.segment',
+                            str(c), '--edges', 'coarse', '--via-solver', 'pbm',
+                            '--thickness', 'grow', '--out',
+                            str(tmp_path / name)] + common,
+                           capture_output=True, text=True, env=env)
+        assert p.returncode == 0, (p.stdout + p.stderr)[-3000:]
+        res = json.load(open(tmp_path / name / SG.RESULT))
+        got[name] = read_touchstone(str(tmp_path / name / res['touchstone']))
+    assert "the pieces with the config's sigma = 58000000.0" in p.stdout
+    f, S = got['lossy']
+    assert f == pytest.approx(np.geomspace(1e9, 10e9, 31))
+    fv, _ = read_touchstone(glob.glob(str(tmp_path / 'lossy' / 'via1' /
+                                          '*_pbm.s2p'))[0])
+    assert fv == pytest.approx(f)
+    for layer in ('F_Cu', 'B_Cu'):
+        log = (tmp_path / 'lossy' / layer / 'run.log').read_text()
+        assert 'conductor loss sigma 5.8e+07' in log, log[-2000:]
+    db = lambda x: 20 * np.log10(np.abs(x))
+    assert db(got['plain'][1][-1, 1, 0]) - db(S[-1, 1, 0]) > 0.15
+    p = subprocess.run([sys.executable, '-m', 'kicad2ems', str(lossy),
+                        '--solvers', 'mom25d', '--mom-thickness', 'grow',
+                        '--no-report', '--out', str(tmp_path / 'whole')]
+                       + common, capture_output=True, text=True, env=env)
+    assert p.returncode == 0, (p.stdout + p.stderr)[-3000:]
+    f0, S0 = read_touchstone(str(tmp_path / 'whole' / 'rf_msvia_mom25d.s2p'))
+    assert f0 == pytest.approx(f)
+    assert np.sqrt(np.mean((db(S[:, 1, 0]) - db(S0[:, 1, 0])) ** 2)) < 0.25
