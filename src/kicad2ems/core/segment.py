@@ -1592,6 +1592,20 @@ def cavity_blocks(cavs, parts, done, f, echo=print, z0=50.0):
     return blocks, links, recs
 
 
+def unused_settings(s):
+    """What the pieces' runs do not take from the config (its copper loss, a
+    log sweep), as 'key = value': said, since they had been dropped without a
+    word, the pieces solved lossless on a linear sweep where a whole-board run
+    of the same config is lossy."""
+    out = [f"{k} = {getattr(s, k)!r}" for k in ('sigma', 'rough')
+           if getattr(s, k, None)]
+    if getattr(s, 'sigma', None) and getattr(s, 'finish', 'auto') != 'auto':
+        out.append(f"finish = {s.finish!r}")
+    if getattr(s, 'sweep', 'linear') == 'log':
+        out.append("sweep = 'log'")
+    return out
+
+
 def solve_piece(piece, folder, band, solver='mom25d', echo=print,
                 thickness=None, dmax=None, layer_solver=None, via_solver=None,
                 edges=None, env=None, started=None):
@@ -1846,6 +1860,11 @@ def run(a, echo=print):
             f"segment: the band {band['fmin']:g}-{band['fmax']:g} GHz, "
             f"{band['points']} points: fmin above 0 and below fmax, at least "
             "2 points")
+    unused = unused_settings(s)
+    if unused:
+        echo("segment: WARNING: the config's " + ', '.join(unused) + " not "
+             "used: the pieces are solved with lossless copper on a linear "
+             "sweep (a whole-board run of the config takes them)")
     if ends:
         bad = unrouted(parts, allcuts, ends)
         if bad:

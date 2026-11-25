@@ -449,6 +449,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **segment says what its pieces do not take from the config (2026-11-25; the review, F17).** Each piece runs
+  with the band and the mom25d options alone: a config's `sigma`, `rough`, `finish` and `sweep = log` never
+  reached it, so `segment` solved lossless copper on a linear sweep where a whole-board run of the same config is
+  lossy, and nothing said so. It is a WARNING now (`unused_settings`), naming each. Passing them on is left: the
+  via models and the join take a linear grid, and the reference studies' numbers would move. Test:
+  tests/core/test_segment.py.
 - **A part-value sweep of an inductor with its ESR, and of 0 F (2026-11-25; the review, F23).** `--part-value`
   took a part's kind from which of R, L and C it has, an L with no R: an inductor with an ESR field was a
   resistor, and the sweep's values replaced its ESR. It is Part.kind's rule now (an inductance: an inductor).

@@ -615,3 +615,18 @@ def test_a_via_model_that_is_no_meshed_box():
     b.ports.append(P('P1001', 'B.Cu'))
     assert SG._unmeshable(m, b, bx) == (
         'port P1001 over signal copper, no plane under')
+
+
+def test_what_the_pieces_do_not_take_from_the_config_is_said():
+    """A config's copper loss and log sweep: named (the pieces had been
+    solved lossless on a linear sweep without a word); a lossless linear
+    config: nothing."""
+    from types import SimpleNamespace
+    from kicad2ems.core.segment import unused_settings
+    lossy = SimpleNamespace(sigma=5.8e7, rough=0.5, finish='enig',
+                            sweep='log')
+    assert unused_settings(lossy) == ["sigma = 58000000.0", "rough = 0.5",
+                                      "finish = 'enig'", "sweep = 'log'"]
+    plain = SimpleNamespace(sigma=None, rough=None, finish='auto',
+                            sweep='linear')
+    assert unused_settings(plain) == []
