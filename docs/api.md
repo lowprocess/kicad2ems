@@ -286,7 +286,7 @@ For programs that drive kicad2ems: read a board, show its line model, start runs
 | `kicad2ems.core.solvers` | `registry`, `get`, `resolve_lines`, `AUTO`, `LINES` |
 | `kicad2ems.core.analyses` | `registry()` (`{name: Analysis}`: every analysis), `analysis_of(folder)`, `read_config(config)` (`{name: {key: value}}` of a config's `[analysis]` tables; an analysis given several: its first), `read_sets(config)` (`{name: [{key: value}, ...]}`: every table of each, [a run for each](usage.md#several)) |
 | `kicad2ems.core.study` | `study_tree()`, `questions()` (`{name: Question}`), `engines()` (`{name: Engine}`), `provided`, `dump_options`, `runs_for(asked)`; a config's: `Study`, `read_config`, `write_config`, `plan`, `unmet`, `engine_named`, `default_fields`, `compare`, `rf_needs`, `load_config(config)` (its tables, [older forms](usage.md#older-forms) migrated), `RF`; `check_lines()` (`--check`'s lines), `main(argv)` (`kicad2ems study`) ([Questions and engines](#study-api)) |
-| `kicad2ems.core.runs` | `Run`, `EventTail`, `stop_runs`, `find_results`, `toml_value`, `write_toml`, `update_toml` (a config edited in place, its comments kept), `load_toml`, `read_summary`; where a front end's runs go: `run_dir`, `preview_dir`, `tool_dir`, `tool_preview_dir`, `board_name`; a run folder's mark: `mark`, `ended`, `outcome(code, stopped, crashed)`, `marked`, `MARK`; the runs: `info(folder)`, `index(base, board, running)` (a `RunInfo` per run), `latest_results`, `run_log`, `same_config`, `when_text` |
+| `kicad2ems.core.runs` | `Run`, `EventTail`, `stop_runs`, `find_results`, `toml_value`, `write_toml`, `update_toml` (a config edited in place, its comments kept), `load_toml`, `read_summary`; where a front end's runs go: `run_dir`, `preview_dir`, `tool_dir`, `tool_preview_dir`, `board_name`; a run folder's mark: `mark`, `ended`, `outcome(code, stopped, crashed)`, `marked`, `MARK`; the runs: `info(folder)`, `index(base, board, running)` (a `RunInfo` per run), `latest_results`, `run_log`, `same_config`, `when_text`; a run's process tree: `process_children`, `descendants(pid)`, `tree_of(pid)`, `kill_tree(pid, also)` |
 | `kicad2ems.core.formats` | `check` (a JSON of kicad2ems's, e.g. `python -m kicad2ems.core.sysinfo`'s: None, or why this kicad2ems cannot read it) |
 | `kicad2ems.core.touchstone` | `read_touchstone`, `port_names` (a kicad2ems Touchstone file's port names), `read_matrix` (the file's matrices as written: S, Y, Z, H or G), `to_s` |
 | results | `core.fields.antenna` (`read`, `read_sphere`, `sphere_cuts`, `sphere_gain`), `core.fields.frames` (`find_dumps`, `write_frames`), `core.meshes`, `core.phased` ([For solvers](#for-solvers)) |
@@ -316,7 +316,11 @@ meaning; a new key needs none. A file without them was written before they were 
 The events are `format` (first), `stage` (`name`), `log` (`text`), `status` (a solver's progress: `run`,
 `fraction`, `eta` and the solver's own numbers), `file` (`label`, `path`) and `done` (`code`); a reader passes
 over a kind it does not know. [Usage](usage.md#events) shows a stream. A run is stopped from outside with
-`stop_runs(out_dir)`.
+`stop_runs(out_dir)`, which lets it finish its step and write what it has. To end one at once, end what it
+started too: `kill_tree(pid)` kills the process and everything below it by parent pid (Windows:
+`taskkill /T /F`), including an analysis's MPI ranks, which run in sessions of their own. `tree_of(pid)`,
+taken when the run was asked to stop, lets a later `kill_tree(pid, also=...)` reach children that a tool
+which ended on SIGTERM left to init (Linux: each with its start time, so a pid used again is not touched).
 
 <a id="gfdtd-engine"></a>
 ## gfdtd's engine

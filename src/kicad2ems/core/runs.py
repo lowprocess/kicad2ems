@@ -39,7 +39,8 @@ __all__ = ['toml_value', 'write_toml', 'load_toml', 'Run', 'read_summary',
            'EventTail', 'stop_runs', 'board_name', 'run_dir', 'preview_dir',
            'tool_dir', 'tool_preview_dir', 'find_results', 'update_toml',
            'MARK', 'mark', 'marked', 'ended', 'outcome', 'RunInfo', 'info',
-           'index', 'latest_results', 'run_log', 'same_config', 'when_text']
+           'index', 'latest_results', 'run_log', 'same_config', 'when_text',
+           'process_children', 'descendants', 'tree_of', 'kill_tree']
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -282,6 +283,109 @@ def stop_runs(out_dir):
     for d in dirs:
         open(os.path.join(d, 'ABORT'), 'w', encoding='utf-8').close()
     return dirs
+
+
+def process_children(proc='/proc'):
+    """{parent pid: [child pids]} of every process: Linux's /proc, else ps
+    (macOS, the BSDs); {} where neither tells."""
+    kids = {}
+    if os.path.isdir(proc):
+        for d in os.listdir(proc):
+            if not d.isdigit():
+                continue
+            try:
+                with open(os.path.join(proc, d, 'stat'),
+                          encoding='utf-8', errors='replace') as fh:
+                    stat = fh.read()
+                # the name may hold spaces and brackets
+                ppid = int(stat[stat.rindex(')') + 2:].split()[1])
+            except (OSError, ValueError, IndexError):
+                continue
+            kids.setdefault(ppid, []).append(int(d))
+    elif os.name == 'posix':
+        import subprocess
+        try:
+            text = subprocess.run(['ps', '-A', '-o', 'pid=', '-o', 'ppid='],
+                                  capture_output=True, text=True,
+                                  timeout=10).stdout
+        except (OSError, subprocess.SubprocessError):
+            return kids
+        for line in text.splitlines():
+            try:
+                pid, ppid = (int(x) for x in line.split())
+            except ValueError:
+                continue
+            kids.setdefault(ppid, []).append(pid)
+    return kids
+
+
+def descendants(pid, proc='/proc'):
+    """Every process below pid, by parent pid whatever its session or group
+    (fem's Palace and Elmer ranks run in sessions of their own), nearest
+    first; [] where it cannot be told, and for no process (pid 0 or 1: the
+    whole system is below them)."""
+    if not pid or int(pid) <= 1:
+        return []
+    kids, out, todo = process_children(proc), [], [int(pid)]
+    while todo:
+        for c in kids.get(todo.pop(0), []):
+            if c != pid and c not in out:
+                out.append(c)
+                todo.append(c)
+    return out
+
+
+def _started(pid, proc='/proc'):
+    """When a process started (Linux: its stat's starttime, in clock ticks),
+    or None: a pid with its start is that process and no later one."""
+    try:
+        with open(os.path.join(proc, str(pid), 'stat'), encoding='utf-8',
+                  errors='replace') as fh:
+            stat = fh.read()
+        return int(stat[stat.rindex(')') + 2:].split()[19])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def tree_of(pid, proc='/proc'):
+    """[(pid, its start)] of every process below pid now (descendants), for a
+    kill_tree later: a tool asked to stop may end and leave its children to
+    init before it is killed (Linux: each with its start, so that a pid used
+    again by another process is not touched; elsewhere [])."""
+    out = [(p, _started(p, proc)) for p in descendants(pid, proc)]
+    return [(p, t) for p, t in out if t is not None]
+
+
+def kill_tree(pid, also=()):
+    """A run's process and everything below it ended now (SIGKILL; Windows:
+    taskkill /T /F): its workers, its openEMS, an analysis's MPI ranks in
+    sessions of their own, which killing the process alone had left running
+    (their guard's atexit and SIGTERM handler never run under SIGKILL). also:
+    tree_of's [(pid, start)] from before (each only while it is that same
+    process). Only pid's own descendants, never processes found by name.
+    Returns the pids signalled."""
+    import signal
+    import subprocess
+    if os.name == 'nt':
+        if pid:
+            subprocess.run(['taskkill', '/PID', str(int(pid)), '/T', '/F'],
+                           capture_output=True,
+                           creationflags=getattr(subprocess,
+                                                 'CREATE_NO_WINDOW', 0))
+        return [int(pid)] if pid else []
+    # (the parent first: it starts no more; pid 0: the process has ended,
+    # what it left in `also` only)
+    todo = [int(pid)] + descendants(pid) if pid and int(pid) > 1 else []
+    todo += [p for p, t in also
+             if p > 1 and p not in todo and _started(p) == t]
+    done = []
+    for p in todo:
+        try:
+            os.kill(p, signal.SIGKILL)
+            done.append(p)
+        except (ProcessLookupError, PermissionError):
+            pass
+    return done
 
 
 STAMP = '%Y%m%d_%H%M%S'                     # a run folder's date and time

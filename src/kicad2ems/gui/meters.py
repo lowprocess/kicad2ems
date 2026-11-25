@@ -47,20 +47,9 @@ def ram(meminfo='/proc/meminfo'):
 
 
 def _children(proc='/proc'):
-    """{parent pid: [child pids]} of every process (Linux)."""
-    kids = {}
-    for d in os.listdir(proc):
-        if not d.isdigit():
-            continue
-        try:
-            with open(os.path.join(proc, d, 'stat'), encoding='utf-8') as fh:
-                stat = fh.read()
-            # the name may hold spaces and brackets
-            ppid = int(stat[stat.rindex(')') + 2:].split()[1])
-        except (OSError, ValueError, IndexError):
-            continue
-        kids.setdefault(ppid, []).append(int(d))
-    return kids
+    """{parent pid: [child pids]} of every process (core.runs')."""
+    from kicad2ems.core.runs import process_children
+    return process_children(proc)
 
 
 def tree_rss(pid, proc='/proc'):

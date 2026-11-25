@@ -449,6 +449,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **Stopping a run ends what it started (2026-11-25; the review, F06 F11 F71).** The window's second Stop, its
+  grace kill after a first Stop and closing the window all killed the run's process alone (QProcess.kill):
+  fem's Palace and Elmer ranks run in sessions of their own and their guard stops them only at exit or on
+  SIGTERM, which SIGKILL skips, so closing the window during a Palace analysis left its 8 MPI ranks running; a
+  tool that ended on the first Stop's SIGTERM left its children to init. `core.runs.kill_tree(pid, also)` now
+  kills the process and every descendant by parent pid (Windows: `taskkill /T /F`), never by name; the first
+  Stop records the tree (`tree_of`: each pid with its start time, so a pid used again is not touched) and the
+  kill reaches what the tool left. Closing the window asks first for an analysis's run too, as
+  docs/gui/README.md said (it had asked for kicad2ems's own only). The KiCad plugin's window kept its finished
+  QProcess, so the board was never read again on activation after a first Run (R-E26) and a run that failed to
+  start left Run disabled; it lets the process go when it ends or fails to start, and closing it during a run
+  asks, stops the run and then ends its tree. Tests: tests/core/test_runs.py and tests/gui/test_runprocess.py
+  (a tool whose child runs in a session of its own: the window's close, Stop twice, Stop and its grace).
 - **The installer's exit status, and the folder its target Python runs in (2026-11-25; the review, F07-F09).**
   A step that failed (a compiled core, the openEMS, Elmer or Palace build, `kicad2ems --check`) was a note
   and the installer said "Done" and exited 0, so a `--yes` or CI install of a mom25d that cannot mesh passed;

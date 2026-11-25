@@ -24,7 +24,7 @@ import pyqtgraph as pg
 
 from kicad2ems.core.solvers import registry
 from kicad2ems.core import overlay as ov
-from kicad2ems.core.runs import Run, EventTail, stop_runs
+from kicad2ems.core.runs import Run, EventTail, kill_tree, stop_runs
 from kicad2ems.gui.planview import PlanView
 from kicad2ems.gui.sectionview import SectionView
 from . import model as md
@@ -1177,6 +1177,7 @@ class Window(QMainWindow):
         self.proc = QProcess(self)
         self.proc.setProcessChannelMode(QProcess.MergedChannels)
         self.proc.finished.connect(self._finished)
+        self.proc.errorOccurred.connect(self._run_error)
         argv = r.argv()
         self.proc.start(argv[0], argv[1:])
         self.run_btn.setEnabled(False)
@@ -1221,6 +1222,25 @@ class Window(QMainWindow):
             tail = (bytes(self.proc.readAll()).decode(
                 'utf-8', 'replace').strip().splitlines()[-4:])
             self.run_lab.setText("the run failed:\n" + "\n".join(tail))
+        self._run_ended()
+
+    def _run_error(self, err):
+        """A run that could not start (no finished signal follows)."""
+        if err != QProcess.ProcessError.FailedToStart or self.proc is None:
+            return
+        self.timer.stop()
+        self.run_lab.setText(
+            f"the run did not start: {self.proc.errorString()}")
+        self.run_btn.setEnabled(True)
+        self.stop_btn.setEnabled(False)
+        self._run_ended()
+
+    def _run_ended(self):
+        """No run going (the board is read again on activation: R-E26; the
+        process had been kept, and the board never read again after a run)."""
+        if self.proc is not None:
+            self.proc.deleteLater()
+        self.proc = None
 
     def stop(self):
         if self.run_out:
@@ -1258,6 +1278,24 @@ class Window(QMainWindow):
             self.reload()
 
     def closeEvent(self, ev):
+        if self.proc is not None:
+            # a run going: asked to stop, then ended with all it started
+            # (destroyed with the window, the process alone had been killed)
+            if (QMessageBox.question(
+                    self, 'A run is going',
+                    "A kicad2ems run is going: closing the window stops it "
+                    "(its folder keeps what it has written). Stop it and "
+                    "close?") != QMessageBox.Yes):
+                ev.ignore()
+                return
+            if self.run_out:
+                stop_runs(self.run_out)
+            if not self.proc.waitForFinished(3000):
+                pid = self.proc.processId()
+                if pid:
+                    kill_tree(pid)
+                self.proc.kill()
+                self.proc.waitForFinished(2000)
         if self.loader is not None:
             self.loader.stop()
             self.loader.wait(2000)

@@ -3,6 +3,7 @@ kicad2ems-gui, the KiCad plugin): the settings file it writes, the command line,
 the event stream read as it grows, stopping it, and the files of the newest
 run."""
 import json, os
+import pytest
 from kicad2ems.core.runs import (Run, EventTail, stop_runs, find_results,
                                  write_toml, toml_value)
 from kicad2ems.core.config import build_settings
@@ -59,3 +60,77 @@ def test_find_results(tmp_path):
         ('S-parameters', str(tmp_path / 'b_openems.s2p')),
         ('report', str(tmp_path / 'b_report.html'))
     ])
+
+
+def _tree_script(pidfile):
+    """A tool that starts a child in a session of its own (as fem's children
+    are) and writes the child's pid."""
+    return ("import subprocess, sys, time\n"
+            "c = subprocess.Popen([sys.executable, '-c', "
+            "'import time; time.sleep(120)'], start_new_session=True)\n"
+            f"open({str(pidfile)!r}, 'w').write(str(c.pid))\n"
+            "time.sleep(120)\n")
+
+
+def _child_pid(pidfile, timeout=30):
+    import time
+    end = time.time() + timeout
+    while time.time() < end:
+        if pidfile.exists() and pidfile.read_text().strip():
+            return int(pidfile.read_text())
+        time.sleep(0.05)
+    raise AssertionError('the tool did not start its child')
+
+
+def _alive(pid):
+    """Whether pid runs (a zombie is not running)."""
+    try:
+        with open(f'/proc/{pid}/stat', encoding='utf-8') as fh:
+            return fh.read().rsplit(')', 1)[1].split()[0] not in 'ZX'
+    except OSError:
+        pass
+    try:
+        os.kill(pid, 0)
+        return not os.path.isdir('/proc')
+    except ProcessLookupError:
+        return False
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='taskkill /T on Windows')
+def test_kill_tree_ends_a_child_in_a_session_of_its_own(tmp_path):
+    """kill_tree: the process and what it started, a child in its own
+    session too (fem's Palace and Elmer ranks: a kill of the tool alone had
+    left them running); and a tree recorded before, once its tool has ended
+    on SIGTERM and left the child to init."""
+    import signal
+    import subprocess
+    import sys
+    import time
+    from kicad2ems.core.runs import descendants, kill_tree, tree_of
+    for first_term in (False, True):
+        pidfile = tmp_path / f'child{first_term}.pid'
+        p = subprocess.Popen([sys.executable, '-c', _tree_script(pidfile)])
+        child = None
+        try:
+            child = _child_pid(pidfile)
+            assert child in descendants(p.pid)
+            tree = tree_of(p.pid) if os.path.isdir('/proc') else []
+            if first_term:  # (the tool ends, the child goes to init)
+                p.send_signal(signal.SIGTERM)
+                p.wait(10)
+                if not tree:
+                    continue  # (no /proc: no start to tell it by)
+            kill_tree(p.pid, tree)
+            p.wait(10)
+            end = time.time() + 10
+            while _alive(child) and time.time() < end:
+                time.sleep(0.05)
+            assert not _alive(child)
+        finally:
+            for q in (p.pid, child):
+                try:
+                    if q:
+                        os.kill(q, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    pass
+            p.wait(10)

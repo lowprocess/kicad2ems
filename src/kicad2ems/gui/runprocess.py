@@ -22,7 +22,19 @@ from dataclasses import dataclass, field
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer
 from PySide6.QtCore import Signal
 
-from kicad2ems.core.runs import EventTail, ended, outcome, stop_runs
+from kicad2ems.core.runs import (EventTail, ended, kill_tree, outcome,
+                                 stop_runs, tree_of)
+
+
+def _kill(proc, also=()):
+    """A run's QProcess ended at once with everything it started (a run's
+    workers and openEMS, an analysis's Palace or Elmer ranks in sessions of
+    their own: QProcess.kill had ended the process alone). also: the tree
+    when it was asked to stop (core.runs.tree_of)."""
+    running = proc.state() != QProcess.NotRunning
+    kill_tree(proc.processId() if running else 0, also)
+    if running:
+        proc.kill()
 
 
 @dataclass
@@ -53,6 +65,7 @@ class RunProcess(QObject):
         self.proc = self.cmd = self.last = self.tail = self._log = None
         self._todo, self._code, self._why = [], 0, ''
         self._stopping = False
+        self._tree = []  # (what the run going had started when asked to stop)
 
     def busy(self):
         return self.proc is not None
@@ -64,7 +77,7 @@ class RunProcess(QObject):
         if self.proc is not None:
             return 'A run is going: stop it first'
         self._todo, self._code, self._why = list(items), 0, ''
-        self._stopping = False
+        self._stopping, self._tree = False, []
         return '' if self._next(first=True) else (self._why or 'nothing to run')
 
     def _next(self, first=False):
@@ -149,9 +162,12 @@ class RunProcess(QObject):
         if self.proc is None:
             return ''
         if self._stopping:
-            self.proc.kill()
+            _kill(self.proc, self._tree)
             return 'stop: ending the process'
         self._stopping = True
+        # (what it started: a tool that ends on SIGTERM without stopping its
+        # children leaves them to init, out of the tree a kill finds)
+        self._tree = tree_of(self.proc.processId() or 0)
         if self.cmd.events:
             stop_runs(self.cmd.folder)
             return ("stop: requested - the run ends after its current step "
@@ -159,12 +175,15 @@ class RunProcess(QObject):
         proc = self.proc
         proc.terminate()
 
+        tree = self._tree
+
         def kill():
+            # (what is left: the tool if it is still going, and what it had
+            # started, if it ended and left that running)
             try:
-                if proc.state() != QProcess.NotRunning:
-                    proc.kill()
+                _kill(proc, tree)
             except RuntimeError:  # (ended and deleted meanwhile)
-                pass
+                kill_tree(0, tree)
         QTimer.singleShot(self.STOP_GRACE_MS, kill)
         return ''
 
@@ -175,6 +194,6 @@ class RunProcess(QObject):
         if self.proc is not None:
             self._stopping = True
             proc = self.proc
-            proc.kill()
+            _kill(proc, self._tree)
             if wait_ms:
                 proc.waitForFinished(wait_ms)

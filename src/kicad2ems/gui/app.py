@@ -202,12 +202,17 @@ class MainWindow(WindowStudy, WindowDocks, WindowConfigs, WindowRun,
             self.setup.set_values({})
 
     def closeEvent(self, ev):
-        # kicad2ems's own run: it ends with the window
-        if self.runner.cmd is not None and self.runner.cmd.key == 'rf':
-            kind = 'preview' if self.current.preview else 'run'
+        # a run going (kicad2ems's own, or an analysis's tool): it ends with
+        # the window, with everything it started (asked first, as the docs say;
+        # an analysis's had been ended without a word)
+        cmd = self.runner.cmd
+        if cmd is not None:
+            what = ("kicad2ems's " + ('preview' if self.current.preview
+                                      else 'run') if cmd.key == 'rf' else
+                    f"the {cmd.label or cmd.key} analysis")
             if (QMessageBox.question(
                     self, 'A run is going',
-                    f"kicad2ems's {kind} is going: closing the window stops it "
+                    f"{what} is going: closing the window stops it "
                     "(its folder keeps what it has written). Stop it and "
                     "close?"
             ) != QMessageBox.Yes):
