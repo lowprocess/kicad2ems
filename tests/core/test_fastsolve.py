@@ -301,3 +301,23 @@ def test_sigma_is_felt_beyond_microstrip():
         lossless, _ = solve(lm, m.ports, f, 'skrf')
         lossy, _ = solve(lm, m.ports, f, 'skrf', sigma=5.8e7)
         assert db(lossy[0, 1, 0]) < db(lossless[0, 1, 0]) - 0.03, name
+
+
+def test_a_row_of_vias_to_ground_is_n_mvias_for_qucsator(launch):
+    """A via element of n barrels in parallel (its L / n for scikit-rf):
+    qucsator gets n MVIAs side by side (one had been written, n times the
+    inductance)."""
+    import copy
+    from kicad2ems.core.lines.elements import Element
+    m, lm = launch
+    lm = copy.copy(lm)
+    node = next(e.a for e in lm.elements if e.kind == 'trace')
+    via = Element('via', node, 'gnd', 0.8, w=0.3, layer='F.Cu-B.Cu')
+    via.er, via.h, via.tand, via.xs, via.L, via.n = (4.5, 0.8, 0.02,
+                                                     'via to ground', 1e-10, 3)
+    lm.elements = list(lm.elements) + [via]
+    text, _ = qucs_netlist(lm, m.ports, FREQ)
+    i = len(lm.elements) - 1
+    mine = [l for l in text.splitlines()
+            if l.startswith((f'MVIA:E{i} ', f'MVIA:E{i}_'))]
+    assert len(mine) == 3 and len({l.split()[1] for l in mine}) == 1

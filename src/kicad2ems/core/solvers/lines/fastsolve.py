@@ -547,9 +547,11 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
             rlc(name, a, b, e.part)
         elif e.kind == 'via' and b == 'gnd':
             if e.er and e.h:
-                L.append(
-                    f'MVIA:{name} {a} gnd D="{e.w * 1e-3:.6g}" Subst="{sub(e)}"'
-                )
+                # a row of n in parallel: n of them (one had been written, n
+                # times the inductance scikit-rf's L / n has)
+                for k in range(max(int(getattr(e, 'n', 1) or 1), 1)):
+                    L.append(f'MVIA:{name}{"_" + str(k) if k else ""} {a} gnd '
+                             f'D="{e.w * 1e-3:.6g}" Subst="{sub(e)}"')
             else:
                 L.append(f'L:{name} {a} gnd L="{e.L:.9g} H"')
         elif e.xs == 'lumped' and e.L:

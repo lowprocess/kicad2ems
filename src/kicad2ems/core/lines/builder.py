@@ -423,6 +423,7 @@ def _build(model, nets, refcu):
                                    *sorted((model.cu_z[la], model.cu_z[lg])), e)
         e.eeff, e.h = e.er, h
         e.xs, e.L = 'via to ground', via_inductance(h, v['drill'] / 2) / n
+        e.n = n  # (qucsator: n MVIAs side by side)
         lm.elements.append(e)
         return e
     for v in vias:

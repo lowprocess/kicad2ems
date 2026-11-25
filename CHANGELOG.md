@@ -449,6 +449,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **A row of vias to ground for qucsator (2026-11-25; the review, F24).** The line model's via element of n barrels
+  in parallel had L / n for scikit-rf but was written to qucsator as one `MVIA` of one drill: n times the
+  inductance on the qucs backend. It is n MVIAs side by side now (`Element.n`). Test: tests/core/test_fastsolve.py.
 - **A dielectric without er, and a cut's open ends, in the raw stack's readers (2026-11-25; the review, F18
   F19).** KiCad's "Not specified" is `er = None` in KiCadBoard's `stack_items`, which only Board filled (the
   material's, else FR-4's, with a note); si's and coupling's time grid (`max()` of the dielectrics' er), segment's
