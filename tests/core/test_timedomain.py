@@ -163,6 +163,12 @@ def test_the_analysis(tmp_path):
         not in cmd
     cmd = a.command(dict(near='P1', far='P2'), 'b.kicad_pcb', 'o')
     assert cmd[3] == 'b.kicad_pcb'
+    # every option (the window's form) a flag the tool takes
+    opts = a.options()
+    flags = {f for act in TD.parser()._actions for f in act.option_strings}
+    full = a.command({o.key: o.default if o.default not in (None, '')
+                      else '1' for o in opts}, 'b.kicad_pcb', 'o')
+    assert {c for c in full if c.startswith('--')} <= flags
     with pytest.raises(ValueError, match='near and far'):
         a.command(dict(near='', far='P2'), 'b.kicad_pcb', 'o')
     ts = _touchstone(tmp_path / 'l.s2p', _two_port((50, 3.5, 0.05, 0.02, 3.0)),
