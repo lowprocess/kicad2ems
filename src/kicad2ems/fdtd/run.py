@@ -308,6 +308,20 @@ def run_dir(m, k, out_dir, engine=None):
                      engine_name(engine)[0], f"exc_{tag}"))
 
 
+def s_column(ports, k, z0):
+    """Column k of S (nf, n) from a run that excites port k: the power waves'
+    S_pk = b_p / a_k, a = uf_inc / sqrt(z0) and b = uf_ref / sqrt(z0) at each
+    port's own (real) z0. The voltage waves' ratio uf_ref_p / uf_inc_k is that
+    only where the ports share one z0: a matched thru from 50 to 75 ohm had
+    read |S21| 1.22 and |S12| 0.82, which the reciprocity fill and the mixed
+    modes then took for S (mom25d's S is in power waves)."""
+    zk = float(np.real(z0[k]))
+    return np.array([
+        p.uf_ref / ports[k].uf_inc * np.sqrt(zk / float(np.real(z)))
+        for p, z in zip(ports, z0)
+    ]).T
+
+
 def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, rough=None,
               copper_kw=None, threads=0, xml_path=None, dumps=(), verbose=1,
               diel='fixed', diel_fref=1e9, max_steps=1_000_000, progress=None,
@@ -374,7 +388,7 @@ def _run_port(k, m, mesh, freq, bc, out_dir, end_db=-40, sigma=None, rough=None,
             f"port {m.ports[k].name} was not excited (no incident wave: its "
             "box catches no mesh edges; see the run's openems.log, 'Voltage "
             "excitations')")
-    col = np.array([p.uf_ref / ports[k].uf_inc for p in ports]).T
+    col = s_column(ports, k, [mp.z0 for mp in m.ports])
     extra = (analyse(path=path, ports=ports, token=token, k=k, col=col)
              if analyse else None)
     lines = None

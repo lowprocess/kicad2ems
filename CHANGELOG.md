@@ -449,6 +449,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **FDTD S-parameters between ports of different z0 (2026-11-25; the review, F04).** openEMS's and gfdtd's runs
+  gave S as the voltage waves' ratio uf_ref_p / uf_inc_k, which is S only where every port has one z0; the
+  reciprocity fill (`fill_reciprocal`), the mixed modes and the comparison with mom25d (power waves) all take it
+  for power-wave S. A port given its own `z0` (a footprint's field, a config's port) had a matched 50-to-75 ohm
+  thru at |S21| 1.22 and |S12| 0.82. `run.s_column` now scales each term by sqrt(z0_k / z0_p); with one z0 the
+  factor is 1 and nothing changes. Tests: tests/fdtd/test_s_column.py.
 - **The KiCad plugin's map bands in their colours (2026-11-25; the review, F10).** `_polygon` set a band's colour
   from a generator and 1.0 unpacked into four channels, two values for four: it always raised, the colour's
   `try` (meant for a kipy without colours) hid it, and every band went to KiCad in its layer's colour since the
