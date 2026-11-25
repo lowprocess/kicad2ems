@@ -62,7 +62,7 @@ def machine():
         pass
     gpus = []
     try:
-        from emsdev import vulkan
+        from kicad2ems.emsdev import vulkan
         gpus = [dict(name=a.name, kind=a.kind, driver=a.driver, memory_GB=round(a.total / 1e9, 1)) for a in vulkan.adapters()]
     except Exception as e:                                                   # noqa: BLE001
         gpus = [dict(error=f"no Vulkan adapters: {e}")]

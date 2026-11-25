@@ -449,6 +449,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **The KiCad plugin's map bands in their colours (2026-11-25; the review, F10).** `_polygon` set a band's colour
+  from a generator and 1.0 unpacked into four channels, two values for four: it always raised, the colour's
+  `try` (meant for a kipy without colours) hid it, and every band went to KiCad in its layer's colour since the
+  maps were drawn there (R-E26). `test_a_band_is_a_filled_polygon_in_kicad` now checks the colour.
+- **The GPU report's adapters, and a retired option out of the docs (2026-11-25; the review, F49 F78).**
+  `tools/gpu_report.py` imported `emsdev`, the package before the merge: it worked only beside a stale
+  emsdev 0.3.1 in the venv, and a fresh install's report would have said "no Vulkan adapters"; it is
+  `kicad2ems.emsdev` now. docs/usage.md no longer lists `--mom-tiled`, retired with the tiled solver on 2026-11-15.
 - **A rotated footprint's pads in a KiCad 4/5 file (2026-11-25; the review, F03).** The importer added the
   footprint's rotation to each pad's angle in a `(module ...)`, but a board file's pad angle already holds it,
   in a module as in a `(footprint ...)`: every pad of a footprint not at 0 or 180 degrees was turned a quarter

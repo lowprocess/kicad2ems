@@ -831,3 +831,7 @@ def test_a_band_is_a_filled_polygon_in_kicad():
             and p.attributes.fill.filled)
     assert (len(p.proto.shape.polygon.polygons) == 1
             and len(p.polygons[0].holes) == 1)
+    # its colour (had never been set: an exception the colour's try hid)
+    col = p.attributes.fill.color
+    assert ((col.red, col.green, col.blue, col.alpha) == pytest.approx(
+        (0x2c / 255, 0x7b / 255, 0xb6 / 255, 1.0)))

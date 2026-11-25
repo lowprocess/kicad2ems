@@ -317,7 +317,6 @@ A config without `[study]` is S-parameters alone, which `kicad2ems board.toml` r
 | `--mom-dmax MM` (`dmax`) | 0.3 | largest mesh cell along the copper, mm (planes get 3× this) |
 | `--mom-port auto\|wave\|lumped` (`port`) | auto | port type: de-embedded wave ports where the feed line is long enough, otherwise lumped |
 | `--mom-solves N` (`solves`) | 60 | most frequencies the adaptive sweep may solve |
-| `--mom-tiled auto\|on\|off` (`tiled`) | auto | the tiled GPU solver for boards too big for the dense one ([details](mom.md#gpu)) |
 | `--mom-dump GHz,...` (`dump`) | | save the surface currents at these frequencies ([details](mom.md#current-dumps)) |
 | `--mom-near MM,...` (`near`) | | with `--mom-dump`: also the E field this far above the board |
 

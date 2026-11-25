@@ -221,8 +221,11 @@ def _polygon(bt, it, nm, layer_of):
             from kipy.common_types import Color
             c = it[4].lstrip('#')
             col = Color()
-            col.red, col.green, col.blue, col.alpha = (int(c[i:i + 2], 16) / 255
-                                                       for i in (0, 2, 4)), 1.0
+            # (the three channels and an opaque alpha: a generator beside the
+            # 1.0 had been two values for four, the colour never set)
+            col.red, col.green, col.blue = (int(c[i:i + 2], 16) / 255
+                                            for i in (0, 2, 4))
+            col.alpha = 1.0
             p.attributes.fill.color = col
         # (no colour in this kipy)
         except Exception:  # noqa: BLE001
