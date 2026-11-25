@@ -44,6 +44,9 @@ def part_port(part, z0=50.0, name=None):
                 source=f"part {part.ref}", internal=True)
 
 
+OPEN_OHM = 1e15  # an open's impedance (a swept 0 F)
+
+
 def impedance(R=None, L=None, C=None, f=None):
     """A series R-L-C's impedance at f (Hz, array); None for each element
     absent."""
@@ -55,6 +58,10 @@ def impedance(R=None, L=None, C=None, f=None):
         z += 1j * w * L
     if C:
         z += 1 / (1j * w * C)
+    elif C is not None:
+        # 0 F in series: an open, as parts.py has it (`if C:` had made it a
+        # short); finite, so that the S of it is 0 and 1, not inf / inf
+        z += OPEN_OHM
     return z
 
 
@@ -138,8 +145,10 @@ def sweep(spec, parts):
                 f"({', '.join(parts) or 'none'}; --part-ports)"
             )
         pt = parts[ref]
+        # (Part.kind's rule: an inductor with its ESR is an inductor; it had
+        # been taken for a resistor, and the sweep's values replaced its ESR)
         kind = ('C' if pt.C is not None else
-                'L' if pt.L is not None and pt.R is None else 'R')
+                'L' if pt.L is not None else 'R')
         row = []
         for v in str(vals).split(','):
             x = parse_value(v.strip())

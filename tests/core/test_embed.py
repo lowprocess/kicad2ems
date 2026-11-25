@@ -68,6 +68,14 @@ def test_a_sweep_is_every_combination_of_a_parts_values():
     loads = embed.loads_of(parts, np.array([1e9]), combo=combos[1])
     assert loads['C1'] == pytest.approx(embed.impedance(C=1e-12, f=[1e9]))
     assert loads['L2'] == pytest.approx(embed.impedance(L=3e-9, f=[1e9]))
+    # an inductor with its ESR: its L swept, its ESR kept (it had been taken
+    # for a resistor); a swept 0 F: an open, not a short
+    parts['L3'] = SimpleNamespace(R=0.1, L=4e-9, C=None)
+    (combo,) = embed.sweep(dict(L3='6n'), parts)
+    assert combo[0][2] == 'L'
+    load = embed.loads_of(parts, np.array([1e9]), combo=combo)['L3']
+    assert load == pytest.approx(embed.impedance(R=0.1, L=6e-9, f=[1e9]))
+    assert abs(embed.impedance(C=0.0, f=[1e9])[0]) >= embed.OPEN_OHM
     with pytest.raises(ValueError, match='not a part port'):
         embed.sweep(dict(R9='1k'), parts)
     with pytest.raises(ValueError, match='not a value'):

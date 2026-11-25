@@ -449,6 +449,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **A part-value sweep of an inductor with its ESR, and of 0 F (2026-11-25; the review, F23).** `--part-value`
+  took a part's kind from which of R, L and C it has, an L with no R: an inductor with an ESR field was a
+  resistor, and the sweep's values replaced its ESR. It is Part.kind's rule now (an inductance: an inductor).
+  `impedance` read `if C:`, so a swept 0 F was a short; it is an open (`OPEN_OHM`), as parts.py has it. Test:
+  tests/core/test_embed.py.
 - **A hung Palace stopped (2026-11-25; the review, F60).** `palace.run` had a timeout watchdog, but no caller
   (the capacitance, loop, PDN tools and the S-parameter solver) gave it one: a hung MPI job, which is silent, ran for
   ever from the command line. A Palace that writes nothing for `K2E_PALACE_SILENT_S` seconds (default 7200, 0
