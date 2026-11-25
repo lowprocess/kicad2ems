@@ -464,3 +464,20 @@ def test_the_books_add_up_while_coupled_windings_still_store_energy(tmp_path):
     g, = stats['coupled']
     assert (g['power_W'] == pytest.approx(stats['parts']['LP']['power_W']
                                           + stats['parts']['LS']['power_W']))
+
+
+def test_a_part_not_fitted_has_no_coupling_and_no_current():
+    """A coupled inductor not fitted (enabled: false, a DNP part): no K naming
+    it (ngspice had failed the point three times over); a current probe on
+    it: a ValueError for that point (a KeyError had ended the whole sweep)."""
+    m = M.template('flyback')
+    (c,) = m['couplings']
+    _, a = c['inductors']  # the secondary (the template probes the primary)
+    off = copy.deepcopy(m)
+    next(p for p in off['parts'] if p['ref'] == a)['enabled'] = False
+    deck = build(M.resolve(off))
+    assert not any(line.startswith('K_') for line in deck.lines)
+    assert any(line.startswith('K_') for line in build(M.resolve(m)).lines)
+    off['probes'] = dict(off['probes'], i_off={'current': a})
+    with pytest.raises(ValueError, match='not fitted'):
+        build(M.resolve(off))

@@ -449,6 +449,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **A circuit's part that is not fitted (2026-11-25; the review, F53).** The circuit model's checks named a
+  probe's or a coupling's part but did not ask whether it is fitted (`enabled: false`, which the KiCad import gives
+  a DNP part, and a sweep may set). A coupling to such an inductor wrote a K naming an element the deck does not
+  have (ngspice failed the point three times over, with a cryptic log); it couples to nothing now. A current probe
+  on one raised KeyError, which the engine's per-point catch let through: the whole sweep ended; it is a
+  ValueError for that point now, saying the part is not fitted. Test: tests/pcbqs/test_circuit_model.py.
 - **dfsynth at the edges of what is asked, and its validation's stale results (2026-11-25; the review, F52 F54
   F55).** A validation read every `<base>_*.s2p` in its `_em` folder, so the last round's files (another design,
   a solver not asked now) were read, plotted and reported with this round's, and `--em-tune` could correct

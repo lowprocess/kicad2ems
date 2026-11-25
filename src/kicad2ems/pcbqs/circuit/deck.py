@@ -293,6 +293,11 @@ class Deck(Circuit):
             raise ValueError(
                 f"couplings[{index}]: k must be between 0 and 1 (got {k:g})")
         a, b = c['inductors']
+        # an inductor not fitted (enabled: false, a DNP part) couples to
+        # nothing: the K had named an element the deck does not have, and
+        # ngspice failed the point three times over
+        if a not in self.kinds or b not in self.kinds:
+            return
         self.lines.append(f"K_{index} L_{a} L_{b} {k:.17g}")
         joined = [g for g in self.coupled if a in g or b in g]
         self.coupled = ([g for g in self.coupled if g not in joined]
@@ -343,6 +348,10 @@ def build(model, state=None, copper=None):
             ref = next(p['ref']
                        for p in model['parts']
                        if p['ref'].lower() == str(pr['current']).lower())
+            if ref not in deck.kinds:  # (a KeyError had ended the sweep)
+                raise ValueError(
+                    f"probes.{name}: {ref} is not fitted here (enabled: "
+                    "false): it has no current")
             deck.signals[name] = deck.signals[ref + '.I']
     deck.uic = state is not None
     deck.period = period
