@@ -120,6 +120,10 @@ def engine(workdir, logfile='palace.log'):
 
 # Palace's GMRES and linear solver, as they say it
 UNCONVERGED = ('did NOT converge', 'did not converge')
+# a Palace that writes nothing for this long is taken for hung and stopped (a
+# hung MPI job is silent; no caller gave a timeout, and one ran for ever):
+# K2E_PALACE_SILENT_S, 0 for none
+SILENT_S = float(os.environ.get('K2E_PALACE_SILENT_S', 7200) or 0)
 
 
 def run(workdir, cfg, np=None, threads=1, log=print, how=None, timeout=None,
@@ -140,7 +144,7 @@ def run(workdir, cfg, np=None, threads=1, log=print, how=None, timeout=None,
         # wait(timeout) after it only began once Palace had closed its output
         # (a hung Palace, silent, was waited on for ever), and its
         # TimeoutExpired escaped the tools
-        expired = threading.Event()
+        expired, quiet = threading.Event(), threading.Event()
         dog = None
         if timeout:
             def bite():
@@ -149,8 +153,18 @@ def run(workdir, cfg, np=None, threads=1, log=print, how=None, timeout=None,
             dog = threading.Timer(float(timeout), bite)
             dog.daemon = True
             dog.start()
+        heard, done = [time.time()], threading.Event()
+        if SILENT_S > 0:
+            def listen():
+                while not done.wait(min(60.0, SILENT_S / 10)):
+                    if time.time() - heard[0] > SILENT_S:
+                        quiet.set()
+                        children.stop(p)
+                        return
+            threading.Thread(target=listen, daemon=True).start()
         tail, shown = [], 0.0
         for line in p.stdout:
+            heard[0] = time.time()
             fh.write(line)
             fh.flush()  # the log can be followed while Palace runs
             tail = (tail + [line.rstrip()])[-40:]
@@ -168,11 +182,17 @@ def run(workdir, cfg, np=None, threads=1, log=print, how=None, timeout=None,
                 ('It ', 'Computing', 'Adaptive', 'Greedy', 'Elapsed', 'Total')):
                 log('palace: ' + line.strip())
         rc = p.wait()
+        done.set()
         if dog is not None:
             dog.cancel()
     if expired.is_set():
         raise RuntimeError(f"palace did not finish in {timeout:g} s: stopped\n"
                            + '\n'.join(tail[-20:]))
+    if quiet.is_set():
+        raise RuntimeError(
+            f"palace wrote nothing for {SILENT_S:g} s (hung?): stopped "
+            "(K2E_PALACE_SILENT_S sets how long, 0 none)\n"
+            + '\n'.join(tail[-20:]))
     if children.stopped(p):
         children.raise_stopped()
     with open(os.path.join(workdir, logfile + '.json'), 'w') as fh:

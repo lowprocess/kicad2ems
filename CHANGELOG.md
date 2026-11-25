@@ -449,6 +449,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **A hung Palace stopped (2026-11-25; the review, F60).** `palace.run` had a timeout watchdog, but no caller
+  (the capacitance, loop, PDN tools and the S-parameter solver) gave it one: a hung MPI job, which is silent, ran for
+  ever from the command line. A Palace that writes nothing for `K2E_PALACE_SILENT_S` seconds (default 7200, 0
+  none) is stopped now and said; one that keeps writing runs as long as it needs. Test:
+  tests/fem/test_palace_watchdog.py; docs/fem/README.md.
 - **--warm names the switches it cannot warm (2026-11-25; the review, F59).** Only a switch's `Ron_ohm` moves
   with its temperature, and a vendor's VDMOS `.model` or a MOSFET given `Kp_A_V2` conducts by its own
   parameters: such a switch was reported at 110 C with its 25 C conduction loss, without a word. `--warm` now

@@ -244,6 +244,9 @@ Palace is not on PyPI. `run.py` finds it as
   Apptainer image of Palace 0.18.1 (gds2palace's `palace_0181`) unpacked this way, since there is no root
   for Apptainer.
 
+A Palace that writes nothing to its log for `K2E_PALACE_SILENT_S` seconds (default 7200; 0 for no limit) is
+taken for hung (a hung MPI job is silent) and stopped, and the tool says so.
+
 The tools here were written against Palace 0.18.1. The Spack build is of the
 newest release, and 0.19.0 built that way (72 packages, about an hour at 8 jobs,
 2.3 GB) runs them too: kicad2ems's `rf_crosstalk` through the solver gives the

@@ -41,3 +41,21 @@ def test_an_unconverged_solve_is_said_and_recorded(tmp_path):
     rec = json.load(open(tmp_path / 'palace.log.json'))
     assert rec['changeset'] == 'abc123' and rec['ranks'] == 2
     assert rec['unconverged'] and any('did not converge' in s for s in said)
+
+
+def test_a_palace_silent_too_long_is_stopped_without_a_timeout(tmp_path,
+                                                                monkeypatch):
+    """No caller gives a timeout (a hung MPI job had run for ever): a Palace
+    that writes nothing for SILENT_S is stopped and said; one that keeps
+    writing runs on past it."""
+    monkeypatch.setattr(run, 'SILENT_S', 1.0)
+    how = fake(tmp_path, "print('Computing', flush=True)\ntime.sleep(60)")
+    t = time.time()
+    with pytest.raises(RuntimeError, match='wrote nothing for 1 s'):
+        run.run(str(tmp_path), 'palace.json', np=1, how=how,
+                log=lambda *a: None)
+    assert time.time() - t < 20
+    how = fake(tmp_path, "for i in range(6):\n"
+                         "    print('It', i, flush=True)\n"
+                         "    time.sleep(0.4)")
+    run.run(str(tmp_path), 'palace.json', np=1, how=how, log=lambda *a: None)
