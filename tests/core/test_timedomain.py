@@ -200,3 +200,87 @@ def test_a_board_solved_on_the_line_model(tmp_path):
     d = json.load(open(tmp_path / 'td' / TD.RESULT))
     assert d['eye']['open'] and d['eye']['height_pct'] > 90
     assert 135 < d['step']['delay_ps'] < 155
+
+
+# ---- the statistical eye: noise, jitter, BER --------------------------------
+def _ideal_pulse(A=0.5, ui=100e-12, n=256):
+    """A lone bit through an ideal channel: A for one UI from t = 0."""
+    t = np.arange(-4 * n, 8 * n) * ui / n
+    return t, np.where((t >= 0) & (t < ui), A, 0.0)
+
+
+def test_qinv():
+    assert TD.qinv(1e-12) == pytest.approx(7.034, abs=1e-3)
+    assert TD.qinv(0.5) == pytest.approx(0.0, abs=1e-12)
+
+
+@pytest.mark.parametrize('target', [1e-6, 1e-12])
+def test_noise_alone_closes_the_eye_by_its_q(target):
+    """No ISI, Gaussian noise sigma: the eye's height at BER `target` is
+    A - 2 sigma Q^-1(2 target) (each edge's error half the bits'), within
+    two of the map's voltage steps."""
+    A, ui, sigma = 0.5, 100e-12, 0.01
+    t, p = _ideal_pulse(A, ui)
+    e = TD.stat_eye(t, p, ui, 0.0, noise=sigma, target=target)
+    want = A - 2 * sigma * TD.qinv(2 * target)
+    assert e['height'] == pytest.approx(want, abs=2 * (e['v'][1] - e['v'][0]))
+
+
+@pytest.mark.parametrize('rj, dj', [(2e-12, 0.0), (1.5e-12, 10e-12)])
+def test_jitter_closes_the_eye_by_its_dual_dirac(rj, dj):
+    """No ISI, random jitter rj (Gaussian) about the dual-Dirac's +-dj / 2 on
+    the sampling instant: the eye's width at 1e-12 is UI - dj - 2 rj Q^-1(2
+    BER) (Q^-1(4 BER) with the dual-Dirac: its far Dirac alone in the tail),
+    within two phase bins; the height whole."""
+    A, ui, target = 0.5, 100e-12, 1e-12
+    t, p = _ideal_pulse(A, ui)
+    e = TD.stat_eye(t, p, ui, 0.0, rj=rj, dj=dj, target=target)
+    q = TD.qinv((4 if dj else 2) * target)
+    want = ui - dj - 2 * rj * q
+    assert e['width'] == pytest.approx(want, abs=2 * ui / 64)
+    assert e['height'] == pytest.approx(A, abs=2 * (e['v'][1] - e['v'][0]))
+
+
+def test_the_statistical_eye_with_no_noise_is_its_worst_case():
+    """The lossy line at 8 Gb/s, no noise, no jitter: at 1e-12 (its worst
+    pattern's probability above it: under 40 cursors) the height is the
+    peak-distortion worst case at the best phase, within two voltage steps;
+    its BER contours open wider at 1e-3 than at 1e-12."""
+    S = _two_port((50, 3.5, 0.15, 0.02, 8.0))
+    m = MM.fit(F, S)
+    ui, rise = 125e-12, 40e-12
+    dt = ui / 32
+    tp0 = 2e-9
+    t = np.arange(0, tp0 + 4e-9, dt)
+    w = TD._wave([0, 1, 0], ui, tp0 - ui, rise, 0.0, 1.0)
+    _, _, v = TD.step(m, 0, 1, {0: MM.Thevenin(w, 50.0)}, {}, t)
+    base = v[int(tp0 / dt) - 1]
+    lat = TD.delay_of(m, 1, 0) + rise / TD.RC_10_90 / 2
+    e = TD.stat_eye(t - tp0, v - base, ui, lat, base=base, target=1e-12)
+    assert sum(e['cursors']) < 40
+    assert e['height'] == pytest.approx(e['worst_case'],
+                                        abs=2 * (e['v'][1] - e['v'][0]))
+    e3 = TD.stat_eye(t - tp0, v - base, ui, lat, base=base, target=1e-3)
+    assert e3['height'] >= e['height'] and e3['width'] >= e['width']
+
+
+def test_the_tool_s_ber(tmp_path):
+    """The CLI with --rj, --dj and --noise: the result's BER block (TJ by
+    the dual-Dirac rule, the map, the bathtub), its figure, the analysis's
+    figures at the BER."""
+    from kicad2ems.core.analyses import registry
+    ts = _touchstone(tmp_path / 'l.s2p', _two_port((50, 3.5, 0.05, 0.02, 3.0)),
+                     ['P1', 'P2'])
+    out = tmp_path / 'r'
+    TD.run(_args(sparams=ts, out=str(out), rate=8.0, rj=1.0, dj=5.0,
+                 noise=4.0), echo=lambda *x: None)
+    d = json.load(open(out / TD.RESULT))
+    b = d['ber']
+    assert b['tj_ps'] == pytest.approx(5.0 + 2 * TD.qinv(1e-12) * 1.0)
+    assert 0 < b['height_mv'] < d['eye']['height_mv']
+    assert 0 < b['width_ps'] < d['eye']['width_ps'] and b['linear']
+    assert np.shape(b['log10_ber']) == (64, len(b['v_grid']))
+    assert any(p.endswith('_ber.png') and os.path.isfile(out / p)
+               for p in d['images'])
+    names = {f['name'] for f in registry()['timedomain'].figures(str(out))}
+    assert {'eye height at BER', 'eye width at BER'} <= names

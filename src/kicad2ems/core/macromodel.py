@@ -38,6 +38,20 @@ import numpy as np
 __all__ = ['Model', 'fit', 'dc_point', 'Transient', 'simulate', 'Thevenin',
            'Load', 'FIT_TOL', 'PASS_TOP', 'PASS_MARGIN']
 
+
+def _one_blas(fn):
+    """fn with BLAS on one thread: its QRs and solves are small, and
+    OpenBLAS's threads spun on them (a 4-port's fit 5.7 s, 110 s of CPU, on
+    16 threads; 0.55 s on one)."""
+    import functools
+
+    @functools.wraps(fn)
+    def run(*a, **kw):
+        from threadpoolctl import threadpool_limits
+        with threadpool_limits(1, user_api='blas'):
+            return fn(*a, **kw)
+    return run
+
 # the relative RMS error (of the largest |S|) a fit is accepted at
 FIT_TOL = 2e-3
 # the passivity check's top: x fmax (the band's top), and its margin
@@ -87,6 +101,7 @@ class Model:
         fp = fp[fp <= top]
         return np.unique(np.r_[np.linspace(0.0, top, n), fp])
 
+    @_one_blas
     def enforce(self, max_iter=20, scale_max=0.02):
         """Make the model passive (the module's text): its samples on the
         dense grid projected onto passivity (each singular value above 1 -
@@ -293,6 +308,7 @@ def dc_point(f, S, low=0.05, points=6):
     return a.reshape(np.shape(S)[1:])
 
 
+@_one_blas
 def fit(f, S, z0=50.0, poles=None, tol=FIT_TOL, dc=True, passive=True,
         max_poles=400, log=None):
     """The macromodel of S (nf, n, n) on f (Hz, rising, above 0): `poles`
@@ -449,6 +465,7 @@ class Load:
         self.v = v
 
 
+@_one_blas
 def simulate(model, terms, t, log=None, newton=30, tol=1e-9):
     """Every port's voltage and current (into the port) (len(t), n) for the
     terminations `terms` (one a port: Thevenin, Load, an IBIS buffer: each

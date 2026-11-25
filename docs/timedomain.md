@@ -3,8 +3,8 @@
 [← Signal integrity](si.md) · [Index](index.md) · [Next: Whole-board studies →](segment-studies.md)
 
 The time-domain question takes a channel's S-parameters into time: its impedance along its length (TDR), its step
-response at the far end (delay, rise, overshoot) and its eye for a bit pattern at a data rate (height, width),
-driven and received by ideal or IBIS buffers. The code is `kicad2ems.core.timedomain`, on two parts of its own:
+response at the far end (delay, rise, overshoot), its eye for a bit pattern at a data rate (height, width) and,
+with jitter and noise, its BER contours and bathtub, driven and received by ideal or IBIS buffers. The code is `kicad2ems.core.timedomain`, on two parts of its own:
 `kicad2ems.core.macromodel` (the S-parameters' passive rational model and its transient) and `kicad2ems.core.ibis`
 (IBIS buffers).
 
@@ -68,8 +68,41 @@ A pair (`--near-n`, `--far-n`) is driven by two complementary drivers and receiv
 | Eye | a PRBS (7 to 31; `--bits`, default twice its period, at most 4000) after the first bit has settled the channel, folded at the step's latency: the inner height at the best phase, the width at the threshold (the levels' middle), the levels at that phase |
 | Crosstalk | every other port's peak during the pattern, against the near end's swing |
 
-`timedomain.json` has all of them (the curves thinned to 2000 points) and the macromodel's record; the figure is
-`<name>_timedomain.png` (TDR, step, eye).
+`timedomain.json` has all of them (the curves thinned to 2000 points) and the macromodel's record; the figures are
+`<name>_timedomain.png` (TDR, step, eye) and `<name>_ber.png` (BER contours and the bathtub).
+
+<a id="ber"></a>
+## Jitter, noise and BER
+
+The pattern's eye above is one run's: the patterns PRBS-n holds, no noise, no jitter. The statistical eye takes a
+lone bit's response at the far end (the same buffers, one more short run) and every pattern of the other bits:
+at each sampling phase the received voltage's distribution is each cursor's two-point distribution (its share of
+the pulse, or none, at 1/2 each) convolved, then the noise's Gaussian; the BER at a phase and a threshold is the
+1s read below it and the 0s above, half each. Jitter moves the sampling instant: the BER at a phase is the mean
+over its shifted instants, random jitter (Gaussian) about the dual-Dirac's two deterministic ones.
+
+| Option | |
+|---|---|
+| `--rj` | ps RMS, random jitter (Gaussian) |
+| `--dj` | ps peak-to-peak, deterministic jitter (dual-Dirac: ±DJ/2) |
+| `--noise` | mV RMS, Gaussian noise at the receiver |
+| `--ber` | the BER the eye's height and width are taken at (1e-12) |
+
+It gives the BER contours (1e-3 to 1e-15), the eye's height and width at `--ber` (the opening round the levels'
+middle at the best phase, the bathtub's at that threshold), the bathtub, and TJ = DJ + 2 Q(BER) RJ (the
+dual-Dirac rule; Q(1e-12) = 7.03). Each distribution is built on a grid with each cursor's mass split between its
+two nearest levels (never negative: the tails hold to 1e-15) and the error tails summed from their own ends. It is
+exact for linear buffers; with IBIS ones (not linear) it is their linearization about the lone bit, said in the
+report.
+
+rf_diffvia's pair at 25 Gb/s (above's model; 0.8 V swing; 2.2 s a run, the pattern's eye 110 mV by 35 ps):
+
+| Jitter and noise | Height at 1e-12 | Width at 1e-12 |
+|---|---|---|
+| none | 104 mV (the worst pattern's 107) | 36 ps |
+| 5 mV noise | 44 mV | 23 ps |
+| 0.6 ps RJ, 4 ps DJ (TJ 12.4 ps) | 95 mV | 24 ps |
+| both | 41 mV | 17 ps |
 
 ## An example
 
@@ -98,13 +131,17 @@ tests/core/test_macromodel.py, test_ibis.py, test_timedomain.py:
   (cursor − Σ|ISI|), within 2 % of the swing;
 - a resistive IBIS buffer from [Ramp] as a source of Ku(t) Vcc behind its resistance (to 1e-6), its edge the
   ramp's slope (2 %); Ku and Kd that are not complementary found again from two V-T tables (1e-3); a 2 pF input's
-  rise 2.2 RC (10 %); a package's resistance in the DC level.
+  rise 2.2 RC (10 %); a package's resistance in the DC level;
+- the statistical eye with no ISI: noise alone closes it to A − 2σ Q⁻¹(2 BER), random jitter to a width of
+  UI − 2σ Q⁻¹(2 BER), with a dual-Dirac UI − DJ − 2σ Q⁻¹(4 BER) (two voltage steps, two phase bins); with no
+  noise and no jitter on the lossy line, its height at 1e-12 the worst pattern's.
 
 ## What it leaves out
 
-Jitter and noise (the eye is the pattern's alone: no BER contour, no bathtub); equalization (CTLE, FFE, DFE) and
-IBIS-AMI; a floating differential termination (split per leg to Vtt); the driver's supply noise (SSO); a
-statistical eye.
+Equalization (CTLE, FFE, DFE) and IBIS-AMI; jitter on the transmitted edges as such (the sampling instant's
+stands for it: a jittered edge's ISI is not modelled), sinusoidal or bounded uncorrelated jitter's own shapes (the
+dual-Dirac stands for them); a floating differential termination (split per leg to Vtt); the driver's supply noise
+(SSO).
 
 ---
 [← Signal integrity](si.md) · [Index](index.md) · [Next: Whole-board studies →](segment-studies.md)

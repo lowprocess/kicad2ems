@@ -23,14 +23,20 @@ leg half of it to Vtt).
   against the round trip's time.
 - Step: one edge of the driver, the far end's delay (50 % to 50 % from the near
   end), its 10-90 % rise and overshoot.
-- Eye: a PRBS (or --bits-file) at --rate after the first bit has settled the
-  channel, folded at the far end's latency (the step's): the inner height at
-  the best phase, the width at the threshold (the levels' middle), the levels;
-  every other port's peak (time-domain crosstalk).
+- Eye: a PRBS at --rate after the first bit has settled the channel, folded
+  at the far end's latency (the step's): the inner height at the best phase,
+  the width at the threshold (the levels' middle), the levels; every other
+  port's peak (time-domain crosstalk).
+- BER: the statistical eye of a lone bit's response (every pattern of the
+  other bits), with Gaussian noise at the receiver (--noise) and jitter on the
+  sampling instant (--rj Gaussian about --dj's dual-Dirac): BER contours, the
+  eye's height and width at --ber, the bathtub, TJ = DJ + 2 Q RJ. Exact for
+  linear buffers; IBIS ones' linearization about the lone bit.
 
-What it leaves out: jitter and noise (the eye is the pattern's alone, no BER
-contour), equalization (CTLE, FFE, DFE), IBIS-AMI, a floating differential
-termination (split per leg to Vtt), the driver's own supply noise.
+What it leaves out: equalization (CTLE, FFE, DFE), IBIS-AMI, jitter on the
+transmitted edges as such (the sampling instant's stands for it), a floating
+differential termination (split per leg to Vtt), the driver's own supply
+noise.
 """
 import argparse
 import json
@@ -236,6 +242,161 @@ def eye(t, v, bits, ui, t0, latency, bins=None):
                 folded=(ph, vv))
 
 
+# ---- the statistical eye: noise, jitter, BER --------------------------------
+def qinv(ber):
+    """Q such that the Gaussian tail beyond Q sigma is `ber` (7.03 at 1e-12)."""
+    from scipy.special import erfcinv
+    return float(math.sqrt(2.0) * erfcinv(2.0 * ber))
+
+
+def _gauss_cdf(x, sigma):
+    from scipy.special import erfc
+    if sigma <= 0:
+        return (np.asarray(x) >= 0).astype(float)
+    return 0.5 * erfc(-np.asarray(x) / (math.sqrt(2.0) * sigma))
+
+
+def jitter_weights(dphi, rj=0.0, dj=0.0, tail=8.5):
+    """The sampling instant's shifts (s, on a grid of dphi) and their
+    probabilities: random jitter (rj, s RMS, Gaussian) about each of the
+    dual-Dirac's two deterministic ones (+-dj / 2, s peak-to-peak), each bin's
+    weight its share of the distribution."""
+    J = dj / 2 + tail * rj
+    nj = int(math.ceil(J / dphi - 1e-9)) if J > 0 else 0
+    if nj == 0:
+        return np.zeros(1), np.ones(1)
+    k = np.arange(-nj, nj + 1)
+    edges = (np.arange(-nj, nj + 2) - 0.5) * dphi
+    w = 0.5 * (np.diff(_gauss_cdf(edges - dj / 2, rj))
+               + np.diff(_gauss_cdf(edges + dj / 2, rj)))
+    return k * dphi, w / w.sum()
+
+
+def stat_eye(t, p, ui, latency, base=0.0, noise=0.0, rj=0.0, dj=0.0,
+             target=1e-12, bins=64, nv=2048, nmap=240, pre=3, tail=1e-4,
+             max_post=400):
+    """The statistical eye of the pulse response p(t) (a lone 1 at t = 0 on
+    `base`, the far end's; linear superposition: every other bit's share of
+    the pulse added or not, at 1 / 2 each), with Gaussian noise (V RMS) and
+    jitter on the sampling instant (rj s RMS, dj s peak-to-peak dual-Dirac):
+
+    dict(phase (s, bins over the UI from the bit's arrival), v (V, nmap
+    levels), log10 BER (bins, nmap), height (V) and width (s) at `target`,
+    their phase and threshold, bathtub (log10 BER over the phases at the
+    threshold), cursors (pre, post), the zero-jitter eye's worst-case height).
+
+    Each phase's voltage distribution is the cursors' two-point
+    distributions convolved on a grid (each one's mass split linearly between
+    its two nearest levels: never negative, so the tails hold to 1e-15),
+    the noise's Gaussian after; the error tails summed from their own ends
+    (1 - CDF would lose them at 1e-16)."""
+    t, p = np.asarray(t, float), np.asarray(p, float)
+    pk = lambda x: np.interp(x, t, p, left=0.0, right=0.0)
+    peak = float(np.abs(p).max())
+    if peak <= 0:
+        raise ValueError("the pulse response is 0: no path")
+    big = np.flatnonzero(np.abs(p) > tail * peak)
+    post = int(min(max(math.ceil((t[big[-1]] - latency) / ui) + 1, 1),
+                   max_post))
+    dphi = ui / bins
+    shifts, w = jitter_weights(dphi, rj, dj)
+    nj = (len(shifts) - 1) // 2
+    ph = (np.arange(-nj, bins + nj) + 0.5) * dphi           # (extended)
+    ms = np.array([m for m in range(-pre, post + 1) if m != 0])
+    C = pk(latency + ph[:, None] + ms[None, :] * ui)        # (phases, cursors)
+    a = pk(latency + ph)                                    # main cursor
+    lo_s, hi_s = np.minimum(C, 0).sum(1), np.maximum(C, 0).sum(1)
+    marg = 9.0 * noise + 1e-3 * peak
+    smin, smax = float(lo_s.min()) - marg, float(hi_s.max()) + marg
+    dv = (smax - smin) / (nv - 1)
+    sgrid = smin + dv * np.arange(nv)
+    # the noise's kernel (none below half a bin: the linear split smooths)
+    kern = None
+    if noise > 0.5 * dv:
+        kk = np.arange(-int(math.ceil(9 * noise / dv)),
+                       int(math.ceil(9 * noise / dv)) + 1)
+        e = (np.r_[kk - 0.5, kk[-1] + 0.5]) * dv
+        kern = np.diff(_gauss_cdf(e, noise))
+        kern /= kern.sum()
+    vlo = base + min(0.0, float(a.min())) - 0.25 * peak
+    vhi = base + max(0.0, float(a.max())) + 0.25 * peak
+    vmap = np.linspace(vlo, vhi, nmap)
+    i0 = int(round(-smin / dv))
+    BER = np.empty((len(ph), nmap))
+    for i in range(len(ph)):
+        pmf = np.zeros(nv)
+        pmf[i0] = 1.0
+        for c in C[i]:
+            x = c / dv
+            s0 = int(math.floor(x))
+            f = x - s0
+            sh = np.zeros(nv)
+            if s0 >= 0:
+                sh[s0:] += (1 - f) * pmf[:nv - s0]
+            else:
+                sh[:s0] += (1 - f) * pmf[-s0:]
+            s1 = s0 + 1
+            if s1 >= 0:
+                sh[s1:] += f * pmf[:nv - s1]
+            else:
+                sh[:s1] += f * pmf[-s1:]
+            pmf = 0.5 * (pmf + sh)
+        if kern is not None:
+            pmf = np.convolve(pmf, kern, mode='same')
+        cdf = np.cumsum(pmf)                    # P(S <= s)
+        ccdf = np.cumsum(pmf[::-1])[::-1]       # P(S >= s)
+        # a 1 read as 0: base + a + S < V; a 0 read as 1: base + S > V
+        p1 = np.interp(vmap - base - a[i], sgrid, cdf, left=0.0, right=1.0)
+        p0 = np.interp(vmap - base, sgrid, ccdf, left=1.0, right=0.0)
+        BER[i] = 0.5 * (p1 + p0)
+    # the jitter: each phase's BER the mean over its shifted instants
+    J = np.zeros((bins, nmap))
+    for k, wk in enumerate(w):
+        J += wk * BER[k:k + bins]
+    logb = np.log10(np.clip(J, 1e-300, None))
+    # the eye at the target: each phase's opening round the levels' middle
+    # (base + half of every cursor: the 0s' and 1s' means; half the lone
+    # pulse's peak alone sat low in an eye with ISI)
+    full = (a + C.sum(1))[nj:nj + bins]
+    mid = base + 0.5 * float(np.median(full))
+    jm = int(np.argmin(np.abs(vmap - mid)))
+    height, spans = np.zeros(bins), [None] * bins
+    for i in range(bins):
+        if J[i, jm] >= target:
+            continue
+        lo = jm
+        while lo > 0 and J[i, lo - 1] < target:
+            lo -= 1
+        hi = jm
+        while hi < nmap - 1 and J[i, hi + 1] < target:
+            hi += 1
+        height[i], spans[i] = vmap[hi] - vmap[lo], (lo, hi)
+    best = int(np.argmax(height))
+    out = dict(phase=(np.arange(bins) + 0.5) * dphi, v=vmap, log10_ber=logb,
+               cursors=(pre, post), worst_case=float(
+                   (a - np.abs(C).sum(1))[nj:nj + bins].max()),
+               min_ber=float(J.min()))
+    if height[best] <= 0:
+        out.update(height=0.0, width=0.0, phase_best=float(out['phase'][0]),
+                   threshold=mid, bathtub=logb[:, jm])
+        return out
+    lo, hi = spans[best]
+    jt = (lo + hi) // 2
+    tub = J[:, jt]
+    width = 0
+    if tub[best] < target:
+        width = 1
+        for d in (1, -1):
+            q = best + d
+            while tub[q % bins] < target and width < bins:
+                width += 1
+                q += d
+    out.update(height=float(height[best]), width=width * dphi,
+               phase_best=float(out['phase'][best]), threshold=float(vmap[jt]),
+               bathtub=logb[:, jt])
+    return out
+
+
 # ---- the run ----------------------------------------------------------------
 def parser():
     p = argparse.ArgumentParser(prog='python -m kicad2ems.core.timedomain',
@@ -292,6 +453,15 @@ def parser():
     p.add_argument('--ibis-rx', default=None,
                    help="the receiver's [Model] (in --ibis, or --ibis-rx-file)")
     p.add_argument('--ibis-rx-file', default=None)
+    p.add_argument('--rj', type=float, default=0.0,
+                   help="ps RMS, random jitter (Gaussian) on the sampling "
+                   "instant")
+    p.add_argument('--dj', type=float, default=0.0,
+                   help="ps peak-to-peak, deterministic jitter (dual-Dirac)")
+    p.add_argument('--noise', type=float, default=0.0,
+                   help="mV RMS, Gaussian noise at the receiver")
+    p.add_argument('--ber', type=float, default=1e-12,
+                   help="the BER the eye's height and width are taken at")
     p.add_argument('--samples', type=int, default=32,
                    help="time steps a UI (at least)")
     p.add_argument('--out', default=None, help="output folder")
@@ -535,11 +705,44 @@ def run(a, echo=print):
     echo(f"timedomain: eye {E['height'] * 1e3:.1f} mV "
          f"({res['eye']['height_pct']:.0f} % of {swing * 1e3:.0f} mV) by "
          f"{E['width'] * 1e12:.0f} ps ({E['width'] / ui:.2f} UI)")
+    # the statistical eye: a lone 1's response, every pattern, noise, jitter
+    tp0 = settle
+    tpl = np.arange(0.0, tp0 + lat + max(6 * tau, 1e-9) + 60 * ui, dt)
+    drv, rx, _ = _buffers(a, model, near, near_n, far, far_n, [0, 1, 0], ui,
+                          tp0 - ui, rise, lo_hi)
+    _, _, vp = step(model, near, far, drv, rx, tpl, near_n, far_n)
+    k0 = int(np.searchsorted(tpl, tp0)) - 1
+    base = float(vp[k0])
+    target = float(a.ber)
+    st_ = stat_eye(tpl - tp0, vp - base, ui, lat, base=base,
+                   noise=a.noise * 1e-3, rj=a.rj * 1e-12, dj=a.dj * 1e-12,
+                   target=target)
+    res['ber'] = dict(
+        target=target, rj_ps=a.rj, dj_ps=a.dj, noise_mv=a.noise,
+        tj_ps=a.dj + 2 * qinv(target) * a.rj,
+        height_mv=st_['height'] * 1e3, width_ps=st_['width'] * 1e12,
+        width_ui=st_['width'] / ui, phase_ps=st_['phase_best'] * 1e12,
+        threshold_v=st_['threshold'], min_ber=st_['min_ber'],
+        worst_case_mv=st_['worst_case'] * 1e3, cursors=list(st_['cursors']),
+        linear=a.driver != 'ibis' and a.receiver != 'ibis',
+        phase_ps_grid=[round(x * 1e12, 4) for x in st_['phase']],
+        v_grid=[round(float(x), 6) for x in st_['v']],
+        log10_ber=np.round(st_['log10_ber'], 3).tolist(),
+        bathtub=np.round(st_['bathtub'], 3).tolist())
+    if not res['ber']['linear']:
+        warnings.append(
+            "the statistical eye superposes a lone bit's response: with IBIS "
+            "buffers (not linear) it is their linearization about it; the "
+            "pattern's eye is the transient's")
+    echo(f"timedomain: BER {target:g}: eye {st_['height'] * 1e3:.1f} mV by "
+         f"{st_['width'] * 1e12:.0f} ps ({st_['width'] / ui:.2f} UI); "
+         f"RJ {a.rj:g} ps, DJ {a.dj:g} ps, noise {a.noise:g} mV; TJ "
+         f"{res['ber']['tj_ps']:.1f} ps")
     name = os.path.splitext(os.path.basename(a.board or path))[0]
     res['name'] = name
     try:
         res['images'] = _plots(out, name, res, (te[keep], vf[keep], t0, lat),
-                               ui)
+                               ui) + _ber_plot(out, name, res, ui)
     except Exception as e:  # a figure never fails the run
         warnings.append(f"figures: {type(e).__name__}: {e}")
         res['images'] = []
@@ -597,6 +800,44 @@ def _plots(out, name, res, trace, ui):
                  f"{res['channel']['far']}, {res['rate_gbps']:g} Gb/s")
     fig.tight_layout()
     p = os.path.join(out, f"{name}_timedomain.png")
+    fig.savefig(p, dpi=110)
+    return [os.path.basename(p)]
+
+
+def _ber_plot(out, name, res, ui):
+    """The BER contours over two UI and the bathtub, as a PNG; its path."""
+    from matplotlib.figure import Figure
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    b = res['ber']
+    L = np.asarray(b['log10_ber'])
+    ph = np.asarray(b['phase_ps_grid'])
+    v = np.asarray(b['v_grid'])
+    uip = ui * 1e12
+    X = np.r_[ph, ph + uip]
+    Z = np.concatenate([L, L], 0).T
+    fig = Figure(figsize=(11, 4.0))
+    FigureCanvasAgg(fig)
+    ax1, ax2 = fig.subplots(1, 2, gridspec_kw=dict(width_ratios=[1.4, 1]))
+    m = ax1.contourf(X, v, np.clip(Z, -18, 0), levels=np.arange(-18, 0.5, 1),
+                     cmap='viridis')
+    lv = [x for x in (-15, -12, -9, -6, -3)]
+    cs = ax1.contour(X, v, Z, levels=lv, colors='w', linewidths=0.8)
+    ax1.clabel(cs, fmt=lambda x: f"1e{int(x)}", fontsize=7)
+    fig.colorbar(m, ax=ax1, label='log10 BER')
+    ax1.set(xlabel='ps (2 UI)', ylabel='V',
+            title=f"BER contours: {b['height_mv']:.0f} mV x "
+            f"{b['width_ps']:.0f} ps at {b['target']:g}")
+    tub = np.asarray(b['bathtub'])
+    ax2.plot(np.r_[ph, ph + uip], np.r_[tub, tub], lw=1.2)
+    ax2.axhline(math.log10(b['target']), color='0.5', ls='--', lw=0.8)
+    ax2.set(xlabel='ps (2 UI)', ylabel='log10 BER', ylim=(-18, 0.2),
+            title=f"Bathtub at {b['threshold_v']:.3f} V")
+    ax2.grid(alpha=0.3)
+    fig.suptitle(f"{name}: {res['channel']['near']} -> {res['channel']['far']}"
+                 f", {res['rate_gbps']:g} Gb/s; RJ {b['rj_ps']:g} ps, DJ "
+                 f"{b['dj_ps']:g} ps, noise {b['noise_mv']:g} mV")
+    fig.tight_layout()
+    p = os.path.join(out, f"{name}_ber.png")
     fig.savefig(p, dpi=110)
     return [os.path.basename(p)]
 
@@ -704,6 +945,14 @@ class TimeDomain(Analysis):
               'Receiver'),
             o('ibis_rx_file', 'str', '', "its IBIS file (empty: the driver's)",
               'Receiver', path=True),
+            o('rj', 'float', 0.0, "random jitter on the sampling instant, ps "
+              "RMS (Gaussian)", 'Jitter and noise', level='basic'),
+            o('dj', 'float', 0.0, "deterministic jitter, ps peak-to-peak "
+              "(dual-Dirac)", 'Jitter and noise'),
+            o('noise', 'float', 0.0, "noise at the receiver, mV RMS "
+              "(Gaussian)", 'Jitter and noise', level='basic'),
+            o('ber', 'float', 1e-12, "the BER the eye's height and width are "
+              "taken at", 'Jitter and noise'),
             o('fmax', 'float', 20.0, "the band solved when the board is, GHz",
               'Solve'),
             o('points', 'int', 1001, "frequencies solved, from fmax / points",
@@ -733,7 +982,7 @@ class TimeDomain(Analysis):
         for key in ('near_n', 'far_n', 'rate', 'pattern', 'bits', 'rise',
                     'driver', 'swing', 'rs', 'ibis', 'ibis_model', 'corner',
                     'receiver', 'rt', 'ct', 'vtt', 'ibis_rx', 'ibis_rx_file',
-                    'fmax', 'points'):
+                    'rj', 'dj', 'noise', 'ber', 'fmax', 'points'):
             v = values.get(key)
             if v not in (None, '', []):
                 cmd += ['--' + key.replace('_', '-'), str(v)]
@@ -756,6 +1005,9 @@ class TimeDomain(Analysis):
                 f"{ey['height_mv']:.1f} mV ({ey['height_pct']:.0f} % of the "
                 f"levels) by {ey['width_ps']:.0f} ps ({ey['width_ui']:.2f} UI)"
                 + ('' if ey['open'] else ' (closed)')
+                + (f"; at BER {d['ber']['target']:g} "
+                   f"{d['ber']['height_mv']:.1f} mV by "
+                   f"{d['ber']['width_ps']:.0f} ps" if d.get('ber') else '')
                 + f"; TDR {td['z_min']:.1f}-{td['z_max']:.1f} ohm; delay "
                 + ('-' if st['delay_ps'] is None else
                    f"{st['delay_ps']:.0f} ps"))
@@ -791,6 +1043,25 @@ class TimeDomain(Analysis):
                 rows=[[st['delay_ps'], st['rise_ps'], st['overshoot_pct'],
                        td['z_min'], td['z_max']]],
                 formats=['.0f', '.0f', '.1f', '.1f', '.1f']))]
+        b = d.get('ber')
+        if b:
+            sec.insert(2, dict(
+                title='Jitter, noise and BER',
+                text="The statistical eye: every pattern of the other bits "
+                "(each its share of a lone bit's response, or none, at 1 / 2), "
+                "Gaussian noise at the receiver, the sampling instant's jitter "
+                "(random about the dual-Dirac's deterministic); TJ by the "
+                "dual-Dirac rule, DJ + 2 Q(BER) RJ."
+                + ('' if b['linear'] else " IBIS buffers are not linear: "
+                   "this is their linearization about a lone bit."),
+                table=dict(
+                    columns=['BER', 'height (mV)', 'width (ps)', 'width (UI)',
+                             'RJ (ps)', 'DJ (ps)', 'TJ (ps)', 'noise (mV)'],
+                    rows=[[f"{b['target']:g}", b['height_mv'], b['width_ps'],
+                           b['width_ui'], b['rj_ps'], b['dj_ps'], b['tj_ps'],
+                           b['noise_mv']]],
+                    formats=[None, '.1f', '.0f', '.2f', '.2f', '.1f', '.1f',
+                             '.1f'])))
         if d.get('crosstalk'):
             sec.append(dict(
                 title='The other ports during the pattern',
@@ -817,6 +1088,13 @@ class TimeDomain(Analysis):
                dict(name='eye width', value=ey['width_ps'], unit='ps'),
                dict(name='TDR min', value=td['z_min'], unit='ohm'),
                dict(name='TDR max', value=td['z_max'], unit='ohm')]
+        b = d.get('ber')
+        if b:
+            out += [dict(name='eye height at BER', value=b['height_mv'],
+                         unit='mV'),
+                    dict(name='eye width at BER', value=b['width_ps'],
+                         unit='ps'),
+                    dict(name='TJ', value=b['tj_ps'], unit='ps')]
         if st['delay_ps'] is not None:
             out.append(dict(name='delay', value=st['delay_ps'], unit='ps'))
         if st['rise_ps'] is not None:

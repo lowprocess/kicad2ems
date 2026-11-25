@@ -10,6 +10,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Jitter, noise and BER contours in the time-domain question (2026-11-25; docs/timedomain.md#ber).** The
+  statistical eye of a lone bit's response at the far end (`timedomain.stat_eye`): every pattern of the other bits
+  (each cursor's two-point distribution convolved on a grid, its mass split between neighbouring levels so the
+  tails hold to 1e-15), Gaussian noise at the receiver (`--noise`, mV RMS), and jitter on the sampling instant
+  (`--rj` ps RMS about `--dj`'s dual-Dirac, ps peak-to-peak): BER contours (1e-3 to 1e-15), the eye's height and
+  width at `--ber` (1e-12), the bathtub, TJ = DJ + 2 Q RJ; `<name>_ber.png`; the report's section and the study's
+  figures (eye height and width at BER, TJ). Exact for linear buffers, an IBIS pair's linearization about the lone
+  bit (said). Checked against closed forms: noise alone A − 2σ Q⁻¹(2 BER), random jitter UI − 2σ Q⁻¹(2 BER), with
+  a dual-Dirac UI − DJ − 2σ Q⁻¹(4 BER); with neither, the worst pattern's height. On rf_diffvia's pair at 25 Gb/s
+  (0.8 V, the pattern's eye 110 mV by 35 ps): 104 / 44 / 95 / 41 mV by 36 / 23 / 24 / 17 ps at 1e-12 with none, 5
+  mV noise, 0.6 ps RJ and 4 ps DJ, both. Also: the macromodel's fit, passivity and stepper hold BLAS to one
+  thread (OpenBLAS's 16 had spun on their small QRs: a 4-port's fit 5.7 s and 110 s of CPU, now 0.55 s; a
+  time-domain run 9.5 s to 2.2 s). Test: tests/core/test_timedomain.py.
 - **The time-domain question: a channel's TDR, step response and eye (`kicad2ems.core.timedomain`,
   docs/timedomain.md, 2026-11-25; the user's ask, with a macromodel and IBIS drivers).** A channel's S-parameters
   (a Touchstone file, a run's folder, the study's S-parameter run, or the board solved here on the line model or

@@ -105,9 +105,10 @@ QUESTIONS = {
             'timedomain', 'Time domain', 'Signal integrity',
             "a channel's TDR, step response and eye for a bit pattern, from "
             "its S-parameters' macromodel, ideal or IBIS buffers", order=20,
-            figures="eye height, mV; eye width, ps; TDR min, TDR max: the "
-            "impedance along the channel, ohm; delay, rise: the step's at the "
-            "far end, ps"),
+            figures="eye height, mV; eye width, ps; eye height at BER, mV; "
+            "eye width at BER, ps; TJ, ps (DJ + 2 Q RJ); TDR min, TDR max: "
+            "the impedance along the channel, ohm; delay, rise: the step's at "
+            "the far end, ps"),
         Question(
             'dc', 'Rail drop', 'Power',
             "a rail's DC drop, its current density and its loss", order=10,

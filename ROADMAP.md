@@ -56,10 +56,12 @@ the code review of 2026-11-25. Last updated 2026-11-25.
 
 ## Signal integrity
 
-1. **The time-domain question, the rest** (`core.timedomain`, docs/timedomain.md): jitter and noise (a BER
-   contour, a bathtub, a statistical eye), equalization (CTLE, FFE, DFE) and IBIS-AMI, a floating differential
-   termination (split per leg to Vtt today), IBIS's [Driver Schedule] and [Submodel], a SPICE subcircuit of the
-   macromodel for the circuit question, and a check on a real channel with a vendor's IBIS file.
+1. **The time-domain question, the rest** (`core.timedomain`, docs/timedomain.md): equalization (CTLE, FFE, DFE)
+   and IBIS-AMI, jitter on the transmitted edges as such (the sampling instant's stands for it) and sinusoidal or
+   bounded jitter's own shapes, a floating differential termination (split per leg to Vtt today), IBIS's [Driver
+   Schedule] and [Submodel], a SPICE subcircuit of the macromodel for the circuit question, the passivity
+   projection's slow rounds near DC (a fitted pair scaled 0.11 % after 20), and a check on a real channel with a
+   vendor's IBIS file.
 2. **Crosstalk and board coupling through real buffers:** their edge responses take `z0` at every end; a source
    impedance and a receiver's load (an unterminated receiver doubles what arrives).
 3. **Differential pairs, the rest:** a pair's skew (its legs' delays) and the common-mode noise its neighbours
