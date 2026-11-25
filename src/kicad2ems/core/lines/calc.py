@@ -38,6 +38,7 @@ from dataclasses import dataclass, field, replace
 
 from . import xsection as X
 from ..constants import C0
+from ..materials import er_of
 
 __all__ = ['Line', 'board_layers', 'calculate', 'fit', 'element', 'describe',
            'report']
@@ -155,8 +156,8 @@ class Line:
                 f"{path}: no copper layer {layer!r}: {', '.join(names)}")
         i = next(k for k, it in enumerate(items)
                  if it['kind'] == 'copper' and it['name'] == layer)
-        diel = lambda it: (it['t'] * 1e3, it.get('er', 4.5), it.get(
-            'tand', 0.0))
+        # (KiCad's "Not specified": the material's, else FR-4's)
+        diel = lambda it: (it['t'] * 1e3, er_of(it), er_of(it, 'tand'))
 
         def side(seq):
             """The dielectrics from the layer to the next copper, nearest first;
@@ -184,8 +185,8 @@ class Line:
         args = dict(t=items[i]['t'] * 1e3, below=below, above=above,
                     top_plane=closed)
         if mask is not None and not above:
-            args.update(mask=mask['t'] * 1e3, er_mask=mask.get('er', 3.3),
-                        tand_mask=mask.get('tand', 0.0))
+            args.update(mask=mask['t'] * 1e3, er_mask=er_of(mask),
+                        tand_mask=er_of(mask, 'tand'))
         args.update(kw)
         return cls(w, **args)
 

@@ -43,3 +43,27 @@ def test_a_known_laminate_holds_its_values_at_its_own_frequency():
     e = djordjevic_sarkar(3.66, 0.0037, 10e9, 10e9)
     assert (e.real == pytest.approx(3.66)
             and -e.imag / e.real == pytest.approx(0.0037))
+
+
+def test_the_raw_stacks_readers_take_a_dielectric_without_er():
+    """KiCad's "Not specified" is er None in KiCadBoard's stack_items: the
+    readers of the raw stack (si's and coupling's time grid, segment's cross
+    sections, the impedance calculator) take Board's values (the file's, its
+    material's, FR-4's; a mask 3.3), where max() and sums of None had raised
+    TypeError."""
+    from types import SimpleNamespace
+    from kicad2ems.core.segment import _xs_of
+    er_of = materials.er_of
+    assert er_of(dict(kind='diel', er=3.0)) == 3.0
+    assert er_of(dict(kind='diel', er=None, material='RO4003C')) == 3.55
+    assert er_of(dict(kind='diel', er=None, material=None)) == 4.5
+    assert er_of(dict(kind='diel', tand=None), 'tand') == 0.02
+    assert er_of(dict(kind='mask', er=None)) == 3.3
+    kb = SimpleNamespace(stack_items=[
+        dict(kind='copper', name='F.Cu', t=0.035e-3),
+        dict(kind='diel', name='p', t=0.2e-3, er=None, material=None),
+        dict(kind='copper', name='In1.Cu', t=0.035e-3),
+        dict(kind='diel', name='c', t=1.0e-3, er=None, material='RO4003C'),
+        dict(kind='copper', name='B.Cu', t=0.035e-3)])
+    kind, h, er = _xs_of(kb, 'F.Cu')
+    assert kind == 'microstrip' and h == pytest.approx(0.2) and er == 4.5

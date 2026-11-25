@@ -2572,6 +2572,7 @@ def _xs_of(kb, lay):
     over the next copper layer for an outer one, ('stripline', (h1, h2), er)
     between its two neighbours for an inner one (signal layers between
     planes); er the dielectrics' mean by thickness."""
+    from .materials import er_of
     st = [x for x in kb.stack_items if x['kind'] in ('copper', 'diel')]
     cu = [i for i, x in enumerate(st) if x['kind'] == 'copper']
     i = next(k for k in cu if st[k]['name'] == lay)
@@ -2580,7 +2581,7 @@ def _xs_of(kb, lay):
     def gap(a, b):
         ds = [x for x in st[min(a, b) + 1:max(a, b)] if x['kind'] == 'diel']
         t = sum(x['t'] for x in ds) * 1e3
-        er = sum(x['t'] * x['er'] for x in ds) * 1e3 / t if t else 4.0
+        er = sum(x['t'] * er_of(x) for x in ds) * 1e3 / t if t else 4.0
         return t, er
     if j == 0 or j == len(cu) - 1:
         h, er = gap(i, cu[1] if j == 0 else cu[-2])

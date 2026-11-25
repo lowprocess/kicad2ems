@@ -370,3 +370,21 @@ def test_a_pair_is_one_trace_in_its_differential_mode():
     assert np.isclose(Sc[0, i[('A', 'near')], i[('D', 'near')]], 0.025)
     same = si.as_channels(S, names, set(), None, 50.0, pairs=False)
     assert same[0] is S and same[1] is names
+
+
+def test_a_wider_gap_beside_a_conductor_the_cut_does_not_end():
+    """_moved with a conductor that reaches past the cut (a pour: its end None,
+    infinite): the right one and the pour right of it moved, the pour's open
+    end kept open, one on the left left alone (None had been compared as a
+    number: TypeError after every solve, crosstalk.json never written)."""
+    from kicad2ems.core.si import _moved
+    xs = dict(dielectrics=[], planes=[], conductors=[
+        [None, -1.0, 0.0, 0.035, True],   # a pour from the left
+        [0.0, 0.2, 0.0, 0.035, False],    # line i
+        [0.4, 0.6, 0.0, 0.035, False],    # line j
+        [1.0, None, 0.0, 0.035, True]])   # a pour to the right
+    m = _moved(xs, 1, 2, 2.0)['conductors']
+    assert m[0] == [None, -1.0, 0.0, 0.035, True]
+    assert m[1][:2] == [0.0, 0.2]
+    assert m[2][:2] == [pytest.approx(0.6), pytest.approx(0.8)]
+    assert m[3][:2] == [pytest.approx(1.2), None]

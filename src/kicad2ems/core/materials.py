@@ -72,6 +72,21 @@ def lookup(name):
     return dict(name=n, er=er, tand=td, fref=f, source=src)
 
 
+def er_of(it, key='er'):
+    """A stackup item's er (key='tand': its loss tangent) as Board takes it:
+    the file's, else its material's from the library, else FR-4's (a mask's
+    er 3.3, tan d 0). For the readers of the raw stack (KiCadBoard's
+    stack_items, where KiCad's "Not specified" is None: max() and sums of it
+    had raised TypeError); Board's own says so in a note."""
+    v = it.get(key)
+    if v is not None:
+        return float(v)
+    if it.get('kind') == 'mask':
+        return 3.3 if key == 'er' else 0.0
+    lib = lookup(it.get('material')) or lookup(DEFAULT)
+    return float(lib[key])
+
+
 # the Djordjevic-Sarkar curve's corners, 10^M1 .. 10^M2 Hz (1 kHz .. 1 THz)
 M1, M2 = 3.0, 12.0
 

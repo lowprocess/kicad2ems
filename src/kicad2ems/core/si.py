@@ -370,15 +370,21 @@ def _moved(xs_dict, i, j, factor):
     """The cross-section with the gap between lines i and j `factor` times as
     wide: the one on the right, and everything right of it, moved away (side by
     side on one level; else None)."""
+    # (an end the cut does not reach, a pour's, is None: -inf on the left,
+    # +inf on the right; compared as numbers it had raised TypeError after
+    # every solve, and crosstalk.json was never written)
+    lo = lambda v: -math.inf if v is None else v
+    hi = lambda v: math.inf if v is None else v
     c = [list(x) for x in xs_dict['conductors']]
-    a, b = (i, j) if c[i][0] < c[j][0] else (j, i)  # a left of b
-    if abs(c[a][2] - c[b][2]) > 1e-9 or c[b][0] <= c[a][1]:
+    a, b = (i, j) if lo(c[i][0]) < lo(c[j][0]) else (j, i)  # a left of b
+    if abs(c[a][2] - c[b][2]) > 1e-9 or lo(c[b][0]) <= hi(c[a][1]):
         return None
     shift, edge = (factor - 1) * (c[b][0] - c[a][1]), c[b][0]
     for x in c:
-        if x[0] >= edge - 1e-12:
+        if lo(x[0]) >= edge - 1e-12:
             x[0] += shift
-            x[1] += shift
+            if x[1] is not None:
+                x[1] += shift
     return dict(xs_dict, conductors=c)
 
 
@@ -565,9 +571,9 @@ def run(a, echo=print):
         )
     longest = max((max(n['length'], fr['length'])
                    for n, fr in ordered.values()), default=0.0)
-    er = max([
-        it.get('er', 1.0) for it in kb.stack_items if it.get('kind') == 'diel'
-    ] or [4.5])
+    from .materials import er_of
+    er = max([er_of(it) for it in kb.stack_items
+              if it.get('kind') == 'diel'] or [4.5])
     fmin, points = time_grid(fmax * 1e9, longest, er)
     fmin /= 1e9
     cli = dict(

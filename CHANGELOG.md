@@ -449,6 +449,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **A dielectric without er, and a cut's open ends, in the raw stack's readers (2026-11-25; the review, F18
+  F19).** KiCad's "Not specified" is `er = None` in KiCadBoard's `stack_items`, which only Board filled (the
+  material's, else FR-4's, with a note); si's and coupling's time grid (`max()` of the dielectrics' er), segment's
+  cross sections (`_xs_of`) and the impedance calculator (`lines/calc`, the mask's too) raised TypeError on it.
+  `materials.er_of(it, key)` gives Board's value for any of them. si's wider-gap figures (`_moved`) compared a
+  conductor's end that the cut does not reach (a pour's: None, infinite) as a number: TypeError outside the try,
+  after every solve, and `crosstalk.json` never written; open ends are infinite now and stay open when moved.
+  Tests: tests/core/test_materials.py, tests/core/test_si.py.
 - **A band from 0 Hz refused (2026-11-25; the review, F16).** `fmin <= 0` was refused for a log sweep only: a
   linear one from DC (or below) went on to a ZeroDivisionError in the cavity model, NaN in the via model and
   in mom25d's Sommerfeld contour ("cannot convert float NaN to integer"), and an FDTD end check that never

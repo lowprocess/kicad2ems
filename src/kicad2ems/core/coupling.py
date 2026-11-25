@@ -657,7 +657,8 @@ def run(a, echo=print):
     fmax = a.fmax or min(max(1e-9 / rise, 1.0), 40.0)                # GHz
     longest = max(e[0]['length'] for es in by_layer.values()
                   for e in es.values())
-    er = max([it.get('er', 1.0) for it in kb.stack_items
+    from .materials import er_of
+    er = max([er_of(it) for it in kb.stack_items
               if it.get('kind') == 'diel'] or [4.5])
     fmin, points = time_grid(fmax * 1e9, longest, er)
     fmin /= 1e9
