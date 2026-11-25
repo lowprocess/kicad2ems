@@ -23,7 +23,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   delay 144 ps, eyes of 495 / 485 / 262 mV by 200 / 100 / 47 ps at 5 / 10 / 20 Gb/s. Checked: a 50-75-50 Ω line's
   TDR at 75 Ω (2 %), a pair at 100 Ω; the PRBS7 eye of a lossy line at 8 Gb/s the peak-distortion analysis' of
   its own step response (2 % of the swing); IBIS buffers through a pair end to end; a board solved on the line
-  model. Left (ROADMAP, Signal integrity 7): jitter and noise, equalization and IBIS-AMI, a floating differential
+  model. Left (ROADMAP, Signal integrity 1): jitter and noise, equalization and IBIS-AMI, a floating differential
   termination. Test: tests/core/test_timedomain.py.
 - **IBIS buffers as the channel's terminations (`kicad2ems.core.ibis`, 2026-11-25; the time-domain question's
   second part).** `read`/`parse` take an IBIS file's [Model]s (Model_type, Polarity, C_comp, the references and

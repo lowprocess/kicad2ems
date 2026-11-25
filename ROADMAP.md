@@ -1,675 +1,291 @@
 # Roadmap
 
-What is worth doing next across kicad2ems and its parts (`kicad2ems.{core,gui,fdtd,gfdtd,mom25d,pcbqs,fem,ipc,
-dfsynth,emsdev}`), in priority order within each section. Each item comes from something the examples, the
-benchmarks or a validation showed. Finished items leave this file: what was done, measured and decided against is
-in CHANGELOG.md (pcbqs's history before the merge: docs/pcbqs/CHANGELOG.md). C, I and U numbers are findings of
-docs/pcbqs/power-tools-review.md; R numbers (R-A1, R-D12, ...) are the whole stack's review of 2026-11-14,
-`REVIEW-2026-11-14.md` in kicad2ems-project (the superproject before the merge), which has each one's evidence;
-estimates are working days. Last updated 2026-11-24.
+What is left to do across kicad2ems and its parts (`kicad2ems.{core,gui,fdtd,gfdtd,mom25d,pcbqs,fem,ipc,dfsynth,
+emsdev}`), most useful first within each section. Each item comes from something an example, a benchmark or a
+validation showed. Finished work leaves this file: what was done, measured and set aside is in CHANGELOG.md
+(pcbqs's history before the merge: docs/pcbqs/CHANGELOG.md). R numbers (R-E1, ...) are the stack review of
+2026-11-14 (`REVIEW-2026-11-14.md` in kicad2ems-project), C numbers docs/pcbqs/power-tools-review.md, F numbers
+the code review of 2026-11-25. Last updated 2026-11-25.
 
-## CI and release
+## Waiting on a decision
 
-1. **References** (R-C9, C10):
-   - gfdtd, mom25d and the line model regress against openEMS's demo_lowpass (`tests/data/`); a board with
-     wave ports and one with vias would cover more, and mom25d's README figures are tighter than its tests;
-   - pcbqs's real-board regressions need `~/Desktop/wpthb`.
-2. **The GPUs** (R-C7): run before a release instead of in CI (`tools/gpu_report.py`, docs/testing.md); CI runs
-   mom25d's Vulkan LU and gfdtd's Vulkan kernels on lavapipe. Left: an NVIDIA run in the report (the GTX 980 Ti is
-   listed; Vulkan's runs take the AMD card, CuPy runs on it too); the report's mom25d boards are small enough to
-   factor on the CPU, so a board past the GPU's threshold.
-3. **A release** (R-C12, C16, C17, M). Left:
-   - PyPI, which refuses direct-URL dependencies (not yet: the user's call, 2026-11-14);
-   - the KiCad plugin's PCM entry and its v0.1.0 tag.
+- **PyPI:** it refuses direct-URL dependencies (the user's call, 2026-11-14).
+- **The adaptive sweep's last check** after a deep agreement: skipping it saves 6.8 % of mom25d's solves (604
+  pieces measured, 2026-11-23); it is the guard against two models wrong alike.
+- **The planes' internal inductance** (F87): `core.cavities` and pcbqs's plane pairs leave it out (k² (1 − j δ/d));
+  the exact form (1 + (1 − j) δ/d) moves the rail-impedance tool (the planes' inductance +δ/d, ~2 % at 1 GHz on
+  0.1 mm) and the resonances (−0.2 %).
+- **Images on a page of its own** in the window, as Section has (asked, not decided).
+- **Plane-pair cavities** (segment's `--cavities`) were set aside by the user on 2026-11-24: their items below
+  wait on that.
+
+## Release and CI
+
+1. **Regression references** (R-C9, C10): gfdtd, mom25d and the line model regress against openEMS's
+   demo_lowpass alone; a board with wave ports and one with vias would cover more. mom25d's README figures are
+   tighter than its tests check. pcbqs's real-board regressions need `~/Desktop/wpthb`.
+2. **Windows and macOS** (F80): CI runs Linux alone; a job on each that builds the cores and runs the core suite.
+3. **The GPU report** (`tools/gpu_report.py`, run before a release): an NVIDIA run in it, and a mom25d board past
+   the GPU's threshold (the report's boards factor on the CPU).
+4. **The KiCad plugin's release:** its Plugin and Content Manager entry (`"VERSION"` in its metadata today) and
+   a v0.1.0 tag.
 
 ## The study: questions and engines
 
-The registry is there (`kicad2ems.core.study`, docs/api.md#study-api): a study asks questions, engines answer them,
-and a rail's drop, the temperature and capacitance each have two (pcbqs; Elmer or Palace through the fem part). A
-config holds a study (`[study]`) and `kicad2ems study` runs it (docs/usage.md#study); the window lists the
-questions, with the engine chosen on each row, and compares two engines' named figures (docs/gui.md#the-study).
-Left:
-
-1. **S-parameters compared per engine, the rest.** The run's report has *Solvers compared* (each solver's figures:
-   each port's worst match and its dip, each transmission at the band's centre and its lowest, with their spread)
-   and `study.compare` takes solvers too (2026-11-20). Left: the window's *Engines compared* table for the
-   S-parameters question (it asks the analyses alone), and a resonance's or a line's delay as figures.
-2. **Engines with different settings for one thing.** pcbqs's rail tool takes `rail`, Elmer's `net`: asked both,
-   the same rail is typed twice. A question could say what it needs (the net, the source, the loads) and each
-   engine take it from there.
-3. **The KiCad plugin** starts `kicad2ems study` for a board whose config has one.
-4. **Ports the solvers share** (R-E1): mom25d's wave window (6 cells + max(2 cells, 4 w, 3 h, 1 mm)) refuses the
-   examples' 4-6 mm feeds, where the FDTD's probes stood 3 mm in; the FDTD's line ports on pairs and oblique traces
-   (FDTD, item 3).
-6. **A variation's figures in the window and the report**: `<name>_vary.csv` and the log set them side by side
-   (2026-11-20); the window's *Compare with* still overlays the curves alone.
-7. **Solvers side by side, overlapping** (R-D20): `--solver-jobs N` runs them as threads, but gfdtd's GPU stepping
-   records its kernels from Python and holds the GIL, so a solver beside it waits; processes of their own, or
-   gfdtd recording many steps for each Python call, would let them overlap.
+1. **gfdtd is not offered for the antenna question:** `study.engines` reads a solver's `antenna` capability up
+   to its first colon, and gfdtd's ("yes (a phased drive: ...)") is neither "yes" nor "approximated".
+2. **A second engine where a question has one:** capacitance (Palace alone; pcbqs's electrostatic solver is not
+   wired as one), coils (Elmer alone; pcbqs's quasi-static inductance), the circuit (ngspice alone; Xyce: it ran
+   behavioural switches ngspice could not, 2-7× slower).
+3. **New questions:** segment and the plane-pair cavities as study questions (they are command-line tools); a
+   return-path check (traces over plane splits and voids, layer changes with no stitching via near); via stubs
+   and backdrill (each via's stub resonance against the data rate); a radiated-emission estimate (mom25d's
+   currents to the far field against CISPR 32); decoupling chosen to a target impedance; matching networks from a
+   solved S11 with real part values (`core.embed`).
+4. **S-parameters compared per engine in the window** (its *Engines compared* table asks the analyses alone), and
+   a resonance's or a line's delay as figures.
+5. **One setting for one thing:** pcbqs's rail tool takes `rail`, Elmer's `net`; asked both, the rail is typed
+   twice. A question could say what it needs and each engine take it from there.
+6. **Ports the solvers share** (R-E1): mom25d's wave window refuses the examples' 4-6 mm feeds where the FDTD's
+   probes stand 3 mm in; the FDTD's line ports on pairs and oblique traces (FDTD 3).
+7. **A variation's figures** in the window and the report (`<name>_vary.csv` and the log have them; *Compare with*
+   overlays the curves alone).
+8. **Solvers side by side** (R-D20): `--solver-jobs N` runs them as threads, but gfdtd's GPU stepping holds the
+   interpreter lock; processes of their own would let them overlap.
+9. **The KiCad plugin starts `kicad2ems study`** for a board whose config has one.
 
 ## Signal integrity
 
-The crosstalk question (`kicad2ems.core.si`, docs/si.md) is the first. Left, in the order a board would want them:
+1. **The time-domain question, the rest** (`core.timedomain`, docs/timedomain.md): jitter and noise (a BER
+   contour, a bathtub, a statistical eye), equalization (CTLE, FFE, DFE) and IBIS-AMI, a floating differential
+   termination (split per leg to Vtt today), IBIS's [Driver Schedule] and [Submodel], a SPICE subcircuit of the
+   macromodel for the circuit question, and a check on a real channel with a vendor's IBIS file.
+2. **Crosstalk and board coupling through real buffers:** their edge responses take `z0` at every end; a source
+   impedance and a receiver's load (an unterminated receiver doubles what arrives).
+3. **Differential pairs, the rest:** a pair's skew (its legs' delays) and the common-mode noise its neighbours
+   put on it (in the modal S, not reported).
+4. **Board coupling, the rest** (`core.coupling`): a net that forks on a layer, a port inside an antipad but off
+   its via's ring (the question stops), the window's view of the matrices. On a large board mom25d does not fit
+   (the CM5 Minima ran out of memory): segment is the way there.
+5. **Broadside pairs** on adjacent layers are not coupled at all (the groups are of one layer).
+6. **The time grid:** whether 1 / rise as fmax (the top 20 % faded) loses an edge's corner on short, fast traces,
+   against a grid to 3 / rise.
+7. **The coupled stretches drawn on the plan**, coloured by their share.
 
-1. **Differential pairs as pairs, the rest.** Board coupling and the crosstalk question take a pair as one trace in
-   its differential mode (2026-11-20; board coupling with its own mode conversion). Left: a pair's skew (its legs'
-   delays), and the common-mode noise its neighbours put on it (in the modal S, not yet reported).
-2. **A board's coupling, the rest** (`kicad2ems.core.coupling`, docs/si.md#coupling, 2026-11-20). On a real
-   board (the CM5 Minima's 36 high-speed nets, 18 pairs; 2026-11-20) the line model answers in 4 min; mom25d does
-   not fit yet: each layer's group still carries its share of the signal layer's ground pour and stitching vias,
-   and the last run was stopped by the machine running out of memory with nothing logged (its plan does not count
-   the signal zone with the pour cut near the group: to check by a size-only preview per group). **Being replaced
-   by the segmented solve below.** Also left: what crosses between layers (vias, a plane's gaps, broadside
-   traces), a net that forks on a layer (its longest path there is the stretch), a port inside an antipad but off
-   its via's ring (no reference copper under it on the full board: the question stops), and the window's view of
-   the matrices.
-3. **A board solved in pieces (the user's plan, 2026-11-20): vias as ports.** Each signal layer's traces alone
-   over ideal planes (mom25d's Green's function: the planes not meshed), a port wherever a trace meets a via or a
-   pad; each kind of signal via (its pads, antipads, stub and the ground vias around it) a small model of its own,
-   cached by its geometry; the pieces joined as one network: each net's S end to end across its layer changes,
-   and the crosstalk through the vias. Validated against whole-board full-wave runs on `rf_diffvia` and the DDR
-   example's lane 1, then the CM5 Minima. Its limits to report: a plane's cavity between sparse stitching vias,
-   apertures under a trace (the ideal plane has none), broadside coupling between layers, the ideal planes' own
-   copper loss (a lossy config's pieces take the copper since 2026-11-25: rf_msvia 0.22 dB at 10 GHz against
-   the whole board's 0.41). **Started 2026-11-20**
-   (`kicad2ems.core.segment`, docs/si.md): rf_msvia and rf_diffvia within the whole board's spread of solvers.
-   Left: the extra reflection near 10 GHz (2-3 dB in S11: the via model's, to find), DDR lane 1 (no port
-   footprints: its ends), crosstalk figures from the joined S (as Board coupling's), the window. **On the CM5
-   Minima with mom25d's direct factor it is not practical** (2026-11-20, set aside by the user): its 18-net F.Cu
-   piece is 29k unknowns, 49 min and 19.6 GB (the block low-rank factor did not converge at 1-1.5 GHz), the board
-   hours. **With `--edges coarse` (2026-11-20) the whole board runs on mom25d: 6 min 25 s, 3.8 GB peak**, 13
-   layer pieces (4-43 s each) and 12 via models (12-47 s; the 28-port one had not fitted 24 GB on the fine
-   mesh): the 36 nets' 73-port S end to end. Next: its figures in each pair's differential mode (as Board
-   coupling's matrix; single-ended at 50 ohm the 100 ohm pairs read -13 dB between HDMI lanes), the Ethernet
-   pairs' -2.6 dB match and USB-C's reflection looked into (parts left out: ESD diodes, connectors), and a check
-   of one interface against a cut-out solved whole (done for PCIe's clock: Sdd21 within 0.13-0.15 dB rms of the
-   cut-out, either via model; the board's other interfaces to check the same way). **Via models without a mesh:**
-   the physics-based model (`--via-solver pbm`, viamodel.py) is in; mom25d's plane holes on a whole stack were
-   studied (2026-11-20): lifting the `holes` gate for whole stacks (board.py:532) and adding the cavity's
-   transfer admittance between holes of adjacent planes (frill.py:376 returns 0 there) solved rf_msvia's
-   through via on PEC planes in 983 unknowns against 6,597 (S21 within 0.06 dB, the static two-plane
-   capacitance within 0.8 % of meshed planes); about half the unknowns on the CM5's via models (their outer
-   layers stay meshed). Left there: the RF part above 5 GHz, power planes, and a pair's shared or oval antipads
-   (a via through a slot opening, 1-2 weeks). **Tried on the CM5's via1 (2026-11-21): no plane qualifies**, so
-   it meshes them all as before (6,301 unknowns): In1.Cu and In4.Cu hold each pair's two vias in one antipad, and
-   In2.Cu / In3.Cu are split planes (GND and +5V: 3 and 10 pieces in the box). On a real board's high-speed vias
-   the quick version does not apply; it needs the via-through-an-opening work and split planes. The
-   physics-based via model covers these vias now (a shared antipad and split planes are only capacitances and
-   cavities to it). Measured and set aside: edge cells only near the signal
-   copper (the via models' plane edges: 10 % fewer unknowns on the fine mesh, 1 % on the coarse), and an
-   aggressor's copper fine with its victims coarse (rf_coupler: between the two meshes in unknowns and in S31,
-   which all three give within 0.2 dB of gfdtd; and a run per aggressor). **With `--layer-solver lines`** its layer pieces take 2 min and the via models are the
-   cost: 9-33k unknowns each (the whole stack's planes in their boxes, D-PHY's rows of 8 vias one model), 33 s
-   to 23 min, the largest over 24 GB. On gfdtd (`--via-solver gfdtd`) as accurate on the test boards (rf_msvia
-   S21 within 0.14 dB of the whole board, rf_diffvia Sdd21 0.078 dB rms against mom25d's via model's 0.110) and
-   light (2.5 GB), but not faster on the CM5 (via1 983 s against 1358, via3 179 s against 44; via12's 28 ports
-   ~2.4 h): its fine cell came down to 19 um (the cut circles' short edges, a part, C705, left in the via box), a
-   0.018 ps time step, 87k steps a port, a 5 mm air margin. To try: the via box's parts left out, its fine cell
-   at the via's own scale, a smaller margin. Next: identical via geometries solved once (most are a pair's two vias of
-   one size), the planes as PEC with their holes where the via stays on one side of them, a row of vias split
-   where its circles only touch. A purpose-built trace mesher was measured first and set aside: the CM5 piece's
-   unknowns are 80 % edge rings at 65 a mm of trace, and neither fewer rings (more triangles: the area limit
-   splits the wider strips), coarsening nor quads lowers them; an outline simplified at 5 um saves 18 %.
-   **The Jetson AGX Thor carrier (2026-11-21, the user's scale target: 10 layers, 22k tracks, 3.3k vias)**: its 158
-   high-speed nets (79 channels, 568 ports) in 78 layer pieces and 118 via models, on this machine. On the way:
-   the layer pieces had meshed every split plane above a stripline (626k unknowns; now the two adjacent planes
-   as sheets), stripline groups at 3 plane spacings with a cap of 24 nets (the In7 bus chained 64), the stripline
-   pieces' parallel-plate mode (-45 dB coupling at any distance until the board's ground vias went in), a lost GPU
-   device at 158 ports (the double Z spilled out of VRAM), and figures of 158 ports that took 6 minutes. The line
-   model was measured as a stand-in for the biggest stripline piece and set aside: its loss within 0.1-0.5 dB of
-   mom25d, but none of the lane-to-lane coupling (it couples within 5 heights). **The run itself (2026-11-21):
-   4 h 19 min and 20.9 GB with the big groups whole (the In7 bus 3 h 21 min: 106 ports), 1 h 02 min and 12.5 GB
-   with them in windows** (In7: 8 windows of at most 9.8k unknowns), the 91 connected channels' insertion loss
-   within 0.04 dB of the whole groups' and each victim's worst crosstalk within 0.008 points. **With every
-   connectivity fix in (2026-11-21): 59 min, 12.7 GB, all 92 channels connected end to end** (median loss
-   -0.33 / -1.05 / -2.41 dB at 1 / 5 / 10 GHz, the worst crosstalk 0.83 % NEXT), the overlay page, the worst
-   couplings and where along the victims they come from (the breakouts at connectors and ICs, not the long
-   striplines). Left: SFI_REFCLK's -3.5 dB at 1 GHz (to look at), the USB 2 lanes' stubs at 10 GHz (out of
-   their band), a check of one interface against a cut-out solved whole as on the CM5.
-   The In7 bus piece (24k unknowns, 66 ports): 60 EM solves of ~70 s (the sweep at its cap, not converged).
-   **Tried and set aside (2026-11-21): each entry's delay taken out before the sweep's fit** (replayed on that
-   piece's S, 16 ports): 72 solves to converge without, the 80-solve cap unconverged with (2.7e-2 off; the
-   through paths' alone 8.6e-2): the set-valued AAA's poles are common to all entries, and one delay per entry
-   breaks that (and an entry is several paths' sum). The solves are the long lines' resonances. Left to try on
-   the solve's cost: the stages timed at 24k (the double Z and the factor no longer both on the GPU?), a
-   complex-symmetric LDL^T (half the memory: both would fit), single-precision products on the GPU; and the
-   windows (being validated). The fit itself is ~4 min of the 73 (the SVD of a 60-sample, 4356-entry fit:
-   13 s; its rows' build vectorised gained nothing).
-   **Speeding up large boards further (2026-11-21; the quick wins are in: windows' core ports alone driven,
-   `--lean` pieces, small pieces in parallel).** In order of payoff: (a) straight coupled runs as analytic
-   multi-line sections (an N-line 2-D cross-section of all the lines together, exact for TEM) with MoM only at the
-   discontinuities (breakouts, bends, vias): the Thor's In7 bus is mostly straight parallel stripline, and the
-   coupling profiles put the crosstalk at the breakouts; the line model's coupling (only within 5 heights) is
-   what to widen. (b) A complex-symmetric LDL^T factor on the GPU: half the memory and work, so at ~24k unknowns
-   the double Z and the factor fit together (the In7 piece's ~N^4.2 is that fall-back). (c) The block low-rank
-   factor's convergence below 1.5 GHz (it is off in segment's pieces): a ground plane's smooth kernel compresses
-   well. (d) Identical pieces solved once (a geometry hash up to a shift or rotation): set aside for now, the via
-   models it would mostly dedupe take a second each and no two layer pieces matched on these boards. (e) The
-   second GPU for small pieces (bus-limited for LUs). (f) Terminated ports in the loop/tree basis (their loads are
-   lost in its transform: excite runs use the RWG basis). **(b) prepared (2026-11-22):** `mom25d/ldl.py` (a blocked
-   complex-symmetric LDL^T without pivoting, NumPy: the reference) and `tools/mom25d_ldl_trial.py` (a piece's
-   equilibrated matrix at fixed frequencies, captured where the direct solve factors it, factored in complex64 as
-   LU / LAPACK's Bunch-Kaufman / LDL^T and each used as GMRES's preconditioner). On a 2.7k LimeRFE piece: at 0.3 GHz
-   (the loop/tree basis) and 6 GHz both LDL^T and LU converge in 1 and 5 iterations; at 1 GHz (the RWG basis just
-   above the loop/tree's threshold, ill-conditioned) LU takes 48 and both symmetric factors (pivoted too) fail in
-   300: that band would fall back to a double factor. To trial on 10-15k pieces (the band's width), then the GPU
-   kernel: the CPU's panel (its L11 D1 and the panel below), the GPU's trailing update on the lower block columns
-   alone (half the GEMMs), the factor held by block columns (half the memory). **(c) measured (2026-11-22):** the block
-   low-rank solver against the direct at fixed frequencies (`--thickness grow`, GPU off against GPU): a LimeRFE
-   piece (27k, 17 ports, pour kept) 128 / 60 / 55 s at 1 / 3 / 6 GHz against 275 / 72 / 22 s, 14.5 GB against
-   24.1; the Thor's In7 group (24.9k, 106 ports, coarse edges) failed at 1 GHz (residual 0.83 at a 1e-9
-   compression), 250 / 239 s at 5 / 10 GHz against 1,017 / 275 / 221 s, 9.7 GB against 19.2; S within 5.5e-7
-   where both converged. (Its old CM5 failure was the copper sides' dense blocks: with `grow` that piece converged.)
-   **The common bottleneck is the RWG basis's conditioning below ~1-2 GHz on these meshes:** the direct path's
-   GMRES runs to its cap there (1,017 s of the In7 group's three), the compressed factor does not precondition,
-   and a complex64 symmetric factor fails (the LDL^T trial). The loop/tree basis is taken only below (k h)^2 =
-   1e-5 and only where its dense matrix fits. Next: that band first: the loop/tree threshold raised where it fits
-   (a cheap test), then the current-and-charge (augmented EFIE) form in compressed tiles (item 1 below), which
-   would make all three paths behave at the low end. **The loop/tree basis higher up (2026-11-22, measured):** with
-   its threshold at 3e-4 / 1 (`policy.LOOP_TREE_BELOW`, 1e-5), where its dense matrices fit: the Thor's In7 group
-   (24.9k, 106 ports) 16 / 15 / 16 / 13.5 s at 1 / 2 / 5 / 10 GHz against the RWG basis's 208 / 238 / 20 / 13.6 s;
-   a LimeRFE piece (27k, 17 ports) 17 / 14 s at 1 / 2 GHz against 129 / 130 s; GMRES 1-2 iterations a port; S
-   within 1e-6-1.4e-5; peak 20 GB on both (its dense matrices: what limits it). (A correction: the direct path's
-   275 / 221 s at 5 / 10 GHz in the BLR comparison came from a process the BLR run had shared; on its own 20 / 14
-   s: BLR is ~15x slower there, its gain memory alone.) **The LDL^T trial with the loop/tree basis to (k h)^2 =
-   1e-3** (`tools/mom25d_ldl_trial.py --lt-below 1e-3`; LimeRFE F_Cu_g50 11.8k / 20 ports, F_Cu_g24 14k / 9 ports,
-   a Thor In7 window 7.4k / 28 ports): the complex64 LDL^T without pivoting converged at every frequency, as LU
-   does: in the loop/tree basis (to 2-3 GHz) 2 GMRES iterations a port against LU's 1-2; in the RWG basis above
-   4-17 against 3-16 (fewer than LU on F_Cu_g24); half the factor's bytes. The weak band (the RWG basis at ~1
-   GHz) is the loop/tree basis's now. **Next, in order:** (1) ~~the loop/tree threshold raised~~ done (1e-3,
-   2026-11-22: `tests/mom25d` 314 with the GPU on and off, the example boards swept both ways within 2.9e-6, at
-   fixed frequencies within 4e-8; `tools/mom25d_threshold_compare.sh`; CHANGELOG); (2) ~~the GPU LDL^T factor~~ done
-   (2026-11-22, `gpu_ldl.py`, the GPU's default: the factor 1.6-1.9x the LU's from 7k to 20k, the In7 group's
-   solves 22.1 -> 15.1 s at 5 GHz; its refinement's products, 9.1 s of the 15.1, are now what costs: the host's
-   double Z, which (3) halves and puts on the GPU; left in it: one right-hand side's GPU solve 30 % slower than
-   the LU's (the diagonal block's product a single workgroup), the policy's host bytes still the LU's 24 N^2
-   for the hybrid (20 N^2 with it), a host LDL^T as fast as LAPACK's LU (`half.ldl_factor`, 1.8 s against 1.6
-   at 8k: SciPy's wrappers hold the GIL)); (3) ~~Z stored and filled by its lower
-   half~~ done for the RWG basis (2026-11-22, `half.py`, the default: the In7 group 12.6 / 8.2 s at 5 / 10 GHz in
-   7.7 GB, against 22.1 / 14.6 s and 16.3 GB this morning; with it the products split between the GPU and the
-   host, and the GPU's buffers pooled; the loop/tree basis and the sides' loops whole for their transforms, the
-   half after them, the charge matrix by blocks: a LimeRFE piece of 27k at 1-2 GHz 19.7 -> 15.1 GB); left: the
-   transforms on the half itself, for a peak of ~8 N^2 rather than 16 N^2 (the loop/tree basis's K^T Z K: with the
-   tree's rows first, M_tc = Z_tc + Z_tt P row by row and the loops' block from P^T Z_tc (before) and P^T M_tc
-   (after) a column block at a time, in increasing block order so no write meets a later read; the sides' loops a
-   border transform of their columns), the GPU's half products at one copy of each number (each is read twice today: the half saves
-   memory, not their time); with many ports the double products are what is left of the refinement (a
-   float-float product on the GPU's single precision would be ~2-3x its double); (4) ~~the block low-rank solver
-   for pieces past that, with weak admissibility or clusters along the traces tried~~ done (2026-11-22: its GMRES
-   operator the compressed matrix in double to 1e-8, or the dense half; weak admissibility the default; the In7
-   group 221 -> 19 s, a LimeRFE piece's pour 59 -> 19 s, factors 4-8 % of dense complex64; tiles by connected
-   copper tried, no better: CHANGELOG). Left in it: the operator on a pour (71 % of dense complex128 at 1e-8: its
-   neighbouring tiles' ranks; the near tiles kept in complex64 would halve it, or a strong-admissibility
-   operator over H-matrix clusters), its tiles by the half (Z is symmetric: the tiles above the diagonal alone,
-   half the operator's and the factor's assembly), the factor on the GPU (its tiles' GEMMs), and its size at
-   45-100k unknowns (not yet run: no piece that large here; the near field's sparse build and its 2.5 s
-   operator assembly grow as N^2). The LimeRFE (1.5-2 h) is set by two pieces of ~27k
-   unknowns where several RF paths meet: (b) and (c) are what would bring it to an hour.
-   **LimeRFE left over:** its KiCad 4 file's nets are out of step with its tracks (84 net pairs touching the RF
-   nets overlap): re-deriving the nets from the copper's connectivity would bring back the channels the run
-   leaves out; series parts with no value (20) leave their chains open; the outline is the panel's frame (the
-   board's own edge is open at the tabs). **Segment in the window**: a study for it (the board, net patterns,
-   band, pour/edges/windows), its overlay page and figures in the results (kicad2ems-add-analysis).
-4. **mom25d iterative: AIM + GMRES (being prototyped, 2026-11-20).** (2026-11-23: its near part's sparse LU
-   in a fill-reducing order is the first thing to try where the prototype ran out of memory: METIS nested
-   dissection on the pattern of Z + Z^T, or SuperLU's `permc_spec='MMD_AT_PLUS_A'`, against SciPy's default
-   COLAMD; then a shorter reach. A complex-symmetric Krylov method (COCG, symmetric QMR: short recurrences)
-   would drop GMRES's stored basis there and in the block low-rank solve, ~2 x restart x N x ports x 16 bytes,
-   1.7 GB at 100k unknowns, 18 ports, restart 30, at some cost in robustness; CG itself needs a Hermitian
-   positive definite matrix, which Z is not. The dense path has no fill to reduce: Z is dense. Multigrid in
-   its classical forms does not suit these first-kind integral equations; their counterparts, hierarchical
-   loop-star or multiresolution bases and Calderon preconditioning, would matter for iterative solves on
-   very fine meshes, the loop/tree basis being a one-level form of them.) The far (centroid) product by a
-   precorrected FFT on a grid per layer pair (the layered tables sampled on it: no multipole expansion of the
-   layered kernel needed), mom25d's exact near correction as it is, GMRES preconditioned by the near part's
-   sparse LU. Measured on the test strip (4.2k unknowns): the product within 1e-5 of the exact one (grid one
-   median cell), 10-15 iterations from 1 to 10 GHz, S within 2e-5 of the direct solve; SciPy's incomplete LU
-   does not precondition this complex matrix (the exact sparse LU does). On the CM5 F.Cu piece (29k unknowns,
-   22 M near pairs) the prototype's structures on the whole near list did not fit 24 GB: the grid's correction
-   and the preconditioner on smaller reaches (a few grid cells), the near-pair correction in the compiled core.
-5. **mom25d out of core** (asked 2026-11-20, after the near-field build in pieces): a tiled complex64 LU with its
-   tiles on the NVMe, factored on the GPU with VRAM as its working set (the mixed path's refinement to double), for
-   the problems that cannot be split. To prototype and measure on a case just over RAM (~60,000 unknowns) against
-   the block low-rank path before it earns a place.
-6. **The time grid, the rest** (R-E16). The grid holds the longest trace (`si.time_grid`, 16 samples a ripple:
-   CHANGELOG 2026-11-14), and `coupling` uses it too. Left: whether 1 / rise as fmax (the top 20 % faded) loses an
-   edge's corner on short, fast traces: to measure against a grid to 3 / rise before changing it. (S to DC, the
-   TDR: the time-domain question's macromodel, 2026-11-25.)
-7. **The time-domain question, the rest** (`kicad2ems.core.timedomain`, docs/timedomain.md, 2026-11-25: TDR,
-   step, eye; a passive macromodel; ideal and IBIS buffers). Left: jitter and noise (a BER contour, a bathtub, a
-   statistical eye), equalization (CTLE, FFE, DFE) and IBIS-AMI, a floating differential termination, IBIS's
-   [Driver Schedule] / [Submodel], crosstalk and coupling's edge responses through the same buffers (their `z0`
-   at every end), a SPICE subcircuit of the macromodel for the circuit question, and the eye checked against a
-   commercial tool's on a real channel.
-8. **A trace's own quality:** its impedance along its length (the line model has it: *Trace impedances*; the
-   time-domain question's TDR from the channel's S), its loss at the data rate.
-9. **The coupled stretches drawn on the plan**, coloured by their share (the traces are picked on the board
-   already).
-10. **Broadside pairs** on adjacent layers: the groups are of one layer, so such a pair is not coupled at all (it
-   is listed as not modelled, and the limit not judged).
+## Segment: a board in pieces (`core.segment`)
 
-## The window
+1. **In the window:** a study question (the board, net patterns, band, pour, edges, windows), its overlay page
+   and figures in the results.
+2. **The extra reflection near 10 GHz:** S11 2-3 dB above the whole board's on rf_msvia and rf_diffvia; neither a
+   larger via box, the cut further out nor `--calibrate` changes it much. The via model's, to find.
+3. **More checks against a cut-out solved whole** (done for the CM5's PCIe clock: Sdd21 within 0.13-0.15 dB
+   rms): the CM5's other interfaces, its Ethernet pairs' −2.6 dB match and USB-C's reflection, the Thor
+   carrier's SFI_REFCLK at −3.5 dB at 1 GHz.
+4. **The physics-based against the meshed via models:** 0.1-0.36 |ΔS| at 6 GHz where both are well posed, the
+   box's truncation or the model's (a larger region solved whole); LimeRFE and ThunderScope's front end again
+   with `pbm`.
+5. **The layer pieces' ideal planes have no copper loss** (rf_msvia: 0.22 dB at 10 GHz in pieces against the
+   whole board's 0.41): mom25d 2.
+6. **Speed:**
+   - straight coupled runs as analytic multi-line sections (an N-line cross-section, exact for TEM) with MoM
+     at the breakouts, bends and vias alone: the largest gain on bus-heavy boards (the Thor's In7 bus);
+   - a piece's file keeps whole any plane that reaches its neighbourhood (12.7 MB median, ~1 MB clipped);
+   - the physics-based via models run one at a time last; in a thread they stalled the run (not found why): a
+     process of their own;
+   - gfdtd's via models (`--via-solver gfdtd`) are as accurate but not faster on the CM5: its fine cell came
+     down to 19 µm (the cut circles' short edges, a part left in the box); the box's parts left out, its fine
+     cell at the via's scale, a smaller air margin;
+   - a row of vias split where its circles only touch;
+   - the second GPU for the small pieces (the 980 Ti: bus-limited for an LU, not for a small piece).
+7. **LimeRFE:** re-check its overlapping net pairs after the pad-rotation fix (F03 took 194 pairs to 0); 20
+   series parts with no value leave their chains open; its outline is the panel's frame.
+8. **DDR lane 1** (no port footprints: its ends).
+9. **A test-isolation fault:** with tests/core/test_segment.py first in a session, the CLI's tests lack mom25d's
+   dump options (the solver registry built in an order that leaves them out; CI runs the folders apart).
+10. **Plane-pair cavities** (set aside by the user):
+    - their cost on a large board (the Thor's five blocks 26 min of 56: a sparse factor of 85-94k unknowns at
+      each frequency): each cavity's modes once and a sum over them would make it minutes; `--suggest` slow the
+      same way;
+    - `--suggest` checks the cavity's two planes alone (a through via must clear every layer);
+    - the far-return rf_msvia's notch's upper flank (−1.9 dB at 8.5 GHz against −1.0);
+    - the meshed via models are not joined to the cavities;
+    - decoupling capacitors in the cavities (their ESL, ESR), the cavity edges' radiation in Q;
+    - why the Thor run with `--cavities` solved every piece again (the pieces' hashes to compare).
 
-The window keeps its docks, as a studio application's (the user's word, 2026-11-12: a fixed layout was built and
-taken back); nothing below may fix a panel in place. Left:
+## mom25d
 
-1. **The study as a model without Qt, the rest.** `study.StudyModel` has the questions' side, `document.StudyDocument`
-   the config (the RF settings, the analyses' tables, the study, read and written back) and `runqueue.RunQueue` the
-   runs in progress (2026-11-19). Left: the panels still hold the values between a load and a save (the document is
-   filled when the config opens and when it is saved, not on each edit), and undo is the form's; the board as read
-   (its layout, for picking) is the window's. Then the KiCad plugin can drive a study through these.
-2. **An analysis's panel with its few settings first, the rest.** The panel puts options of level `basic` first and
-   open (2026-11-20), and pcbqs's rail, near-field and thermal tools name theirs; Elmer's and Palace's tools do not
-   yet (the coil tool does).
-3. **Picking on the board: what is left.** Nets and parts are picked (an option's `pick`). Not yet: a pad (a port:
-   `REF.PAD`, or a point), a `REF=VALUE` list's part (a rail's loads, a part's loss), a region dragged as a box,
-   and the pick in the 3D view. The Circuit page's *Load model…* and *Save model…* buttons go (*Choose PCB…* went).
-4. **The pages, the rest.** *Images* may belong on a page of its own as Section does (asked, not decided); a Start
-   page tile says nothing of what its example takes (the engine, the time: the index has neither).
-5. **Left from the removed bridge:** the schematic's format-1 layout code.
+### Accuracy
 
-## The line model
+1. **`edge` thickness's copper loss** (F90): 2.9× the strip's share over the ideal ground, 2.4× the line's with
+   the plane meshed (docs/mom.md#thickness-loss), and every whole-stack run with `sides` or `mixed` gets `edge`.
+   Spreading the edge triangles' loss over their walls takes 0.229 to 0.157 dB of the line's 0.097: measure
+   against a 2D solve of the loss with the skin effect, then fit as the heights were.
+2. **The ideal ground's own loss:** over the infinite plane (stack `ground`, segment's layer pieces) its share
+   of a line's conductor loss (0.26 on a 50 Ω microstrip) is missing: a surface impedance at the bottom of the
+   layered Green's function, or Wheeler's share added per line.
+3. **Copper thickness, the rest:** the sides with holes and openings of PEC planes and a via's vertical current,
+   the copper's top face; the loss takes the port layer's thickness for every layer.
+4. **Thickness cheaper than the sides:** `mixed` has 10 % fewer unknowns but fails the gates (antenna_patch +0.057
+   against openEMS); `edge` is 0.047 against the sides' 0.036 on solid copper and unchecked with wave ports. A
+   better rule for where the plates matter.
 
-1. **Nets reached only through the field.** A net is in the model when a port sits on it or a series part leads
-   to it. A combline filter's inner rods are neither: the line model has no pass band on `rf_combline`, and a
-   coupled section's cut takes such copper as ground. Copper that lies between or beside coupled lines and is
-   not a ground net should join the model as a line of its own (its ends: vias and parts to ground, or open).
-2. **A coupled section's cut along its length.** It is cut once, across its middle. Copper beside it for part
-   of its length (a via's pad, a pour that ends) counts for all of it or not at all: cut at a few places and
-   split the section where the cuts differ, as single sections are split where their reference changes.
-3. **The mesh's key lines.** Every copper edge and mask step runs across the whole box as a key line, so a thin
-   column of cells runs the box's full height (it keeps the sides nested). Merging cells away from the corners
-   needs constraints for sides that overlap without nesting.
-4. **The losses' next step**: the conductor loss from the cross-section (Wheeler's rule: two solves with the
-   copper set back by half a skin depth) in place of 2 Rs / w, and each frequency's in qucsator (its RLCG holds R
-   and G at the band centre; the wideband dielectric's solves at the materials' frequencies keep it there, as G
-   held at each would spread over the band too far to interpolate between a few).
-5. **Discontinuities, the rest** (R-E15): a tee's and a cross's own reactances on the scikit-rf backend
-   (Hammerstad's MTEE, MCROSS: it has their geometry, not their L and C).
-6. **One multiconductor model** (R-F5). dfsynth's (vectorised, with conductor loss) and `coupled.mtl_s` (looped,
-   lossless) are two; so are the Touchstone readers.
-7. **Boundary elements with a layered Green's function**, for the largest cuts (300–2,000 unknowns, no box), only
-   if the mesh's 0.2 s at worst becomes the limit. `mom25d/multilayer.py` has the stack but a dynamic kernel; the
-   static 2D one needs deriving.
+### Planes
 
-## Plane-pair cavities (2026-11-23, the user's question; set aside by the user 2026-11-24)
-
-`kicad2ems.core.cavities` finds each plane pair's modes and the signal vias they reach, and segment's `--cavities`
-joins each cavity to the physics-based via models (docs/si.md; CHANGELOG 2026-11-24: on the Thor carrier 83 of 93
-channels within 0.1 dB of the infinite planes', 10 moved, one 3.1 dB). Left, not to be taken up for now:
-1. **The cavities' cost on a large board:** the Thor carrier's five blocks 26 min of a 56 min run (a sparse factor
-   of 85-94k unknowns at each of 201 frequencies). Each cavity's modes once (to ~1.5 fmax) and each frequency a
-   sum over them, the rest from a factor or two (the remainder linear in k^2), would make it minutes. The cavity
-   study with `--suggest` slower the same way (578 s on the Thor carrier, 148 before: its signal vias' graded
-   discs, 650-1,400 a cavity).
-2. **`--suggest` checks the cavity's two planes alone**: a through via there must clear every other layer's
-   copper too (it is said; worth it only where that is checked, or with blind and buried vias).
-3. The far-return rf_msvia's notch: its upper flank -1.9 dB at 8.5 GHz against the whole board's -1.0.
-4. The meshed via models (mom25d, gfdtd) not joined to the cavities (their boxes kept).
-5. The power planes' decoupling capacitors as the PDN tool attaches them (their ESL, ESR), and the cavity's
-   edges' radiation in Q.
-6. Why the Thor run with `--cavities` solved every piece again rather than taking thor5's (the same board and
-   settings: their hashes to compare).
-
-## mom25d: conductor loss (2026-11-25, found with the review's F17 and F86)
-
-1. **`edge` thickness's loss** (tracker F90): 2.9× the strip's share over the ideal ground, 2.4× the line's with
-   the plane meshed (docs/mom.md#thickness-loss), and every whole-stack run with `sides` or `mixed` asked gets
-   `edge`. Its potentials spread an edge triangle's current up a wall (2.35 t), its loss does not: spreading the
-   edge triangles' share over their walls (A / (A + L 2.35 t)) takes it from 0.229 to 0.157 dB of the line's
-   0.097, so the current near the edge is the rest. To measure against a 2D solve of the loss (the Laplace
-   solves the heights were fitted to, with the skin effect), then fit as the heights were.
-2. **The ideal ground's own loss**: over mom25d's infinite plane (stack `ground`, segment's layer pieces) the
-   plane is PEC, so its share of a line's conductor loss (0.26 on the 50 Ω microstrip) is missing: a surface
-   impedance at the bottom of the layered Green's function (its reflection coefficient), or Wheeler's
-   share added per line.
-
-## mom25d: speed (2026-11-19)
-
-**Next, in order (2026-11-22, after the GPU's LDL^T, the dense Z by its half and the block low-rank operator;
-CHANGELOG has their numbers; updated 2026-11-23):**
-1. ~~**End-to-end runs of the segment studies with them**~~ done (2026-11-23: Thor 39:30, LibreVNA 30:44, ThunderScope
-   15:12 and 5:47, LimeRFE whole for the first time, 318 ports; docs/segment-studies.md). **Next from them, in
-   order:** (a) factor reuse across frequencies now that GMRES iterations run on the GPU. **Measured
-   2026-11-23** (LimeRFE's 33k F.Cu piece, RX 7800 XT): a fresh solve ~14 s (the GPU's LDL^T 4.9, the loop/tree
-   transform 3.6 (its steps 2.31 -> 1.72 s since: rows read in place), the charge matrix 1.25, the fill 1.1, the near field 0.9, Z up 0.7, the refinement 0.8); the
-   dense path already tries the kept factor with the GPU's products after the fill, so a reuse saves the factor
-   alone, and a kept factor preconditions only within ~3 % in frequency (1.546 -> 1.575 GHz: 3-4 iterations;
-   1.546 -> 2.25 or 3.05 GHz: residual 0.6-0.9 after 3). Fixed on the way: a failed one stayed on the GPU
-   beside the new factor (10.0 s for 4.9; CHANGELOG). Left: a product of 18 columns at 33k is 310 ms on the GPU
-   (the float-float kernels, item 2), the preconditioner 55 ms; and `_products`' host share (SPLIT_MIN 16)
-   now loses (a host pass over the 8.7 GB half ~0.4 s for any number of columns: the refinement 2.31 -> 1.58 s
-   and the reuse 4.03 -> 2.72 s over three frequencies with it off) - its threshold to measure against the
-   float-float rate with many ports (a Thor In7 piece) and raise. (b) fewer adaptive-sweep samples: **measured
-   2026-11-23** over 604 pieces of the five runs (5,898 solves): of the 618 widest-gap checks after a first
-   agreement, the 403 whose agreement was within a tenth of the tolerance (change and prediction) caught
-   nothing; the 215 others caught one (0.87 tol, then 1.09). Skipping the check after so deep an agreement
-   would save 6.8 % of the solves; not done, the check is the sweep's guard against two models wrong alike
-   where neither was asked - the user's call. (c) a pivoted symmetric factor (Bunch-Kaufman blocks) so the LDL^T does not fail on
-   via-chain-heavy pieces (F_Cu_g34's mixed rungs all failed at 0.8-1.6 GHz before its ports were merged);
-   ~~(d) LimeRFE's 37.7 % far-end coupling~~ done (2026-11-23: an end port on `/30MHz_TX`'s copper in the file, its
-   channel now left out; and the pieces of channels open before solving are not solved, 20 % of LimeRFE's).
-   (e) **via models that are no meshed box** (found 2026-11-23 solving LimeRFE's via models with `pbm` beside
-   their meshed results): a port with no plane under it took its own net's copper as reference (read open),
-   a box with fewer than two ground vias left its planes untied; now `pbm`'s (CHANGELOG). Left: whether the
-   two models' 0.1-0.36 |dS| at 6 GHz where both are well posed is the box's (its truncation) or `pbm`'s (a
-   check against a larger region solved whole); and LimeRFE and ThunderScope's front end run again with it.
-2. **The refinement's double products with many ports**, now the largest part of a many-port solve (4-7 s of the
-   In7 group's 8-12 s a frequency): ~~a float-float product on the GPU's single precision~~ done (2026-11-23:
-   1.4x the double kernels on the RX 7800 XT from 8 columns, Dekker's split there; CHANGELOG), the policy
-   keeping Z on the GPU with one factor. Left: the kernels are far from the single-precision peak (~0.5
-   TFLOP/s of ~6 on the GTX 980 Ti: Z re-read for every DCF columns, a shared-memory reduction a row group) -
-   GEMM-like tiles of Z and V in shared memory would be the next 2-3x; the half read once a number (each is read
-   twice: rows, then their mirror); and on RADV an exact (fused) float fma (slang emits no NoContraction: an
-   inline SPIR-V decoration would drop Dekker's 20 extra operations a product).
-3. ~~**The sides' loops on the half itself**~~ done (2026-11-23, `Half.loop_transform`: host 12 N^2, not 16).
-4. ~~**The loop/tree basis's transform on the half itself**~~ done (2026-11-23, `looptree.transform_half`, the
-   core's `lt_half_step`: 8 N^2 at the peak; 27k unknowns 9.6 GB rather than 12.6; CHANGELOG). Left in it: the
-   charge block's `fan_q` columns (Nt x 2048 at a time) and `near_q` are the next largest host arrays.
-   **Seen with it (2026-11-23):** a matrix whose complex64 factors do not precondition at all (GMRES residual
-   ~1 at every rung) is near singular; after the sweep's second such frequency the history sends every lower
-   frequency to the double LU (two LimeRFE via models: 11 and 28 min), the cause two ports at one place (fixed in
-   segment's cuts); a sweep-wide "double from here" on a residual ~1 would bound such a case.
-5. **The block low-rank solver, the rest:** its operator's tiles above the diagonal alone done (2026-11-23: half
-   its bytes and assembly). Left: the near tiles in complex64 (the operator on a pour, 71 % of dense complex128 at
-   1e-8 before, ~36 % now, would be ~25 %), the factor's tiles from the operator's (recompressed to the factor's
-   tolerance: one kernel assembly, not two), the factor's GEMMs on the GPU, and a first run at 45-100k unknowns.
-6. **Straight coupled runs as analytic multi-line sections** with MoM at the discontinuities only (item (a) of
-   the large boards below): the largest gain on bus-heavy boards, a modelling change.
-7. **The segment run's own work around the pieces** (2026-11-23: the Thor carrier 38:08 -> 24:33 from a piece's
-   overhead, CHANGELOG). Left: a piece's file still keeps whole any plane that reaches its neighbourhood (12.7 MB
-   median, the planes 2 MB each: clipped to it, ~1 MB); the physics-based via models still run one at a time last in
-   the GPU's queue (1.6 min of the Thor's) - in a thread of their own they stalled the run (one via model's
-   ~1 s became an hour, every other thread waiting on the interpreter lock: reverted, cause not found; a process of
-   their own would sidestep it).
-8. Small: a test-isolation fault, not today's: with `tests/core/test_segment.py` run first in one session, the
-   kicad2ems CLI's tests then lack mom25d's dump options ("unrecognized arguments: --mom-near"; CI runs the folders
-   apart, so it never meets it): the solver registry built in an import order that leaves them out.
-   ~~`tests/core/test_coupled.py`'s three filter tests~~ fixed 2026-11-23 (with test_xsection's two, rf_interdig's
-   golden summary and test_fastsolve's ground via: all seven from 2026-11-21's stale-fill cut, which cut the fills
-   back from the examples' grounding vias; CHANGELOG). Also the GPU
-   LDL^T's solve at one right-hand side (16 ms against the LU's 12.6 at 20k: its diagonal block's
-   product one workgroup), the host LDL^T as fast as LAPACK's LU (1.8 s against 1.6 at 8k), the policy's host
-   bytes for the whole Z's hybrid with the LDL^T (24 N^2 counted, 20 N^2 used).
-
-The Solver Matrix's 45 boards went from 24.7 to under 9 min on 2026-11-18/19 (CHANGELOG.md: the sweep's fit, the
-plates as cells, `--mom-coarsen 2`, the sides' blocks, the via and side blocks interpolated over frequency, the
-GPU's double products). Measured and left, roughly in order of what they would save:
-
-1. **The GPU LU, measured (2026-11-19, RX 7800 XT; the factor's `stats['steps']`).** At 14k unknowns 0.90 s
-   (8.2 TFLOP/s): the first ~60 % of the steps are the GPU's (the update GEMM ~11.7 TFLOP/s at k = 256, and per
-   step ~4-6 ms besides it: the panel down and up ~1 ms each, the triangular solves 1.6 ms, the interchanges), the
-   rest the CPU's panel (1-4 ms a step, the GPU's share under 1 ms). At 7k the CPU's panels set the pace from the
-   start (0.18 s, 5.2 TFLOP/s). Tried and not kept: wider or narrower panels (128: same, 384 and 512: slower), the
-   first panel factored on the host during the upload or the GPU's conversion (no faster: its copy down is short
-   at these sizes), the diagonal blocks' inverses in a thread (the CPU's panels twice as slow: OpenBLAS's threads
-   shared), Gauss's three-product complex GEMM (+7 % on the GEMM, not on the LU, a larger error). Left, in order:
-   - the GEMM itself (its ceiling with this kernel's layout ~11.7 TFLOP/s, 18.7 the card's FP32 without dual
-     issue): more of k per stage, or a layout the compiler dual-issues;
-   - the panel on the GPU, which would end the copies and the CPU's tail; on a slow bus it is the whole cost: the
-     GTX 980 Ti here reads back at 0.07-0.18 GB/s (its slot; slangpy's own copies too) and its LU at 14k is 16 s,
-     13 of them waiting on the panel's copies;
-   - the copies down and up overlapped with the trailing GEMM. Tried 2026-11-20: the panel's copy down last in
-     the CPU's submission with no barrier after it, the trailing GEMM first in the next: slower (14k 0.885 ->
-     0.907 s), RADV does not run two submissions' work together, and the interchanges and U12 move onto the CPU's
-     wait. It needs both in one command buffer with a barrier on the buffers alone (slangpy's encoder has the
-     global barrier only), or a second queue.
-2. **The near-field correction** (9 % on rf_ebg and sma_launch) is its pairs' integrals, not their scatter
-   (2026-11-20, rf_ebg, 2 frequencies, 8 threads: 2.25 s; with no scatter at all 2.04 s; row locks in its place
-   2.97 s, 2.55 s with a thread taking a triangle's pairs whole: the atomics stay). What would pay: the smooth
-   rest's 3- or 6-point rules where the pair is far enough for fewer, or the rest tabulated per pair once like
-   the analytic parts (`stat`), as long as the stack is the same.
-3. **Interpolation where it does not apply.** Boards with holes in PEC planes fill every frequency (their
-   estimate always fails); slot planes interpolate a quarter; wide bands (rf_bends, 1-12 GHz) fill 23 of 30.
-4. **Thickness cheaper than the sides.** `--mom-thickness mixed` (plates only on narrow copper and gaps) has
-   10 % fewer unknowns but fails the gates (antenna_patch +0.057 against openEMS); `edge` is 0.047 against the
-   sides' 0.036 on solid copper and unvalidated with wave ports. A better rule for where the plates matter.
-5. **The sweep.** A greedy oracle needs 169 solves on 12 dense boards against the sweep's 206: the rest are
-   confirmations. Uncoupled ports fitted apart helped rf_bends (32 -> 29) but fitted noise on small blocks.
-6. **Quad cells** (`--mom-quads`) no longer pay with the hexagonal mesh (same time, six boards further from
-   openEMS): kept experimental; remove if nothing needs them.
-
-## mom25d: multi-layer boards
-
-mom25d is slowest where planes have to be meshed. Solid planes are PEC, lone stitching pads are left out and a
-board imported with a few nets can have its pours' voids filled (`--fill-voids`). The model items below are worth
-an order of magnitude more than the solver's: taking planes out brought rf_stripline from 100 s to 3 s.
-
-1. **A plane a via runs through, as the default.** `--mom-planes holes` has the plane as PEC and each hole a
-   few unknowns (`mom25d/frill.py`; docs/mom.md#plane-holes): its axisymmetric field and its first azimuthal
-   order, which a trace over the hole drives. It is within 0.005 in |S| of the plane meshed finely on the
-   transitions tried, and as close to openEMS as the meshed plane on demo_transition, for a third of the unknowns
-   or fewer (3,910 to 1,508; a transition alone 11,256 to 1,661; two side by side 11,972 to 2,938; a CM5 carrier's
-   PCIe pair, 54,885 after filling its voids, about 12k). Before it can be the default:
-   - the loop/tree basis with the holes (the low end is the RWG basis's on such a board today);
-   - a hole two vias share (a differential pair's antipad: most pairs on real boards) and holes that are not
-     round (their area's circle today);
-   - the second azimuthal order where holes nearly touch (0.012 at 10 GHz with 0.1 mm between them), and maybe
-     for a hole's own residual: with the via-foot term a hole's effect on Z21 between via ports is 7-12 % high and
-     on Z11 13 % low, the pattern a missing even order leaves (a slot-plane solve restricted to orders <= 1 tells
-     it without new kernels);
-   - a plane on the top interface; the hole's field in the dumps, the near field and the far field.
-2. **What `--fill-voids` leaves.** `far` keeps a void near the signal copper on every layer, also behind a solid
-   plane (14 × 32 mm of the CM5 Minima: 33,088 unknowns, 25,662 with `all`, 42,689 as imported). Whether those
-   can go is not settled: on a crop, `all` moved a resonance of the planes the region cut (gfdtd's |S21| at
-   10 GHz from −1.6 to −4.0 dB). It needs a board whose planes are not cut. The KiCad plugin's selected-net runs
-   could default to `far`. Optionally, a ground pour on a signal layer cut a few heights from the signal copper.
-3. **Slot planes, what is left** (`--mom-planes slots`; docs/mom.md#slot-planes): the openings' own matrix
-   (slots.self_block, ~1 s a solve on rf_slotline) in the compiled core, as the coupling to the traces is; the
-   loop/tree basis with openings; frill holes and openings in one stack; a via through an opening; the openings'
-   field in the dumps and the near field; and when `--mom-stack auto` should choose them (on antenna_aperture they
-   are 0.057 from openEMS against 0.19, on antenna_slot 0.257 against 0.058: a ground that is large against the
-   wavelength, or a radiator above the plane rather than in it).
-4. **Copper thickness, the rest.** The sides are the default (docs/mom.md#thickness, `mom25d.thickness`, wave
-   ports too). Left: the sides with holes and openings of PEC planes and a via's vertical current, the copper's
-   top face; the loss takes the port layer's thickness for every layer.
-
-## mom25d: low frequency, large boards (the user's plan, 2026-11-13)
-
-Against Momentum, what mom25d lacks is not a quasi-static mode but a well-conditioned low end and a direct solver
-that does not need N² memory. The loop/tree basis, the block low-rank LU and the band joined with pcbqs are done
-(CHANGELOG.md; docs/mom.md#loop-tree, #blr). In this order:
-
-1. **A large board at low frequency in compressed form.** The loop/tree basis's paths are not local, so its matrix
-   does not compress by tiles; the double factor is right but nearly dense. The way is the current-and-charge
-   form (the augmented EFIE: unknowns I and q, blocks jωA, DᵀP, D, jω: each compresses at an ordinary tolerance
-   and none cancels), its tiles holding the currents and charges of one place. Also: the tiled solver, quad cells
-   and line functions, holes of PEC planes with the loop/tree basis; the S extraction's floor below ~10 Hz
-   (currents a million times the ports': S from the loop and tree amplitudes, not from the summed currents).
-2. **The block low-rank solver, the rest.** A factor kept across frequencies (then GMRES's matrix-free product,
-   which pays only where the iterations grow: with a factor made at the frequency GMRES takes 3 to 7 exact
-   products); the near-field correction's sparse build (3-4 s at 22-41k); pivoting only inside the diagonal
-   tiles; a strong-admissibility H-LU for 100k+ (BLR's dense near band grows as N), the near field's reach capped
-   (ACA from O(N r) entries), and an FFT operator (pFFT / AIM) past that.
-3. **A quasi-static mode, ranked low.** Building the matrix once saves time only if building it is what costs.
-   Profiled 2026-11-13 (GPU): the per-frequency build is 39-50 % of a sweep on the mid-size examples (4-9k
-   unknowns), 36 % on antenna_vivaldi (21.9k) and 6 % on rf_siw (28.7k): the larger the board, the more the
-   factorisation dominates. If one is built, it belongs on a static version of the layered Green's function with
-   the PEC ground (`GreenTableML`): that, not a mode, is what lets Momentum's RF mode go past λ/10 without meshing
-   the planes.
-
-## mom25d: the code
-
-1. **The numerics shared with pcbqs** (R-F4): one copy in `kicad2ems.emsdev.numerics`. Left to port: mom25d's
-   singular rule over the smaller triangle into pcbqs (`mom25d.sing` wraps the shared `offplane_pairs` with it),
-   with pcbqs's compiled static, compressed and layered kernels (they integrate over p too; ported in Python alone,
-   fourteen of pcbqs's tests held them apart).
-
-## Power tools (pcbqs)
-
-`kicad2ems.pcbqs.pdn` (a rail's DC drop and impedance), `.mqs` (a converter's near field), `.circuit` (switching
-circuits on the board's copper), `.thermal` and `.sparams` (the ports' S-parameters at the low end). What exists
-and how it was validated: docs/pcbqs/ and its CHANGELOG.md.
-
-### Correctness and workflow
-
-1. **A load with no pad on ground, the rest.** The rail takes the return of a high-side switch through the one
-   part of its kind on its other net and on ground, and says so, or asks for it. Left: a return that is not that
-   direct, a low-side switch on ground through a sense resistor (the search stops at the switch's own pads, so
-   such a bridge is asked about), and two parts in parallel as one return.
-2. **Cross-tool flows, the rest** (docs/pcbqs/power-workflow.md). Left: a controller with its two switches as
-   separate parts is not made into a circuit (the regulator's own footprint is taken for both); a rail's ripple
-   at a converter's pin needs the input loop's own inductance, which the near field solves and the rail's planes
-   do not have (the two could share it); the circuit's proposal naming the connector as the rail's source, so that
-   nothing is typed between the runs (drafted with a regulator's board of its own, not applied).
-3. **Several rails, the rest.** A config holds them, `kicad2ems study` runs them, and the window has them as a
-   table. Left: their drops side by side in one report, each row's state in the questions' list (the study's is
-   the last run's), and a rail's own board or output folder (the table's rows share the panel's).
-4. **The full bridge's speed on ngspice** (`pcbqs/data/wpthb_bridge.json`): 25 s alone, 1 min 47 s with copper,
-   for the old tool's 6 s and its precharged, warm-started runs.
-5. **Converters.** Left: a flyback (its loop runs through the transformer) and an inverting buck-boost (through
-   both capacitors), which are not found; a circuit made of a bridge found that way (a bridge's leg has no one
-   inductor on its node: its tank or its transformer is the model's to draw); ambiguous bias, enable and supply
-   nets resolved by part metadata; the switch node's inductive E in the converter workflow (the Coulomb E is
-   there) and output-inductor models; decap and via mounting inductance from the quasi-static solver instead of
-   the formula.
-6. **Low-frequency S-parameters, the rest** (docs/pcbqs/sparams.md). Left: gap ports; the two-face copper with
-   the charge is slow on a stack of several dielectrics (25 s a frequency at 15,000 triangles on demo_transition,
-   77 s at 9,000 on pcbqs's return-path example). In the window, the Plots page draws a log sweep (`sweep = "log"`)
-   on a linear axis in GHz: a log axis and the band's own unit; the report's interactive plot is linear in GHz too
-   (its PNG is right), and its table reads "0.000 GHz" for a run in kHz (R-G).
-7. **What a PI user takes away, the rest** (R-E14). Left: an impedance for a rail with no planes (the PEEC route
-   is the trial's only: one source, one ground, no beads); DC-bias derating from a curve by dielectric and voltage
-   (a vendor's file at the bias, or a share, today); a ground pour beside the rail on its own layer, which the
-   plane pairs leave out: Palace's PDN engine read the buck example's bare |Z| 0.68 of pcbqs's and its loaded
-   inductance 0.45 (2026-11-15, R-E22).
-
-### Losses and thermal
-
-- a film that grows with the rise (natural convection and radiation), and air warmed by one part reaching the next;
-- the heating from cold on the mesh, and a transient of changing losses (a load step);
-- the iGSE's DC-bias and relaxation terms, and minor loops;
-- the DC drop's copper at its temperature (the circuit's is, with `--warm`).
+1. **A plane a via runs through, as the default** (`--mom-planes holes`, docs/mom.md#plane-holes: within 0.005
+   in |S| of the meshed plane for a third of the unknowns or fewer). Before it can be: the loop/tree basis with
+   holes, a hole two vias share (a pair's antipad) and holes that are not round, the second azimuthal order where
+   holes nearly touch, a plane on the top interface, the hole's field in the dumps and the near and far field.
+2. **What `--fill-voids` leaves:** `far` keeps a void near the signal copper on every layer (14 × 32 mm of the
+   CM5: 33k unknowns, 25.7k with `all`); on a crop `all` moved a resonance of the planes the region cut. It
+   needs a board whose planes are not cut. The KiCad plugin's runs could default to `far`.
+3. **Slot planes, the rest** (`--mom-planes slots`): the openings' own matrix in the compiled core, the loop/tree
+   basis with openings, holes and openings in one stack, a via through an opening, their field in the dumps, and
+   when `--mom-stack auto` should choose them (antenna_aperture 0.057 from openEMS against 0.19, antenna_slot
+   0.257 against 0.058).
 
 ### Speed
 
-The circuit run is there for its parts' losses (thermal) and its copper's currents (fields); ngspice is its one
-engine. (A piecewise-linear switched state-space engine was built and removed: CHANGELOG.md, 2026-11-14.)
+1. **A pivoted symmetric factor** (Bunch-Kaufman blocks): the LDLᵀ without pivoting fails on via-chain-heavy
+   pieces (LimeRFE's F_Cu_g34 at 0.8-1.6 GHz before its ports were merged).
+2. **The GPU's products:** the float-float kernels run at ~0.5 of ~6 TFLOP/s (Z re-read for every column block):
+   GEMM-like tiles in shared memory would be the next 2-3×; the half read once a number; an exact fused fma on
+   RADV (an inline SPIR-V decoration would drop Dekker's 20 extra operations); `_products`' host share
+   (SPLIT_MIN 16) now loses and wants measuring against the float-float rate with many ports.
+3. **The block low-rank solver, the rest:** its near tiles in complex64 (the operator on a pour ~36 % of dense
+   complex128, ~25 % then), the factor's tiles from the operator's, the factor on the GPU, a factor kept across
+   frequencies, a first run at 45-100k unknowns, a strong-admissibility H-LU for 100k+.
+4. **A large board at low frequency in compressed form:** the loop/tree basis does not compress by tiles; the
+   current-and-charge form (the augmented EFIE) would, in tiles of one place. Also the S extraction's floor
+   below ~10 Hz (S from the loop and tree amplitudes).
+5. **AIM + GMRES** (a prototype: on a test strip 10-15 iterations, S within 2e-5): on the CM5's F.Cu piece (29k)
+   its near list did not fit 24 GB. Next: the near part's sparse LU in a fill-reducing order (METIS, MMD_AT_PLUS_A)
+   and a shorter reach; a complex-symmetric Krylov method (COCG, QMR) to drop GMRES's basis.
+6. **Out of core:** a tiled complex64 LU on the NVMe, factored on the GPU, for problems that cannot be split; to
+   measure on a case just over RAM (~60k unknowns) against the block low-rank path first.
+7. **The GPU LU:** its GEMM (~11.7 of 18.7 TFLOP/s on the 7800 XT), the panel on the GPU (on the 980 Ti's slow
+   bus the panel's copies are 13 of the 14k LU's 16 s), the copies overlapped with the trailing GEMM (one command
+   buffer with buffer barriers, or a second queue).
+8. **Smaller:** the near-field correction's smooth rest on fewer points where the pair is far enough (9 % on
+   rf_ebg); interpolation over frequency where it does not apply (holes in PEC planes, wide bands); a sweep-wide
+   "double from here" on a complex64 residual ~1 (two LimeRFE via models took 11 and 28 min); the charge block's
+   `fan_q` and `near_q` host arrays; terminated ports in the loop/tree basis (their loads are lost in its
+   transform); the GPU LDLᵀ's one-column solve (16 ms against the LU's 12.6 at 20k); a host LDLᵀ as fast as
+   LAPACK's LU; the policy's host bytes for the LDLᵀ hybrid (24 N² counted, 20 used).
+9. **Quad cells** (`--mom-quads`) no longer pay: remove them if nothing needs them.
+10. **A quasi-static mode** (ranked low): the per-frequency build is 6-50 % of a sweep, less the larger the
+    board; if built, on a static layered Green's function with the PEC ground.
 
-| Option | Gain | Effort | Notes |
-|---|---|---|---|
-| Xyce backend | robustness, not speed | 2 days | it ran behavioural switches ngspice could not; 2–7× slower on the benchmark converter; harmonic balance could suit resonant tanks |
-| Two faces in the circuit: a local loop basis | fewer iterations, no dense setup | | iterations grow with frequency (217 at DC, 575 at 20 MHz); the dense common-mode setup is 19 s |
-| The dense solves, after their assembly | the LU is 90 % of a two-face S-parameter solve (147 s at 17,700 unknowns) | | a compressed or block low-rank LU as mom25d has; ngspice's text output read by `np.loadtxt` (a binary raw file); the compression of field dumps; shapely's unions in the near field's mesh (`tools/pcbqs/perf/README.md` has where each tool's time goes) |
-| Whole-board near field | | convergence | `--backend hierarchical` is GMRES in the loop basis (47,548 triangles in 13 s, docs/pcbqs/quasistatic.md). Left: mesh and crop convergence on a whole board. A crop around the converter is enough for DC-DC loops |
+### The code
 
-The quasi-static solver's 10× target is not yet shown on real boards, and an FFT field grid's convergence has to
-be checked for each scan.
+1. **The numerics shared with pcbqs** (R-F4, `kicad2ems.emsdev.numerics`): mom25d's singular rule over the smaller
+   triangle into pcbqs, with pcbqs's compiled static, compressed and layered kernels.
 
-### Accuracy and validation
+## FDTD (gfdtd and openEMS)
 
-1. **Thick copper and AC resistance (C14).** `conductor_loss='slab'` is two face sheets; stacked sheets with the
-   thick kernel are the reference. Graded cells at the copper's edges are in `kicad2ems.pcbqs.sparams
-   --thickness`; the circuit's copper and the near field not yet (their meshes are the pads' and the loop's: to be
-   measured there first). Open:
-   - a trace close over a plane, the largest error: one sheet is 19–30 % low in R, two faces were 12.5 % low when
-     last compared, the reference is within 5 %. The validation board's second structure decides;
-   - the 2–3 % drop in inductance with face sheets;
-   - the tree preconditioner with face sheets;
-   - the compressed backend as the default for `slab`, once the CM5 loop agrees;
-   - one sheet or two in the circuit: two move wpthb's settled ripple by 6 % at 2.6 times the time, which the
-     powered ripple cannot resolve until the parts are vendor models. It needs a measurement that isolates the
-     copper (item 4's jumper variant, or the validation board).
-2. **Capacitance in narrow gaps, with thickness.** Graded edge rings resolve the edge charge on sheets
-   (validation/pcbqs/edge_rings_*.py). Left: the same with the copper's thickness (face sheets and side charge,
-   since removed, were −5.5..−7.5 % and −10..−13 % against FasterCap's boxes, on plain cells), and whether the
-   rings should be `MQS(capacitance=True)`'s default.
-3. **A real converter loop, converged.** CM5 U702 (`validation/pcbqs/mqs_cm5.py`): one sheet is within 4 % of
-   Palace's PEC sheets at the finest meshes, both still converging; two meshes differ by up to 3.8 % in L. The
-   Jetson's eight bucks run, no more. Mesh and crop convergence per board, with measured local refinement before
-   any whole-board compression.
-4. **Measurements (the plan is ready; waiting on a VNA).** `validation/pcbqs/measurements.md`: shunt-through at
-   TP7 / TP6 unpowered (as built, and with one 1206 jumper for the ceramics), VHB ripple at the regression
-   operating point, the near field at 1–3 mm; predictions in `validation/pcbqs/wpthb_vhb_port.py`. A purpose-made
-   validation board: `validation/pcbqs/test-board.md` lists its structures (no layout or predictions yet).
-5. **Models.** Vendor or fitted MOSFET models (MCG8D2N06YL), datasheet capacitor ESR and ESL, measured coil Q;
-   switch internal capacitances as explicit elements, so a warm start can initialise them; package and gate
-   geometry, the receiver's and the leads' field geometry, capacitance to the environment, the fields at startup.
-6. **A complete PEEC model up to about λ/10:** resolved proximity currents, via skin loss, mutuals between parts
-   and copper, material dispersion.
-7. **Palace 0.19, the rest:** pcbqs's Palace validations (`validation/pcbqs/`), which were made on 0.18.1.
-
-## FDTD (gfdtd and the FDTD layer)
-
-1. **The guards, the rest.** gfdtd taking a part's ESR in one series RLC (an implicit update for R and C without
-   L), so kicad2ems need not split such parts for it.
-2. **Speed without new physics.**
-   - The exact time step on the GPU: `--gfdtd-timestep exact` measures the operator's limit by Lanczos in NumPy
-     (0.6-2 s once a model, kept), so `auto` takes it only from 1 M cells; the curl-curl products on the backend's
-     own kernels would make it free for every run (R-D6's rest).
-   - εr averaged inside a cell, so a thin layer needs no lines of its own (`nz_mask` is 1 since 2026-11-14: 4 cells
-     through a 10 µm mask had made hairpin 17× longer for "within 1 MHz").
-3. **Line ports, the rest** (R-E1): differential pairs (the legs' B A^-1 is exact; the shift back needs each
-   mode's Zc and gamma from the two runs), a stripline's port driving both of its planes (one plane drives the
-   wave between them: the probes need 3 mm to settle), and the probes on an oblique trace.
-4. **rf_ebg is not converged at the default resolution** (2026-11-25, found with the review's F42): its stopbands
-   at 3.2 and 7.2 GHz at `--res 60` and a third of the fine cell (-40 dB, -27 dB), at 3.2-3.8 and 4.4-4.9 GHz at
-   res 20 and 40; the 7.2 GHz band is missing at res 20 with any fine cell (0.096, 0.05, 0.033 mm: rms |ΔS| 0.38-
-   0.44 from res 60), so its patches' cells, not its 0.1 mm gaps, are short; and res 60 on the two gradings
-   still differs by 0.057. A converged reference (res 80 and up), then the example's `res`, or a check that
-   says a resonant structure wants more than `--res 20`.
-5. **Diagonal copper** is a staircase on the mesh: the mesher puts lines at a polygon's vertices, so a diagonal
-   edge between them sits on the coarse cells (a 20 mm, 50 ohm line at 30 deg came out 3.4 % longer electrically
-   than along x, at 45 deg 1.7 %; a fine cell of 0.09 mm in place of 0.18 helped 0.6 %). Lines along such an
-   edge, or a conformal edge (Dey-Mittra), would follow it.
-6. **Boundaries**: first-order Mur is the default on five sides (6 % reflection against 5e-5 for an 8-cell PML),
-   and the PML is CPML with κ = 1, α = 0, at λ/res cells: CFS-CPML, and thinner graded cells.
-7. **Larger boards**: every copper edge is a line across the box. Subgridding or local refinement, temporal
-   blocking, conformal PEC for curved copper.
-8. **Materials**: Lorentz and Drude, anisotropy; openEMS's Debye run has 0.5 dB more loss than gfdtd's on the same
+1. **rf_ebg is not converged at the default resolution** (F88): its stopbands at 3.2 and 7.2 GHz at `--res 60`,
+   at 3.2-3.8 and 4.4-4.9 GHz at res 20 and 40, with any fine cell; res 60 is not settled either (0.057 between
+   gradings). A converged reference (res 80 and up), then the example's `res`, or a check that says a resonant
+   structure wants more than res 20.
+2. **gfdtd taking a part's ESR in one series RLC** (an implicit update), so kicad2ems need not split such parts.
+3. **Line ports, the rest** (R-E1): differential pairs (each mode's Zc and γ from the two runs), a stripline's
+   port driving both planes, the probes on an oblique trace.
+4. **Diagonal copper** is a staircase (a 50 Ω line at 30° 3.4 % long electrically): lines along such an edge, or
+   a conformal edge (Dey-Mittra).
+5. **Speed without new physics:** the exact time step on the backend's own kernels (Lanczos in NumPy today, so
+   `auto` takes it only from 1 M cells); εr averaged inside a cell, so a thin layer needs no lines of its own.
+6. **Boundaries:** first-order Mur by default (6 % reflection against 5e-5 for an 8-cell PML); CFS-CPML and
+   thinner graded cells.
+7. **Larger boards:** subgridding or local refinement, temporal blocking, conformal PEC for curved copper.
+8. **Materials:** Lorentz, Drude, anisotropy; openEMS's Debye run has 0.5 dB more loss than gfdtd's on the same
    material (which is right is not checked).
-9. **openEMS's interface, the rest.** Through `kicad2ems.gfdtd.compat` (docs/gfdtd/README.md#compat) 10 of
-   openEMS's 16 Python tutorials run unchanged (2026-11-20; 1 on 2026-11-18), the 7 compared agreeing with openEMS
-   (the horns' and the helix's directivity to the printed digit). Left, in order:
-   - the radiated power: gfdtd's Prad 7-12 % above openEMS's on the helix and the conical horn, with the same
-     directivity (the normalisation of the incident power?);
-   - the plane-wave excitation (type 10, a total-field / scattered-field box: RCS_Sphere);
-   - the SAR calculation (`openEMS.sar_calculation`, compiled in openEMS: Dipole_SAR, MRI_Loop_Coil) and the
-     phantom files `get_resource_path` finds in an openEMS tree;
-   - the getters and setters scripts read back, wires, polyhedra, Lorentz and Drude materials, `AddDiscMaterial`;
-   - cylindrical grids (Bent_Patch_Antenna, Circ_Waveguide, CylindricalWave_CC), the one option gfdtd refuses;
-   - the tutorials as a test: gfdtd against openEMS where openEMS is installed, gfdtd alone where not.
-   The magnetic materials run on the NumPy backend: the compiled kernels' H update with a per-edge μ and loss
-   would put them on the GPU.
+9. **openEMS's interface, the rest** (`kicad2ems.gfdtd.compat`, 10 of 16 tutorials run): gfdtd's radiated power
+   7-12 % above openEMS's (same directivity), the plane-wave excitation, the SAR calculation, the getters and
+   setters, wires, polyhedra, `AddDiscMaterial`, cylindrical grids; the tutorials as a test; the magnetic
+   materials on the GPU.
 
-Tests (lavapipe, NVIDIA) are under CI and release.
+## Power tools (pcbqs)
+
+1. **Converters:** a flyback and an inverting buck-boost are not found; a bridge's circuit (its tank or
+   transformer); bias, enable and supply nets resolved by part metadata; the switch node's inductive E and
+   output-inductor models; decap and via mounting inductance from the quasi-static solver.
+2. **A load with no pad on ground, the rest:** a return less direct than one part, a low-side switch through a
+   sense resistor, two parts in parallel as one return.
+3. **Cross-tool flows, the rest** (docs/pcbqs/power-workflow.md): a controller with its two switches as separate
+   parts, a rail's ripple at a converter's pin with the input loop's own inductance, the circuit naming the
+   connector as the rail's source.
+4. **Several rails, the rest:** their drops side by side in one report, each row's state in the questions' list, a
+   rail's own board or output folder.
+5. **What a PI user takes away, the rest** (R-E14): an impedance for a rail with no planes, DC-bias derating from
+   a curve, a ground pour beside the rail on its own layer (Palace's PDN engine read the buck example's bare |Z|
+   0.68 of pcbqs's, R-E22).
+6. **Low-frequency S-parameters, the rest** (docs/pcbqs/sparams.md): gap ports; the two-face copper with the
+   charge slow on several dielectrics (25-77 s a frequency); the window's Plots page draws a log sweep on a linear
+   GHz axis, and the report's table reads "0.000 GHz" for a run in kHz.
+7. **Accuracy:**
+   - thick copper and AC resistance (C14): a trace close over a plane is 19-30 % low in R on one sheet, 12.5 % on
+     two faces; the inductance 2-3 % low with face sheets; the compressed backend as `slab`'s default; one sheet
+     or two in the circuit (6 % in wpthb's ripple at 2.6× the time);
+   - capacitance in narrow gaps with the copper's thickness, and whether edge rings are the default;
+   - a real converter loop converged (CM5 U702: within 4 % of Palace, both still converging);
+   - measurements: the plan is ready (`validation/pcbqs/measurements.md`), waiting on a VNA; a validation board's
+     structures listed (`validation/pcbqs/test-board.md`);
+   - models: vendor MOSFETs, datasheet capacitor ESR and ESL, measured coil Q, switch capacitances as elements;
+   - a complete PEEC model to ~λ/10 (proximity currents, via skin loss, mutuals between parts and copper);
+   - pcbqs's Palace validations again on Palace 0.19 (made on 0.18.1).
+8. **Losses and thermal:** a convection film that grows with the rise and radiation, air one part warms reaching
+   the next; the heating from cold, a load step's transient; the iGSE's DC-bias and relaxation terms; the DC
+   drop's copper at its temperature.
+9. **Speed:** the full bridge on ngspice (1 min 47 s with copper against the old tool's 6 s); two faces in the
+   circuit by a local loop basis (iterations 217 at DC, 575 at 20 MHz); the LU of the dense solves compressed (90
+   % of a two-face S-parameter solve); whole-board near field's mesh and crop convergence; the quasi-static
+   solver's 10× target shown on real boards.
 
 ## The fem part (Elmer, Palace)
 
-1. **Palace's own accuracy** (R-E20):
-   - `rf_shielded`'s reference: Palace in its can and its own refinement settle near 4.65-4.66 GHz, mom25d without
-     the can 4.648, openEMS still climbing with its mesh (4.555, 4.588, 4.626 at 1x, 2x, 4x), EMerge's
-     "converged" 4.621: which is right is open (EMerge's model to be checked: copper thickness, the can's floor);
-   - the antennas' efficiency over 100 % (100.4 % at 2.9 GHz on the dipole) is not the boundary (`--palace-abc 2`
-     leaves it); the far field's integration over the box's faces is next to look at;
-   - wave ports;
-   - copper as solids in the driven model (as the cap tool's `--thick`): its sheets' loss holds only to ~10 MHz.
-2. **A winding's own AC loss** (the rest of R-E21): the coil tool spreads its turns' current over the section, so
-   skin and proximity loss in the wire is not solved; Elmer's stranded-coil homogenisation (its
-   `circuits_harmonic_*_homogenization` cases) would give it. Elmer's transient with a net's own current.
-3. **The PDN in Palace, the rest** (R-E22): the loop's 40 % on the Jetson's U69 (Palace 0.20 nH, pcbqs 0.34 nH at
-   12 MHz) to explain: zero-thickness PEC against 35 µm copper, the capacitors as straps against filaments, one
-   port against all the converter's pads.
-4. **Real boards, the rest** (R-B14): the Elmer builder's fragmenting, a gap per edge.
+1. **Palace's own accuracy** (R-E20): rf_shielded's reference (Palace 4.65-4.66 GHz, mom25d 4.648, openEMS still
+   climbing with its mesh); antenna efficiency over 100 % (the far field's integration over the box's faces);
+   wave ports; copper as solids in the driven model (its sheets' loss holds only to ~10 MHz).
+2. **A winding's own AC loss** (R-E21): skin and proximity loss in the wire (Elmer's stranded-coil
+   homogenisation); Elmer's transient with a net's own current.
+3. **The PDN in Palace** (R-E22): the Jetson U69 loop's 40 % (Palace 0.20 nH, pcbqs 0.34 nH at 12 MHz).
+4. **Real boards** (R-B14): the Elmer builder's fragmenting, a gap per edge.
+
+## The window
+
+The window keeps its docks (the user's word, 2026-11-12): nothing below may fix a panel in place.
+
+1. **The study as a model without Qt, the rest:** the panels hold the values between a load and a save (the
+   document is filled on open and save, not on each edit), undo is the form's, the board as read is the window's.
+   Then the KiCad plugin can drive a study through them.
+2. **An analysis's few settings first:** Elmer's and Palace's tools do not name their `basic` options yet (the coil
+   tool does).
+3. **Picking on the board, the rest:** a pad (a port), a `REF=VALUE` list's part, a region dragged as a box, the
+   pick in the 3D view; the Circuit page's *Load model…* and *Save model…* buttons go.
+4. **The Start page:** a tile says nothing of what its example takes (the engine, the time).
+5. **The schematic's format-1 layout code**, left from the removed bridge.
+
+## The line model
+
+1. **Nets reached only through the field:** a combline filter's inner rods are in no model (no pass band on
+   rf_combline); copper between or beside coupled lines that is no ground net should be a line of its own.
+2. **A coupled section's cut along its length:** cut once, across its middle; copper beside part of it counts for
+   all of it or none. Cut at a few places and split where they differ.
+3. **The conductor loss from the cross-section** (Wheeler's rule) in place of 2 Rs / w, and each frequency's in
+   qucsator.
+4. **Discontinuities, the rest** (R-E15): a tee's and a cross's reactances on the scikit-rf backend.
+5. **One multiconductor model** (R-F5): dfsynth's and `coupled.mtl_s` are two; so are the Touchstone readers.
+6. **The mesh's key lines** run across the whole box; merging cells away from the corners needs constraints for
+   sides that overlap without nesting.
+7. **Boundary elements with a layered Green's function**, only if the mesh's 0.2 s becomes the limit.
 
 ## The KiCad plugin (`kicad2ems.ipc`)
 
-Besides the study (The study, item 3), R-E26 and C16:
-- the analyses beyond the DC drop and the temperature (the near field, the circuit, crosstalk) are the window's
-  only;
-- its environment builds gfdtd without its compiled core (the GPU is offered: *Use the GPU for gfdtd*; without it
-  NumPy, ~15× slower): the core's build in the plugin's environment, where a compiler is there;
-- the Plugin and Content Manager route its README gives does not exist yet (no entry, `"VERSION"` in its metadata,
-  no v0.1.0 tag; also under CI and release).
+1. The analyses beyond the DC drop and the temperature (the near field, the circuit, crosstalk, time domain) are
+   the window's only (R-E26).
+2. Its environment builds gfdtd without the compiled core (NumPy, ~15× slower): the core's build there, where a
+   compiler is.
+3. Starting a study (the study 9) and its release (Release 4).
 
 ## dfsynth
 
-R-E18, in order:
-1. the tapped hairpin feed;
-2. combline;
-3. elliptic and cross-coupled designs.
-
-## Docs that do not say what the code does
-
-The review's section G, corrected on 2026-11-14 but for these:
-- mom25d's README validation figures, tighter than its tests check (CI and release, item 1).
+R-E18, in order: the tapped hairpin feed; combline; elliptic and cross-coupled designs.
