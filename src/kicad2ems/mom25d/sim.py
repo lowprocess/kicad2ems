@@ -674,7 +674,7 @@ class Simulation:
         ext = np.vstack([r.nodes] + [sl.rwg.nodes for sl in self.slots])
         self.rho_max = 1.05 * np.hypot(*(ext.max(0) - ext.min(0))) + 1e-4
         self._slot_cache = {}
-        self._gram, self.qT = None, None
+        self._gram, self._side_gram, self.qT = None, None, None
         self._edge_sets()
         # port gaps, sample cuts and lumped elements keep their edges as
         # unknowns (quad cells)

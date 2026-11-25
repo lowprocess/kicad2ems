@@ -308,6 +308,19 @@ channels within 0.1 dB of the infinite planes', 10 moved, one 3.1 dB). Left, not
 6. Why the Thor run with `--cavities` solved every piece again rather than taking thor5's (the same board and
    settings: their hashes to compare).
 
+## mom25d: conductor loss (2026-11-25, found with the review's F17 and F86)
+
+1. **`edge` thickness's loss** (tracker F90): 2.9× the strip's share over the ideal ground, 2.4× the line's with
+   the plane meshed (docs/mom.md#thickness-loss), and every whole-stack run with `sides` or `mixed` asked gets
+   `edge`. Its potentials spread an edge triangle's current up a wall (2.35 t), its loss does not: spreading the
+   edge triangles' share over their walls (A / (A + L 2.35 t)) takes it from 0.229 to 0.157 dB of the line's
+   0.097, so the current near the edge is the rest. To measure against a 2D solve of the loss (the Laplace
+   solves the heights were fitted to, with the skin effect), then fit as the heights were.
+2. **The ideal ground's own loss**: over mom25d's infinite plane (stack `ground`, segment's layer pieces) the
+   plane is PEC, so its share of a line's conductor loss (0.26 on the 50 Ω microstrip) is missing: a surface
+   impedance at the bottom of the layered Green's function (its reflection coefficient), or Wheeler's
+   share added per line.
+
 ## mom25d: speed (2026-11-19)
 
 **Next, in order (2026-11-22, after the GPU's LDL^T, the dense Z by its half and the block low-rank operator;

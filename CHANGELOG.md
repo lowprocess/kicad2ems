@@ -449,6 +449,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **Copper loss on mom25d's thick-copper sides (2026-11-25; found with the review's F17, F86).** With
+  `--mom-thickness sides` (the default) and `mixed`, every copper edge is a plate carrying part of the current,
+  but the copper's surface impedance was added to the sheet's functions alone (`gram_matrix`: the edges' block),
+  so the plates' current was lossless, and a trace's edge current, which they carry, too. A 50 Ω microstrip over
+  the ideal ground at 10 GHz lost 0.033 dB in 10.4 mm where the strip's share of Hammerstad and Jensen's 0.097 is
+  0.072 (Wheeler's rule: 0.74). The plates' functions now take it (`Sides.gram`: their overlap with themselves and
+  with the edges on a fold's sheet triangle; each its plate's interface's Zs, scaled symmetrically): 0.066 dB
+  (0.92×). It reaches every solver path (the extras' via rows, F89). Measured on each thickness (docs/mom.md#
+  thickness-loss): `off` 1.34× the strip's share, `grow` 1.25×; on a whole stack, where `sides` becomes `edge`,
+  `edge` gives 2.4× the line's loss (the review's tracker F90, to fix), `grow` 1.12×, `off` 1.19×; segment's
+  rf_msvia whole board lost 0.813 dB at 10 GHz on `edge` where the line model loses 0.349. Over the ideal ground
+  that plane's own loss (0.26 of the line's here) is not modelled (ROADMAP). Tests:
+  tests/mom25d/test_conductor_loss.py (the Gram against the halves integrated directly; the microstrip within 20 %
+  of the strip's share, 0.90).
 - **Terminated via ports on mom25d's block low-rank path (2026-11-25; found with the review's F86, F89).** With
   `excite` (every port terminated, the ones named driven: segment's windows, `--mom-excite`) a port on a via chain
   has its load in the sparse extras' via rows and columns. The block low-rank solve assembled its factor and its
@@ -491,8 +505,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `rough = 1` and a log sweep over 1-10 GHz (`--thickness grow`, as the studies): the copper takes 0.219 dB from
   S21 at 10 GHz in pieces, 0.407 dB on the whole board on mom25d, 0.349 dB on the line model; S21 0.145 dB rms
   from the whole board's, as lossless. The pieces' share is low because a layer piece's ideal planes have no loss
-  of their own. With mom25d's default `sides` thickness the same run gives 0.117 dB against the whole board's
-  0.813: its side plates carry no surface impedance (found here: the review's tracker, F86, to fix). Tests:
+  of their own. With mom25d's default `sides` thickness the same run gave 0.117 dB against the whole board's
+  0.813: the pieces' side plates carried no surface impedance (F86, fixed below) and the whole board's `edge`
+  thickness overstates the loss (F90). Tests:
   tests/core/test_segment.py (the run in pieces against the whole board), tests/core/test_viamodel.py.
 - **A part-value sweep of an inductor with its ESR, and of 0 F (2026-11-25; the review, F23).** `--part-value`
   took a part's kind from which of R, L and C it has, an L with no R: an inductor with an ESR field was a

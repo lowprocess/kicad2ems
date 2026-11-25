@@ -146,6 +146,25 @@ rf_pcoupled +0.009, rf_combline +0.006; unknowns 177.5k → 160.7k, the suite 14
 openEMS gate failed on six. (Plates dropped on such edges with no correction instead moved S as far as
 sheets do: antenna_array2x2 0.096 → 0.141 against openEMS, `off` 0.141.)
 
+<a id="thickness-loss"></a>
+**Copper loss on each thickness** (`--sigma`). The copper's surface impedance is on the sheet's functions and,
+with `sides`, on the plates' too (since 2026-11-25: the plates had been lossless, so a trace's edge current, which
+they carry, had no loss). On a 50 Ω microstrip 10.4 mm long (w 0.383 mm on 0.2 mm FR-4, 35 µm, 5.8e7 S/m), the
+copper's loss at 10 GHz against Hammerstad and Jensen's 0.097 dB, the strip's 0.072 of it by Wheeler's rule (over
+the ideal ground mom25d has the strip's alone: that plane has no loss of its own):
+
+| thickness | over the ideal ground (strip 0.072 dB) | the plane meshed (0.097 dB) |
+|---|---|---|
+| `sides` (the default) | 0.066 dB (0.92×; 0.033 before) | `edge` (no plates with the whole stack) |
+| `mixed` | 0.066 dB | `edge` |
+| `grow` | 0.090 dB (1.25×) | 0.109 dB (1.12×) |
+| `off` | 0.096 dB (1.34×) | 0.115 dB (1.19×) |
+| `edge` | 0.210 dB (2.9×) | 0.229 dB (2.4×) |
+
+`edge`'s is high: it spreads an edge triangle's current up a wall for its potentials, but its loss is the sheet's
+there, where the current crowds (the edge triangles' share spread over their walls takes 0.229 to 0.157 dB). With
+`--sigma` on a whole stack, `--mom-thickness grow` or `off` are the nearer.
+
 <a id="planes"></a>
 ### Solid planes and stitching pads
 

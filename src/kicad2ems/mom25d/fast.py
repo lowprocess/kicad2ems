@@ -436,9 +436,22 @@ class FastOperator:
             S[:Ne, :Ne] = (S[:Ne, :Ne] +
                            (sparse.diags(zs) @ sparse.csr_matrix(sim._gram) if
                             np.ndim(zs) else zs * sparse.csr_matrix(sim._gram)))
+        S = S.tocsr()
+        if sim.metal is not None and getattr(sim, 'sides', None) is not None:
+            # the copper's loss on thick copper's sides too (Sides.gram: their
+            # functions and the edges sharing a fold's sheet triangle), each
+            # function's Zs its plate's interface's, scaled symmetrically
+            if getattr(sim, '_side_gram', None) is None:
+                sim._side_gram = sim.sides.gram(sim)
+            zv = np.zeros(N, complex)
+            zv[:Ne] = sim.metal.zs_edges(f, sim.edge_layer)
+            k = sim.sides.interfaces()
+            zv[N - len(k):] = [sim.metal.zs(f, int(x)) for x in k]
+            d = sparse.diags(np.sqrt(zv))
+            S = S + d @ sim._side_gram @ d
         if getattr(sim, 'edge', None) is not None:
             # thick copper's edges (mom25d.edge)
-            return (S.tocsr() + sim.edge.matrix(sim, f)).tocsr()
+            return (S + sim.edge.matrix(sim, f)).tocsr()
         return S.tocsr()
 
     def _refine(self, A, B, M, restart, maxiter, stall=None, timed=True,

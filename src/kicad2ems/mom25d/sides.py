@@ -273,6 +273,56 @@ class Sides:
         # from the observers' tri-level arrays
         self.Nt = Nt
 
+    def gram(self, sim):
+        """int f_m . f_n dS between the sides' functions and every function
+        they share a triangle with (theirs, and the sheet's edges on a fold's
+        sheet triangle): sparse N x N (N = Ne + Nv, the sides' functions the
+        last of the via unknowns), the edges' own block left out (gram_matrix
+        has it). For the copper's surface impedance on the plates (Zs times
+        this): their current had been lossless, so a trace's edge current,
+        which the plates carry, had no loss (an 11 mm 50 ohm microstrip at 10
+        GHz over the ideal ground: 0.033 dB, now 0.066, against the strip's
+        0.072 of Hammerstad and Jensen's 0.097 by Wheeler's rule). Each
+        function's half on a triangle is alpha (r - v) (3D on a
+        plate), the sheet's a r - b (rwg's Aal, Bx, By); the moments on the
+        3-point rule, exact for these quadratics."""
+        from .base import quad_pts
+        r, Ne, Nv = sim.rwg, sim.Ne, sim.Nv
+        Nt, n2 = len(r.tris), len(self.PT)
+        N, c0 = Ne + Nv, Ne + Nv - self.N
+        # the triangles: the sheet's, then the plates'; their points (3D)
+        Ps = quad_pts(r, _BAR3)
+        P = np.concatenate([np.concatenate([Ps, np.zeros(Ps.shape[:2] + (1,))],
+                                           2), self.op])
+        area = np.r_[np.abs(r.area), 0.5 * np.repeat(self.L * self.t, 2)]
+        w = area[:, None] * _W3[None]
+        M0 = sparse.diags(area)
+        Mr = [sparse.diags((w * P[..., c]).sum(1)) for c in range(3)]
+        Mrr = sparse.diags((w * (P ** 2).sum(-1)).sum(1))
+        # each function's a and b per triangle
+        rows, cols = self.h_obs, c0 + self.h_fn
+        a = sparse.csr_matrix((self.h_alpha, (rows, cols)), (Nt + n2, N))
+        b = [sparse.csr_matrix((self.h_alpha * self.h_v[:, c], (rows, cols)),
+                               (Nt + n2, N)) for c in range(3)]
+        pad = lambda x: sparse.vstack([
+            sparse.hstack([sparse.csr_matrix(x),
+                           sparse.csr_matrix((Nt, Nv))]),
+            sparse.csr_matrix((n2, N))]).tocsr()
+        a = a + pad(r.Aal)
+        b[0], b[1] = b[0] + pad(r.Bx), b[1] + pad(r.By)
+        G = a.T @ Mrr @ a + sum(bc.T @ M0 @ bc for bc in b)
+        for c in range(3):
+            G = G - a.T @ Mr[c] @ b[c] - b[c].T @ Mr[c] @ a
+        G = G.tocoo()
+        keep = (G.row >= Ne) | (G.col >= Ne)
+        return sparse.csr_matrix((G.data[keep], (G.row[keep], G.col[keep])),
+                                 (N, N))
+
+    def interfaces(self):
+        """Each function's interface (its plate's: a fold's, a vertical's
+        first plate)."""
+        return np.r_[self.k[self.fold], self.k[self.vert[:, 1]]].astype(int)
+
     def _obs_geometry(self, sim):
         r = sim.rwg
         V2 = np.concatenate([r.nodes[r.tris], np.zeros((len(r.tris), 3, 1))],
