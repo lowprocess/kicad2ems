@@ -835,3 +835,65 @@ def test_a_band_is_a_filled_polygon_in_kicad():
     col = p.attributes.fill.color
     assert ((col.red, col.green, col.blue, col.alpha) == pytest.approx(
         (0x2c / 255, 0x7b / 255, 0xb6 / 255, 1.0)))
+
+
+def test_reload_connects_late_and_takes_another_board_as_its_own(
+        tmp_path, monkeypatch):
+    """Reload: KiCad's API not up when the window opened, then up (Reload had
+    done nothing: the window had to be opened again); then another board open
+    in the same editor: its own stem, folder and session (the last board's
+    region had been applied to it and its files written over the last
+    one's)."""
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    pytest.importorskip('PySide6')
+    pytest.importorskip('kipy')
+    from PySide6.QtWidgets import QApplication
+    from kicad2ems.ipc import ipc
+    from kicad2ems.ipc.window import Window
+    app = QApplication.instance() or QApplication([])
+    live = FakeLive(str(tmp_path))
+    up = []
+
+    def connect():
+        if not up:
+            raise ipc.LinkError('Enable KiCad API')
+        return live
+    monkeypatch.setattr(ipc.Live, 'connect', staticmethod(connect))
+    w = Window()
+    try:
+        assert not w.connect_kicad() and w.live is None
+        up.append(True)
+        w.reload()
+        assert w.live is live and w.stem == 'rf_coupler'
+        w.session.region = [1.0, 2.0, 3.0, 4.0]
+        w._save()
+        other = os.path.join(str(tmp_path), 'other.kicad_pcb')
+        monkeypatch.setattr(live, 'board_path', lambda: other, raising=False)
+        monkeypatch.setattr(live, 'stem', lambda: 'other', raising=False)
+        w.reload()
+        assert (w.stem == 'other' and w.folder.endswith(
+            os.path.join('kicad2ems', 'other')) and not w.session.region)
+    finally:
+        if w.loader is not None:
+            w.loader.stop()
+            w.loader.wait(5000)
+        w.close()
+        app.processEvents()
+
+
+def test_another_board_in_the_editor_is_a_change():
+    from kicad2ems.ipc.ipc import Live
+
+    class B:
+        def __init__(self, name):
+            self.name = name
+
+        def get_as_string(self):
+            return 'a'
+    live = Live.__new__(Live)
+    live.board, live.kicad = B('a.kicad_pcb'), None
+    assert live.board_text() == 'a'
+    live.kicad = type('K', (), dict(get_board=lambda self: B('a.kicad_pcb')))()
+    assert not live.changed()
+    live.kicad = type('K', (), dict(get_board=lambda self: B('b.kicad_pcb')))()
+    assert live.changed()

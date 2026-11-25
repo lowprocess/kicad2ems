@@ -449,6 +449,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **The KiCad plugin's Reload (2026-11-25; the review, F12 F13).** With KiCad's API not up when the window opened,
+  Reload did nothing and the window had to be opened again; it connects now. With another board opened in the
+  same editor, Reload read it but kept the last board's stem, folder and session: that board's region and ports
+  were applied to the new one, and its session, config and runs written over the last one's; the window takes the
+  new board as its own now (its own folder and session). `Live.changed()` asked the last board's handle, so
+  another board open was no change to reload for; it asks KiCad for the board open now. Tests:
+  tests/ipc/test_plugin.py.
 - **The window's Save with a field that is not a number, and paths on another drive (2026-11-25; the review, F62
   F63).** Save wrote `values()`, which leaves out a field that is not a number (`2,5` with a comma, a half-typed
   `1e`): the config lost that key and the window said "saved". Save now refuses it and says which field, as Run

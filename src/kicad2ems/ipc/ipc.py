@@ -131,6 +131,11 @@ class Live:
         """Whether the board in KiCad differs from the text last read
         (board_text), its edits unsaved included."""
         try:
+            # (the board open now: another one opened in the same editor is a
+            # change too; the handle of the last one had been asked)
+            now = self.kicad.get_board() if hasattr(self, 'kicad') else None
+            if now is not None and now.name != self.board.name:
+                return True
             return self.board.get_as_string() != getattr(self, '_text', None)
         except Exception:  # KiCad went away: nothing to reload from
             return False

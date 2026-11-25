@@ -716,18 +716,26 @@ class Window(QMainWindow):
             except LinkError as e:
                 self.board_lab.setText(str(e))
                 return False
+        self._bind_board()
+        self.reload()
+        return True
+
+    def _bind_board(self):
+        """The board KiCad has open now: its stem, its folder (its session and
+        runs) and its session."""
         self.stem = self.live.stem()
-        # its session, runs
         self.folder = os.path.join((self.live.project_dir() or os.getcwd()),
                                    'kicad2ems', self.stem)
         self.session = (md.Session.load(md.session_path(self.folder, self.stem))
                         or md.Session())
         self._show_session()
-        self.reload()
-        return True
+        self._bound = self.live.board_path()
 
     def reload(self):
         if self.live is None:
+            # (KiCad, or its API, was not up when the window opened: Reload
+            # had done nothing, and the window had to be opened again)
+            self.connect_kicad()
             return
         if self.loader is not None:
             self.loader.stop()
@@ -735,14 +743,17 @@ class Window(QMainWindow):
         try:
             self.live.refresh()
             self.text = self.live.board_text()
+            path, version = self.live.board_path(), self.live.version()
         except Exception as e:  # KiCad closed the board, or went away
             self.board_lab.setText(
                 f"cannot read the board from KiCad: {type(e).__name__}: {e}")
             return
-        self.board_lab.setText(
-            f"{self.live.board_path()}\nKiCad {self.live.version()}: reading "
-            "..."
-        )
+        if path != getattr(self, '_bound', None):
+            # another board in KiCad's editor now: its own session, folder and
+            # runs (the last board's region and ports had been applied to it,
+            # and its session, config and runs written over the last one's)
+            self._bind_board()
+        self.board_lab.setText(f"{path}\nKiCad {version}: reading ...")
         self.lines['elements'], self.store, self.mapped = [], {}, set()
         self.map_bar.setValue(0)
         try:
