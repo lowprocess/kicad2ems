@@ -89,3 +89,26 @@ def test_a_cavity_left_to_the_join_and_joined_again_is_the_model(
                              [(f"v:{x}", f"c:{x}") for x in cp])
             assert ext == [f"v:{x}" for x in n0]
             assert np.abs(J - S0).max() < 1e-9
+
+
+def test_barrels_at_one_place_are_one(tmp_path):
+    """A via drawn twice (its record and its entry), a ground via drawn twice
+    and a ground via in a signal via's barrel: the model as without them (two
+    barrels at one place had made H0^(2)(0) infinite and S NaN), each said."""
+    f = np.linspace(0.1e9, 10e9, 5)
+    d, vias = _via_pieces(tmp_path, 'msvia', ['RF', 'GND'])[0]
+    S0, n0 = VM.solve(VM.build(d, vias), f)
+    ground = set(d['ground_nets'])
+    g = next(u for u in d['vias'] if u['net'] in ground)
+    s = next(u for u in d['vias'] if u['net'] == vias[0]['net'])
+    twice = dict(d, vias=d['vias'] + [dict(g), dict(s)])
+    model = VM.build(twice, vias + [dict(vias[0])])
+    S, names = VM.solve(model, f)
+    assert names == n0 and np.isfinite(S).all()
+    assert np.abs(S - S0).max() < 1e-12
+    assert len(model['notes']) == 1 and 'one barrel' in model['notes'][0]
+    short = dict(d, vias=d['vias'] + [dict(s, net=g['net'])])
+    model = VM.build(short, vias)
+    S, _ = VM.solve(model, f)
+    assert np.abs(S - S0).max() < 1e-12
+    assert any("signal via's barrel" in n for n in model['notes'])

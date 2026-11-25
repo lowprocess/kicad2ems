@@ -158,35 +158,73 @@ def _hole(d, layer, ground, x, y):
     return min((p.distance(pt) for p in ps), default=None)
 
 
+def _apart(u, v):
+    return math.hypot(u['x'] - v['x'], u['y'] - v['y'])
+
+
+def _one_place(u, v, ru, rv):
+    """Whether two barrels (centres u, v, radii ru, rv, mm) are at one place:
+    a centre inside the other's barrel (a via drawn twice, one in a pad's
+    plated hole, a stack of microvias)."""
+    return _apart(u, v) < max(ru, rv, 1e-3)
+
+
 def build(d, vias, cavities=()):
     """The model of a via piece's board file d (segment._to_dict's) and its
     signal vias [dict(x, y, net, pad, r)] (segment.via_groups'): a dict the
     solve takes. mm throughout. cavities: plane-layer pairs whose cavity is
-    left to the join, each segment in it a port (the module's docstring)."""
+    left to the join, each segment in it a port (the module's docstring).
+
+    Barrels at one place are one (their distance 0 had made the cavity's
+    H0^(2)(0) infinite and every S NaN): a net's records there one barrel over
+    all their spans (a via drawn twice, a stack of microvias), ground vias
+    there one, and a ground via or another net's via in a signal via's barrel
+    left out (a short in the file). model['notes'] says each."""
     cz, diel = _layers(d)
     ground = set(d.get('ground_nets') or ())
     planes = planes_of(d)
     pz = {l: cz[l] for l in planes}
+    notes = []
     sig = []
     for v in vias:
-        # its record in the board file: the barrel's radius, its span
-        rec = min((u for u in d['vias'] if u['net'] == v['net']),
-                  key=lambda u: math.hypot(u['x'] - v['x'], u['y'] - v['y']))
-        z0, z1 = sorted((float(rec['z0']), float(rec['z1'])))
-        a = float(rec['r'])
+        # its records in the board file: the barrel's radius, its span (every
+        # record of its net at its place: one barrel over all their spans)
+        mine = [u for u in d['vias'] if u['net'] == v['net']]
+        rec = min(mine, key=lambda u: _apart(u, v))
+        here = [u for u in mine if _one_place(u, rec, float(u['r']),
+                                              float(rec['r']))]
+        z0 = min(min(float(u['z0']), float(u['z1'])) for u in here)
+        z1 = max(max(float(u['z0']), float(u['z1'])) for u in here)
+        a = max(float(u['r']) for u in here)
+        other = next((s for s in sig if _one_place(s, v, s['a'], a)), None)
+        if other is not None:
+            if other['net'] == v['net']:
+                notes.append(f"{v['net']}: two vias at ({v['x']:.3f}, "
+                             f"{v['y']:.3f}) are one barrel")
+                other['z0'], other['z1'] = (min(other['z0'], z0),
+                                            max(other['z1'], z1))
+                other['a'] = max(other['a'], a)
+            else:
+                notes.append(f"{v['net']}'s via at ({v['x']:.3f}, "
+                             f"{v['y']:.3f}) left out: in {other['net']}'s "
+                             "barrel (a short in the file)")
+            continue
+        sig.append(dict(x=v['x'], y=v['y'], net=v['net'], a=a, z0=z0, z1=z1,
+                        pad=v.get('pad')))
+    for s in sig:
+        z0, z1, a = s['z0'], s['z1'], s['a']
         # its pads: the layers in its span where its net's copper covers it
         from shapely.geometry import Point
-        pads = {}
+        pads, pad = {}, s.pop('pad', None)
         for l, zl in cz.items():
             if l in planes or not (z0 - 1e-6 <= zl <= z1 + 1e-6):
                 continue
-            if any(p.distance(Point(v['x'], v['y'])) < 1e-6
-                   for p in _polys(d, l, {v['net']})):
-                pads[l] = float(v.get('pad') or a)
-        crossed = [l for l in planes if z0 + 1e-6 < pz[l] < z1 - 1e-6]
-        holes = {l: _hole(d, l, ground, v['x'], v['y']) for l in planes}
-        sig.append(dict(x=v['x'], y=v['y'], net=v['net'], a=a, z0=z0, z1=z1,
-                        pads=pads, crossed=crossed, holes=holes))
+            if any(p.distance(Point(s['x'], s['y'])) < 1e-6
+                   for p in _polys(d, l, {s['net']})):
+                pads[l] = float(pad or a)
+        s['pads'] = pads
+        s['crossed'] = [l for l in planes if z0 + 1e-6 < pz[l] < z1 - 1e-6]
+        s['holes'] = {l: _hole(d, l, ground, s['x'], s['y']) for l in planes}
     gv = []
     for u in d['vias']:
         if u['net'] not in ground:
@@ -194,7 +232,19 @@ def build(d, vias, cavities=()):
         z0, z1 = sorted((float(u['z0']), float(u['z1'])))
         joined = [l for l in planes if z0 - 1e-6 <= pz[l] <= z1 + 1e-6
                   and _hole(d, l, ground, u['x'], u['y']) is None]
-        gv.append(dict(x=u['x'], y=u['y'], a=float(u['r']), joined=joined))
+        a = float(u['r'])
+        if any(_one_place(s, u, s['a'], a) for s in sig):
+            notes.append(f"the ground via at ({u['x']:.3f}, {u['y']:.3f}) "
+                         "left out: in a signal via's barrel (a short in the "
+                         "file)")
+            continue
+        g = next((g for g in gv if _one_place(g, u, g['a'], a)), None)
+        if g is not None:  # (one ground via drawn twice)
+            g['joined'] = [l for l in planes
+                           if l in g['joined'] or l in joined]
+            g['a'] = max(g['a'], a)
+            continue
+        gv.append(dict(x=u['x'], y=u['y'], a=a, joined=joined))
     # each signal via's capacitance to every plane
     for s in sig:
         pl = [(pz[l], s['holes'][l]) for l in planes]
@@ -215,7 +265,8 @@ def build(d, vias, cavities=()):
                                      diel)))
         s['pads'].setdefault(p['layer'], s['a'])
     return dict(cz=cz, diel=diel, planes=planes, pz=pz, sig=sig, gv=gv,
-                ports=ports, expose={frozenset(c) for c in cavities})
+                ports=ports, expose={frozenset(c) for c in cavities},
+                notes=notes)
 
 
 def _line(layer, w, cz, pz, diel):

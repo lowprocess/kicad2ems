@@ -1626,6 +1626,8 @@ def solve_piece(piece, folder, band, solver='mom25d', echo=print,
         from .touchstone import write_touchstone
         f = np.linspace(band['fmin'], band['fmax'], int(band['points'])) * 1e9
         model = viamodel.build(d, piece['vias'], piece.get('cavities') or ())
+        for note in model['notes']:
+            echo(f"{piece['name']}: {note}")
         S, names = viamodel.solve(model, f)
         ts = os.path.join(folder, f"{piece['name']}_pbm.s{len(names)}p")
         write_touchstone(ts, f, S, 50.0,

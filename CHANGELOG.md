@@ -449,6 +449,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **The physics-based via model with two barrels at one place (2026-11-25; the review, F05 F31).** Two vias at
+  one place (a via drawn twice, one in a PTH pad's plated hole, which the importer takes for a via, a ground via
+  drawn twice) were 0 apart, so the cavity's H0^(2)(0) was infinite and the whole S NaN, with no word; `pbm` is
+  the automatic choice for an unmeshable box and the one `--cavities` joins, so one NaN block made the joined S
+  NaN (the twin of 2e7dd1e in mom25d). Each signal via took the nearest record of its net, so a stack of
+  microvias at one place had the first record's span twice. `viamodel.build` now makes a net's records at one
+  place (a centre inside the other's barrel) one barrel over all their spans, ground vias there one, and leaves
+  out a ground via or another net's via in a signal via's barrel (a short in the file); `model['notes']` says
+  each, and segment prints them. Test: `test_barrels_at_one_place_are_one` (rf_msvia's piece, each case: S as
+  without them, to 1e-12).
 - **FDTD S-parameters between ports of different z0 (2026-11-25; the review, F04).** openEMS's and gfdtd's runs
   gave S as the voltage waves' ratio uf_ref_p / uf_inc_k, which is S only where every port has one z0; the
   reciprocity fill (`fill_reciprocal`), the mixed modes and the comparison with mom25d (power waves) all take it
