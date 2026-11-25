@@ -449,6 +449,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **A config saved with an escaped quote in a string (2026-11-25; the review, F25).** `update_toml` (the window's
+  save) found a line's comment and brackets with `_scan`, which ended a basic string at `\\"`: a bracket after
+  it opened a value that ran on to the next line, and that key was deleted on the rewrite. A backslash escapes the
+  next character in a basic string now (a literal one, '...', has none). Test: tests/core/test_runs.py.
 - **A row of vias to ground for qucsator (2026-11-25; the review, F24).** The line model's via element of n barrels
   in parallel had L / n for scikit-rf but was written to qucsator as one `MVIA` of one drill: n times the
   inductance on the qucs backend. It is n MVIAs side by side now (`Element.n`). Test: tests/core/test_fastsolve.py.

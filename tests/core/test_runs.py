@@ -134,3 +134,19 @@ def test_kill_tree_ends_a_child_in_a_session_of_its_own(tmp_path):
                 except (ProcessLookupError, PermissionError):
                     pass
             p.wait(10)
+
+
+def test_a_quote_escaped_in_a_string_keeps_the_next_key(tmp_path):
+    """update_toml: a basic string with \\" in it (and a bracket after it) is
+    one value; the escape had ended the string, the bracket opened a value
+    that ran on, and the next key was deleted with it."""
+    from kicad2ems.core.runs import load_toml, update_toml
+    p = tmp_path / 'c.toml'
+    p.write_text('label = "say \\"[\\" here"  # its note\n'
+                 "path = 'C:\\\\boards\\\\'\nfmin = 1.0\nfmax = 6.0\n",
+                 encoding='utf-8')
+    update_toml(str(p), keys={('', 'fmin'): 2.0})
+    got = load_toml(str(p))
+    assert (got['label'] == 'say "[" here' and got['fmin'] == 2.0
+            and got['fmax'] == 6.0 and got['path'] == 'C:\\\\boards\\\\')
+    assert '# its note' in p.read_text(encoding='utf-8')

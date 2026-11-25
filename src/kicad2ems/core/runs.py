@@ -85,11 +85,19 @@ _KEY = re.compile(r'^(\s*)([A-Za-z0-9_-]+)(\s*=\s*)')
 
 def _scan(text, start=0, depth=None):
     """Index of the comment of a TOML line (outside strings), or -1; with
-    depth, that plus the line's open minus closed brackets."""
-    quote = None
+    depth, that plus the line's open minus closed brackets. In a basic string
+    ("...") a backslash escapes the next character (\\" had ended it, and a
+    bracket or # after it was taken for the line's: the next key deleted); a
+    literal one ('...') has no escapes."""
+    quote, escaped = None, False
     for n, ch in enumerate(text[start:], start):
         if quote:
-            quote = None if ch == quote else quote
+            if escaped:
+                escaped = False
+            elif ch == '\\' and quote == '"':
+                escaped = True
+            elif ch == quote:
+                quote = None
         elif ch in '"\'':
             quote = ch
         elif ch == '#':
