@@ -97,7 +97,10 @@ def sif(m, heat=None, loads=None, htc=10.0, ambient=25.0, k_board=K_BOARD,
         raise ValueError(
             "a transient takes the parts' heat only, not a net's current")
     r = m['via_r']
-    fill = float(np.mean((r ** 2 - np.maximum(r - plating, 0) ** 2) / r ** 2))
+    # (a mesh with each barrel its plating's cylinder: copper as it is; else
+    # the drill's cylinder at the mean plated fraction)
+    fill = (1.0 if m.get('plating') else
+            float(np.mean((r ** 2 - np.maximum(r - plating, 0) ** 2) / r ** 2)))
     temps = np.arange(-60.0, 401.0, 20.0)
     sigma = lambda s0: ("Variable Temperature\n    Real\n" + ''.join(
         f'      {t:g} {s0 / (1 + ALPHA_CU * (t - 20.0)):.6g}\n'
@@ -358,7 +361,8 @@ def solve(board, out='thermal', heat=None, nets=None, source=None, loads=None,
         terms.update({f'I:{ref}': pads_of(board, ref, nets) for ref in loads})
     t = time.perf_counter()
     m = layered_mesh(board, case / 'mesh', electric=nets, copper=copper,
-                     terminals=terms, crop=crop, h=h, hmax=hmax, log=log)
+                     terminals=terms, crop=crop, h=h, hmax=hmax,
+                     plating=plating, log=log)
     mesh_s = time.perf_counter() - t
     t = time.perf_counter()
     # one thread with a current: the loop that fills Elmer's nodal Joule heating

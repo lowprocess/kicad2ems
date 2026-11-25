@@ -14,8 +14,10 @@ triangle lies in that layer.
 No 3D booleans: the copper of real boards (planes with hundreds of holes, on
 several layers) breaks them, and all the board's copper matters to where the
 heat goes. Shapely does the layout's arithmetic in 2D, on a grid of `grid` mm. A
-via is a prism of its hole's area through the layers it joins.
+via is a prism through the layers it joins: of its plating's area with
+`plating` (solid copper, each via's own), else of its hole's.
 """
+import math
 from pathlib import Path
 
 import numpy as np
@@ -178,13 +180,18 @@ def triangulate(region, lines, size, grid, log=print):
 
 def layered_mesh(board, folder, electric=(), copper=None, terminals=None,
                  crop=None, h=0.3, hmax=2.0, dz=0.5, tol=0.02, grid=0.005,
-                 grade=0.35, log=print):
+                 grade=0.35, plating=None, log=print):
     """Write Elmer's mesh of the board to `folder`. electric: the nets that
     carry current (bodies COPPER_E and BARREL_E, meshed at `h`); copper: the
     other nets to keep (None: all); terminals: {name: [(layer, polygon)]}, pads
     on the outer layers, each a boundary (pads shared by several names are one
-    boundary of those names). Returns the mesh's description (see the module's
-    text) with the arrays the results are read with."""
+    boundary of those names). plating (mm): each barrel a solid copper
+    cylinder of its plating's cross-section (radius sqrt(r^2 - (r - plating)^2),
+    m['plating'] says so: its conductance and heat path its own; one copper
+    fraction for every barrel, from their mean, had put a 0.2 mm drill's 32 %
+    low and a 0.6 mm one's 87 % high beside each other); None: the drill's
+    cylinder. Returns the mesh's description (see the module's text) with the
+    arrays the results are read with."""
     electric = set(electric)
     terminals = terminals or {}
     names = layer_names(board)
@@ -224,7 +231,10 @@ def layered_mesh(board, folder, electric=(), copper=None, terminals=None,
     for v in board.get('vias', []):
         cls = (BARREL_E if v.get('net') in electric else
                BARREL if v.get('net') in passive else 0)
-        g = _ngon(v['x'], v['y'], v['r'], 8 if cls == BARREL_E else 6)
+        rr = float(v['r'])
+        if plating:
+            rr = math.sqrt(rr * rr - max(rr - plating, 0.0) ** 2)
+        g = _ngon(v['x'], v['y'], rr, 8 if cls == BARREL_E else 6)
         if cls and region.contains(g):
             vias.append((shapely.set_precision(g, grid), cls, *span(v), v['r']))
     pads = {}
@@ -428,6 +438,7 @@ def layered_mesh(board, folder, electric=(), copper=None, terminals=None,
         f'{len(nodes):,} nodes, {len(vias)} vias')
     return dict(boundaries=boundaries, bodies=sorted(set(wbody.tolist())),
                 wedges=nw, triangles=nt, cells=cells, vias=len(vias), via_r=r,
+                plating=plating,
                 nodes=nodes, xy=xy, tri=tri, node=node, body=body, faces=tris,
                 face_tag=ttag, face_area=tarea, sides=quads, side_area=qarea,
                 volume={b: vol(b)

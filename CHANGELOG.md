@@ -449,6 +449,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **Elmer's via barrels each their own plating (2026-11-25; the review, F57).** The layered mesh drew every barrel
+  as its drill's cylinder and gave all of them one copper fraction, the mean of their plated fractions, so on a
+  board with drills of several sizes each barrel's conductance (and its heat path) was the mean's: 25 µm plating is
+  44 % of a 0.2 mm drill and 16 % of a 0.6 mm one, and a net with one of each through 1.6 mm came out 35 % below
+  its closed-form resistance. `layered_mesh(plating=)` now draws each barrel as a solid copper cylinder of its
+  plating's cross-section (radius √(r² − (r − p)²)), at copper's own conductivity, so each via's resistance and
+  axial heat conduction are its own: the pair 4 % above the closed form (the pads' share). The DC drop and the
+  thermal solve pass their `--plating`; a run whose nets have one drill is unchanged. Test:
+  tests/fem/test_elmer_dc.py.
 - **dfsynth's gap model across s/w = 0.3 (2026-11-25; the review, F56).** Garg and Bahl's two fits of a series
   gap's even-mode capacitance (s/w up to 0.3, and from 0.3) meet by a jump: on 0.2 mm FR-4 with a 0.38 mm strip
   Cp 3.61 → 4.92 fF and Cg 6.02 → 5.26 fF between s/w 0.30 and 0.31, so an end-coupled filter's gaps near it were

@@ -58,8 +58,9 @@ def layered_sif(m, loads, plating=PLATING):
     barrels, the other bodies left out of the solve."""
     from .layered import COPPER_E, BARREL_E
     r = m['via_r']
-    fill = (float(np.mean(
-        (r**2 - np.maximum(r - plating, 0)**2) / r**2)) if len(r) else 1.0)
+    # (a mesh with each barrel its plating's cylinder: copper as it is)
+    fill = (1.0 if m.get('plating') or not len(r) else float(np.mean(
+        (r**2 - np.maximum(r - plating, 0)**2) / r**2)))
     bodies = ''
     for i, b in enumerate(m['bodies']):
         on = b in (COPPER_E, BARREL_E)
@@ -142,7 +143,7 @@ def solve(board, nets, source, loads, out='dc', h=0.25, plating=PLATING,
     m = layered_mesh(board, case / 'mesh', electric=nets, copper=set(),
                      terminals={f'I:{k}': v
                                 for k, v in terms.items()}, crop=crop, h=h,
-                     log=log)
+                     plating=plating, log=log)
     mesh_s = time.perf_counter() - t
     t = time.perf_counter()
     said = elmer.solve(case, layered_sif(m, loads, plating))
