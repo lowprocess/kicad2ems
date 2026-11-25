@@ -113,6 +113,10 @@ def run(model, out, passes, log=print, thermal_args='', **run_kw):
             '--warm needs the board (board.file, or --board) for the thermal '
             'model'
         )
+    from .temperature import unmoved
+    for ref, why in unmoved(model):
+        log(f"warm: {ref} conducts by {why}: its conduction loss stays at "
+            f"{REFERENCE_C:g} C (only Ron_ohm moves with the temperature)")
     out = Path(out).resolve()
     thermal_out = out / 'thermal'
     extra = shlex.split(thermal_args or '')

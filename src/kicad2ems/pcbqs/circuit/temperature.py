@@ -80,6 +80,23 @@ def apply(part):
     return part
 
 
+def unmoved(model):
+    """[(ref, why)] of the switches whose conduction the temperature does not
+    move: only Ron_ohm is moved, and a vendor's .model (model_name) or a
+    MOSFET given Kp_A_V2 conducts by its own parameters (--warm had reported
+    such a switch at 110 C with its 25 C loss, saying nothing)."""
+    out = []
+    for p in model.get('parts', []):
+        m = p.get('model') or {}
+        if p.get('type') != 'switch':
+            continue
+        if m.get('model_name'):
+            out.append((p['ref'], f"its .model {m['model_name']}"))
+        elif m.get('Kp_A_V2') is not None:
+            out.append((p['ref'], 'its Kp_A_V2'))
+    return out
+
+
 def copper_model(model, temperature_C):
     """The copper's R-L model (copper.prepare's 'model') with its resistances at
     temperature_C."""

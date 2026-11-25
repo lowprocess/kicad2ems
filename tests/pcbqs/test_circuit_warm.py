@@ -102,3 +102,15 @@ def test_the_warm_runs_set_each_part_to_its_maps_temperature_until_none_moves(
             and ran['D1']['nominal'] == {'model.Vf_V': 0.45})
     assert ran['L1']['DCR_ohm'] > 0.03
     assert json.loads((tmp_path / 'circuit.json').read_text())['warm'] == w
+
+
+def test_a_switch_by_its_own_model_is_said_to_stay_at_25_C():
+    """Only Ron_ohm moves with the temperature: a switch given by a vendor's
+    .model or by Kp_A_V2 is named (--warm had reported it at 110 C with its
+    25 C conduction loss, saying nothing)."""
+    model = dict(parts=[
+        dict(ref='Q1', type='switch', model=dict(model_name='IRF540')),
+        dict(ref='Q2', type='switch', model=dict(Kp_A_V2=20.0)),
+        dict(ref='Q3', type='switch', model=dict(Ron_ohm=0.01)),
+        dict(ref='D1', type='diode')])
+    assert [r for r, _ in T.unmoved(model)] == ['Q1', 'Q2']

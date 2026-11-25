@@ -449,6 +449,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **--warm names the switches it cannot warm (2026-11-25; the review, F59).** Only a switch's `Ron_ohm` moves
+  with its temperature, and a vendor's VDMOS `.model` or a MOSFET given `Kp_A_V2` conducts by its own
+  parameters: such a switch was reported at 110 C with its 25 C conduction loss, without a word. `--warm` now
+  names each at its start (`temperature.unmoved`). Test: tests/pcbqs/test_circuit_warm.py.
 - **A circuit's part that is not fitted (2026-11-25; the review, F53).** The circuit model's checks named a
   probe's or a coupling's part but did not ask whether it is fitted (`enabled: false`, which the KiCad import gives
   a DNP part, and a sweep may set). A coupling to such an inductor wrote a K naming an element the deck does not
