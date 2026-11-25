@@ -449,6 +449,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **The FDTD mesh graded across its kept lines (2026-11-25; the review, F42).** `smooth_lines` graded each gap
+  between kept lines from the widths of the gaps beside it: where one of those was split into small cells, its
+  neighbour started from the gap's own width (0.21 mm beside 0.031, 6.8×), and 32 of the 52 examples' default
+  meshes had a cell beside one 2× or more its size (rf_ratrace 8.9×), against the `--ratio` (1.4) promised. Each
+  kept line now has the cell size it may have, carried along the axis (growing ratio − 1 times the distance, as
+  cells growing by the ratio do); each gap is graded from its two ends, its middle split into the count that
+  keeps both graded sides within the ratio, and a jump left at a kept line is mended by grading again. The cell
+  round a copper edge (its thirds-rule pair, `_edge_lines`' edges) is kept whole: mending a cluster of fine-scale
+  gaps (on demo_transition 0.042 mm between 0.025 and 0.033, 1.6× whole or halved) had halved them in turn into
+  the pair round its stripline's edge, a line 0.004 mm off it and S21 8.6° late at 8 GHz. On the 52 examples: 3
+  past 1.4 (rf_ratrace 2.3×: a thirds pair beside cells its curved ring's largest cell holds small;
+  demo_transition 1.5× among its kept lines), cells +6.9 % in all (median +7.6 %; −47 % on rf_pcoupled, whose air
+  the old grading had filled with 0.13 mm cells, +84 % on rf_ebg), the time step the same on 49 (9-13 % shorter on
+  demo_transition, rf_interdig and rf_wilkinson). On gfdtd (the 7800 XT), against a reference of twice the
+  resolution (res 40, fine / 2, the two gradings' runs averaged), 13 of 19 examples are closer (rms |ΔS| rf_siw
+  0.92 → 0.38, rf_pcoupled 0.021 → 0.016, demo_transition 0.0066 → 0.0053, sma_launch 0.0061 → 0.0042) and 5
+  farther by 0.003 at most (rf_msvia 0.0061 → 0.0092, rf_openloop 0.0086 → 0.0110, demo_lowpass, rf_marchand,
+  rf_ratrace); rf_ebg is converged on neither (its stopbands at 3.2 and 7.2 GHz at res 60 and fine / 3, at 3.2-3.8
+  and 4.4-4.9 GHz on the default mesh and at res 40: its 0.1 mm gaps between patches are one fine cell; the
+  review's tracker, F88). demo_transition's delay 134.8 ps (134.9 before; 134.4 converged). Tests:
+  tests/fdtd/test_model_mesh.py (the 6.8× case, the edge's cell kept whole, random lines within the ratio).
 - **segment's pieces with the config's copper and sweep (2026-11-25; the review, F17).** Each piece ran with the
   band and the mom25d options alone: a config's `sigma`, `rough`, `finish` and `sweep = log` never reached it, so
   `segment` solved lossless copper on a linear sweep where a whole-board run of the same config is lossy, and
@@ -462,7 +483,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   S21 at 10 GHz in pieces, 0.407 dB on the whole board on mom25d, 0.349 dB on the line model; S21 0.145 dB rms
   from the whole board's, as lossless. The pieces' share is low because a layer piece's ideal planes have no loss
   of their own. With mom25d's default `sides` thickness the same run gives 0.117 dB against the whole board's
-  0.813: its side plates carry no surface impedance (the review, F86, below). Tests:
+  0.813: its side plates carry no surface impedance (found here: the review's tracker, F86, to fix). Tests:
   tests/core/test_segment.py (the run in pieces against the whole board), tests/core/test_viamodel.py.
 - **A part-value sweep of an inductor with its ESR, and of 0 F (2026-11-25; the review, F23).** `--part-value`
   took a part's kind from which of R, L and C it has, an L with no R: an inductor with an ESR field was a

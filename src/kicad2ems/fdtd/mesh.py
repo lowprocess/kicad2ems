@@ -49,49 +49,142 @@ def _merge(lines, tol, keep=(), prio=None):
     return np.array(out)
 
 
-def smooth_lines(fixed, maxres, ratio=1.4, fine=None):
+def _middle(left, right, ea, eb, m, ratio):
+    """_graded's middle [left[-1], right[-1]]: (its number of even cells,
+    whether the jump to a graded cell beside it is still over ratio). The
+    count from the smaller graded cell beside it, or one more or fewer where
+    that keeps both sides nearer (one fewer only where its cells stay within
+    m and the size of a fixed line they touch)."""
+    lo, hi = left[-1], right[-1]
+    hl = left[-1] - left[-2] if len(left) > 1 else ea / ratio
+    gr = right[-2] - right[-1] if len(right) > 1 else eb / ratio
+    k = max(1, int(np.ceil((hi - lo) / min(m, ratio * min(hl, gr)) - 1e-9)))
+    # the graded cells beside it (a side with none: the cell beyond its fixed
+    # line, which smooth_lines checks)
+    near = [c for c, n in ((hl, len(left)), (gr, len(right))) if n > 1]
+
+    def worst(n):
+        c = (hi - lo) / n
+        return max([1.0] + [max(c / h, h / c) for h in near])
+    top = min([m] + [e for e, n in ((ea, len(left)), (eb, len(right)))
+                     if n == 1])
+    k = min((n for n in (k, k + 1, k - 1)
+             if n >= 1 and (hi - lo) / n <= top * 1.0001), key=worst)
+    return k, worst(k) > ratio * 1.0001
+
+
+def _graded(a, b, ea, eb, m, ratio):
+    """The lines inside [a, b]: cells from ea at a and eb at b, each the last
+    times ratio towards the middle, at most m, the middle split evenly (no
+    sliver)."""
+    L = b - a
+    if L <= min(ea, eb, m) * 1.0001:
+        return []
+    left, right = [a], [b]  # graded from both ends towards the middle
+    h, g = ea / ratio, eb / ratio  # (the first cells: ea, eb)
+    while True:
+        hn, gn = min(h * ratio, m), min(g * ratio, m)
+        if right[-1] - left[-1] <= hn + gn:
+            break
+        if h <= g:
+            left.append(left[-1] + hn); h = hn
+        else:
+            right.append(right[-1] - gn); g = gn
+    if len(left) > 1:  # give the last graded cell of each side back
+        left.pop()
+    if len(right) > 1:
+        right.pop()
+    for back in range(5):  # ... and split [lo, hi] evenly
+        k, bad = _middle(left, right, ea, eb, m, ratio)
+        if not bad or back == 4:
+            break
+        # no split fits beside them (rf_bends: 0.204 mm, two cells over the
+        # size beside a fixed line, three 1.46x under the 0.099 graded ones):
+        # another graded cell back, the larger side's
+        sides = [s for s in (left, right) if len(s) > 1]
+        if not sides:
+            break
+        big = max(sides, key=lambda s: abs(s[-1] - s[-2]))
+        big.pop()
+    lo, hi = left[-1], right[-1]
+    return left[1:] + list(np.linspace(lo, hi, k + 1)[1:-1]) + right[1:][::-1]
+
+
+def smooth_lines(fixed, maxres, ratio=1.4, fine=None, whole=(),
+                 rounds=30):
     """Insert lines between fixed lines so that every cell is <= maxres(x) and
-    neighbouring cells grow by at most `ratio` away from the fixed (feature)
-    lines. maxres: float or callable(x)."""
+    neighbouring cells differ by at most `ratio`, across the fixed lines too.
+    maxres: float or callable(x) (taken at each fixed interval's middle).
+
+    Each fixed line has the size its cells may have (e): ratio times the fixed
+    gap beside it (a cell that size beside one gap wide), with fine 3 fine
+    ratio (a feature's cells as before), carried along the axis in both
+    directions growing (ratio - 1) times the distance (as cells growing by
+    ratio do), so a fixed gap split into small cells is seen beyond its
+    neighbours too. whole: points (a copper edge's x or y) whose fixed
+    interval is not split (the thirds-rule pair round the edge: a line inside
+    it moves the edge), unless past maxres or wider than fine; a jump beside
+    one is left. Each interval is graded from its
+    two ends' sizes; where the two cells at a fixed line still differ by more
+    than ratio (an interval split into slivers), the line's size is lowered to
+    ratio times the smaller and the intervals graded again. Each interval had
+    been graded from its neighbouring fixed gaps alone: a gap split into
+    0.031 mm cells beside one started at 0.21 mm (6.8x), and 8.9x on rf_ratrace's
+    mesh (the review, F42)."""
     M = maxres if callable(maxres) else (lambda x, m=maxres: m)
     fx = np.unique(np.asarray(fixed, float))
     if len(fx) < 2:
         return fx
-    gaps = np.diff(fx)
+    g = np.diff(fx)
+    m = np.array([M(0.5 * (a + b)) for a, b in zip(fx[:-1], fx[1:])])
+    cap = ratio * np.minimum(g, m)
+    e = np.full(len(fx), np.inf)
+    e[:-1] = np.minimum(e[:-1], cap)
+    e[1:] = np.minimum(e[1:], cap)
+    if fine:
+        e = np.minimum(e, 3 * fine * ratio)
+    # the cell round a copper edge (its thirds-rule pair) whole: a line inside
+    # it moves the edge. A cluster of fixed lines can be past ratio among
+    # themselves (demo_transition: 0.042 mm between 0.025 and 0.033, 1.6x whole
+    # or halved); mending each jump had halved them in turn through the
+    # cluster, into the pair round its stripline's edge (a line 0.004 mm off
+    # it: S21 8.6 deg late at 8 GHz)
+    feat = np.zeros(len(g), bool)
+    if len(whole):
+        w = np.asarray(whole, float)
+        i = np.searchsorted(fx, w) - 1
+        ok = ((i >= 0) & (i < len(g)))
+        i, w = i[ok], w[ok]
+        inside = (w > fx[i] + 1e-9) & (w < fx[i + 1] - 1e-9)
+        feat[i[inside]] = True
+        # (a pair spans 2/3 fine: a wider cell round edges is lines merged
+        # away, sma_launch's 0.113 mm round two edges with fine 0.050)
+        feat &= (g <= m * 1.0001) & (g <= (fine or np.inf) * 1.0001)
+    q = ratio - 1
+    for _ in range(rounds):
+        for j in range(1, len(fx)):
+            e[j] = min(e[j], e[j - 1] + q * g[j - 1])
+        for j in range(len(fx) - 2, -1, -1):
+            e[j] = min(e[j], e[j + 1] + q * g[j])
+        inner = [[] if feat[i] else
+                 _graded(fx[i], fx[i + 1], e[i], e[i + 1], m[i], ratio)
+                 for i in range(len(g))]
+        first = np.array([(ln[0] if ln else fx[i + 1]) - fx[i]
+                          for i, ln in enumerate(inner)])
+        last = np.array([fx[i + 1] - (ln[-1] if ln else fx[i])
+                         for i, ln in enumerate(inner)])
+        lo = np.minimum(last[:-1], first[1:])
+        hi = np.maximum(last[:-1], first[1:])
+        # (a jump is mended where the larger cell's interval can be split)
+        big = np.where(last[:-1] >= first[1:], np.arange(len(g) - 1),
+                       np.arange(1, len(g)))
+        bad = np.flatnonzero((hi > ratio * lo * 1.0001) & ~feat[big]) + 1
+        if not len(bad):
+            break
+        e[bad] = np.minimum(e[bad], ratio * lo[bad - 1])
     out = [fx[0]]
-    for i in range(len(fx) - 1):
-        a, b = fx[i], fx[i + 1]
-        m = M(0.5 * (a + b))
-        # neighbouring cells set the start size
-        ha = gaps[i - 1] if i > 0 else gaps[i]
-        hb = gaps[i + 1] if i + 1 < len(gaps) else gaps[i]
-        if fine:
-            ha, hb = min(ha, fine * 3), min(hb, fine * 3)
-        ha, hb = min(ha, m), min(hb, m)
-        L = b - a
-        if L <= m and L <= ratio * min(ha, hb) * 1.0001:
-            out.append(b)
-            continue
-        left, right = [a], [b]  # graded from both ends towards the middle
-        h, g = ha, hb
-        while True:
-            hn, gn = min(h * ratio, m), min(g * ratio, m)
-            if right[-1] - left[-1] <= hn + gn:
-                break
-            if h <= g:
-                left.append(left[-1] + hn); h = hn
-            else:
-                right.append(right[-1] - gn); g = gn
-        if len(left) > 1:  # give the last graded cell of each side back
-            left.pop()
-        if len(right) > 1:
-            right.pop()
-        lo, hi = left[-1], right[-1]  # ... and split [lo, hi] evenly: no sliver
-        hl = left[-1] - left[-2] if len(left) > 1 else ha
-        gr = right[-2] - right[-1] if len(right) > 1 else hb
-        k = max(1, int(np.ceil((hi - lo) / min(m, ratio * min(hl, gr)) - 1e-9)))
-        out += (left[1:] + list(np.linspace(lo, hi, k + 1)[1:-1])
-                + right[1:][::-1] + [b])
+    for i, ln in enumerate(inner):
+        out += ln + [fx[i + 1]]
     return np.array(out)
 
 
@@ -242,8 +335,9 @@ def _edge_lines(m, fine, curves, boxes=None, zone=None):
     """Candidate x / y lines from the copper: the board outline, thirds-rule
     pairs at Manhattan edges (third: 2/3 outside the metal, third_in: 1/3
     inside) and the curve lines (see curve_lines; boxes: the curved runs'
-    boxes). zone (signal_zone): the ground copper's edges count only inside it
-    (signal copper's always)."""
+    boxes); and the Manhattan edges' own x / y (their pairs' cells kept whole
+    by smooth_lines). zone (signal_zone): the ground copper's edges count only
+    inside it (signal copper's always)."""
     from shapely.geometry import LineString, Point
     from shapely.prepared import prep
     zp = prep(zone) if zone is not None else None
@@ -252,6 +346,7 @@ def _edge_lines(m, fine, curves, boxes=None, zone=None):
     ob = m.outline.bounds
     fixed = {0: [ob[0], ob[2]], 1: [ob[1], ob[3]]}
     third, third_in = {0: [], 1: []}, {0: [], 1: []}
+    edges = {0: [], 1: []}
     # The pair straddling an edge spans c = THIRDS_CELL * fine, not fine: with
     # pairs a full `fine` apart, edges closer than ~1.5 fine (a trace end, the
     # via pad around it, the antipad) gave candidate lines within the merge
@@ -290,10 +385,12 @@ def _edge_lines(m, fine, curves, boxes=None, zone=None):
                         s, xm = -np.sign(dy), 0.5 * (x0 + x1)
                         third_in[0].append(xm + s * c / 3)
                         third[0].append(xm - s * 2 * c / 3)
+                        edges[0].append(xm)
                     else:
                         s, ym = np.sign(dx), 0.5 * (y0 + y1)
                         third_in[1].append(ym + s * c / 3)
                         third[1].append(ym - s * 2 * c / 3)
+                        edges[1].append(ym)
                 # its width
                 cx, cy = curve_lines(
                     xy, fine, curves, step=max(fine, 2 * p.area / p.length),
@@ -301,7 +398,7 @@ def _edge_lines(m, fine, curves, boxes=None, zone=None):
                     inside=((lambda x, y: zp.contains(Point(x, y)))
                             if cut else None))
                 fixed[0] += cx; fixed[1] += cy
-    return fixed, third, third_in
+    return fixed, third, third_in, edges
 
 
 def _snap_vias(m, mode, mesh_xy, via_snap):
@@ -520,7 +617,7 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
     boxes = []
     zg = (signal_zone(m, None if zone is True else float(zone))
           if zone is not False and zone is not None else None)
-    fixed, third, third_in = _edge_lines(m, fine, curves, boxes, zg)
+    fixed, third, third_in, edges = _edge_lines(m, fine, curves, boxes, zg)
     sig = getattr(m, 'via_signal', [False] * len(m.vias))
     mode = [vias] * len(sig)  # each via 'exact' / 'centre' / 'snap'
     if vias == 'auto':        # exact on signal nets, snap elsewhere
@@ -559,7 +656,7 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
                   M_air if not lo - 1e-9 <= x <= hi + 1e-9 else
                   M_die / curve_res if any(a <= x <= b for a, b in sp) else
                   M_die)
-            out[k] = smooth_lines(pts, Mf, ratio, fine)
+            out[k] = smooth_lines(pts, Mf, ratio, fine, whole=edges[k])
         return out
 
     mesh = xy_lines({0: [], 1: []})

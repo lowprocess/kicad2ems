@@ -586,17 +586,22 @@ be checked for each scan.
 3. **Line ports, the rest** (R-E1): differential pairs (the legs' B A^-1 is exact; the shift back needs each
    mode's Zc and gamma from the two runs), a stripline's port driving both of its planes (one plane drives the
    wave between them: the probes need 3 mm to settle), and the probes on an oblique trace.
-4. **Diagonal copper** is a staircase on the mesh: the mesher puts lines at a polygon's vertices, so a diagonal
+4. **The default fine cell and gaps away from the ports** (2026-11-25, found with the review's F42): the fine cell
+   is a quarter of the narrowest port trace, twice the thinnest dielectric or the narrowest gap beside the port
+   copper, so rf_ebg's 0.1 mm gaps between its patches are one fine cell (0.096 mm): its stopbands at 3.2 and
+   7.2 GHz at `--res 60` and a third of the fine cell, at 3.2-3.8 and 4.4-4.9 GHz on the default mesh and at res
+   40. The narrowest gap between copper in the signal zone, or a warning naming it.
+5. **Diagonal copper** is a staircase on the mesh: the mesher puts lines at a polygon's vertices, so a diagonal
    edge between them sits on the coarse cells (a 20 mm, 50 ohm line at 30 deg came out 3.4 % longer electrically
    than along x, at 45 deg 1.7 %; a fine cell of 0.09 mm in place of 0.18 helped 0.6 %). Lines along such an
    edge, or a conformal edge (Dey-Mittra), would follow it.
-5. **Boundaries**: first-order Mur is the default on five sides (6 % reflection against 5e-5 for an 8-cell PML),
+6. **Boundaries**: first-order Mur is the default on five sides (6 % reflection against 5e-5 for an 8-cell PML),
    and the PML is CPML with κ = 1, α = 0, at λ/res cells: CFS-CPML, and thinner graded cells.
-6. **Larger boards**: every copper edge is a line across the box. Subgridding or local refinement, temporal
+7. **Larger boards**: every copper edge is a line across the box. Subgridding or local refinement, temporal
    blocking, conformal PEC for curved copper.
-7. **Materials**: Lorentz and Drude, anisotropy; openEMS's Debye run has 0.5 dB more loss than gfdtd's on the same
+8. **Materials**: Lorentz and Drude, anisotropy; openEMS's Debye run has 0.5 dB more loss than gfdtd's on the same
    material (which is right is not checked).
-8. **openEMS's interface, the rest.** Through `kicad2ems.gfdtd.compat` (docs/gfdtd/README.md#compat) 10 of
+9. **openEMS's interface, the rest.** Through `kicad2ems.gfdtd.compat` (docs/gfdtd/README.md#compat) 10 of
    openEMS's 16 Python tutorials run unchanged (2026-11-20; 1 on 2026-11-18), the 7 compared agreeing with openEMS
    (the horns' and the helix's directivity to the printed digit). Left, in order:
    - the radiated power: gfdtd's Prad 7-12 % above openEMS's on the helix and the conical horn, with the same

@@ -35,8 +35,84 @@ def test_smooth_lines_grading_and_limits():
     assert d.max() <= 1.0 + 1e-9
     assert d.min() >= 0.05 - 1e-12  # nothing smaller than the features
     r = d[1:] / d[:-1]
-    # graded (middle cells split evenly)
-    assert np.max(np.maximum(r, 1 / r)) <= 1.4 * 1.25
+    # graded, across the fixed lines too (the bound had been 1.4 x 1.25)
+    assert np.max(np.maximum(r, 1 / r)) <= 1.4 * 1.0001
+
+
+def _worst_jump(x):
+    d = np.diff(x)
+    return np.maximum(d[1:] / d[:-1], d[:-1] / d[1:]).max()
+
+
+def test_smooth_lines_grades_across_a_gap_split_small():
+    """A 0.153 mm gap split into 0.031 mm cells (its neighbour 0.026 wide):
+    the next interval had started from the gap's own width, 0.21 mm beside
+    0.031 (6.8x, the review's F42); now within 1.4 everywhere."""
+    fixed = [0.604, 4.416, 4.442, 4.595, 14.036, 14.356, 14.548, 14.657,
+             14.729]
+    x = smooth_lines(fixed, 1.0, 1.4, 0.05)
+    assert set(np.round(fixed, 9)) <= set(np.round(x, 9))
+    assert np.diff(x).max() <= 1.0 + 1e-9
+    assert _worst_jump(x) <= 1.4 * 1.0001
+
+
+def test_smooth_lines_keeps_a_copper_edge_s_cell_whole():
+    """demo_transition's y lines round its 0.15 mm stripline (edges at -5.075
+    and -4.925, fine 0.0375): fixed gaps past 1.4 among themselves (0.042
+    between 0.025 and 0.033). Mending each jump had halved them in turn
+    through the cluster, a line 0.004 mm outside the edge (its S21 8.6 deg late
+    at 8 GHz against a converged reference); the cell round each edge is now
+    kept whole, the halving stops at it."""
+    fixed = [-5.25, -5.1917, -5.1667, -5.125, -5.0917, -5.0667, -5.0,
+             -4.9333, -4.9083, -4.875, -4.8333, -4.8083, -4.7585]
+    edges = [-5.075, -4.925]
+    x = smooth_lines(fixed, 0.9, 1.4, 0.0375, whole=edges)
+    for e in edges:
+        i = np.searchsorted(x, e)
+        assert x[i - 1] in fixed and x[i] in fixed   # its pair, nothing between
+    # between the two edges' cells: the 0.067 gaps halved, as the old mesher
+    # had them, nothing finer
+    between = x[(x >= -5.0667) & (x <= -4.9333)]
+    assert np.diff(between) == pytest.approx([1 / 30] * 4, abs=1e-3)
+    assert np.diff(x).min() > 0.4 * 0.0375
+    # without the edges: the same lines graded through (the jumps mended)
+    assert len(smooth_lines(fixed, 0.9, 1.4, 0.0375)) > len(x)
+
+
+@pytest.mark.parametrize('seed', [0, 1])
+def test_smooth_lines_within_ratio_on_random_lines(seed):
+    """Random fixed lines (at least fine / 2 apart), with and without fine,
+    a maxres of one value or two (a board and its air): every fixed line
+    kept, every cell within maxres and within ratio of its neighbours, and no
+    cell under 0.4 of the smallest fixed gap or of a feature's cell (3 fine
+    ratio): the time step (0.44 at worst, as before)."""
+    rng = np.random.default_rng(seed)
+    for _ in range(600):
+        fine = rng.choice([0, 0.02, 0.05, 0.1]) or None
+        x = np.unique(rng.uniform(-10, 30, rng.integers(2, 14)))
+        x = np.unique(np.concatenate(
+            [x, x[rng.integers(0, len(x), 3)] + rng.uniform(0.01, 0.4, 3)]))
+        tol, keep = (fine or 0.02) / 2, [x[0]]
+        for v in x[1:]:
+            if v - keep[-1] > tol:
+                keep.append(v)
+        if len(keep) < 2:
+            continue
+        m1, m2 = rng.uniform(0.2, 2.0, 2)
+        lo, hi = sorted(rng.uniform(-5, 25, 2))
+        two = rng.random() < 0.5
+        M = ((lambda z: m1 if lo <= z <= hi else m2) if two else float(m1))
+        out = smooth_lines(keep, M, 1.4, fine)
+        d = np.diff(out)
+        assert set(np.round(keep, 9)) <= set(np.round(out, 9))
+        # (maxres is taken at each fixed interval's middle)
+        assert (d <= max(m1, m2) * 1.0001).all()
+        if not two:
+            assert (d <= m1 * 1.0001).all()
+        assert d.min() >= 0.4 * min(np.diff(keep).min(),
+                                    3 * 1.4 * (fine or np.inf))
+        if len(d) > 1:
+            assert _worst_jump(out) <= 1.4 * 1.0001, (keep, fine, two)
 
 
 def test_model_ports_and_mesh(demo):

@@ -18,7 +18,13 @@ them, and grade in z away from each copper layer.*
 - **Fine cell** at copper edges, `--fine`. By default it is a quarter of the smallest of: the narrowest port
   trace, twice the thinnest dielectric, and the narrowest gap next to the port copper (coupled lines, a
   coplanar slot). Narrow gaps can still need finer meshes: check with `--converge`.
-- **Growth**: neighbouring cells differ by at most `--ratio` (1.4).
+- **Growth**: neighbouring cells differ by at most `--ratio` (1.4), across the kept lines too: each kept
+  line's cell size is carried along the axis, growing `--ratio - 1` times the distance, so a gap split into
+  small cells sets its neighbours' neighbours as well (before 2026-11-25 each gap was graded from the widths
+  of the gaps beside it alone: on 32 of the 52 examples' meshes a cell beside one 2-8.9× its size). The cell
+  round a copper edge (its thirds-rule pair) is never split, so where kept lines are closer than the ratio
+  allows among themselves, or a pair sits beside cells a smaller largest cell holds down, the jump stays: 3 of
+  the 52 meshes, rf_ratrace's 2.3× the largest.
 
 ## x and y lines
 
@@ -169,6 +175,9 @@ the converged delay.
 | `--nz 6` (the example's setting) | 0.52 M | −21.9 dB | 135.1 ps |
 | 1.5× finer | 0.71 M | −22.5 dB | 134.6 ps |
 | line model | – | −18.0 dB | 132.2 ps |
+
+On gfdtd with the grading of 2026-11-25 (`nz = 6`): 0.59 M cells, −22.1 dB, 134.8 ps (the grading before it
+0.51 M, −22.3 dB, 134.9 ps; converged, at `--res 60` and a third of the fine cell, 2.4 M cells, −21.7 dB, 134.4 ps).
 
 Return loss wants more cells through the dielectric, which is why the example sets `nz = 6`. Run `--converge 1,1.5`
 once on each new kind of structure, and treat return loss below about −20 dB from an unconverged mesh as uncertain.
