@@ -449,6 +449,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **segment `--cavities`: the planes the join and the via model agree on, and a port off the cavity's mesh
+  (2026-11-25; the review, F20 F21).** The board's cavities are pairs of planes covering 40 % of its outline
+  (`core.cavities`), a via model's planes those covering half its box (`viamodel.planes_of`); where the two
+  differed (a plane's void at the via, a pour that is a plane in the box alone) the cavity named for the join
+  matched none of the model's, the via kept its infinite planes there with no word, and the run called it a
+  meshed box. Now a cavity left to the join gives the model its planes (`viamodel._planes`: its two layers planes,
+  a layer between them not one), said in the model's notes; the run says which models are not joined and which of
+  those are meshed boxes. A port whose disc is on no triangle of the cavity's mesh (inside the outline, outside it
+  once simplified) had Z 0, a short across that barrel's segment in the join, with no word: `cavities_for` now
+  builds the meshes before the pieces solve (`Cavity.port_off`) and leaves such a cavity out of that via model's
+  join, saying so (the late check in `cavity_blocks`, F22, is the same as `cavities_for`'s and cannot fire). Tests:
+  tests/core/test_viamodel.py (rf_msvia's In2.Cu cut to a ring: a third of the box), tests/core/test_cavities.py.
 - **Copper loss on mom25d's thick-copper sides (2026-11-25; found with the review's F17, F86).** With
   `--mom-thickness sides` (the default) and `mixed`, every copper edge is a plate carrying part of the current,
   but the copper's surface impedance was added to the sheet's functions alone (`gram_matrix`: the edges' block),

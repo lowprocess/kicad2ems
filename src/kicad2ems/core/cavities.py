@@ -305,11 +305,13 @@ class Cavity:
                 fixed[r[0]] = True
             else:
                 well[r[0]] = well.get(r[0], 0.0) + g
-        port_dof, nport = [], 0
+        port_dof, nport, off = [], 0, []
         for k, r in enumerate(rings[ns:]):
             if r is None or fixed[r].any():
                 port_dof.append(-1)  # (off the mesh, or merged with a short)
+                off.append(r is None)
                 continue
+            off.append(False)
             if (dof[r] >= 0).any():  # (merged with another port's ring)
                 port_dof.append(int(dof[r][dof[r] >= 0][0]))
                 continue
@@ -340,6 +342,9 @@ class Cavity:
         self.area = float(self.W.sum())
         self.nodes, self.tris, self.dof, self.n = nodes, tris, dof, n
         self.port_dof = np.array(port_dof, int)
+        # a port off the mesh (its disc in no triangle: a void there): its Z
+        # is 0 as a short's, which it is not (segment leaves such a cavity out)
+        self.port_off = np.array(off, bool)
         self.dmax = dmax
         self.mesh = True
         self.log(f"{self.name}: {self.geom.area:.0f} mm2, d {self.d:.3g} mm, "

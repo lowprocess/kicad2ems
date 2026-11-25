@@ -172,6 +172,33 @@ def _one_place(u, v, ru, rv):
     return _apart(u, v) < max(ru, rv, 1e-3)
 
 
+def _planes(d, cz, cavities):
+    """(the model's planes, top first; notes): planes_of's (half the box's
+    area), with the cavities left to the join as the board has them (core.
+    cavities: 40 % of the board's outline): each pair's two layers planes, a
+    layer between them not one. The two had differed (a plane's void at the
+    via, a pour that is a plane in the box alone): no cavity of the model
+    matched, the via kept its infinite planes there, and segment said it was a
+    meshed box."""
+    planes = planes_of(d)
+    if not cavities:
+        return planes, []
+    named = {l for c in cavities for l in c if l in cz}
+    between = {l for c in cavities if all(x in cz for x in c)
+               for l in cz if min(cz[x] for x in c) + 1e-9 < cz[l]
+               < max(cz[x] for x in c) - 1e-9}
+    out = (set(planes) | named) - between
+    notes = []
+    if named - set(planes):
+        notes.append("the board's plane(s) " + ', '.join(sorted(
+            named - set(planes))) + " under half the box: planes here as the "
+            "board's cavity has them")
+    if set(planes) & between:
+        notes.append(', '.join(sorted(set(planes) & between)) + ": a plane in "
+                     "the box alone, inside the board's cavity: not one here")
+    return sorted(out, key=lambda l: -cz[l]), notes
+
+
 def build(d, vias, cavities=()):
     """The model of a via piece's board file d (segment._to_dict's) and its
     signal vias [dict(x, y, net, pad, r)] (segment.via_groups'): a dict the
@@ -185,9 +212,8 @@ def build(d, vias, cavities=()):
     left out (a short in the file). model['notes'] says each."""
     cz, diel = _layers(d)
     ground = set(d.get('ground_nets') or ())
-    planes = planes_of(d)
+    planes, notes = _planes(d, cz, cavities)
     pz = {l: cz[l] for l in planes}
-    notes = []
     sig = []
     for v in vias:
         # its records in the board file: the barrel's radius, its span (every

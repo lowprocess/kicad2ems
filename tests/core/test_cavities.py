@@ -205,3 +205,57 @@ def test_a_port_on_a_ground_via_leaves_no_unknown_without_a_vertex():
     Z = cav.impedance([1e9, 3e9])
     assert np.isfinite(Z).all() and (Z[:, 0, :] == 0).all()
     assert (Z[:, 1, 1].imag != 0).all()
+
+
+def _tooth_cavity(dmax=1.0):
+    """A 30 x 20 mm plane pair with a 6 mm void, a signal via in a 0.026 mm
+    tooth of the outline into the void (inside the outline, outside it once
+    simplified by SMOOTH, 0.02 mm: no ring on the mesh), another in the
+    plane."""
+    from shapely import STRtree
+    from shapely.geometry import Point, Polygon, box
+    from shapely.ops import unary_union
+    x, y = 12.012, 10.0
+    vias = [(x, y, 'SIG'), (5.0, 5.0, 'SIG2')]
+    board = dict(vias=[dict(x=a, y=b, r=0.1, z0=0.0, z1=1.0, net=n)
+                       for a, b, n in vias])
+    g = unary_union([box(0, 0, 30, 20).difference(box(12, 7, 18, 13)),
+                     Polygon([(11.99, 9.98), (12.016, 10.0), (11.99, 10.02)])])
+    plane = g.difference(Point(x, y).buffer(0.3)).difference(
+        Point(5.0, 5.0).buffer(0.3))
+    index = (STRtree([plane]), [(plane, 'GND')])
+    cav = CV.Cavity(board, ('L2', 'L1'), (0.0, 1.0), g, 0.2, 4.0, 0.01,
+                    (index, index), [], log=lambda *x: None)
+    return cav.build(5e9, dmax), board
+
+
+def test_a_port_off_the_mesh_is_said_and_left_out_of_the_join():
+    """A via whose disc is on no triangle (here: in a tooth of the outline
+    that the mesh's simplify takes away) has Z 0 as a short's (port_off says
+    which); segment's cavities_for, which now builds the meshes before the
+    pieces solve, leaves that cavity out of the piece's join and says so (the
+    join had put a short across the barrel's segment with no word); the via
+    on the mesh is joined."""
+    from types import SimpleNamespace
+    from kicad2ems.core import segment as SG
+    cav, board = _tooth_cavity()
+    net = [p['net'] for p in cav.ports]
+    off, on = net.index('SIG'), net.index('SIG2')
+    assert cav.port_off[off] and not cav.port_off[on]
+    assert cav.impedance([1e9], [off])[0, 0, 0] == 0
+    said = []
+    m = SimpleNamespace(to_dict=lambda prims=False: board)
+    parts = [dict(name='via1', kind='via', vias=[dict(x=12.012, y=10.0,
+                                                      net='SIG')]),
+             dict(name='via2', kind='via', vias=[dict(x=5.0, y=5.0,
+                                                      net='SIG2')])]
+    orig = CV.cavities
+    try:
+        CV.cavities = lambda bd, log=None: [cav]
+        SG.cavities_for(m, parts, said.append, fmax=5e9)
+    finally:
+        CV.cavities = orig
+    assert parts[0]['cavities'] == [] and parts[1]['cavities'] == [
+        ('L2', 'L1')]
+    assert any("via1: its via at (12.012, -10.000) mm is off" in s
+               for s in said), said

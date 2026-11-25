@@ -132,3 +132,29 @@ def test_the_planes_copper_loss(tmp_path):
                                                      > -1e-7).all()
     assert lost(S0)[-1] < lost(S1)[-1] < lost(S2)[-1]
     assert np.linalg.svd(S2, compute_uv=False).max() <= 1 + 1e-12
+
+
+def test_a_cavity_left_to_the_join_as_the_board_has_its_planes(tmp_path):
+    """The board's cavity (core.cavities: 40 % of the outline) and the box's
+    planes (planes_of: half the box) can differ: rf_msvia's In2.Cu cut to a
+    ring round its antipad (a third of the box) is no plane in the box. The
+    cavity named for the join had matched none of the model's, the via kept
+    its infinite planes there with no word; now its planes are the board's
+    cavity's, its segment there a port, and the note says so."""
+    from shapely.geometry import Point, mapping, shape
+    f = np.linspace(1e9, 10e9, 3)
+    d, vias = _via_pieces(tmp_path, 'msvia', ['RF', 'GND'])[0]
+    v = vias[0]
+    ring = Point(v['x'], v['y']).buffer(1.2)
+    cut = dict(d, copper=dict(d['copper']))
+    cut['copper']['In2.Cu'] = [
+        dict(c, polygon=mapping(shape(c['polygon']).intersection(ring)))
+        for c in d['copper']['In2.Cu']]
+    assert VM.planes_of(cut) == ['In1.Cu']
+    model = VM.build(cut, vias, cavities=[('In1.Cu', 'In2.Cu')])
+    S, names = VM.solve(model, f)
+    assert model['planes'] == ['In1.Cu', 'In2.Cu']
+    assert [c['cavity'] for c in model['cavity_ports']] == [('In1.Cu',
+                                                            'In2.Cu')]
+    assert any('under half the box' in n for n in model['notes'])
+    assert np.isfinite(S).all() and len(names) == 3

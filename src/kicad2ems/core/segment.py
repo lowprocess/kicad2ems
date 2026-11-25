@@ -1500,19 +1500,25 @@ def _nearest(pts, x, y, tol=1e-3):
     return i if d[i] <= tol else None
 
 
-def cavities_for(m, parts, echo=print):
+def cavities_for(m, parts, echo=print, fmax=None):
     """--cavities: the board's plane-pair cavities (core.cavities: the whole
     board's planes, every ground via in them a short), and each via piece's
     piece['cavities']: the plane pairs whose cavity the physics-based model
     leaves to the join (viamodel.build's), those of whose vias (its ports:
     the vias through it that are no ground via) every via of the piece that
-    crosses it is one. [Cavity], their meshes not built."""
+    crosses it is one, on its mesh. fmax (Hz): the meshes built for it here,
+    before the pieces solve, and a cavity whose mesh a via of the piece is off
+    (its disc in no triangle: a void there) left out of that piece's join,
+    said: the cavity's Z there had been 0, a short across the barrel's
+    segment, with no word. [Cavity]."""
     from . import cavities as CV
     bd = m.to_dict(prims=False)
     cavs = CV.cavities(bd, log=lambda *x: None)
     recs = bd.get('vias') or []
     for c in cavs:
         c._at = np.array([(q['x'], q['y']) for q in c.ports]).reshape(-1, 2)
+        if fmax and c.mesh is None:
+            c.build(float(fmax))
     for p in parts:
         if p['kind'] != 'via':
             continue
@@ -1529,9 +1535,18 @@ def cavities_for(m, parts, echo=print):
             za, zb = c.zs
             cross = [v for v, s in zip(p['vias'], spans)
                      if s and s[0] < zb - 1e-6 and s[1] > za + 1e-6]
-            if cross and all(_nearest(c._at, v['x'], v['y']) is not None
-                             for v in cross):
-                p['cavities'].append(tuple(c.layers))
+            at = [_nearest(c._at, v['x'], v['y']) for v in cross]
+            if not cross or any(i is None for i in at):
+                continue
+            off = [v for v, i in zip(cross, at)
+                   if getattr(c, 'port_off', None) is not None
+                   and c.port_off[i]]
+            if off:
+                echo(f"segment: {p['name']}: its via at ({off[0]['x']:.3f}, "
+                     f"{-off[0]['y']:.3f}) mm is off {c.name}'s mesh (a void "
+                     "there): its infinite planes kept in that cavity")
+                continue
+            p['cavities'].append(tuple(c.layers))
     used = {l for p in parts if p['kind'] == 'via' for l in p['cavities']}
     echo(f"segment: {len(cavs)} plane-pair "
          f"cavit{'y' if len(cavs) == 1 else 'ies'}"
@@ -1908,7 +1923,7 @@ def run(a, echo=print):
         if a.via_solver not in (None, 'pbm'):
             echo(f"segment: --cavities joins the physics-based via models "
                  f"alone: --via-solver {a.via_solver}'s are meshed boxes")
-        cavs = cavities_for(m, parts, echo)
+        cavs = cavities_for(m, parts, echo, fmax=band['fmax'] * 1e9)
     blocks, links, f0, info, cut_of = [], {}, None, [], {}
     wins, win_links = {}, {}
     done = _solve_all(parts, out, band, a, echo)
@@ -2021,8 +2036,13 @@ def run(a, echo=print):
                      done[p['name']][3].get('model') or {}).get(
                          'cavity_ports')]
         if boxed:
-            echo(f"segment: {len(boxed)} via model(s) meshed boxes, their "
-                 "vias not joined to the cavities: " + ", ".join(boxed[:8])
+            # (a meshed box, or a physics-based model with no segment in the
+            # cavity: its vias end at a plane of it, say)
+            meshed = [n for n in boxed
+                      if 'pbm' not in done[n][3].get('solved', {})]
+            echo(f"segment: {len(boxed)} via model(s) not joined to the "
+                 "cavities" + (f" ({len(meshed)} meshed boxes)" if meshed
+                               else '') + ": " + ", ".join(boxed[:8])
                  + (" ..." if len(boxed) > 8 else ''))
         cb, cl, cav_recs = cavity_blocks(cavs, parts, done, f0, echo,
                                          sigma=band.get('sigma'),
