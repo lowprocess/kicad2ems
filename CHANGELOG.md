@@ -490,7 +490,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   0.92 → 0.38, rf_pcoupled 0.021 → 0.016, demo_transition 0.0066 → 0.0053, sma_launch 0.0061 → 0.0042) and 5
   farther by 0.003 at most (rf_msvia 0.0061 → 0.0092, rf_openloop 0.0086 → 0.0110, demo_lowpass, rf_marchand,
   rf_ratrace); rf_ebg is converged on neither (its stopbands at 3.2 and 7.2 GHz at res 60 and fine / 3, at 3.2-3.8
-  and 4.4-4.9 GHz on the default mesh and at res 40: its 0.1 mm gaps between patches are one fine cell; the
+  and 4.4-4.9 GHz on the default mesh and at res 40, with any fine cell: its patches want finer cells; the
   review's tracker, F88). demo_transition's delay 134.8 ps (134.9 before; 134.4 converged). Tests:
   tests/fdtd/test_model_mesh.py (the 6.8× case, the edge's cell kept whole, random lines within the ratio).
 - **segment's pieces with the config's copper and sweep (2026-11-25; the review, F17).** Each piece ran with the

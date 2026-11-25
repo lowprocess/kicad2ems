@@ -599,11 +599,12 @@ be checked for each scan.
 3. **Line ports, the rest** (R-E1): differential pairs (the legs' B A^-1 is exact; the shift back needs each
    mode's Zc and gamma from the two runs), a stripline's port driving both of its planes (one plane drives the
    wave between them: the probes need 3 mm to settle), and the probes on an oblique trace.
-4. **The default fine cell and gaps away from the ports** (2026-11-25, found with the review's F42): the fine cell
-   is a quarter of the narrowest port trace, twice the thinnest dielectric or the narrowest gap beside the port
-   copper, so rf_ebg's 0.1 mm gaps between its patches are one fine cell (0.096 mm): its stopbands at 3.2 and
-   7.2 GHz at `--res 60` and a third of the fine cell, at 3.2-3.8 and 4.4-4.9 GHz on the default mesh and at res
-   40. The narrowest gap between copper in the signal zone, or a warning naming it.
+4. **rf_ebg is not converged at the default resolution** (2026-11-25, found with the review's F42): its stopbands
+   at 3.2 and 7.2 GHz at `--res 60` and a third of the fine cell (-40 dB, -27 dB), at 3.2-3.8 and 4.4-4.9 GHz at
+   res 20 and 40; the 7.2 GHz band is missing at res 20 with any fine cell (0.096, 0.05, 0.033 mm: rms |ΔS| 0.38-
+   0.44 from res 60), so its patches' cells, not its 0.1 mm gaps, are short; and res 60 on the two gradings
+   still differs by 0.057. A converged reference (res 80 and up), then the example's `res`, or a check that
+   says a resonant structure wants more than `--res 20`.
 5. **Diagonal copper** is a staircase on the mesh: the mesher puts lines at a polygon's vertices, so a diagonal
    edge between them sits on the coarse cells (a 20 mm, 50 ohm line at 30 deg came out 3.4 % longer electrically
    than along x, at 45 deg 1.7 %; a fine cell of 0.09 mm in place of 0.18 helped 0.6 %). Lines along such an
