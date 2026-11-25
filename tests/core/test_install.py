@@ -403,3 +403,46 @@ def test_update_pins_nothing(inst):
     assert not hasattr(inst, 'pinned_specs') and not hasattr(inst, 'STACK')
     src = open(inst.__file__, encoding='utf-8').read()
     assert 'git+https://' not in src
+
+
+def test_a_failed_build_is_the_exit_status(inst, monkeypatch, tmp_path):
+    """A build that fails is said and listed, and the install's exit status is
+    1 (every failure had only been a note, and the installer exited 0)."""
+    setup = _fem(inst, monkeypatch, tmp_path, '--elmer', 'build')
+    setup.choose_fem()
+    monkeypatch.setattr(inst, 'run', lambda cmd, **kw: False)
+    monkeypatch.setattr(inst, 'ask', lambda q, default: q.startswith('build'))
+    setup.build_fem()
+    assert len(setup.failed) == 1 and 'Elmer build failed' in setup.failed[0]
+
+
+def test_slangpy_that_does_not_install_is_no_abort(inst, monkeypatch):
+    """The optional GPU wheel: no wheel for this platform is a failure listed
+    at the end, not an Abort right after kicad2ems itself."""
+    setup = inst.Installer.__new__(inst.Installer)
+    setup.oems, setup.extras, setup.slang, setup.core = 'none', [], True, False
+    setup.drop_cupy, setup.vpy, setup.pyver = False, 'python', '3.13'
+    setup.t = inst.Target('checkout', 'venv')
+    setup.t.editable = setup.t.user = False
+    pipped = []
+    monkeypatch.setattr(setup, 'pip', lambda *a, **kw: pipped.append(a)
+                        or not any('slangpy' in x for x in a))
+    monkeypatch.setattr(inst, 'py_out', lambda *a: '')
+    monkeypatch.setattr(inst, 'note', lambda *a: None)
+    setup.install()
+    assert any('slangpy' in x for a in pipped for x in a)
+    assert not setup.slang and 'slangpy' in setup.failed[0]
+
+
+def test_the_target_python_runs_in_a_folder_of_its_own(inst):
+    """python -c / -m put their folder first on sys.path: an empty folder of
+    this user's, not the shared temp folder (another user's pip/ there had
+    been imported, as root under sudo)."""
+    import stat
+    import tempfile
+    d = inst.neutral_dir()
+    assert d == inst.neutral_dir() and os.path.isdir(d)
+    assert os.path.realpath(d) != os.path.realpath(tempfile.gettempdir())
+    assert not os.listdir(d)
+    if sys.platform != 'win32':
+        assert stat.S_IMODE(os.stat(d).st_mode) == 0o700

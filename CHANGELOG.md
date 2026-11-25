@@ -449,6 +449,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **The installer's exit status, and the folder its target Python runs in (2026-11-25; the review, F07-F09).**
+  A step that failed (a compiled core, the openEMS, Elmer or Palace build, `kicad2ems --check`) was a note
+  and the installer said "Done" and exited 0, so a `--yes` or CI install of a mom25d that cannot mesh passed;
+  now each is said as a WARNING, listed under "Done ..., with N failure(s)" and the exit status is 1. The
+  optional slangpy wheel was installed with `check=True`: a platform or Python without one aborted right after
+  kicad2ems itself, before the cores, the site file, the commands and the launcher; now it is one of those
+  failures and the install goes on without the GPU. The target Python's `-c` and `-m` ran in the shared temp
+  folder, which they put first on `sys.path`, so another user's `pip/` or `numpy/` there could be imported, as
+  root under sudo; they run in an empty folder of the installer's own now (`mkdtemp`, removed at exit).
+  Tests: tests/core/test_install.py.
 - **The physics-based via model with two barrels at one place (2026-11-25; the review, F05 F31).** Two vias at
   one place (a via drawn twice, one in a PTH pad's plated hole, which the importer takes for a via, a ground via
   drawn twice) were 0 apart, so the cavity's H0^(2)(0) was infinite and the whole S NaN, with no word; `pbm` is

@@ -44,6 +44,7 @@ boards that are not in the repository (examples/make_boards.py), next to their
 configs. Run it again to change anything: an existing venv is kept and added to
 (or made anew if you say so)."""
 import argparse, glob, json, os, shutil, subprocess, sys
+import atexit
 import tempfile
 
 # an older install's GPU wheels, which no solver uses now
@@ -144,10 +145,20 @@ def which_python(py):
     return shutil.which(py)
 
 
+_NEUTRAL = []
+
+
 def neutral_dir():
     """A folder to run the target Python in, so it doesn't import this
-    checkout's files by accident."""
-    return tempfile.gettempdir()
+    checkout's files by accident: an empty one of this user's own, made once
+    and removed at the end (`python -c` and `-m` put the folder first on
+    sys.path, and in the shared temp folder another user's pip/ or numpy/
+    would have been imported: as root, under sudo)."""
+    if not _NEUTRAL:
+        d = tempfile.mkdtemp(prefix='kicad2ems-install-')
+        atexit.register(shutil.rmtree, d, True)
+        _NEUTRAL.append(d)
+    return _NEUTRAL[0]
 
 
 def py_out(py, code, *args):
@@ -515,7 +526,12 @@ class Installer:
     def __init__(self, a):
         self.a = a
         self.py = which_python(a.python)
-        self.failed = False
+        self.failed = []  # what did not install or build: the exit status
+
+    def failure(self, what):
+        """A step that failed: said now, listed at the end, exit status 1."""
+        note(f"WARNING: {what}")
+        self.__dict__.setdefault('failed', []).append(what)
 
     def pip(self, *args, check=True, quiet=False, env=None):
         cmd = [
@@ -643,7 +659,7 @@ class Installer:
         self.make_examples()
         self.check()
         self.done()
-        return 0
+        return 1 if self.failed else 0
 
     def check_python(self):
         bold("Python")
@@ -1212,7 +1228,7 @@ class Installer:
                 ]) and self.elmer_dir(prefix)):
                     self.elmer = self.elmer_dir(prefix)
                 else:
-                    note(
+                    self.failure(
                         "the Elmer build failed (see above): kicad2ems-fem is "
                         "installed without it; fix and run the installer "
                         "again, or: bash tools/build_elmer.sh "
@@ -1237,7 +1253,7 @@ class Installer:
                 ]) and os.path.isfile(exe)):
                     self.palace = ('exe', exe)
                 else:
-                    note(
+                    self.failure(
                         "the Palace build failed or was not finished (see "
                         "above): kicad2ems-fem is installed without it; run "
                         "bash tools/build_palace.sh " + prefix
@@ -1300,14 +1316,19 @@ class Installer:
             self.pip_uninstall(*CUPY_WHEELS)
         if self.slang:
             bold("Installing slangpy")
-            self.pip("slangpy>=0.43")
+            # (optional: a platform or Python without its wheel goes on
+            # without the GPU, as the rest of the install does)
+            if not self.pip("slangpy>=0.43", check=False):
+                self.slang = False
+                self.failure("slangpy did not install (see above): the "
+                             "solvers run on the CPU")
         for pkg in CORES if self.core else ():
             bold(f"Building {pkg}'s compiled core")
             if not run([self.vpy, '-m', f'kicad2ems.{pkg}.core.build']):
-                note(f"the core did not build: {pkg} "
-                     + ("cannot mesh without it" if pkg in
-                        MESH_CORES else "runs on NumPy")
-                     + " (see the error above)")
+                self.failure(f"the core did not build: {pkg} "
+                             + ("cannot mesh without it" if pkg in
+                                MESH_CORES else "runs on NumPy")
+                             + " (see the error above)")
 
     # ---- openEMS: linked in from another venv, or built from source ---------
     def link_openems(self):
@@ -1397,7 +1418,7 @@ class Installer:
                 os.environ.get('LD_LIBRARY_PATH'))))
             self.oems = 'built'
         else:
-            note(
+            self.failure(
                 "the openEMS build failed (see above): kicad2ems is installed "
                 "without it; fix and run the installer again")
 
@@ -1588,13 +1609,21 @@ class Installer:
             env.update(
                 VIRTUAL_ENV=self.t.venv,
                 PATH=venv_bin(self.t.venv) + os.pathsep + env.get('PATH', ''))
-        run([self.k2e(), '--check'], env=env)
+        if not run([self.k2e(), '--check'], env=env):
+            self.failure("kicad2ems --check failed (see above)")
 
     def done(self):
         if self.slang:
             run([self.vpy, '-m', 'kicad2ems.emsdev'])
         t = self.t
-        print(f"\nDone ({t.name} install). Use it with:")
+        if self.failed:
+            print(f"\nDone ({t.name} install), with {len(self.failed)} "
+                  "failure(s):")
+            for what in self.failed:
+                print(f"  - {what}")
+            print("Use it with:")
+        else:
+            print(f"\nDone ({t.name} install). Use it with:")
         if t.name == 'checkout':
             rel = (os.path.relpath(t.venv, REPO)
                    if os.path.normcase(t.venv).startswith(
