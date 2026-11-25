@@ -51,3 +51,37 @@ def test_coupled_microstrip():
             w, s = u * sub.h, g * sub.h
             assert (sub.coupled(w, s) == pytest.approx(
                 coupled.coupled_microstrip(w, s, sub.h, sub.er), rel=1e-12))
+
+
+@pytest.mark.parametrize('r', [0.5, 1.0, 2.0])
+def test_the_gap_model_is_continuous_across_its_two_fits(r):
+    """Garg & Bahl's even-mode fits meet at s/w = 0.3 by a jump (Ce 30 % up at
+    w/h 1, an end-coupled filter's coupling up to 12 % off across it): blended
+    over Substrate.GAP_BLEND, continuous and Cg falling with the gap (gap_for
+    bisects it); the published fits outside the blend."""
+    import math
+    import numpy as np
+    from kicad2ems.dfsynth.microstrip import Substrate
+    sub = Substrate(h=0.2, er=4.4)
+    w = r * sub.h
+    cp = lambda sw: sub.gap(w, sw * w)
+    a, b = cp(0.3 - 1e-9), cp(0.3 + 1e-9)
+    assert a[0] == pytest.approx(b[0], rel=1e-6)
+    assert a[1] == pytest.approx(b[1], rel=1e-6)
+    sws = np.geomspace(0.1, 1.0, 400)
+    cg = np.array([cp(x)[1] for x in sws])
+    assert (np.diff(cg) < 0).all()
+    steps = np.abs(np.diff(np.log([cp(x)[0] for x in sws])))
+    assert steps.max() < 3 * np.median(steps)   # no jump left
+    # the published fits outside the blend
+    def published(sw):
+        mo = r * (0.619 * math.log10(r) - 0.3853)
+        ko = 4.26 - 1.453 * math.log10(r)
+        me, ke = ((0.8675, 2.043 * r ** 0.12) if sw <= 0.3 else
+                  (1.565 / r ** 0.16 - 1, 1.97 - 0.03 / r))
+        k = w * 1e-15
+        co = sw ** mo * math.exp(ko) * (4.4 / 9.6) ** 0.8 * k
+        ce = 12 * sw ** me * math.exp(ke) * (4.4 / 9.6) ** 0.9 * k
+        return 0.5 * ce, 0.5 * co - 0.25 * ce
+    for sw in (0.15, 0.24, 0.36, 0.8):
+        assert cp(sw) == pytest.approx(published(sw), rel=1e-12)

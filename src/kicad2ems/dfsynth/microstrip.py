@@ -181,20 +181,35 @@ class Substrate:
         return formulas.step_extension(w1, w2, self.h, self.er,
                                        self.line(max(w1, w2))[1])
 
+    # Garg & Bahl's two fits of the even-mode capacitance meet at s/w = 0.3 by
+    # a jump (Ce 30 % up at w/h = 1: Cp 8.89 -> 11.99 fF, an end-coupled
+    # filter's coupling up to 12 % off across it): blended over this range of
+    # s/w, in log s/w and log Ce, the fits as published outside it
+    GAP_BLEND = (0.25, 0.35)
+
     def gap(self, w, s):
         """(Cp, Cg) in F of a series gap s in a strip of width w: shunt
         capacitance at each side and the series capacitance across (Garg & Bahl;
-        fitted for 0.5 <= w/h <= 2, 0.1 <= s/w <= 1)."""
+        fitted for 0.5 <= w/h <= 2, 0.1 <= s/w <= 1; their two even-mode fits
+        blended across s/w 0.3, GAP_BLEND)."""
         r, sw = w / self.h, s / w
         mo = r * (0.619 * math.log10(r) - 0.3853)
         ko = 4.26 - 1.453 * math.log10(r)
-        if sw <= 0.3:
-            me, ke = 0.8675, 2.043 * r ** 0.12
+        ce_of = lambda me, ke: 12 * sw ** me * math.exp(ke)
+        lo, hi = self.GAP_BLEND
+        c1 = ce_of(0.8675, 2.043 * r ** 0.12)
+        c2 = ce_of(1.565 / r ** 0.16 - 1, 1.97 - 0.03 / r)
+        if sw <= lo:
+            ce0 = c1
+        elif sw >= hi:
+            ce0 = c2
         else:
-            me, ke = 1.565 / r ** 0.16 - 1, 1.97 - 0.03 / r
+            t = math.log(sw / lo) / math.log(hi / lo)
+            t = t * t * (3 - 2 * t)  # (smoothstep: no kink at either end)
+            ce0 = math.exp((1 - t) * math.log(c1) + t * math.log(c2))
         wm = w * 1e-3
         co = sw ** mo * math.exp(ko) * (self.er / 9.6) ** 0.8 * wm * 1e-12
-        ce = 12 * sw ** me * math.exp(ke) * (self.er / 9.6) ** 0.9 * wm * 1e-12
+        ce = ce0 * (self.er / 9.6) ** 0.9 * wm * 1e-12
         return 0.5 * ce, 0.5 * co - 0.25 * ce
 
     def gap_for(self, w, cg):

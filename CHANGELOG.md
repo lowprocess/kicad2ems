@@ -449,6 +449,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **dfsynth's gap model across s/w = 0.3 (2026-11-25; the review, F56).** Garg and Bahl's two fits of a series
+  gap's even-mode capacitance (s/w up to 0.3, and from 0.3) meet by a jump: on 0.2 mm FR-4 with a 0.38 mm strip
+  Cp 3.61 → 4.92 fF and Cg 6.02 → 5.26 fF between s/w 0.30 and 0.31, so an end-coupled filter's gaps near it were
+  sized on a step. The two are blended over s/w 0.25-0.35 (`Substrate.GAP_BLEND`, smoothly in log s/w and log
+  Ce), the fits as published outside; Cg still falls with the gap (`gap_for`'s bisection). Cp and Cg change by
+  16 % at most, inside the blend. Test: tests/dfsynth/test_line_models.py.
 - **segment `--cavities`: the planes the join and the via model agree on, and a port off the cavity's mesh
   (2026-11-25; the review, F20 F21).** The board's cavities are pairs of planes covering 40 % of its outline
   (`core.cavities`), a via model's planes those covering half its box (`viamodel.planes_of`); where the two
