@@ -449,8 +449,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **gfdtd's GPU choice given back, and an antenna's estimate (2026-11-25; the review, F44 F45).** With
+  `--gfdtd-gpus`, when the measured speeds left one GPU, `jobs()` set `EMSDEV_VULKAN_DEVICE` for the whole process
+  and never put it back: the window's later solves and mom25d's Vulkan LU took that GPU. gfdtd's solve now gives
+  the variable back at its end, a failed one too (solvers run side by side by `--solver-jobs` still see it
+  while it runs). The FDTD estimate meshed an antenna with `air`, not `antenna_air` (lambda / 4 at the band's
+  centre), and its pulse to fmax, not `exc_fmax` (30 % past it), as prepare does: its cells, time and memory
+  came out low, and `--solvers auto` chose by them. Tests: tests/fdtd/test_gfdtd_solver.py.
 - **A config saved with an escaped quote in a string (2026-11-25; the review, F25).** `update_toml` (the window's
-  save) found a line's comment and brackets with `_scan`, which ended a basic string at `\\"`: a bracket after
+  save) found a line's comment and brackets with `_scan`, which ended a basic string at `\"`: a bracket after
   it opened a value that ran on to the next line, and that key was deleted on the rewrite. A backslash escapes the
   next character in a basic string now (a literal one, '...', has none). Test: tests/core/test_runs.py.
 - **A row of vias to ground for qucsator (2026-11-25; the review, F24).** The line model's via element of n barrels

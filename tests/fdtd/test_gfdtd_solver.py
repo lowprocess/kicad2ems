@@ -229,6 +229,32 @@ def test_the_excitations_go_out_to_the_gpus_named(monkeypatch):
 
 
 
+@pytest.mark.parametrize('before', [None, '0'])
+def test_the_gpu_a_solve_chose_is_given_back_at_its_end(monkeypatch, before):
+    """jobs() binds the solve to the one GPU the speeds chose
+    (EMSDEV_VULKAN_DEVICE): given back when the solve ends, a failed one too
+    (it had stayed set, and the next solves took that GPU)."""
+    from kicad2ems.fdtd import gfdtd as G
+    from kicad2ems.fdtd.solver import FDTD
+    if before is None:
+        monkeypatch.delenv('EMSDEV_VULKAN_DEVICE', raising=False)
+    else:
+        monkeypatch.setenv('EMSDEV_VULKAN_DEVICE', before)
+
+    def solve(self, run, p):
+        os.environ['EMSDEV_VULKAN_DEVICE'] = '1'
+        if p == 'fail':
+            raise RuntimeError('the run failed')
+        return 'S'
+    monkeypatch.setattr(FDTD, 'solve', solve)
+    sv = G.GFDTD.__new__(G.GFDTD)
+    assert sv.solve(None, 'ok') == 'S'
+    assert os.environ.get('EMSDEV_VULKAN_DEVICE') == before
+    with pytest.raises(RuntimeError):
+        sv.solve(None, 'fail')
+    assert os.environ.get('EMSDEV_VULKAN_DEVICE') == before
+
+
 def test_the_runs_shared_by_each_gpu_s_speed(tmp_path, monkeypatch):
     """R-D9: each run to the GPU that would finish it first, by the speeds
     measured before (kept by GPU name): a GPU 4.7 times slower gets none of two
@@ -272,3 +298,43 @@ def test_jobs_on_the_gpu_are_as_many_as_its_memory_holds(monkeypatch):
     monkeypatch.setattr(E, 'resolve_backend', lambda name: 'core')
     monkeypatch.setattr(G, '_vram_free', lambda: 1.0)
     assert G.GFDTD().jobs(run, p) == 8
+
+
+def test_an_antenna_s_estimate_has_its_own_air_and_pulse(monkeypatch):
+    """estimate meshes an antenna with antenna_air (lambda / 4 at the band
+    centre), as prepare does, and its pulse reaches exc_fmax (s.air and the
+    band's pulse had put its cells and time low, and --solvers auto with
+    them); a board's run keeps s.air."""
+    from types import SimpleNamespace
+    from kicad2ems.fdtd import mesh, model
+    from kicad2ems.fdtd import solver as S
+    from kicad2ems.fdtd.antenna import antenna_air, exc_fmax
+    got = {}
+
+    def fake_mesh(m, fmin, fmax, air=None, **kw):
+        got['air'] = air
+        return dict(info=dict(cells=1e6, dt_ps=1.0, mem_gb=1.0))
+
+    def fake_pulse(fmin, fmax, dt_ps, exc=None):
+        got['exc'] = exc
+        return 1000
+    monkeypatch.setattr(mesh, 'auto_mesh', fake_mesh)
+    monkeypatch.setattr(model, 'pulse_steps', fake_pulse)
+    monkeypatch.setattr(model, 'port_index', lambda m, e: [0])
+    monkeypatch.setattr(S, '_peak_delay', lambda run: None)
+    monkeypatch.setattr(S, 'mesh_zone', lambda s: None)
+    import kicad2ems.fdtd.boundaries as B
+    monkeypatch.setattr(B, 'resolve_bc', lambda bc, m: bc)
+    sv = S.FDTD.__new__(S.FDTD)
+    for antenna in (True, False):
+        s = SimpleNamespace(antenna=antenna, bc='auto', air=None, res=None,
+                            fine=None, ratio=1.4, nz=None, curves=None,
+                            vias=None, via_snap=None, z_sheet=None,
+                            curve_res=None, thickness='off', nz_mask=None,
+                            end_db=-40, max_steps=10**6, excite=None)
+        sv.estimate(SimpleNamespace(s=s, m=None, fmin=1e9, fmax=3e9))
+        if antenna:
+            assert got['air'] == antenna_air(1e9, 3e9)
+            assert got['exc'] == exc_fmax(1e9, 3e9)
+        else:
+            assert got['air'] is None and got['exc'] is None

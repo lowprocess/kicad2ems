@@ -189,6 +189,19 @@ class GFDTD(FDTD):
             return 1
         return concurrent_runs(p.grid['info']['cells'], len(p.excite))
 
+    def solve(self, run, p):
+        """FDTD's solve, the GPU jobs() chose for it (EMSDEV_VULKAN_DEVICE)
+        given back at its end: it had stayed set for the rest of the process,
+        and the window's next solves and mom25d's Vulkan LU took that GPU."""
+        was = os.environ.get('EMSDEV_VULKAN_DEVICE')
+        try:
+            return super().solve(run, p)
+        finally:
+            if was is None:
+                os.environ.pop('EMSDEV_VULKAN_DEVICE', None)
+            else:
+                os.environ['EMSDEV_VULKAN_DEVICE'] = was
+
     def engine(self, s):
         # gpu: Vulkan's; cpu: the core, else numpy
         return 'gfdtd:' + s.gfdtd_backend

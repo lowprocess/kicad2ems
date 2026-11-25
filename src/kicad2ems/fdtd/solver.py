@@ -407,14 +407,22 @@ class FDTD(Solver):
         from .model import pulse_steps, port_index
         s, m = run.s, run.m
         bc = resolve_bc('PML_8' if s.antenna and s.bc == 'auto' else s.bc, m)
-        g = auto_mesh(m, run.fmin, run.fmax, res=s.res, fine=s.fine, air=s.air,
+        # an antenna's air and its pulse as prepare has them (lambda / 4 of
+        # air, the excitation 30 % past fmax): s.air and the band's pulse had
+        # put its cells, time and memory low, and --solvers auto with them
+        air, fe = s.air, None
+        if s.antenna:
+            from .antenna import antenna_air, exc_fmax
+            air, fe = (antenna_air(run.fmin, run.fmax, s.air),
+                       exc_fmax(run.fmin, run.fmax))
+        g = auto_mesh(m, run.fmin, run.fmax, res=s.res, fine=s.fine, air=air,
                       ratio=s.ratio, nz_min=s.nz, bc=bc, curves=s.curves,
                       vias=s.vias, via_snap=s.via_snap, z_sheet=s.z_sheet,
                       curve_res=s.curve_res, zone=mesh_zone(s),
                       thickness=s.thickness == 'on', nz_mask=s.nz_mask,
                       log=lambda *a: None)
         cells, dt = g['info']['cells'], g['info']['dt_ps'] * 1e-12
-        pulse = pulse_steps(run.fmin, run.fmax, g['info']['dt_ps'])
+        pulse = pulse_steps(run.fmin, run.fmax, g['info']['dt_ps'], fe)
         tg = _peak_delay(run)
         ring = (RING * abs(s.end_db) / 17.4 * tg / dt if tg else
                 (PULSES - 1) * pulse)
