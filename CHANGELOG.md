@@ -10,6 +10,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **A passive rational macromodel of S-parameters, and its transient (`kicad2ems.core.macromodel`, 2026-11-25;
+  the time-domain SI question's first part).** `fit(f, S)` is relaxed vector fitting with every entry on common
+  poles (the fewest of 8, 12, 16 ... within 2e-3 RMS of the largest |S|), stable poles (a causal model), and a DC
+  point where the samples reach low enough (Re S even in ω: the constant of a + b ω² on the lowest samples).
+  `Model.passive()` checks the largest singular value on a dense grid to 3 × fmax and at each pole;
+  `Model.enforce()` projects the model's samples there onto passivity (each singular value above 1 − 1e-3 taken
+  down to it) and fits the residues and D to them again, a small leftover scaled away. `simulate(model, terms, t)`
+  steps it exactly for an input linear over each step (each pole's state: recursive convolution, b = G a + h)
+  with a termination at each port (`Thevenin`, `Load`, or a nonlinear one: Newton), every port's voltage and
+  current. Checked: a known 10-pole model found again to 1e-8; a lossy 100 mm line in 64 poles (RMS 8e-4,
+  passive as fitted, S21(0) 0.998); a lossless line made passive within 1e-3 of its samples; its step into a
+  matched, an open and a 5 Ω end at 0.4995, 0.999 and 0.0908 (0.5, 1.0, 0.0909), the far end's half at the delay
+  and half the edge, to a 2 ps step; the lossy line's far end within 0.5 % of the swing of its closed form's FFT.
+  Test: tests/core/test_macromodel.py.
 - **segment `--cavities`: the board's plane-pair cavities in the join (2026-11-24).** The physics-based via models'
   planes were infinite; now each leaves each cavity its vias cross to the join (`viamodel.build(cavities=)`: each
   barrel segment in it a port, + at its upper node, the box's ground vias there not modelled), and each cavity is
