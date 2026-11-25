@@ -449,6 +449,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **Terminated via ports on mom25d's block low-rank path (2026-11-25; found with the review's F86, F89).** With
+  `excite` (every port terminated, the ones named driven: segment's windows, `--mom-excite`) a port on a via chain
+  has its load in the sparse extras' via rows and columns. The block low-rank solve assembled its factor and its
+  GMRES operator from the extras' edge block (`dZx`) and the vias' border (B, C) alone, and the exact matrix-free
+  product added the edge block alone too, so those loads were not in the system solved: on a strip between two
+  via ports, |S21| 1.95 against the direct solver's 0.98 (|ΔS| 1.09; with thick copper's sides 1.18). The border
+  it is assembled from now has them (`_border_with`), and the exact product adds the extras whole: the direct
+  solver's S to 6e-7 (2e-7 with sides). The direct and mixed-precision paths had them already (1e-7). Gap ports
+  (the segment pieces' cuts) were not affected. Test: tests/mom25d/test_blr.py.
 - **The FDTD mesh graded across its kept lines (2026-11-25; the review, F42).** `smooth_lines` graded each gap
   between kept lines from the widths of the gaps beside it: where one of those was split into small cells, its
   neighbour started from the gap's own width (0.21 mm beside 0.031, 6.8×), and 32 of the 52 examples' default

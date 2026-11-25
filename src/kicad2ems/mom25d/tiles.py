@@ -104,7 +104,7 @@ class _CompiledBLR:
     on_gpu, device_bytes = False, 0
 
     def __init__(self, fo, tiles, boxes, dZx, dsc, tol, eta, double=False,
-                 factor=True, max_bytes=0.0, symmetric=False):
+                 factor=True, max_bytes=0.0, symmetric=False, border=None):
         lo, hi = (np.array([b[0]
                             for b in boxes]), np.array([b[1] for b in boxes]))
         gap = np.linalg.norm(
@@ -117,8 +117,11 @@ class _CompiledBLR:
         order = np.concatenate(tiles).astype(np.int32)
         start = np.r_[0, np.cumsum([len(t) for t in tiles])].astype(np.int32)
         sim, c = fo.sim, np.ascontiguousarray
-        B = c(fo.B, complex) if sim.Nv else np.zeros((sim.Ne, 0), complex)
-        C = c(fo.C, complex) if sim.Nv else np.zeros((0, 0), complex)
+        # border: (B, C) with the extras' via rows and columns (fast's
+        # _border_with), else the operator's own
+        Bf, Cf = border if border is not None else (fo.B, fo.C)
+        B = c(Bf, complex) if sim.Nv else np.zeros((sim.Ne, 0), complex)
+        C = c(Cf, complex) if sim.Nv else np.zeros((0, 0), complex)
         with _one_blas_thread():
             # (double: low frequency, solve_blr)
             make = fo.core.BLRFactor128 if double else fo.core.BLRFactor

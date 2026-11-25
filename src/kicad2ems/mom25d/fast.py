@@ -332,8 +332,11 @@ class FastOperator:
                     x, self.g, self.tb, self.q, self.nP32, self.nQ32, self.w)))
         if self.dZ_exact is None:
             self._near_kept()
-        return self._bordered(
-            X, far + near + (Sx[:Ne, :Ne] @ Xe if Sx is not None else 0))
+        Y = self._bordered(X, far + near)
+        # the extras whole: the loads of ports on via chains (excite) are in
+        # the via rows and columns, which the edges' block alone had left out
+        # (the block low-rank path's fallback, _reuse)
+        return Y + Sx @ X if Sx is not None and Sx.nnz else Y
 
     def _bordered(self, X, Ye):
         """Z X from Ye, the edge-edge block's product: the via rows and columns
@@ -1424,11 +1427,27 @@ class FastOperator:
             border += nd[sd.ib[sd.vert[:, 1]]].tolist()
         return np.vstack([sim.rwg.mid] + ([np.array(border)] if border else []))
 
-    def _raw_entry(self, dZx):
+    def _border_with(self, Sx):
+        """(B, C) with the sparse extras' via rows and columns added (a
+        terminated via port's load): the block low-rank
+        assembly takes the extras' edge block as dZx and the border as B, C,
+        and had left those out (terminated via ports: |S21| 1.95 against the
+        direct solver's 0.98). The extras' border is symmetric (Sx[Ne:, :Ne]
+        = Sx[:Ne, Ne:]^T): their lower rows are B's transpose."""
+        sim, Ne = self.sim, self.sim.Ne
+        if not sim.Nv or not Sx.nnz:
+            return self.B, self.C
+        Sx = sparse.csr_matrix(Sx)
+        return (self.B + Sx[:Ne, Ne:].toarray(),
+                self.C + Sx[Ne:, Ne:].toarray())
+
+    def _raw_entry(self, dZx, border=None):
         """entry(rows, cols): the dense block of Z (far field from the core, the
-        sparse near correction and extra blocks dZx, the via rows and columns),
-        any unknowns, original numbering."""
+        sparse near correction and extra blocks dZx, the via rows and columns:
+        border's (B, C), else the operator's), any unknowns, original
+        numbering."""
         Ne, Nv = self.sim.Ne, self.sim.Nv
+        Bb, Cb = border if border is not None else (self.B, self.C)
 
         def raw(rows, cols):
             M = np.zeros((len(rows), len(cols)), complex)
@@ -1440,14 +1459,14 @@ class FastOperator:
                         np.int32), c_.astype(np.int32), self.g, self.tb, self.w)
                                 + dZx[r_][:, c_].toarray())
             if Nv:  # (empty selections assign nothing)
-                M[np.ix_(re, ~ce)] = self.B[rows[re]][:, cols[~ce] - Ne]
-                M[np.ix_(~re, ce)] = self.B[cols[ce]][:, rows[~re] - Ne].T
-                M[np.ix_(~re, ~ce)] = (self.C[np.ix_(rows[~re] - Ne,
-                                                     cols[~ce] - Ne)])
+                M[np.ix_(re, ~ce)] = Bb[rows[re]][:, cols[~ce] - Ne]
+                M[np.ix_(~re, ce)] = Bb[cols[ce]][:, rows[~re] - Ne].T
+                M[np.ix_(~re, ~ce)] = (Cb[np.ix_(rows[~re] - Ne,
+                                                 cols[~ce] - Ne)])
             return M
         return raw
 
-    def _blr_operator(self, f, tiles, boxes, dZx, dsc, Sx):
+    def _blr_operator(self, f, tiles, boxes, dZx, dsc, Sx, border=None):
         """The block low-rank solve's GMRES operator (the equilibrated matrix):
         compressed in double to BLR_OP_TOL, its tiles at most the dense
         half's bytes and what memory leaves (BLR_OP_ROOM of the free less
@@ -1468,7 +1487,8 @@ class FastOperator:
             # symmetric: half the bytes and the assembly)
             op = _CompiledBLR(self, tiles, boxes, dZx, dsc, BLR_OP_TOL, -1.0,
                               double=True, factor=False, max_bytes=budget,
-                              symmetric=BLR_OP_SYM and self._symmetric(Sx))
+                              symmetric=BLR_OP_SYM and self._symmetric(Sx),
+                              border=border)
         if not op.over:
             sim.log.note(
                 f"BLR operator: {op.memory / 2 ** 20:.0f} MB "
@@ -1503,13 +1523,14 @@ class FastOperator:
             return X
         st.kept, t_fresh = [], time.time()
         dZx = (self.dZ + Sx[:Ne, :Ne]).tocsr()
+        border = self._border_with(Sx)
         pts = self._points()
         if getattr(sim, 'blr_tiles', 'geometric') == 'copper':
             from .tiles import cluster_groups, components
             tiles, boxes = cluster_groups(pts, components(sim, pts), tile)
         else:
             tiles, boxes = cluster_tiles(pts, tile)
-        raw = self._raw_entry(dZx)
+        raw = self._raw_entry(dZx, border)
         # low frequency, and no room for the loop/tree basis's dense matrix: the
         # factor in double precision, its compression a hundredth of (k h)^2
         # (the loops' share of the matrix: what a looser one truncates away)
@@ -1544,7 +1565,8 @@ class FastOperator:
         # low frequency, where the loops' part of an entry is below that
         A = lambda V: dsc[:, None] * self.matvec_exact(dsc[:, None] * V, Sx)
         if not low and getattr(sim, 'blr_op', 'compressed') == 'compressed':
-            A = self._blr_operator(f, tiles, boxes, dZx, dsc, Sx) or A
+            A = self._blr_operator(f, tiles, boxes, dZx, dsc, Sx,
+                                   border) or A
         # tighter after a factor that did not precondition
         tol = min(tol, getattr(self, '_blr_tol', tol))
         while True:
@@ -1552,7 +1574,7 @@ class FastOperator:
                     'BLR assemble + factor',
                     f"N={N}, {len(tiles)} tiles, tolerance {tol:g}, compiled"):
                 self.blr = blr = _CompiledBLR(self, tiles, boxes, dZx, dsc, tol,
-                                              eta, double=low)
+                                              eta, double=low, border=border)
             sim.log.note(
                 f"BLR: {blr.memory / 2 ** 20:.0f} MB "
                 f"({100 * blr.memory / (8 * N * N):.0f}% of complex64 dense, "

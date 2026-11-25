@@ -325,3 +325,23 @@ def test_tiles_by_copper_split_no_piece_with_another():
     ref = _sim('direct').sparams(4e9)
     sim.blr_tiles, sim.blr_tile = 'copper', 128
     assert np.abs(sim.sparams(4e9) - ref).max() < 1e-6
+
+
+@pytest.mark.parametrize('sides', [None, dict(t={1: 35e-6, 2: 35e-6},
+                                              up={1: False, 2: True})])
+def test_terminated_via_ports_on_the_blr_path(sides):
+    """excite (every port terminated, one driven: segment's windows): the
+    loads of ports on via chains are in the sparse extras' via rows, which the
+    block low-rank assembly (dZx: the edges' block; the border B, C) and the
+    exact products had left out: |S21| 1.95 against the direct solver's 0.98.
+    Now the direct solver's S to 1e-6, with thick copper's sides too."""
+    pytest.importorskip('kicad2ems.mom25d._core')
+    ref = _sim('direct', sides=sides)
+    ref.excite = [0]
+    R = ref.sparams(4e9)
+    sim = _sim(sides=sides)
+    sim.blr_tile, sim.blr_tol, sim.blr_eta = 128, 1e-3, 0.7
+    sim.excite = [0]
+    S = sim.sparams(4e9)
+    assert abs(abs(R[1, 0]) - 0.98) < 0.02
+    assert np.abs(S - R).max() < 1e-5
