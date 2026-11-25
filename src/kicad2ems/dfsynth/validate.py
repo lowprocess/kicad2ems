@@ -194,6 +194,13 @@ def validate(design, base, solvers='mom,lines', extra=(), log=print, tag=''):
     s11)})."""
     outdir = base + '_em' + tag
     os.makedirs(outdir, exist_ok=True)
+    # this round's results only: the last round's Touchstone files (another
+    # design, another solver) had been read with them by run_kicad2ems's
+    # listing, and --em-tune corrected the design from a stale response
+    stem = os.path.splitext(os.path.basename(base + '.toml'))[0]
+    for name in os.listdir(outdir):
+        if name.startswith(stem + '_') and name.endswith('.s2p'):
+            os.remove(os.path.join(outdir, name))
     files = run_kicad2ems(base + '.toml', outdir, solvers, extra, log)
     results = {}
     for name, path in files.items():

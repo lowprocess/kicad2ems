@@ -190,8 +190,9 @@ def order_from_atten(spec, atten):
         om = spec.f0 / fs
     elif spec.kind == 'bandpass':
         om = abs(fs / f0 - f0 / fs) / fbw
-    else:
-        om = fbw / abs(fs / f0 - f0 / fs)
+    else:  # (at f0 itself any order: its stop band's centre)
+        d = abs(fs / f0 - f0 / fs)
+        om = fbw / d if d else math.inf
     return estimate_order(spec.response, a, om, spec.ripple)
 
 
@@ -261,12 +262,15 @@ def main(argv=None):
     }
     if kw:
         sub = sub.with_(name=sub.name + ' (modified)', **kw)
-    spec = Spec(a.type, topo, a.f0, a.bw, a.response, a.order or 5, a.ripple,
+    # (--order 0 is refused by the spec, not taken for "not given": it had
+    # become 5)
+    spec = Spec(a.type, topo, a.f0, a.bw, a.response,
+                5 if a.order is None else a.order, a.ripple,
                 a.z0, a.zhigh, a.zlow, a.zstub, a.feed, stub_angle=a.stub_angle,
                 hairpin_gap=a.hairpin_gap)
     try:
         spec.check()
-        if a.atten and not a.order:
+        if a.atten and a.order is None:
             spec.order = order_from_atten(spec, a.atten)
             print(f"order {spec.order} meets {a.atten}")
         if a.no_calibrate:

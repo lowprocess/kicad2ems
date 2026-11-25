@@ -449,6 +449,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **dfsynth at the edges of what is asked, and its validation's stale results (2026-11-25; the review, F52 F54
+  F55).** A validation read every `<base>_*.s2p` in its `_em` folder, so the last round's files (another design,
+  a solver not asked now) were read, plotted and reported with this round's, and `--em-tune` could correct
+  kf/kb from a stale response; they are removed before each run now. A band-stop's `--atten` at f0 itself
+  divided by zero (a traceback); any order meets it there. An interdigital filter of order 1 failed on
+  `max()` of no couplings; it is made of order 2, said as the stub band-pass's minimum is. `--order 0` had
+  become 5 (`a.order or 5`); the spec refuses an order below 1. Tests: tests/dfsynth/test_synthesis.py.
 - **mom25d's last rung, the double LDL^T, checked (2026-11-25; the review, F15).** Where every complex64 factor had
   failed and the whole matrix did not fit for the pivoted LU, the half's own LDL^T in double, without pivoting,
   gave the answer with no check: the rung is reached on near-singular matrices, where such a factor can be far

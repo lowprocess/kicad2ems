@@ -77,6 +77,8 @@ class Spec:
         if self.topology not in KINDS[self.kind]:
             raise ValueError(
                 f"{self.kind} topologies: {', '.join(KINDS[self.kind])}")
+        if not isinstance(self.order, int) or self.order < 1:
+            raise ValueError(f"the order must be 1 or more (got {self.order})")
         if self.kind in ('bandpass', 'bandstop') and not 0 < self.fbw < 1.5:
             raise ValueError(
                 "bandpass / bandstop need a bandwidth between 0 and 1.5 x the "
@@ -1291,6 +1293,11 @@ def prepare(spec):
             and spec.order < 3):
         notes.append("stub band-pass needs at least 3 stubs: using order 3")
         spec.order = 3
+    # (a coupling between its rods is what it is made of: one rod had failed
+    # on max() of no couplings)
+    if spec.topology == 'interdigital' and spec.order < 2:
+        notes.append("interdigital needs at least 2 rods: using order 2")
+        spec.order = 2
     return notes
 
 

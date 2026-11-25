@@ -358,3 +358,37 @@ def test_the_filter_as_a_footprint(tmp_path, kind, topo):
     assert float(at[1]) == pytest.approx(
         x + 0.25 * math.cos(math.radians(rot)) - geo.W / 2, abs=1e-3)
     assert float(at[2]) == pytest.approx(y - geo.H / 2, abs=1e-3)
+
+
+def test_orders_at_the_edges_of_what_is_asked():
+    """A band-stop's attenuation asked at f0 itself: any order (had divided by
+    zero); an interdigital of order 1: two rods, said (max() of no couplings
+    had failed); order 0: refused (the command line had made it 5)."""
+    from kicad2ems.dfsynth.cli import order_from_atten
+    from kicad2ems.dfsynth.topologies import prepare
+    bs = Spec('bandstop', 'stub', 2.4e9, 0.3e9, 'chebyshev', 5, 0.1)
+    assert order_from_atten(bs, '40@2.4G') == 1
+    idg = Spec('bandpass', 'interdigital', 2.4e9, 0.25e9, 'chebyshev', 1, 0.1)
+    notes = prepare(idg)
+    assert idg.order == 2 and any('at least 2 rods' in n for n in notes)
+    build(idg, Substrate.preset('RO4003C-0.508'))
+    with pytest.raises(ValueError, match='order must be 1 or more'):
+        Spec('lowpass', 'stepped', 2e9, 0, 'chebyshev', 0, 0.1).check()
+
+
+def test_a_validation_reads_this_round_s_results_only(tmp_path, monkeypatch):
+    """The last round's Touchstone files in the _em folder (another design,
+    a solver not asked now) are not this round's: removed before the run
+    (they had been read, and --em-tune corrected from them)."""
+    from kicad2ems.dfsynth import validate as V
+    base = str(tmp_path / 'f')
+    em = tmp_path / 'f_em'
+    em.mkdir()
+    (em / 'f_gfdtd.s2p').write_text('stale')
+    (em / 'notes.txt').write_text('kept')
+    seen = []
+    monkeypatch.setattr(V, 'run_kicad2ems', lambda toml, outdir, *a, **k:
+                        seen.append(sorted(os.listdir(outdir))) or {})
+    with pytest.raises(RuntimeError, match='wrote no S-parameters'):
+        V.validate(None, base, solvers='mom', log=lambda *a: None)
+    assert seen == [['notes.txt']]
