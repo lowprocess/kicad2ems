@@ -87,8 +87,8 @@ def config_values(panel, base=None, vals=None):
     (of vals, a run of its table, when given), and its own board and folder;
     paths (the analysis's, and those two) relative to `base`."""
     out = {}
-    rel = lambda p: os.path.relpath(os.path.abspath(p), base).replace(
-        os.sep, '/') if base else p
+    from .runner import relative
+    rel = lambda p: relative(os.path.abspath(p), base) if base else p
     for key, edit in (('board', panel.board), ('out', panel.outdir)):
         if edit.text().strip():
             out[key] = rel(edit.text().strip())

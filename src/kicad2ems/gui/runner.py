@@ -145,6 +145,17 @@ def write_toml(path, values):
     _write_toml(path, solvers_from_form(values))
 
 
+def relative(path, base):
+    """path relative to base, with '/', where there is a relative path: on
+    Windows another drive (or a UNC share) has none, and os.path.relpath's
+    ValueError had stopped a config's save halfway (its analyses' tables not
+    written); there the path as it is."""
+    try:
+        return os.path.relpath(path, base).replace(os.sep, '/')
+    except ValueError:
+        return path
+
+
 def _rel(path, base):
     """A path written relative to the config's folder where that is possible
     (portable configs), with '/' (Windows reads it too, and the config moves

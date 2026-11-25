@@ -189,6 +189,7 @@ class StudyDocument:
             return [self._relative(t, key, base) for t in tab]
         from kicad2ems.core.analyses import registry
         paths = (*getattr(registry().get(key), 'paths', ()), 'board', 'out')
-        rel = lambda v: (os.path.relpath(v, base).replace(os.sep, '/')
+        from .runner import relative
+        rel = lambda v: (relative(v, base)
                          if isinstance(v, str) and os.path.isabs(v) else v)
         return {k: (rel(v) if k in paths else v) for k, v in tab.items()}

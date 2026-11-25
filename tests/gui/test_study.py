@@ -1039,6 +1039,41 @@ def test_a_half_typed_number_is_said_not_frozen(window):
     assert w.setup.values()['fmin'] == 1.5 and not w.setup.bad
 
 
+def test_a_config_with_a_half_typed_number_is_not_saved(window, tmp_path,
+                                                        monkeypatch):
+    """Save with a field that is not a number ('2,5'): refused and said, as
+    Run is (the config had been written without that key and "saved"); the
+    file as it was."""
+    from PySide6.QtWidgets import QMessageBox
+    w, app, _ = window
+    said = []
+    monkeypatch.setattr(QMessageBox, 'warning',
+                        lambda *a, **k: said.append(a[2]))
+    p = tmp_path / 'c.toml'
+    p.write_text('fmin = 1.0\n', encoding='utf-8')
+    w.setup.edits['fmin'][0].setText('2,5')
+    try:
+        assert w.setup._write(str(p)) is False
+        assert ('not saved' in said[-1] and "'2,5'" in said[-1]
+                and p.read_text(encoding='utf-8') == 'fmin = 1.0\n')
+    finally:
+        w.setup.edits['fmin'][0].setText('1.5')
+
+
+def test_a_path_on_another_drive_is_kept_as_it_is(monkeypatch):
+    """runner.relative: a path with no relative form (Windows: another drive,
+    a UNC share) as it is; os.path.relpath's ValueError had stopped a save
+    halfway (the analyses' tables not written)."""
+    import os
+    from kicad2ems.gui import runner
+
+    def relpath(p, base):
+        raise ValueError('path is on mount C:, start on mount D:')
+    assert runner.relative('/a/b/c.kicad_pcb', '/a') == 'b/c.kicad_pcb'
+    monkeypatch.setattr(os.path, 'relpath', relpath)
+    assert runner.relative('D:/x/b.kicad_pcb', 'C:/c') == 'D:/x/b.kicad_pcb'
+
+
 def test_another_board_lists_its_own_runs(window, tmp_path):
     """Results of follows the board: after another board is chosen it lists that
     board's runs, and a run of the last one leaves the pages (they had kept it,

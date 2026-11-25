@@ -449,6 +449,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **The window's Save with a field that is not a number, and paths on another drive (2026-11-25; the review, F62
+  F63).** Save wrote `values()`, which leaves out a field that is not a number (`2,5` with a comma, a half-typed
+  `1e`): the config lost that key and the window said "saved". Save now refuses it and says which field, as Run
+  does. On Windows, an analysis's board on another drive than the config (or on a UNC share) has no relative path:
+  `os.path.relpath` raised in `config_values`, the study document's tables and the circuit page, after the main
+  config was written, and the save stopped halfway; `runner.relative` keeps such a path as it is. Tests:
+  tests/gui/test_study.py.
 - **gfdtd's GPU choice given back, and an antenna's estimate (2026-11-25; the review, F44 F45).** With
   `--gfdtd-gpus`, when the measured speeds left one GPU, `jobs()` set `EMSDEV_VULKAN_DEVICE` for the whole process
   and never put it back: the window's later solves and mom25d's Vulkan LU took that GPU. gfdtd's solve now gives

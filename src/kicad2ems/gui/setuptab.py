@@ -935,9 +935,19 @@ class SetupTab(QWidget):
         return self._write(path)
 
     def _write(self, path):
+        vals = self.values()
+        if getattr(self, 'bad', None):
+            # (as Run refuses it: values() leaves a field that is not a number
+            # out, and the config had been written without it, said "saved")
+            k, v = next(iter(self.bad.items()))
+            QMessageBox.warning(
+                self, 'Config',
+                f"not saved: {k.replace('_', ' ')}: {v!r} is not a number "
+                "(a point before the decimals)")
+            return False
         try:
             # keeps the comments of the loaded file
-            self.doc.values = self.values()
+            self.doc.values = vals
             save_config(path, self.doc.values, template=self.path)
             if hasattr(self.win, 'save_analyses'):
                 self.win.save_analyses(path)

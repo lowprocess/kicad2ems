@@ -517,8 +517,8 @@ class PowerCircuitTab(QWidget):
                            and self.refused is None):
             return {}
         base=Path(config).resolve().parent;tab={}
-        rel = lambda p: os.path.relpath(os.path.abspath(p), base).replace(
-            os.sep, '/')
+        from .runner import relative
+        rel = lambda p: relative(os.path.abspath(p), base)
         # the config's own, which would not load: as it was
         if self.refused is not None and self.model_path is None:
             tab['model']=rel(self.refused)
