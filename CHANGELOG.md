@@ -449,6 +449,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **A rotated footprint's pads in a KiCad 4/5 file (2026-11-25; the review, F03).** The importer added the
+  footprint's rotation to each pad's angle in a `(module ...)`, but a board file's pad angle already holds it,
+  in a module as in a `(footprint ...)`: every pad of a footprint not at 0 or 180 degrees was turned a quarter
+  turn. KiCad's qa `issue4139` (5.99): R1's pads 0.70 x 1.30 mm instead of 1.30 x 0.70. The LimeRFE (KiCad 4):
+  194 pairs of pads of two nets overlapping in 30 footprints, none now; hackrf-one and LibreVNA (`footprint`)
+  unchanged. Some of what segment said of the LimeRFE's file (its overlapping net pairs) came from this. Test:
+  `test_a_rotated_footprint_s_pads_keep_their_board_angle`, a module and a footprint alike.
 - **Part values as libraries and BOMs write them (2026-11-25; the whole-repo review, F01 F02 F50 F51).** Three
   parsers read a part's value, and each had its own gaps, silently. `core.units.value` took no space before the
   prefix and matched the unit in one case, and both fallbacks took the first word that read as a number, which

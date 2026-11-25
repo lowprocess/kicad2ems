@@ -167,6 +167,30 @@ def test_a_kicad4_board_s_own_copper_layer_names():
     assert kb.copper_order == ['F.Cu', 'In1.Cu', 'B.Cu']
 
 
+@pytest.mark.parametrize('token', ['module', 'footprint'])
+def test_a_rotated_footprint_s_pads_keep_their_board_angle(token):
+    """A pad's angle in a board file already holds its footprint's rotation,
+    in a (module ...) as in a (footprint ...): an 0805 at -90 degrees, its pads
+    at 270, is 1.3 mm along x and 0.7 along y (adding the rotation again to a
+    module's had turned it a quarter turn: KiCad's qa issue4139, and 194 pairs
+    of pads of two nets overlapping in 30 of a LimeRFE's footprints)."""
+    from kicad2ems.core.importers.kicad import KiCadBoard
+    text = f'''(kicad_pcb (version 4) (host pcbnew 4.0.7)
+  (layers (0 F.Cu signal) (31 B.Cu signal) (44 Edge.Cuts user))
+  (net 0 "") (net 1 A) (net 2 B)
+  ({token} R_0805 (layer F.Cu) (at 10 10 -90)
+    (pad 1 smd rect (at -0.95 0 270) (size 0.7 1.3) (layers F.Cu) (net 1 A))
+    (pad 2 smd rect (at 0.95 0 270) (size 0.7 1.3) (layers F.Cu) (net 2 B)))
+  (gr_line (start 0 0) (end 20 0) (layer Edge.Cuts) (width 0.1))
+)'''
+    pads = KiCadBoard(text=text).footprints[0]['pads']
+    for p in pads:
+        x0, y0, x1, y1 = p['geom'].bounds
+        assert (x1 - x0, y1 - y0) == (pytest.approx(1.3), pytest.approx(0.7))
+    assert sorted(round(p['xy'][1], 6) for p in pads) == [9.05, 10.95]
+    assert not pads[0]['geom'].intersects(pads[1]['geom'])
+
+
 def test_part_values_with_package_and_part_number():
     """parts.kind_value: '<value>_<package>_<part number>' (a LimeRFE's BOM
     style), 'NF' / '0RNF' not fitted, a ferrite bead by its rated impedance;

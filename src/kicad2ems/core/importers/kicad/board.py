@@ -460,9 +460,12 @@ class KiCadBoard(Imported):
         for pad in sx.items(fp, 'pad'):
             pat = sx.item(pad, 'at')
             pxy = np.array([float(pat[1]), float(pat[2])])
+            # the pad's angle on the board, its footprint's rotation in it, in
+            # every version's board file: (module ...) and (footprint ...)
+            # alike (adding the rotation to a module's had turned rotated pads
+            # a quarter turn: 194 pairs of pads of two nets overlapping in 30
+            # of the LimeRFE's footprints, KiCad 4)
             prot = float(pat[3]) if len(pat) > 3 else 0.0
-            if fp[0] == 'module':  # KiCad 5: pad angle relative
-                prot += rot
             centre = np.array(org) + shp.rot(pxy, rot)
             drill = sx.item(pad, 'drill')
             # the copper's offset from the hole
