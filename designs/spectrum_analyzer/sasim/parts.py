@@ -202,6 +202,23 @@ def pma3_83ln(name="PMA3-83LN+"):
                       op1db=20.7)
 
 
+def trf37d73(name="TRF37D73"):
+    """TI TRF37D73 gain block, 1 MHz-6 GHz: the band A preamp, because it
+    covers all of band A (the PMA3-83LN+ starts at 0.5 GHz).  Datasheet
+    SLASE43 table 6.5: gain 22 / 19.5 / 18 / 15.5 / 13 / 10 dB at 0.4 / 2 / 3
+    / 4 / 5 / 6 GHz, and at 2 GHz NF 3.25 dB, OIP3 +27.5 dBm, output P1dB
+    +16.5 dBm.  Assumed: the gain under 400 MHz (flat: it depends on the
+    bias inductor and the blocking capacitors), the noise figure away from
+    2 GHz (flat), and OIP2 +45 dBm (the datasheet gives none)."""
+    gain = table([(1e6, 22.0), (0.4 * GHZ, 22.0), (2 * GHZ, 19.5),
+                  (3 * GHZ, 18.0), (4 * GHZ, 15.5), (5 * GHZ, 13.0),
+                  (6 * GHZ, 10.0), (9 * GHZ, 2.0), (14 * GHZ, -8.0)])
+    return _from_file(name, "TRF37D73", gain,
+                      "TI datasheet SLASE43 table 6.5 (gain by frequency; "
+                      "NF, OIP3, P1dB at 2 GHz); OIP2 assumed", nf=const(3.25),
+                      oip3=27.5, oip2=45.0, op1db=16.5)
+
+
 def amplifier_off(name="PMA3-83LN+ (unpowered)", iso_db=20.0):
     return Part(name, "assumed %g dB through an unpowered LNA" % iso_db,
                 const(-iso_db))

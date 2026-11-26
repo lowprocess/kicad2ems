@@ -111,3 +111,15 @@ def test_a_noise_like_signal_reads_its_density(sa):
     mean = 10 * np.log10(np.mean(10 ** (p / 10)))
     enbw = sa.capture([], 2.44 * GHZ)[2]["enbw"]
     assert mean == pytest.approx(lv - 10 * np.log10(bw / enbw), abs=1.5)
+
+
+@pytest.mark.parametrize("f", [100.3 * MHZ, 1.0002 * GHZ, 4.0002 * GHZ])
+def test_the_preamps_buy_noise_figure_with_linearity(sa, f):
+    quiet, loud = Analyzer(att_db=0.0), Analyzer(att_db=0.0, preamp=True)
+    _, off = quiet.budget(f)
+    _, on = loud.budget(f)
+    assert off["nf_effective"] - on["nf_effective"] > 10.0
+    assert off["iip3"] - on["iip3"] > 15.0
+    fc = loud.centres(f, f)[0]
+    fin, p, info = loud.capture([Signal(f, -70.0)], fc)
+    assert peak(fin, p, f) == pytest.approx(-70.0, abs=0.5)

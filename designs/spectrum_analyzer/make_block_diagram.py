@@ -13,7 +13,7 @@ The drawing is the design that sasim.analyzer builds: change both together.
 import os
 import sys
 
-W, H = 1180, 770
+W, H = 1240, 770
 YA, YB1, YB2, YIN, YB, YM2, YIF = 150, 290, 390, 270, 340, 245, 590
 
 out = []
@@ -102,6 +102,8 @@ def draw():
     wire([(sw1, YA), (xa, YA)], "wa")
     x = block(xa, YA, 96, ["Low-pass", "2× LFCN-2250+", "2.3 GHz"])
     wire([(x, YA), (x + 16, YA)], "wa")
+    x = block(x + 16, YA, 104, ["Preamp", "TRF37D73", "~+21 dB, or bypass"])
+    wire([(x, YA), (x + 16, YA)], "wa")
     x = pad(x + 16, YA)
     mx1 = x + 16 + 17
     wire([(x, YA), (mx1 - 17, YA)], "wa")
@@ -120,7 +122,7 @@ def draw():
     wire([(x, YA), (x + 18, YA)], "wa")
     x = block(x + 18, YA, 84, ["Low-pass", "radial stub", "4.0 GHz"],
               printed=True)
-    sw2 = 972
+    sw2 = 1032
     wire([(x, YA), (sw2, YA)], "wa")
 
     # LO1, above the first mixer
@@ -151,7 +153,7 @@ def draw():
 
     # ---- the second mixer
     x = switch(sw2, 122, 368, "SW2 · PE42540 · mixer 2 select")
-    mx2 = 1090
+    mx2 = 1150
     wire([(x, YM2), (mx2 - 17, YM2)])
     mixer(mx2, YM2)
     text(mx2 + 24, YM2 - 3, "MIX2", "t1", "start")

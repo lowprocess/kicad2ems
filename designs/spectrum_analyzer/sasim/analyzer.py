@@ -7,6 +7,8 @@ of captures.
     Band A   to 2.29 GHz with two LMX2582: up-conversion in the first mixer to
              a 3.2 GHz first IF (LO1 = f + IF1, 3.2-5.5 GHz), the printed
              band-pass, the second mixer down to 10 MHz
+    Each band has a preamp after its first filter, between two switches:
+    `preamp=True` puts both in, and they are bypassed otherwise.
     Band B1  2.29-3.45 GHz, band B2 3.45-5.49 GHz: straight into the second
              mixer, LO2 10 MHz from the signal: no image rejection in hardware
 
@@ -104,16 +106,29 @@ class Analyzer:
 
         front = [Lin(P.dc_block_limiter()),
                  Lin(P.pe43711(self.att_db, "input PE43711"))]
-        lna = (P.pma3_83ln("preamp PMA3-83LN+") if self.preamp else
-               P.pad(1.6, "preamp bypass (two switch passes)"))
-        lna_a = (P.pma3_83ln("preamp PMA3-83LN+")
-                 if self.lna_powered_in_band_a else
-                 P.amplifier_off("preamp PMA3-83LN+ (unpowered)"))
+
+        def preamp(band, lna):
+            """A preamp between two switches: through it, or past it."""
+            sw = [Lin(P.pe42540("on", "band %s preamp switch (%s)" % (band, n)))
+                  for n in ("in", "out")]
+            return [sw[0]] + ([Lin(lna)] if lna is not None else []) + [sw[1]]
+
+        on = self.preamp
+        pre_a = preamp("A", P.trf37d73("band A preamp TRF37D73")
+                       if on else None)
+        pre_b = preamp("B", P.pma3_83ln("band B preamp PMA3-83LN+")
+                       if on else None)
+        # band B's preamp while band A is selected: switched in and powered
+        # down, for what isolation that adds to the band switches'
+        pre_b_idle = preamp("B", P.pma3_83ln("band B preamp PMA3-83LN+")
+                            if self.lna_powered_in_band_a else
+                            P.amplifier_off("band B preamp (unpowered)"))
         if2_out = (0.0, backend.OSR * self.adc.fs / 2)
 
         a = (front + [Lin(P.pe42540("on", "SW1 (band select)")),
                       Lin(P.lfcn2250()), Lin(P.lfcn2250())]
              + ([Lin(self.if1_lpf)] if self.extra_lpf else [])
+             + pre_a
              + [Lin(P.pad(self.pad1_db, "%g dB pad (mixer 1 IF port)"
                           % self.pad1_db)),
                 Mix(self.mx1, "lo1", "up", out=(0.2 * GHZ, 14 * GHZ)),
@@ -124,16 +139,15 @@ class Analyzer:
                 Lin(self.if1_lpf),
                 Lin(P.pe42540("on", "SW2 (mixer 2 select)")),
                 Mix(self.mx2, "lo2", "down", out=if2_out)])
-        leak = [Lin(P.pe42540("off", "SW1")), Lin(b_bpf["B2"]),
-                Lin(b_lpf["B2"]),
-                Lin(P.pe42540("on", "SW3 (B1/B2)")), Lin(lna_a),
-                Lin(P.pe42540("off", "SW2"))]
+        leak = ([Lin(P.pe42540("off", "SW1")), Lin(b_bpf["B2"]),
+                 Lin(b_lpf["B2"]), Lin(P.pe42540("on", "SW3 (B1/B2)"))]
+                + pre_b_idle + [Lin(P.pe42540("off", "SW2"))])
         self.chains = {"A": Chain("A", a, leak, fork=2, join=len(a) - 1)}
         for b in ("B1", "B2"):
             self.chains[b] = Chain(b, front + [
                 Lin(P.pe42540("on", "SW1 (band select)")), Lin(b_bpf[b]),
                 Lin(b_lpf[b]),
-                Lin(P.pe42540("on", "SW3 (B1/B2)")), Lin(lna),
+                Lin(P.pe42540("on", "SW3 (B1/B2)"))] + pre_b + [
                 Lin(P.pe42540("on", "SW2 (mixer 2 select)")),
                 Mix(self.mx2, "lo2", "down", out=if2_out)])
         self.if_parts = [P.diplexer_lp(), P.lmh6629(20.0, "LMH6629 #1"),

@@ -33,6 +33,9 @@ in 10 MHz steps (5 MHz below 3.55 GHz) and the FFT does the rest, so there are
 no fractional spurs to model. One capture is 4096 samples: 10 MHz of span, an
 RBW of 19.6 kHz.
 
+Each band has a preamp after its first filter (a TRF37D73 in band A, a
+PMA3-83LN+ in band B), between two switches, and bypassed unless asked for.
+
 Neither path rejects the second mixer's image in hardware. The analyzer does
 it in software: each step is captured twice, the second time with LO2 on the
 other side of the signal, and the lower reading is kept (`image_reject`).
@@ -41,14 +44,18 @@ other side of the signal, and the lower reading is kept (`image_reject`).
 
 The numbers are from [results/report.md](results/report.md).
 
-- **Noise.** Band A has a 20 dB noise figure with the attenuator at 0 dB, and
-  23 dB counting the second mixer's image noise: -151 dBm/Hz. Six of those dB
-  are the two 3 dB pads either side of the first mixer (`--pads 0 0`: 17 dB
-  with the image).
-  Band B is 25 dB without the preamp and 10 dB with it.
-- **Linearity.** IIP3 is +7.7 dBm at 0 dB attenuation in band A, set by the
+- **Noise.** With the preamps bypassed and the attenuator at 0 dB, band A
+  has a 21 dB noise figure, 24 dB counting the second mixer's image noise:
+  -150 dBm/Hz. Six of those dB are the two 3 dB pads either side of the first
+  mixer (`--pads 0 0`: 18.5 dB with the image). Band B is 25 dB.
+- **The preamps** (`--preamp`) bring both bands to 10-13 dB, -163 dBm/Hz at
+  1 GHz. They cost their gain in linearity: band A's IIP3 goes from +9 to
+  -12 dBm and the ADC's full scale from -16 to -37 dBm at the input, so they
+  are for weak signals only. Each sits after its band's first filter, so
+  that it never sees the signals that filter removes.
+- **Linearity.** IIP3 is +9.1 dBm at 0 dB attenuation in band A, set by the
   two mixers; the spur-free range is 106 dB in 1 Hz, 77 dB in this RBW. The
-  ADC clips (-17.8 dBm at the input) before either mixer compresses.
+  ADC clips (-16.3 dBm at the input) before either mixer compresses.
 - **The image** reads at full level, 20 MHz below every signal, with one
   capture per step. Two captures take it down to -73 dBc and no further:
   the IF is a quarter of the sampling rate, so the image in one capture and
@@ -87,6 +94,7 @@ The numbers are from [results/report.md](results/report.md).
 | LMX2582 | TI datasheet SNAS680E: the open-loop VCO table, PLL noise floor and flicker, output power, harmonics, phase-detector spur. The model reproduces the datasheet's 900 MHz and 1.8 GHz rows to 0.6 dB from 10 kHz to 1 MHz |
 | PE43711, PE42540 | pSemi datasheets: insertion loss and isolation by band, IIP3, compression |
 | LMH6629, THS4541, ADC12040 | TI datasheets: noise, HD2 and HD3 at 10 MHz, SNR, INL, DNL, aperture jitter |
+| TRF37D73 | TI datasheet: gain by frequency; noise figure, OIP3 and compression at 2 GHz. Its OIP2 is assumed |
 | SIM-83+ | conversion loss, isolations and IP3 are datasheet typical values, read from search results (the datasheet could not be fetched). **Its spur table, compression point and out-of-band port response are a generic double-balanced mixer's, not this part's** |
 | LFCN-2250+, PMA3-83LN+ | datasheet figures read from search results; the LFCN-2250+ is its specification limits (30 dB at 3 to 5 GHz), not its typical curve |
 

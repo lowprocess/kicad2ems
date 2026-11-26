@@ -183,7 +183,8 @@ def case_budget(sa, rep, a):
                "P1dB in, dBm", "ADC full scale, dBm", "SFDR, dB (1 Hz)"],
               rows)
     rows = []
-    for f, pre in ((1.0, False), (2.5, False), (2.5, True), (4.0, False),
+    for f, pre in ((0.1, False), (0.1, True), (1.0, False), (1.0, True),
+                   (2.0, True), (2.5, False), (2.5, True), (4.0, False),
                    (4.0, True), (5.4, True)):
         if f * GHZ > sa.b_top:
             continue
@@ -198,7 +199,8 @@ def case_budget(sa, rep, a):
                      "%+.1f" % s["adc_full_scale_dbm"],
                      "%.0f" % s["sfdr_db_1hz"]))
     rep.say("With the input attenuator at 0 dB (the most sensitive "
-            "setting), and with the band B preamp:")
+            "setting), without and with the preamps (a TRF37D73 in band A, "
+            "a PMA3-83LN+ in band B, each after its band's first filter):")
     rep.say()
     rep.table(["f, GHz", "band", "preamp", "NF (effective), dB",
                "noise floor, dBm/Hz", "IIP3, dBm", "ADC full scale, dBm",
@@ -269,7 +271,8 @@ def case_cw(sa, rep, a):
 
     # close in, with a 64 times longer capture, against the datasheet
     fine = Analyzer(lo1=sa.lo1, lo2=sa.lo2, att_db=sa.att_db,
-                    if_att_db=sa.if_att_db, seed=sa.seed, nfft=262144)
+                    if_att_db=sa.if_att_db, seed=sa.seed, nfft=262144,
+                    preamp=sa.preamp)
     fc, pc, info = fine.capture([Signal(1000.2 * MHZ, -15.0)], 1.0 * GHZ)
     off = fc - 1000.2 * MHZ
     car = reading(fc, pc, 1000.2 * MHZ, 2e3)
