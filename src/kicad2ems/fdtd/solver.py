@@ -294,7 +294,8 @@ class FDTD(Solver):
         dispersion='yes: fitted at mid-band, or wideband Debye',
         radiation='yes', cavity='yes', antenna='yes',
         solids='yes: extruded polygons, a later one over an earlier; metal '
-        'as PEC')
+        'PEC, with --sigma its flat faces conducting sheets (curved sides '
+        'PEC)')
     options = MESH + RUN
     # what a run is set up with, of these (Solver.basic)
     basic = ('res',)

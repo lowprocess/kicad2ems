@@ -22,9 +22,10 @@ How they combine, with each other and with the board:
     another laminate);
   - the board's copper, vias, edge walls, ports and parts stay over every solid
     (a cut takes copper out: the 'cut' material, on a copper layer);
-  - a magnet is a metal piece to the RF (Piece.magnet: its remanence) and a
-    ferrite a dielectric one that a solver must also magnetise
-    (Piece.ferrite); core.magnets has their static field.
+  - a magnet is a metal piece to the RF (Piece.magnet: its remanence; with
+    conductor loss, MAGNET_SIGMA) and a ferrite a dielectric one that a
+    solver must also magnetise (Piece.ferrite); core.magnets has their static
+    field.
 
 Pieces are in the board's own heights (the FDTD maps them with its thick-copper
 plan). Nothing is snapped to a mesh here.
@@ -38,6 +39,10 @@ __all__ = ['Piece', 'pieces', 'encloses', 'board_volume', 'extent',
 ZTOL = 1e-6
 # mm2: a piece smaller than this is dropped
 AREA_MIN = 1e-6
+# S/m: a drawn magnet's conductivity, its faces' loss where the solvers give
+# the drawn metal the copper's (sintered NdFeB: 1.4 - 1.6 uohm m; a ceramic
+# magnet is a dielectric drawn after it)
+MAGNET_SIGMA = 6.7e5
 
 
 @dataclass

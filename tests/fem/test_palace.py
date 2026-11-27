@@ -609,8 +609,40 @@ def test_drawn_solids_are_volumes(tmp_path):
     assert (model.SOLID0 + 2, 9.8, 1e-4) in mdl.diel
     assert mdl.solid_metal == model.SOLID_METAL and model.SOLID_METAL in mdl.pec
     assert mdl.solids.startswith('4 drawn solids as ')
-    # lossy copper: the can stays PEC
-    cfg = config.config(mdl, np.linspace(1e9, 10e9, 11), loss=True)
+    # lossless: the can PEC; lossy: its faces the metal's surface impedance
+    # (no thickness: (1 + j) / (sigma delta)), one-sided (the hole's)
+    cfg = config.config(mdl, np.linspace(1e9, 10e9, 11))
     assert model.SOLID_METAL in cfg['Boundaries']['PEC']['Attributes']
+    cfg = config.config(mdl, np.linspace(1e9, 10e9, 11), loss=True)
+    assert model.SOLID_METAL not in cfg['Boundaries'].get(
+        'PEC', {}).get('Attributes', [])
+    cond = {c['Attributes'][0]: c for c in cfg['Boundaries']['Conductivity']}
+    assert cond[model.SOLID_METAL] == dict(
+        Attributes=[model.SOLID_METAL], Conductivity=5.8e7, External=True)
     mats = {m['Attributes'][0]: m for m in cfg['Domains']['Materials']}
     assert mats[model.SOLID0 + 2]['Permittivity'] == 9.8
+
+
+def test_drawn_magnets_and_sheets(tmp_path):
+    """A drawn magnet's faces are their own attribute (lossy: its own
+    conductivity, core.solids.MAGNET_SIGMA), a metal sheet of no thickness
+    another (PEC even when lossy)."""
+    from shapely.geometry import mapping
+    from kicad2ems.core.solids import MAGNET_SIGMA
+    b = microstrip()
+    b.solids = [dict(shape='magnet', material='magnet', z0=1.5, z1=2.5,
+                     br=1.2, polygon=mapping(box(2, -2, 4, 2))),
+                dict(shape='leaf', material='metal', z0=1.5, z1=1.5,
+                     polygon=mapping(box(6, -2, 8, 2)))]
+    p = str(tmp_path / 'm.msh')
+    mdl = model.build(b, 10e9, p, margin=1.0, log=lambda *a: None)
+    g = groups(p)
+    assert {(2, model.SOLID_MAGNET), (2, model.SOLID_SHEET)} <= set(g)
+    assert (2, model.SOLID_METAL) not in g
+    assert (mdl.solid_magnet, mdl.solid_sheet, mdl.solid_metal) == (
+        model.SOLID_MAGNET, model.SOLID_SHEET, None)
+    assert {model.SOLID_MAGNET, model.SOLID_SHEET} <= set(mdl.pec)
+    cfg = config.config(mdl, np.linspace(1e9, 10e9, 11), loss=True)
+    cond = {c['Attributes'][0]: c for c in cfg['Boundaries']['Conductivity']}
+    assert cond[model.SOLID_MAGNET]['Conductivity'] == MAGNET_SIGMA
+    assert cfg['Boundaries']['PEC']['Attributes'] == [model.SOLID_SHEET]

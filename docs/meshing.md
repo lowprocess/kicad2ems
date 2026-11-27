@@ -143,10 +143,10 @@ in green.
 
 The Draw page's solids ([the window](gui.md#the-draw-page-prototype), `shapes`) are resolved into disjoint pieces
 (`core.solids`: a later solid over an earlier one, over the board's dielectric unless it encloses the whole board),
-each an extruded polygon in the CSX model: metal a perfect conductor, a dielectric its εr and tan δ (as a stackup
-layer's, `--diel` included), air εr 1. They sit over the board's dielectric and its cut-outs and under its copper,
-vias, walls, parts and ports; where a metal piece meets another piece the metal wins, so its face is its surface on
-openEMS and gfdtd alike.
+each an extruded polygon in the CSX model: metal a perfect conductor (with `--sigma` its faces lossy,
+[below](#drawn-metal-loss)), a dielectric its εr and tan δ (as a stackup layer's, `--diel` included), air εr 1. They
+sit over the board's dielectric and its cut-outs and under its copper, vias, walls, parts and ports; where a metal
+piece meets another piece the metal wins, so its face is its surface on openEMS and gfdtd alike.
 
 The mesh:
 - x and y lines at each piece's Manhattan edges, and at a curved one's ends and extremes. A metal face wins a merge
@@ -182,6 +182,46 @@ magnetised ferrite (its low-field loss).
 S21's peak is 4.6255 GHz in each of them, as with the PEC boundary, on gfdtd and on openEMS (EMerge's converged
 3D FEM: 4.621 GHz). A dielectric cover over the board, 0.2 mm of εr 2.2, gives 4.4774 GHz drawn as a solid and as a
 stackup layer alike.
+
+<a id="drawn-metal-loss"></a>
+**Conductor loss.** With `--sigma` the drawn metal's faces the field reaches are conducting sheets on openEMS and
+gfdtd (`fdtd/faces.py`), as thick copper's are ([Copper thickness](#thickness)): each one side of a conductor, σ / 4
+and twice its thickness in openEMS's sheet model, its impedance the surface's, (1 + j) / (σ δ). The conductor is 30
+skin depths at the sheets' fit frequency: the fit's resistance within 0.5 % of the surface's from a tenth of it up
+(2–3 % at 100 skin depths, its range growing as (t / δ)²). The faces: at each height the metal below not under more
+metal, and above not over more; in each slab between heights the straight sides of the metal's union in plan (an
+edge along x or y, `fine` long or more); none against more metal, none on an enclosure's outer faces (the mesh
+ends there). Each lies on the mesh line of the body's outermost tangential edges; a wall or plate one cell thick or
+less, field on both sides, is one sheet of its own thickness and σ. A magnet's faces take its own conductivity
+(sintered NdFeB, 6.7 × 10⁵ S/m). Left out: curved and oblique sides (a post's, a round can's wall), whose staircase
+stays PEC, as vias do; a sheet of no height stays PEC; a foil with no z line through it is a sheet of its own
+thickness and σ.
+
+- The faces lie over the board's copper (their priority 11 against its 9 and 10): copper on a metal face is that
+  metal's surface, the field on one side of it, where a copper sheet is openEMS's two-sided one and half the loss
+  (a board's ground on a can's floor had read the cavity's Q 14 % high).
+- When the metal closes round the board the domain's sides are PEC, not Mur: openEMS and gfdtd keep conducting
+  sheets in a Mur boundary's cell PEC, and the walls' inner faces and the board's ground on the can's floor are in
+  it (one cell inside the mesh's end).
+
+Checked against a rectangular cavity's TE101 mode (Pozar, eq. 6.46): a copper can drawn round a bare board of air,
+32 × 27 mm inside and 10 mm tall, two 1 mm probes weakly coupled to it (`tools/fdtd/can_q.py`); Q0 from S21's
+resonance, QL / (1 − |S21|) at its peak:
+
+| | f0 | Q0 | Cells, time |
+|---|---|---|---|
+| Pozar | 7.2639 GHz | 7,619 | |
+| gfdtd | 7.2596 GHz | 7,624 (+0.1 %) | 0.02 M, 4.6 M time steps, 166 s (RX 7800 XT) |
+| openEMS | 7.2596 GHz | 7,628 (+0.1 %) | the same, 1,246 s (6 threads) |
+| Palace, its eigenmode run (`loss`, the probes' Q_ext taken out) | 7.2617 GHz | 7,580 (−0.5 %; 7,573 from S21) | 14,266 tetrahedra, 317 s with the driven run (4 ranks) |
+
+The probes load it to QL 5,046 (|S21| −9.4 dB at the peak); 2 mm probes a quarter of the way in had loaded it to 500
+(−0.55 dB), where 1 / (1 − |S21|) multiplies S21's error sixteen times.
+
+On rf_shielded_can (`--sigma 5.8e7`) S21's peak falls from −6.02 to −6.59 dB, almost all of it the board's ground on
+the can's floor (PEC before: a sheet in the Mur boundary's cell); the can's walls and lid alone take 0.002 dB, 4 mm
+from the board. It has 85,013 sheet edges (3,779 before, the traces'): the ground's 27,700, the lid's and walls'
+53,600. Finding the faces takes 2 ms, 0.14 s with 300 posts in the can.
 
 ## Time step
 

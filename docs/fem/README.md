@@ -92,9 +92,13 @@ The board is meshed in tetrahedra by gmsh (`palace/model.py`):
   of its width and the part reads 30% high;
 - edge walls (`edge_walls`) as vertical PEC sheets between the planes, the keepout in from the board's edge;
 - drawn solids (`shapes`, the window's Draw page; `core.solids` resolves their overlaps as the FDTD's
-  [model](../meshing.md#drawn-solids) does) as volumes: metal a hole whose faces are PEC (a metal sheet of no
-  height a PEC sheet; copper on a metal face goes into it), a dielectric a domain of its own εr and tan δ, no wider
-  than it is thin, air air; the air box is grown round them.
+  [model](../meshing.md#drawn-solids) does) as volumes: metal a hole whose faces are PEC, or with `loss` the
+  metal's surface impedance (1 + j) / (σ δ) (Palace's conductivity boundary with no thickness, the field on the
+  hole's side; a magnet's of its own σ, 6.7 × 10⁵ S/m), a metal sheet of no height a PEC sheet, copper on a metal
+  face part of it; a dielectric a domain of its own εr and tan δ, no wider than it is thin; air air; the air box is
+  grown round them. A copper can drawn round a bare board of air (32 × 27 × 10 mm, `tools/fdtd/can_q.py`): its
+  TE101 mode in the eigenmode run, the probes' Q_ext taken out, at 7.2617 GHz with Q0 7,580 against Pozar's
+  7.2639 GHz and 7,619 (−0.5 %; openEMS and gfdtd +0.1 %), 14,266 tetrahedra, 317 s with the driven run on 4 ranks.
 
 The mesh follows the copper edges (`feature`), the wavelength in the dielectric inside the board and the
 free-space wavelength in the air (`wave`). The ground does not ask for the fine size: a ground plane's own

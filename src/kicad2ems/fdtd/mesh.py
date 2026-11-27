@@ -721,9 +721,11 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
               bc=('MUR', ) * 6, nz_min=4, curves='extremes', vias='auto',
               via_snap=0.2, refine=(), z_sheet=1.0, curve_res=6.0, zone=False,
               thickness=False, nz_mask=None, log=print):
-    """Mesh lines (mm) for model m. Returns dict(x, y, z, vias, info, thick):
-    thick is the copper thickness plan (thick.plan, None: zero-thickness sheets)
-    that build_fdtd builds the model with.
+    """Mesh lines (mm) for model m. Returns dict(x, y, z, vias, info, thick,
+    enclosure): thick is the copper thickness plan (thick.plan, None:
+    zero-thickness sheets) that build_fdtd builds the model with; enclosure
+    the drawn metal's box (core.solids.enclosure, board heights) when it
+    closes round the board and the mesh ends at its outer faces, else None.
 
     curves: 'extremes' (default) or 'vertices' - see curve_lines().
     vias:   'exact'  lines at the centre and +-radius of every via (round
@@ -916,4 +918,4 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
             + (f"; {len(far)} moved further than --via-snap {via_snap:g} mm "
                "(no line nearer)" if far else ""))
     return dict(x=mesh[0], y=mesh[1], z=mesh[2], vias=placed, info=info,
-                thick=th)
+                thick=th, enclosure=list(shut) if shut is not None else None)

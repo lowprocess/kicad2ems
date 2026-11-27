@@ -5,7 +5,9 @@ excitation and the boundaries, built through openEMS's Python interface
 (ContinuousStructure, openEMS) of whichever engine runs it (engines.py). With
 the mesh's copper thickness plan (--thickness on, thick.py) the copper is solid
 and the stack moved to make room for it. Drawn solids (board.solids) are
-core.solids' disjoint pieces as extruded polygons (_solids, SOLID_PRIORITY).
+core.solids' disjoint pieces as extruded polygons (_solids, SOLID_PRIORITY); with
+--sigma the metal's faces the field reaches are conducting sheets (faces.py), and
+a closed can's sides PEC.
 """
 import math
 import numpy as np
@@ -47,6 +49,13 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR', ) * 6, end_db=-40,
     fe = fmax if exc_fmax is None else exc_fmax
     f0, fc = float(0.5 * (fmin + fe)), float(0.5 * (fe - fmin) * 1.05)
     FDTD.SetGaussExcite(f0, fc)
+    shut = (mesh.get('info') or {}).get('enclosed')
+    if sigma and shut:
+        # the mesh ends at a closed can's outer faces (no field outside): its
+        # sides PEC, not Mur, whose cell beside it openEMS and gfdtd keep from
+        # conducting sheets (the walls' inner faces, the board's ground on the
+        # can's floor would be PEC)
+        bc = [b if str(b).upper().startswith('PML') else 'PEC' for b in bc]
     FDTD.SetBoundaryCond([str(b) for b in bc])
     CSX = ContinuousStructure()
     FDTD.SetCSX(CSX)
@@ -105,7 +114,9 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR', ) * 6, end_db=-40,
     if getattr(m, 'solids', None):
         from kicad2ems.core.solids import pieces as solid_pieces
         _solids(CSX, solid_pieces(m), zm, lines, diel, diel_fref, fmin, fmax,
-                f0, mesh['info']['dt_ps'] * 1e-12, board=m)
+                f0, mesh['info']['dt_ps'] * 1e-12, board=m, sigma=sigma,
+                f_fit=f0 + fc, fine=mesh['info'].get('fine_mm'),
+                box=mesh.get('enclosure'))
     ckw = copper_kw or {}
     fin = ckw.get('finish') if sigma else None
     cu_props = {}  # sheet copper's property by layer (line probes)
@@ -233,18 +244,33 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR', ) * 6, end_db=-40,
 # wins (the face is the metal's surface: openEMS takes the edges there by
 # priority, gfdtd takes every metal edge)
 SOLID_PRIORITY = dict(dielectric=3, air=3, ferrite=3, metal=4)
+# the drawn metal's faces with conductor loss (faces.py): over its body and
+# over the copper (9, 10), which on a metal face is the metal's surface: the
+# field on one side of it, where a copper sheet is openEMS's two-sided one
+# (half the loss: a ground plane on a can's floor had read the cavity's Q 14 %
+# high); as the vias and walls (11), under the parts and ports (12)
+FACE_PRIORITY = 11
 
 
-def _solids(CSX, ps, zm, lines, diel, fref, fmin, fmax, f0, dt, board=None):
+def _solids(CSX, ps, zm, lines, diel, fref, fmin, fmax, f0, dt, board=None,
+            sigma=None, f_fit=None, fine=None, box=None):
     """The solids' pieces (core.solids.pieces) as CSX: a property per solid
     (solid<n>_<name>: metal, a material of er and tand as the layers', air, a
     magnetised ferrite: _ferrite), each piece an extruded polygon (its holes
     split), heights through zm (the thick-copper plan). A metal piece with no
     z line across it (or of no height) is a sheet on its nearest line. A
-    ferrite with no magnet drawn is a dielectric (unbiased)."""
+    ferrite with no magnet drawn is a dielectric (unbiased).
+
+    sigma (S/m, None: PEC): the metal's faces the field reaches are conducting
+    sheets (faces.py: the surface impedance; a magnet's of MAGNET_SIGMA), at
+    f_fit Hz (the sheets' fit), fine the mesh's fine cell (the straight
+    sides), box an enclosure's (its outer faces left out); a metal piece on
+    its nearest line with a height is a sheet of its thickness and sigma (a
+    foil), one of no height stays PEC. Returns the faces' {sheet: mm2}."""
     import re
     from kicad2ems.core import magnets
-    props = {}
+    from kicad2ems.core.solids import MAGNET_SIGMA
+    props, foils = {}, {}
     biased = bool(board is not None and magnets.magnetised(board))
     for p in ps:
         prop = props.get(p.index)
@@ -276,14 +302,31 @@ def _solids(CSX, ps, zm, lines, diel, fref, fmin, fmax, f0, dt, board=None):
         elif z1 - z0 < 1e-9:
             continue
         pr = SOLID_PRIORITY[p.material]
+        sheet = prop
+        if flat is not None and sigma and z1 - z0 >= 1e-9:
+            # a foil thinner than its cell: openEMS's sheet of its thickness
+            s = min(sigma, MAGNET_SIGMA) if p.magnet is not None else sigma
+            k = (p.index, round(z1 - z0, 9))
+            if k not in foils:
+                foils[k] = CSX.AddConductingSheet(
+                    f"solid{p.index + 1}_" + re.sub(r'\W+', '_', p.name)
+                    + (f"_foil{len(foils) + 1}" if foils else '_foil'),
+                    conductivity=float(s), thickness=float((z1 - z0) * 1e-3))
+            sheet = foils[k]
         for q in split_holes(p.polygon):
             x, y = q.exterior.xy
             xy = [np.asarray(x[:-1], float), np.asarray(y[:-1], float)]
             if flat is not None:
-                prop.AddPolygon(xy, 'z', flat, priority=pr)
+                sheet.AddPolygon(xy, 'z', flat, priority=pr)
             else:
                 prop.AddLinPoly(xy, 'z', float(z0), float(z1 - z0),
                                 priority=pr)
+    if not sigma or not any(p.material == 'metal' for p in ps):
+        return {}
+    from . import faces
+    fs = faces.faces(ps, lines, zm, fine, box)
+    return faces.add(CSX, fs, float(sigma), float(f_fit or fmax),
+                     FACE_PRIORITY, MAGNET_SIGMA)
 
 
 def _ferrite(CSX, nm, board, ps, p, zm, lines, f0):

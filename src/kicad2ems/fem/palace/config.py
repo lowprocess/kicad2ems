@@ -39,7 +39,8 @@ def config(mdl, freq, order=2, tol=1e-3, out='postpro', verbose=2,
            abc=1):
     """loss: the copper as Palace's finite-thickness conductivity boundary (each
     layer's sheets their thickness, two-sided; the via walls one-sided, the
-    plating thick) instead of PEC. Against FastHenry's volume filaments on a 20
+    plating thick; the drawn metal's faces one-sided, the surface impedance)
+    instead of PEC. Against FastHenry's volume filaments on a 20
     x 10 mm strip loop this gave R within 1% at 1 MHz, 5% at 10 MHz and 30% high
     at 100 MHz (a zero-thickness sheet's edge current is singular; its loss
     grows with the mesh): fine below ~10 MHz, and for L throughout.
@@ -186,9 +187,20 @@ def _boundaries(mdl, loss, sigma, plating, box, abc=1):
             out['Conductivity'].append(
                 dict(Attributes=[mdl.via_wall], Conductivity=float(sigma),
                      Thickness=float(plating), External=True))
-        # the edge walls and the drawn metal solids stay PEC
+        # the drawn metal solids' faces: the surface impedance (1 + j) /
+        # (sigma delta) of metal many skin depths thick (no thickness given),
+        # the field on one side (the hole's); a magnet's of its own
+        # conductivity (core.solids.MAGNET_SIGMA)
+        from kicad2ems.core.solids import MAGNET_SIGMA
+        for a, s in ((getattr(mdl, 'solid_metal', None), sigma),
+                     (getattr(mdl, 'solid_magnet', None),
+                      min(sigma, MAGNET_SIGMA))):
+            if a is not None:
+                out['Conductivity'].append(
+                    dict(Attributes=[a], Conductivity=float(s), External=True))
+        # the edge walls and the drawn metal sheets of no thickness stay PEC
         keep = [a for a in (getattr(mdl, 'edge_wall', None),
-                            getattr(mdl, 'solid_metal', None)) if a is not None]
+                            getattr(mdl, 'solid_sheet', None)) if a is not None]
         if keep:
             out['PEC'] = dict(Attributes=keep)
     if box == 'pec':

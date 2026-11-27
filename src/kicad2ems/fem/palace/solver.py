@@ -8,7 +8,8 @@ Experimental. What it models: the dielectric slabs inside the board outline,
 lossy by their tand; copper as PEC sheets of zero thickness (or lossy ones,
 --palace-loss); vias as PEC holes; lumped ports; lumped R / L / C parts as
 lumped boundaries across their gaps; edge walls as PEC sheets; drawn solids as
-volumes (metal ones PEC holes, model.py); an air box with
+volumes (metal ones holes, PEC or with --palace-loss the metal's surface
+impedance, model.py); an air box with
 an absorbing boundary around the board, or a closed metal can (--palace-box pec,
 --palace-margin its distance from the board). Antenna mode: a second run at a
 few frequencies for the far field of the driven port (antenna.py). Eigenmodes
@@ -94,7 +95,8 @@ class Palace(Solver):
         radiation='yes: absorbing boundary',
         cavity='yes: --palace-box pec, a metal can',
         antenna='yes: the finite board in air, one driven port (no --drive)',
-        solids='yes: volumes, a later one over an earlier; metal as PEC')
+        solids='yes: volumes, a later one over an earlier; metal PEC, with '
+        '--palace-loss its faces the surface impedance')
     options = [
         Option('palace_order', 2, "Palace's element order (default {default})",
                int, name='order', gui='Palace element order', group=G),

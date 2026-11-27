@@ -231,3 +231,128 @@ def test_openems_and_palace_refuse_a_magnetised_ferrite(demo_files):
     assert not any('gyrotropic' in w for w in GFDTD().assess(run))
     run.m = _puck_magnet(demo_files, magnet=False)
     assert not any('gyrotropic' in w for w in OpenEMS().assess(run))
+
+
+def _can(demo_files, *more):
+    """The demo board in a drawn can (a metal box, an air box inside it)."""
+    can = _solid(box(-2, -12, 26, 2), 'metal', -0.3, 2.0, 'can')
+    air = _solid(box(-1.5, -11.5, 25.5, 1.5), 'air', 0.0, 1.7, 'inside')
+    return _demo(demo_files, [can, air, *more])
+
+
+def test_lossy_metal_faces_in_the_model_and_the_operator(demo_files):
+    """--sigma: the can's inner faces are conducting sheets (one side of a
+    conductor FACE_DEPTHS skin depths thick: sigma / 4, twice that), its outer
+    ones (the mesh's ends) none; its sides PEC, not Mur (whose next cell keeps
+    sheets PEC). In the operator the walls' inner faces are sheet edges, PEC
+    when lossless."""
+    from kicad2ems.gfdtd.operator import build
+    from kicad2ems.gfdtd import csx as C
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.model import build_fdtd
+    from kicad2ems.fdtd.engines import engine_api
+    from kicad2ems.fdtd import faces
+    m = _can(demo_files)
+    mesh = _mesh(m)
+    assert mesh['enclosure'] == [-2.0, -12.0, -0.3, 26.0, 2.0, 2.0]
+    built = {}
+    for sg in (None, 5.8e7):
+        FDTD, CSX, _ = build_fdtd(m, mesh, 1e9, 4e9, 0, sigma=sg,
+                                  bc=resolve_bc('MUR', m),
+                                  api=engine_api('gfdtd:numpy'))
+        built[sg] = (FDTD, CSX)
+    props = {p.name: p for p in built[5.8e7][1].GetAllProperties()}
+    f = props['solid_metal_faces']
+    assert isinstance(f, C.ConductingSheet)
+    f_fit = 2.5e9 + 0.5 * 3e9 * 1.05
+    t = faces.FACE_DEPTHS * faces.skin_depth(5.8e7, f_fit)
+    assert f.conductivity == 5.8e7 / 4 and f.thickness == pytest.approx(2 * t)
+    zs = sorted(q.elevation for q in f.primitives
+                if isinstance(q, C.Polygon))
+    assert zs == [0.0, 1.7]  # the floor's top, the lid's underside
+    planes = sorted((a, q.start[a]) for q in f.primitives
+                    if isinstance(q, C.Box) for a in range(2)
+                    if q.start[a] == q.stop[a])
+    assert planes == [(0, -1.5), (0, 25.5), (1, -11.5), (1, 1.5)]
+    assert built[5.8e7][0].settings()['bc'] == ['PEC'] * 6
+    assert built[None][0].settings()['bc'] == ['MUR'] * 6
+    assert not any('solid_metal' in p.name
+                   for p in built[None][1].GetAllProperties())
+    x, y, z = (np.asarray(mesh[a]) for a in 'xyz')
+    at = lambda v, w: int(np.argmin(np.abs(v - w)))
+    k = int(np.flatnonzero((z[:-1] >= 0.6 - 1e-9) & (z[1:] <= 1.7 + 1e-9))[0])
+    edge = (2, at(x, -1.5), at(y, -5.0), k)  # a z edge on the wall's face
+    ops = {sg: build(CSX, FDTD.settings())
+           for sg, (FDTD, CSX) in built.items()}
+    assert ops[None].vi[edge] == 0 and ops[5.8e7].vi[edge] != 0
+    assert ops[5.8e7].n_sheet > ops[None].n_sheet == 0
+
+
+def test_the_faces_the_field_reaches():
+    """faces.faces: a block's six faces; a face against more metal none; a
+    wall one line thick one two-sided sheet of its thickness; a magnet's
+    apart; a round post's sides none (its staircase stays PEC), its top and
+    bottom faces."""
+    from shapely.geometry import Point
+    from kicad2ems.core.solids import Piece
+    from kicad2ems.fdtd import faces
+
+    def pc(g, z0, z1, magnet=None, i=0):
+        return Piece('metal', 1.0, 0.0, g, z0, z1, i, f'p{i}', magnet=magnet)
+    ln = [np.arange(-5, 15.01, 0.5), np.arange(-5, 15.01, 0.5),
+          np.arange(-2, 6.01, 0.5)]
+    fs = faces.faces([pc(box(0, 0, 2, 3), 0, 1)], ln, fine=0.2)
+    got = sorted((f.axis, f.c, round(f.geom.area, 6)) for f in fs)
+    assert got == [(0, 0.0, 3.0), (0, 2.0, 3.0), (1, 0.0, 2.0),
+                   (1, 3.0, 2.0), (2, 0.0, 6.0), (2, 1.0, 6.0)]
+    assert not any(f.two or f.magnet for f in fs)
+    # a block on another: their shared face none, the lower's top round it
+    fs = faces.faces([pc(box(0, 0, 4, 4), 0, 1), pc(box(1, 1, 3, 3), 1, 2,
+                                                    i=1)], ln, fine=0.2)
+    top = [f for f in fs if f.axis == 2 and f.c == 1.0]
+    assert len(top) == 1 and top[0].geom.area == pytest.approx(16 - 4)
+    # a wall 0.1 mm thick between lines 0.5 apart: on the line inside it, one
+    # sheet with field on both sides
+    fs = faces.faces([pc(box(0.95, 0, 1.05, 3), 0, 1)], ln, fine=0.05)
+    two = [f for f in fs if f.two]
+    assert ([(f.axis, f.c, round(f.t, 6)) for f in two]
+            == [(0, 1.0, 0.1)])
+    # a magnet: its faces apart, the one against the other metal none
+    fs = faces.faces([pc(box(0, 0, 2, 2), 0, 1),
+                      pc(box(2, 0, 4, 2), 0, 1, magnet=1.2, i=1)], ln,
+                     fine=0.2)
+    assert {f.magnet for f in fs} == {True, False}
+    assert not [f for f in fs if f.axis == 0 and f.c == 2.0]
+    # a round post: top and bottom only
+    fs = faces.faces([pc(Point(5, 5).buffer(1.0, quad_segs=16), 0, 1)], ln,
+                     fine=0.2)
+    assert sorted(f.axis for f in fs) == [2, 2]
+    # the box's planes: none there
+    fs = faces.faces([pc(box(0, 0, 2, 3), 0, 1)], ln, fine=0.2,
+                     box=(0, 0, 0, 2, 3, 1))
+    assert fs == []
+
+
+def test_a_foil_is_a_conducting_sheet_of_its_thickness(demo_files):
+    """A metal foil with no z line across it is a sheet on its nearest line:
+    with --sigma openEMS's sheet of its own thickness (field on both sides);
+    one of no height stays PEC."""
+    from kicad2ems.gfdtd import csx as C
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.model import build_fdtd
+    from kicad2ems.fdtd.engines import engine_api
+    block = _solid(box(20, -8, 23, -2), 'metal', 1.6, 1.8, 'block')
+    foil = _solid(box(5, -8, 19, -2), 'metal', 1.65, 1.66, 'foil')
+    leaf = _solid(box(5, -1.5, 19, -0.5), 'metal', 1.7, 1.7, 'leaf')
+    m = _demo(demo_files, [block, foil, leaf])
+    mesh = _mesh(m)
+    _, CSX, _ = build_fdtd(m, mesh, 1e9, 4e9, 0, bc=resolve_bc('MUR', m),
+                           sigma=5.8e7, api=engine_api('gfdtd:numpy'))
+    props = {p.name: p for p in CSX.GetAllProperties()}
+    s = props['solid2_foil_foil']
+    assert isinstance(s, C.ConductingSheet)
+    assert (s.conductivity, s.thickness) == (5.8e7, pytest.approx(1e-5))
+    q, = s.primitives
+    assert type(q) is C.Polygon and q.elevation == 1.6
+    q, = props['solid3_leaf'].primitives
+    assert isinstance(props['solid3_leaf'], C.Metal) and type(q) is C.Polygon

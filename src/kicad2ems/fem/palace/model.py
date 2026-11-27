@@ -23,10 +23,12 @@ its whole width. An edge wall (board.walls) is a vertical PEC sheet.
 
 Drawn solids (board.solids, resolved into disjoint pieces by core.solids: a
 later one over an earlier, over the dielectric unless it encloses the board)
-are volumes: a metal one a hole whose faces are PEC (SOLID_METAL, as a via's
-barrel; a metal sheet of no thickness a PEC sheet), a dielectric one its own
-attribute (SOLID0 + its place in board.solids) of its er and tan d, an air one
-air. The air box is grown round them too.
+are volumes: a metal one a hole whose faces are PEC, or with conductor loss
+the metal's surface impedance (SOLID_METAL; a magnet's SOLID_MAGNET, of its
+own conductivity), as a via's barrel; a metal sheet of no thickness a PEC sheet
+(SOLID_SHEET); a dielectric one its own attribute (SOLID0 + its place in
+board.solids) of its er and tan d, an air one air. The air box is grown round
+them too.
 
 Mesh size: `hmin` at the copper edges (a fraction of the smallest feature: the
 gap between copper on a layer, a port's width, a slab's thickness), growing with
@@ -57,9 +59,12 @@ WALL, PART0 = 102, 301
 # copper layer i's sheets (board.cu_z order): CU0 + i (its own thickness when
 # lossy)
 CU0 = 110
-# the drawn metal solids' faces (always PEC); a drawn dielectric solid (its
-# place in board.solids, k): SOLID0 + k
+# the drawn metal solids' faces (PEC, or lossy: config); a drawn dielectric
+# solid (its place in board.solids, k): SOLID0 + k
 SOLID_METAL, SOLID0 = 103, 401
+# the drawn magnets' faces (their own conductivity when lossy); the drawn
+# metal sheets of no thickness (always PEC)
+SOLID_MAGNET, SOLID_SHEET = 104, 105
 
 
 @dataclass
@@ -88,6 +93,10 @@ class Model:
     notes: list = field(default_factory=list)
     # the drawn metal solids' faces' attribute (SOLID_METAL), or None
     solid_metal: int = None
+    # the drawn magnets' faces' (SOLID_MAGNET) and the drawn metal sheets'
+    # of no thickness (SOLID_SHEET), or None
+    solid_magnet: int = None
+    solid_sheet: int = None
     # what the drawn solids became (core.solids.describe), '' for none
     solids: str = ''
 
@@ -429,20 +438,34 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
             for dt in via_v
             for f in gmsh.model.getBoundary([dt], oriented=False)
         }
-        # the metal solids' faces, and their sheets of no thickness
+        # the metal solids' faces (a magnet's apart), and their sheets of no
+        # thickness
+        magnet_v = {dt for dt in metal_v if solid_of(dt).magnet is not None}
+        smag = {
+            abs(f[1])
+            for dt in magnet_v
+            for f in gmsh.model.getBoundary([dt], oriented=False)
+        }
         smetal = {
             abs(f[1])
-            for dt in metal_v
+            for dt in metal_v - magnet_v
             for f in gmsh.model.getBoundary([dt], oriented=False)
-        } | {
+        }
+        ssheet = {
             dt[1] for dt in gmsh.model.getEntities(2)
             if any(isinstance(r, tuple) and r[0] == 'solid'
                    and sp[r[1]].material == 'metal'
+                   and sp[r[1]].z1 - sp[r[1]].z0 <= 1e-9
                    for r in role_of.get(dt, ()))
         }
-        smetal = {t for t in smetal if live(t)} - walls
+        # (a face a magnet shares with other metal is no face: inside metal,
+        # not live; one on a sheet's surface is the solid's)
+        smag = {t for t in smag if live(t)} - walls
+        smetal = {t for t in smetal if live(t)} - walls - smag
+        ssheet = {t for t in ssheet if live(t)} - walls - smag - smetal
+        solid_faces = smetal | smag | ssheet
         for lay, s in cu_l.items():
-            cu_l[lay] = {t for t in s - walls - smetal if live(t)}
+            cu_l[lay] = {t for t in s - walls - solid_faces if live(t)}
         # a hole through several slabs is several pieces: not the discs between
         walls = {t for t in walls if live(t)}
         outer = box_faces(gmsh, (x0 - margin, y0 - margin, zb - margin,
@@ -482,9 +505,10 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
             dt[1]
             for dt in gmsh.model.getEntities(2)
             if 'wall' in role_of.get(dt, ()) and live(dt[1])
-        } - lumped - walls - smetal)
+        } - lumped - walls - solid_faces)
         walls.difference_update(lumped)
-        smetal.difference_update(lumped)
+        for ss in (smetal, smag, ssheet):
+            ss.difference_update(lumped)
         for s in cu_l.values():
             s.difference_update(lumped | edge_s)
 
@@ -499,8 +523,10 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
             diel.append((SOLID0 + k, float(d.get('er', 1.0)),
                          float(d.get('tand', 0.0))))
         gmsh.model.addPhysicalGroup(3, air_v, AIR)
-        if smetal:
-            gmsh.model.addPhysicalGroup(2, sorted(smetal), SOLID_METAL)
+        for ss, attr in ((smetal, SOLID_METAL), (smag, SOLID_MAGNET),
+                         (ssheet, SOLID_SHEET)):
+            if ss:
+                gmsh.model.addPhysicalGroup(2, sorted(ss), attr)
         sheets = []
         order = list(board.cu_z)
         for lay, s in cu_l.items():
@@ -637,12 +663,16 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
         f"{hmin:.3g}..{hmax:.3g} mm in the board, to {hair:.3g} mm in the air; "
         f"air margin {margin:.3g} mm" + (f"; {describe(sp)}" if sp else ''))
     metal = ([a for a, _ in sheets] + ([PEC] if walls else []) +
-             ([WALL] if edge_s else []) + ([SOLID_METAL] if smetal else []))
+             ([WALL] if edge_s else []) + ([SOLID_METAL] if smetal else [])
+             + ([SOLID_MAGNET] if smag else []) + ([SOLID_SHEET] if ssheet
+                                                    else []))
     return Model(path, diel, AIR, metal, ABSORB, ports, hmin, hmax, margin,
                  nodes=nodes, tets=tets, notes=notes, sheets=sheets,
                  via_wall=PEC if walls else None,
                  edge_wall=WALL if edge_s else None, parts=parts,
                  solid_metal=SOLID_METAL if smetal else None,
+                 solid_magnet=SOLID_MAGNET if smag else None,
+                 solid_sheet=SOLID_SHEET if ssheet else None,
                  solids=describe(sp) if sp else '')
 
 
