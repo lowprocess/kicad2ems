@@ -149,14 +149,15 @@ more strongly (ψ 20°) than the weak coupling their model assumes, and they set
 matched.
 
 `rf_isolator` is `rf_circulator` with its third arm ended in a 50 Ω 0603 resistor (R1, a footprint on the board,
-along y) to a via to the ground in its far pad: a two-port (`python examples/make_rf_examples.py isolator`).
-Against `rf_circulator`'s three-port with P3 matched (its 2 × 2 corner), the forward path and both matches are the
-same (S21 −0.2 dB, S11 −40 dB at 9.24 GHz), but the isolation (S12) is 9–10 dB across the band where the corner has
-21–37 dB: what P2 sends to P3 comes back from the load and goes on to P1, S12′ = S12 + S13 Γ S32 / (1 − S33 Γ), and
-the resistor and its via reflect Γ −8.3 dB at 9.2 GHz (its current's path, pad, gap and via, an inductance in
-series). A 0402 to a via has −9.3 dB, an 0603 to three vias in a ground pad −10.7; the 0603 to a 2.5 mm radial stub
-(an RF ground with no via, the generator's `stub=2.5`) −15 to −17 dB from 8 to 10 GHz: isolation and both matches
-better than 20 dB from 9.16 to 9.74 GHz, the best isolation 26.1 dB at 9.66. 1.05 M cells, 3 s a port.
+along y) whose far end goes to a 2.5 mm radial stub, an RF ground with no via: a two-port (`python
+examples/make_rf_examples.py isolator`). At 9.24 GHz S21 −0.25 dB, S12 −21.1 dB, S11 −35.8, S22 −33.0 dB;
+isolation and both matches better than 20 dB from 9.16 to 9.74 GHz (best 24.6 dB at 9.48). 1.28 M cells, 3 s a port.
+The load is what limits it. Against `rf_circulator`'s three-port with P3 matched (its 2 × 2 corner: S12 −21 to −37
+dB), what P2 sends to P3 comes back from the load and goes on to P1, S12′ = S12 + S13 Γ S32 / (1 − S33 Γ). The 0603
+to a via to the ground in its far pad (`stub=None`) reflects Γ −8.3 dB at 9.2 GHz (its current's path, pad, gap and
+via, an inductance in series): the forward path and the matches are the same (S21 −0.2 dB, S11 −40 dB), but the
+isolation only 9–10 dB across the band. A 0402 to a via reflects −9.3 dB, an 0603 to three vias in a ground pad
+−10.7; to the radial stub −15 to −17 dB from 8 to 10 GHz.
 
 ![rf_isolator: the isolation with the resistor to a via and to a radial stub, against the circulator with P3 matched, and the load's reflection](img/rf_isolator.png)
 

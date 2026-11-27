@@ -56,30 +56,40 @@ magnets too (2026-11-27), so a circulator is built and run from it. What it lack
      lumped port in the FDTD, a rectangle in Palace, lines at its faces); a coax template's end face with its TEM
      mode, E ∝ 1/r, as a weighted excitation and a mode-matched probe (the machinery of `lineport.py`), Z0 =
      60/√εr ln(b/a); checked on a drawn 50 Ω coax line (S11 under −30 dB) and the probe-fed cp_patch;
+   - a high-εr solid's staircase: rf_dr_bandpass's puck (εr 38) is 0.35 % apart between gfdtd and openEMS on the
+     default mesh, 0.03 % on 3.2× the cells: a curve refinement for dielectric solids, like `--curve-res` for
+     copper;
+   - the loss in a lossy high-εr solid: the puck's TE01δ unloaded Q is 4,420 on Palace, 3,740 on gfdtd (3,370
+     finer) and 2,410 on openEMS (2,940 finer): how each engine puts a solid's loss at its faces, checked by a
+     lossless run against Palace's eigenmode;
+   - more examples: a cavity combline (metal rods in a drawn can, tapped by a pin and bar: rods need `res` ≥ 80,
+     the tap bar loads the end rods, the loaded-rod closed form gives 4.8 GHz for 4 × 10 mm rods with a 0.7 mm
+     gap);
    - set aside: a box-shaped closed can as the PEC boundary at its inner faces. The PEC-boundary run is that model:
      0.41 M cells and 33 s against the drawn can's 0.45 M and 35 s (−6 %), under the 10 % a pass must gain.
-2. **Ferrites and magnets, the rest** (done 2026-11-27: the `ferrite` and `magnet` materials, `core.magnets`'s bias,
-   gfdtd's `FerriteMaterial`, the `rf_circulator` example: docs/gfdtd/README.md#how-it-works,
+2. **Ferrites and magnets, the rest** (done 2026-11-27: the `ferrite` and `magnet` materials, `core.magnets`'s bias
+   as a full vector with the ferrite's magnetisation self-consistent, gfdtd's `FerriteMaterial` along each cell's
+   own direction, a partly magnetised ferrite (Green and Sandy), the grid's magnetostatic modes gone (the faces'
+   scheme); `rf_circulator`, `rf_circulator_stripline`, `rf_isolator`: docs/gfdtd/README.md#how-it-works,
    docs/examples.md):
    - steel: pole pieces, a return path, a steel case shape the bias as much as the magnet does; a magnetostatic
      solve with B-H curves (Elmer's `WhitneyAVSolver`, which the coils study already drives) would give the bias
      where the face-charge sum cannot;
-   - the bias's x and y components (near a puck's rim, under an off-centre magnet): the magnetisation as three
-     components about the local field, the Polder tensor turned to it;
-   - a partly magnetised ferrite (where the magnet does not saturate it: now unbiased, μ 1): Schlömann's
-     demagnetised μ and its low-field loss;
-   - the grid's own magnetostatic modes between √(f0 (f0 + fm)) and f0 + fm (1–10 % peaks in the ferrite
-     cavity, staying as the cells shrink): harmless above f0 + fm, where circulators work below resonance, but
-     an above-resonance device (an isolator, a phase shifter) works there;
+   - the partly magnetised ferrite's low-field loss and Green and Sandy's μz; χ as a material parameter;
+   - the voxel staircase at curved rims: partly magnetised rim voxels scatter about ±0.1 Ms;
+   - the faces' scheme costs 3–4× the old update on the GPU (memory-bound, 88 / 140 B a cell, 36 an edge): fuse
+     or compress it;
    - the end criterion counts the field's energy, not the magnetisation's (−40 dB was enough on the circulator:
      0.6 dB from −60);
    - the linewidth as Gilbert damping, ΔH ∝ f (from the datasheet's at 9.4 GHz); temperature (4πMs and Br at
      25 °C);
    - Palace: its μ is a real symmetric tensor; a ferrite's is Hermitian (its operator code, not ours);
    - a circulator study question: isolation, insertion loss and the 20 dB band, the magnet's height and the
-     disc's radius optimised (the template is done);
-   - the page: an H0 slice in 3D and the magnet's field lines (the H0 map in plan is done); the *Bias* readout's
-     20 ms is three quarters `core.magnets._omega_up` (numpy over every face triangle).
+     disc's radius optimised (the template is done); an isolator's termination template (a thin-film load or a
+     radial-stub return: a resistor to a via reflects −8.3 dB at 9.2 GHz and caps the isolation at 10 dB);
+   - the page: the *Bias* readout still uses the z model (the self-consistent one takes 0.4–0.9 s: in a worker);
+     an H0 slice in 3D and the magnet's field lines (the H0 map in plan is done); the readout's 20 ms is three
+     quarters `core.magnets._omega_up` (numpy over every face triangle).
 3. **Templates, the rest** (done 2026-11-27, `core.templates`: a shield can with posts, a dielectric resonator
    on a ported line, rf_circulator's Y junction, an edge-launch SMA as a square coax, an absorber sheet, a via
    fence along traces): templates are one-shot, so a group that keeps its template and numbers, reopened by a
@@ -358,6 +368,8 @@ mesh preview, an orthographic camera, arrowheads, a 3D box selection, select ali
   two-sided sheet and gets half its loss (`--thickness on` gets it right); one on a PEC bottom boundary or in a Mur
   cell is lossless with `--sigma` (`rf_shielded.toml` among them). rf_shielded's res-80 mesh is not converged in x:
   dense x lines move its peak 37 MHz up, to 4.6625 GHz (EMerge 4.621).
+- **A cylinder of no length is left out** (gfdtd's `inside()`): a flat disc drawn as `AddCylinder` with start = stop
+  z is silently absent; openEMS takes it as a disc. Seen in the ferrite tests (their disc is a polygon now).
 - **Weakly coupled high-Q runs** stop when the probes' signals have decayed while the cavity still rings: they need
   `end_on = "energy"` (tools/fdtd/can_q.py does); the end criterion could watch the energy when the ports' coupling
   is weak.

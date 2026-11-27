@@ -1,16 +1,16 @@
 # kicad2ems example: a microstrip isolator, rf_circulator with its third arm
-# ended in a 50 ohm 0603 resistor (R1, a footprint on the board) to a via to
-# the ground in its far pad: a two-port, P1 to P2, what P2 reflects into the
-# load. The drawing (rf_isolator_shapes.json) is rf_circulator's but for the
-# third arm, 9 mm long.
+# ended in a 50 ohm 0603 resistor (R1, a footprint on the board) whose far end
+# goes to a 2.5 mm radial stub (an RF ground): a two-port, P1 to P2, what P2
+# reflects absorbed in the load. The drawing (rf_isolator_shapes.json) is
+# rf_circulator's but for the third arm, 9 mm long, and the stub.
 # Board and drawing: python examples/make_rf_examples.py isolator
 #   kicad2ems examples/rf_isolator.toml       (auto: gfdtd)
-# 2026-11-27 (RX 7800 XT, 1.05 M cells, 3 s a port): at 9.24 GHz S21
-# -0.2 dB, S11 -39.7 dB, but the isolation S12 only -9.6 dB (9-10 dB over the
-# band): the 0603 and its via reflect -8.3 dB, which P2's wave meets on its
-# way to P1. rf_circulator with P3 matched has S12 -21 to -37 dB there. The
-# generator's stub=2.5 (the resistor to a radial stub, no via): -15 to -17 dB
-# from the load, isolation and match better than 20 dB from 9.16 to 9.74 GHz.
+# 2026-11-27 (RX 7800 XT, 1.28 M cells, 3 s a port): at 9.24 GHz S21
+# -0.25 dB, S12 -21.1 dB, S11 -35.8, S22 -33.0 dB; isolation and both
+# matches better than 20 dB from 9.16 to 9.74 GHz (best 24.6 dB at 9.48).
+# The load is what limits it: the generator's stub=None ends the resistor in
+# a via to the ground instead, which reflects -8.3 dB, and the isolation is
+# then only 9-10 dB (rf_circulator with P3 matched: 21-37 dB).
 board   = "rf_isolator.kicad_pcb"   # paths are relative to this file
 shapes  = "rf_isolator_shapes.json"
 ports   = ["P1@0.6000,10.3925,F.Cu,0", "P2@17.6536,0.6002,F.Cu,240"]

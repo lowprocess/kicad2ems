@@ -1350,11 +1350,13 @@ def insert(path, L=60.0, li=30.0, wi=10.0, er_i=3.66, tand_i=0.0037,
     return w, wi_
 
 
-def isolator(path, load='0603', **kw):
-    """rf_circulator with its third arm ended in a 50 ohm chip resistor to
-    the ground (circulator(load=...)): a two-port isolator, P1 to P2, P2's
-    reflection into the load."""
-    return circulator(path, load=load, **kw)
+def isolator(path, load='0603', stub=2.5, **kw):
+    """rf_circulator with its third arm ended in a 50 ohm chip resistor
+    (circulator(load=...)): a two-port isolator, P1 to P2, P2's reflection
+    into the load. stub: the resistor's far end to a radial stub that long
+    (an RF ground: the default, its load reflects -15 to -17 dB); None: to a
+    via to the ground in its far pad (-8.3 dB: isolation only 9-10 dB)."""
+    return circulator(path, load=load, stub=stub, **kw)
 
 
 def _edge_port(n, cx, cy, ang, arm, W, layer):

@@ -10,6 +10,54 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Ferrites, the rest (2026-11-27).**
+  - **The bias's full vector and the ferrite's magnetisation, self-consistent** (`core.magnets.field`,
+    `magnetisation`). Each charged face's in-plane H from its edges' log terms beside its solid angle: a rectangle
+    against the Coulomb integral to 1e-9, a cylinder magnet off its axis against its surface current to 3e-6 of M.
+    The drawn ferrites as an ideal soft ferrite on a voxel grid, the least magnetostatic energy under |M| ≤ Ms (the
+    voxels' face charges, an FFT convolution, projected-gradient steps): saturated along its internal field where
+    the magnets can, partly magnetised elsewhere. A sphere H = Ha − Ms/3 within 1 %; a long cylinder across N ½
+    within 3 %; a thin disc the face model's within 0.5 %. rf_circulator's puck is magnetised 36° off z on the mean
+    (49° at most), its internal field 490–1370 Oe. 0.4 s for that puck, 0.9 s for the stripline's discs.
+  - **gfdtd's ferrite along each cell's own direction** (`FerriteMaterial`'s bias a vector, or a table of hx, hy,
+    hz and mx, my, mz): the Polder tensor turned to u, from all six edges; along ±z the x-y update stays (half the
+    ferrite's time on the GPU). The ferrite-filled cavity turned to x is the z cavity's trace within 2e-5.
+  - **A partly magnetised ferrite:** Green and Sandy's μ (on Schlömann's demagnetised one at the band centre) and
+    Rado's κ, inside the ferrite kernels (the GPU keeps running it). rf_circulator with the magnet 4 mm over: 15.0
+    dB isolation, against 12.0 with those cells at μ 1; 5 mm over: 10.4 dB against none.
+  - **The grid's own magnetostatic modes gone** (the faces' scheme: each component's difference between a cell's two
+    faces drives its own precession and goes back to them; only κ's cross terms are averaged). The ferrite cavity's
+    peaks between √(f0 (f0 + fm)) and f0 + fm fall to 0.1 % of TM110's (were 10.5 %); TM110 / 210 / 220 at 0.5 mm
+    2.897 / 3.794 / 4.147 GHz against Polder's 2.899 / 3.800 / 4.155 (were 2.915 / 3.831 / 4.243). No growth in
+    200,000 steps lossless. Cost on the RX 7800 XT +6 % a step along z, +11 % tilted (12.8 k ferrite cells in 0.49
+    M nodes; was +1.6 %: the kernels are memory-bound); the CPU core 56 / 85 µs a step beside 545 µs for H and E.
+  - **`rf_circulator_stripline`**, Bosma's stripline Y junction: a 2.7 mm disc on In1.Cu between two garnet discs,
+    the planes stitched by vias, 22 Ω transformers, two 0.4 T ceramic magnets on the planes. At 9.88 GHz S21 −0.18,
+    S31 −46.9, S11 −33.9 dB; isolation and match better than 20 dB from 7.60 to 10.34 GHz (31 %) at every port (3.0
+    M cells, 18 s a port); no magnets: reciprocal, S11 −9.4 dB (the least, 1/3). The junction alone against the
+    magnetic-wall model's split resonances: f− within 0.2 %, f+ 2.1 % low (its field reaches past the rim into the
+    laminate).
+  - **`rf_isolator`**: rf_circulator's third arm ended in a 50 Ω 0603 resistor to a 2.5 mm radial stub: S21 −0.25
+    dB, isolation and both matches better than 20 dB from 9.16 to 9.74 GHz (best 24.6 dB). The same resistor to a
+    via reflects −8.3 dB, and the isolation is then 9–10 dB (the generator's `stub=None`).
+- **Drawn-solid examples: dielectric resonator filters, a shield can's resonance and its absorber, a laminate
+  insert (2026-11-27).** Plain boards, the solids the drawing beside them (`make_rf_examples.py dr_bandpass,
+  dr_bandstop, can_mode, can_absorber, insert`); tests/core/test_drawn_examples.py.
+  - **`rf_dr_bandpass`:** a ceramic puck (εr 38, tan δ 2e-4, 6 × 2.4 mm) on a 1.2 mm support (εr 4.5) between two
+    50 Ω lines on 0.508 mm RO4003C in a drawn 18 × 14 mm can, the first drawn-solid example all three volume
+    solvers run. Its TE01δ pass band at 9.228 GHz on gfdtd (−0.56 dB, 39 MHz; 0.20 M cells, 8 s), 9.196 GHz on
+    openEMS (−0.85 dB, 100 s), 9.210 GHz on Palace (−0.47 dB; 23,750 tetrahedra, 58 s; eigenmode Q 227 loaded,
+    4,420 unloaded); on 0.64 M cells the FDTD engines give 9.2014 / 9.1987 GHz. Kajfez and Guillon give 8.641 GHz
+    for the puck alone, Palace's puck nearly alone 8.856 (+2.5 %); its eigenmodes then step to the filter: the
+    ground +2.6 %, the lid +0.9 %, the walls +0.07 %, the lines +0.24 %. `rf_dr_bandstop`: a −16.4 dB notch at 9.232
+    GHz.
+  - **`rf_can_mode`:** two lines under a 30 × 20 mm can: its first mode at 8.418 GHz on gfdtd, 8.419 on Palace
+    (closed form 8.383 with the board, 9.008 empty), the lines coupled −11.7 dB there against −45 to −55 dB away
+    from it. **`rf_can_absorber`:** 1 mm of foam (εr 2, tan δ 1) under the lid: no peak (S31 ≤ −33 dB); Palace's
+    mode Q 431 → 12.4.
+  - **`rf_insert`:** a 50 Ω line across a 30 mm insert of εr 3.66, tan δ 0.0037 in FR-4: S21 −1.38 dB at 10 GHz
+    against −2.19 on FR-4 alone; the dielectric's loss 1.133 dB against a closed form's 1.093 (Pozar, Kirschning
+    and Jansen, Djordjevic–Sarkar), FR-4 alone 1.898 against 1.870 (the line model 1.871).
 - **Drawn metal's own loss (`--sigma` on openEMS and gfdtd, Palace's `loss`; `fdtd/faces.py`,
   docs/meshing.md#drawn-metal-loss, 2026-11-27).** The faces the field reaches are conducting sheets: one side of a
   conductor 30 skin depths thick (its surface impedance; the fit's resistance within 0.5 % from a tenth of the fit
@@ -1527,6 +1575,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **rf_circulator's figures with the self-consistent bias** (the puck magnetised along its own field, 36° off z on
+  the mean): at 9.22 GHz S21 −0.23, S31 −29.5, S11 −31.5 dB (were −0.21, −29.5, −29.1), 20 dB from 8.68 to 9.66 GHz
+  (was 8.78–9.72): far above resonance κ ≈ fm / f hardly depends on H0.
 - **The line model's conductor loss from each section's cross-section (2026-11-27; ROADMAP line model 3).** With
   `--sigma`, scikit-rf's trace and coupled sections take R(f) and the internal inductance from their own cross-
   sections (`fastsolve.field_losses`: `core.lines.mqs` on the board's cut, or the section as classified). Each
