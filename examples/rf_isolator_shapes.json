@@ -1,0 +1,163 @@
+{
+ "format": "kicad2ems-shapes",
+ "version": 1,
+ "units": "mm",
+ "coordinates": "model (y up)",
+ "shapes": [
+  {
+   "kind": "circle",
+   "points": [
+    [
+     12.0,
+     -10.3925
+    ]
+   ],
+   "material": "ferrite",
+   "radius": 3.2,
+   "z0": 0.0,
+   "z1": 0.508,
+   "er": 15.0,
+   "tand": 0.0002,
+   "ms": 1200.0,
+   "dh": 30.0,
+   "name": "puck"
+  },
+  {
+   "kind": "circle",
+   "points": [
+    [
+     12.0,
+     -10.3925
+    ]
+   ],
+   "material": "copper",
+   "layer": "F.Cu",
+   "net": "RF",
+   "radius": 2.45,
+   "name": "junction"
+  },
+  {
+   "kind": "path",
+   "points": [
+    [
+     12.0,
+     -10.3925
+    ],
+    [
+     -0.2400000000000002,
+     -10.392499999999998
+    ]
+   ],
+   "material": "copper",
+   "layer": "F.Cu",
+   "net": "RF",
+   "width": 1.137,
+   "name": "arm1"
+  },
+  {
+   "kind": "path",
+   "points": [
+    [
+     8.8,
+     -10.3925
+    ],
+    [
+     4.265991590108406,
+     -10.392499999999998
+    ]
+   ],
+   "material": "copper",
+   "layer": "F.Cu",
+   "net": "RF",
+   "width": 2.384,
+   "name": "transformer1"
+  },
+  {
+   "kind": "path",
+   "points": [
+    [
+     12.0,
+     -10.3925
+    ],
+    [
+     18.12,
+     0.20765094232152848
+    ]
+   ],
+   "material": "copper",
+   "layer": "F.Cu",
+   "net": "RF",
+   "width": 1.137,
+   "name": "arm2"
+  },
+  {
+   "kind": "path",
+   "points": [
+    [
+     13.600000000000001,
+     -7.621218707889796
+    ],
+    [
+     15.867004204945797,
+     -3.6946522439513885
+    ]
+   ],
+   "material": "copper",
+   "layer": "F.Cu",
+   "net": "RF",
+   "width": 2.384,
+   "name": "transformer2"
+  },
+  {
+   "kind": "path",
+   "points": [
+    [
+     12.0,
+     -10.3925
+    ],
+    [
+     16.21575,
+     -17.694393192008494
+    ]
+   ],
+   "material": "copper",
+   "layer": "F.Cu",
+   "net": "RF",
+   "width": 1.137,
+   "name": "arm3"
+  },
+  {
+   "kind": "path",
+   "points": [
+    [
+     13.600000000000001,
+     -13.163781292110205
+    ],
+    [
+     15.867004204945797,
+     -17.09034775604861
+    ]
+   ],
+   "material": "copper",
+   "layer": "F.Cu",
+   "net": "RF",
+   "width": 2.384,
+   "name": "transformer3"
+  },
+  {
+   "kind": "circle",
+   "points": [
+    [
+     12.0,
+     -10.3925
+    ]
+   ],
+   "material": "magnet",
+   "radius": 4.0,
+   "z0": 2.543,
+   "z1": 5.543,
+   "br": 1.2,
+   "name": "magnet"
+  }
+ ]
+}

@@ -58,6 +58,13 @@ d 0.02), B.Cu ground:
               laminate under the junction disc, a NdFeB magnet above it; the
               drawing (rf_circulator_shapes.json, the Draw page's) written
               beside the board
+  circulator_stripline
+              Bosma's stripline Y-junction circulator: a junction disc on
+              In1.Cu between two garnet discs, ground planes on F.Cu and
+              B.Cu stitched by vias, a ceramic magnet on each (the drawing
+              beside the board)
+  isolator    rf_circulator with its third arm ended in a 50 ohm 0603
+              resistor to a via to the ground: a two-port
 
 and boards whose solids are drawn beside them (rf_<name>_shapes.json):
 
@@ -1120,9 +1127,15 @@ def spiral(path, turns=3, ws=0.25, ss=0.25, dout=5.0, feed=8.0):
     return w
 
 
+# a chip resistor's pads: pitch, pad size (mm), its footprint
+CHIPS = {'0402': (1.0, (0.6, 0.6), 'Resistor_SMD:R_0402_1005Metric'),
+         '0603': (1.6, (0.9, 0.95), 'Resistor_SMD:R_0603_1608Metric')}
+
+
 def circulator(path, f0=9.6e9, r_disc=2.45, r_puck=3.2, r_mag=4.0,
                gap=2.0, mag_len=3.0, br=1.2, ms=1200.0, dh=30.0, er_f=15.0,
-               tand_f=2e-4, arm=12.0, magnet=True, zt=30.0, lt=None):
+               tand_f=2e-4, arm=12.0, magnet=True, zt=30.0, lt=None,
+               load=None, r_load=9.0, nvia=1, stub=None, fan=60.0):
     """A microstrip Y-junction circulator on 0.508 mm RO4003C: a junction disc
     (r_disc) on a garnet puck (r_puck, the laminate's thickness, er_f, 4 pi Ms
     ms G, linewidth dh Oe) set into the board, three 50 ohm arms 120 deg apart
@@ -1130,8 +1143,13 @@ def circulator(path, f0=9.6e9, r_disc=2.45, r_puck=3.2, r_mag=4.0,
     right: arm mm each), and a NdFeB magnet (r_mag, mag_len tall, br T, up)
     `gap` mm over the copper. zt: each arm a quarter-wave transformer of zt
     ohm from the puck's rim (lt mm long; None: a quarter of its guided
-    wavelength at f0) to its 50 ohm line. The board has its ground alone: the
-    rest is the drawing written beside it (<path>_shapes.json, model
+    wavelength at f0) to its 50 ohm line. load: an isolator, arm 3 ending
+    r_load mm from the centre in a 50 ohm chip resistor of that size ('0402',
+    '0603': a footprint on the board, along y) to a via to the ground in its
+    far pad (nvia > 1: a row of them in a ground pad across it), or, stub
+    (mm), to a radial stub that long (fan deg wide) pointing down from it,
+    the board stub mm taller below, an RF ground with no via; no P3. The board has its ground (and the load) alone: the rest
+    is the drawing written beside it (<path>_shapes.json, model
     coordinates). Returns (w50, the ports setting)."""
     from kicad2ems.core.shapes import Drawing, Shape
     h, er, tand = RO4003[:3]
@@ -1139,7 +1157,6 @@ def circulator(path, f0=9.6e9, r_disc=2.45, r_puck=3.2, r_mag=4.0,
     W = 2 * arm
     H = round(2 * arm * math.sin(math.radians(60)), 3)
     bd = Board()
-    bd.write(path, W, H, sub=RO4003)
     cx, cy = arm, -H / 2           # model coordinates (y up)
     top = h + 0.035                # the copper's top face
     shapes = [Shape('circle', [[cx, cy]], radius=r_puck, material='ferrite',
@@ -1150,7 +1167,9 @@ def circulator(path, f0=9.6e9, r_disc=2.45, r_puck=3.2, r_mag=4.0,
     ports = []
     for n, ang in ((1, 180.0), (2, 60.0), (3, 300.0)):
         a = math.radians(ang)
-        end = [cx + arm * 1.02 * math.cos(a), cy + arm * 1.02 * math.sin(a)]
+        # (an isolator's third arm: its round end inside the load's pad)
+        reach = r_load - w / 2 if (load and n == 3) else arm * 1.02
+        end = [cx + reach * math.cos(a), cy + reach * math.sin(a)]
         shapes.append(Shape('path', [[cx, cy], end], width=w, layer='F.Cu',
                             net='RF', name=f'arm{n}'))
         if zt:
@@ -1162,11 +1181,33 @@ def circulator(path, f0=9.6e9, r_disc=2.45, r_puck=3.2, r_mag=4.0,
                 'path', [[cx + r0 * math.cos(a), cy + r0 * math.sin(a)],
                          [cx + r1 * math.cos(a), cy + r1 * math.sin(a)]],
                 width=wt, layer='F.Cu', net='RF', name=f'transformer{n}'))
-        # 0.6 mm in from the edge along the arm, facing the junction
-        pr = arm - 0.6 / max(abs(math.cos(a)), abs(math.sin(a)) * W / (2 * arm
-                                                                       ) or 1)
-        px, py = cx + pr * math.cos(a), cy + pr * math.sin(a)
-        ports.append(f"P{n}@{px:.4f},{-py:.4f},F.Cu,{(ang + 180) % 360:g}")
+        if load and n == 3:
+            # the resistor along y, its first pad (RF) on the arm's end, the
+            # second (ground) below it with a via in it (KiCad's y down)
+            pitch, pad, fp = CHIPS[load]
+            ex, ey = cx + r_load * math.cos(a), cy + r_load * math.sin(a)
+            bd.part('R1', '50', ex, -(ey - pitch / 2), 270, pitch=pitch,
+                    pad=pad, fp=fp, nets=(2, 2 if stub else 1))
+            gy = ey - pitch
+            if stub:
+                t = [math.radians(-90 - fan / 2 + fan * k / 16)
+                     for k in range(17)]
+                shapes.append(Shape(
+                    'polygon', [[ex, gy]] + [[ex + stub * math.cos(q),
+                                              gy + stub * math.sin(q)]
+                                             for q in t],
+                    layer='F.Cu', net='RF', name='stub'))
+                continue
+            if nvia > 1:  # a ground pad across the far pad, a row of vias
+                half = 0.35 * nvia
+                bd.rect(ex - half, -(gy + pad[1] / 2), ex + half,
+                        -(gy - pad[1] / 2), net=1)
+            for k in range(nvia):
+                bd.via(ex + 0.7 * (k - (nvia - 1) / 2), -gy, net=1, size=0.45,
+                       drill=0.2)
+            continue
+        ports.append(_edge_port(n, cx, cy, ang, arm, W, 'F.Cu'))
+    bd.write(path, W, H + (stub or 0.0), sub=RO4003)
     if magnet:
         shapes.append(Shape('circle', [[cx, cy]], radius=r_mag,
                             material='magnet', z0=round(top + gap, 4),
@@ -1309,6 +1350,105 @@ def insert(path, L=60.0, li=30.0, wi=10.0, er_i=3.66, tand_i=0.0037,
     return w, wi_
 
 
+def isolator(path, load='0603', **kw):
+    """rf_circulator with its third arm ended in a 50 ohm chip resistor to
+    the ground (circulator(load=...)): a two-port isolator, P1 to P2, P2's
+    reflection into the load."""
+    return circulator(path, load=load, **kw)
+
+
+def _edge_port(n, cx, cy, ang, arm, W, layer):
+    """The ports setting of a junction's arm at ang deg: 0.6 mm in from the
+    board's edge along the arm (model coordinates in, KiCad's out), facing
+    the junction."""
+    a = math.radians(ang)
+    pr = arm - 0.6 / max(abs(math.cos(a)), abs(math.sin(a)) * W / (2 * arm)
+                         or 1)
+    px, py = cx + pr * math.cos(a), cy + pr * math.sin(a)
+    return f"P{n}@{px:.4f},{-py:.4f},{layer},{(ang + 180) % 360:g}"
+
+
+def circulator_stripline(path, f0=9.4e9, r_disc=2.7, r_fer=None, h=0.508,
+                         r_mag=4.0, mag_len=1.5, gap=0.0, br=0.4, ms=1200.0,
+                         dh=30.0, er_f=15.0, tand_f=2e-4, arm=12.0,
+                         magnets=True, zt=22.0, lt=3.6, fence=True,
+                         vgap=0.8, pitch=1.5):
+    """Bosma's stripline Y-junction circulator: a junction disc (r_disc) on
+    In1.Cu between two garnet discs (r_fer, default r_disc; 4 pi Ms ms G,
+    linewidth dh Oe, er_f), each h mm thick, which replace the RO4003C above
+    and below it, between ground planes on F.Cu and B.Cu (In2.Cu empty: the
+    stack h, h / 2, h / 2), three 50 ohm stripline arms 120 deg apart (P1 from
+    the left, P2 up to the right, P3 down to the right), each a quarter-wave
+    transformer of zt ohm from the disc's rim (lt mm; None: a quarter of its
+    wavelength at f0), and two ceramic magnets (r_mag, mag_len tall, br T,
+    both magnetised up) on the ground planes, `gap` mm off them. fence:
+    ground vias on a square lattice pitch mm apart wherever they are vgap
+    from the copper (twice that from the disc): a fence each side of each
+    arm, no parallel-plate cavity between them (the ports, from In1.Cu to
+    B.Cu, launch the parallel-plate wave too). The drawing beside the board
+    (<path>_shapes.json). Returns dict(w50, wt, lt, ports: the ports
+    setting)."""
+    from kicad2ems.core.shapes import Drawing, Shape
+    from kicad2ems.core.lines.formulas import stripline as strip_f
+    er, tand = RO4003[1:3]
+    b = 2 * h
+    z_of = lambda x: strip_f(x, b, er)[0]
+    w = round(solve(lambda x: -z_of(x), -50.0, 0.05, 5.0), 3)
+    wt = round(solve(lambda x: -z_of(x), -zt, 0.05, 10.0), 3) if zt else w
+    ln = lt or C0 / (f0 * math.sqrt(er)) / 4e-3
+    r_fer = r_fer or r_disc
+    W = 2 * arm
+    H = round(2 * arm * math.sin(math.radians(60)), 3)
+    cx, cy = arm, -H / 2           # model coordinates (y up)
+    shapes = [Shape('circle', [[cx, cy]], radius=r_fer, material='ferrite',
+                    z0=z0, z1=z0 + h, er=er_f, tand=tand_f, ms=ms, dh=dh,
+                    name=nm)
+              for nm, z0 in (('ferrite_below', 0.0), ('ferrite_above', h))]
+    shapes.append(Shape('circle', [[cx, cy]], radius=r_disc, layer='In1.Cu',
+                        net='RF', name='junction'))
+    ports = []
+    for n, ang in ((1, 180.0), (2, 60.0), (3, 300.0)):
+        a = math.radians(ang)
+        end = [cx + arm * 1.02 * math.cos(a), cy + arm * 1.02 * math.sin(a)]
+        shapes.append(Shape('path', [[cx, cy], end], width=w, layer='In1.Cu',
+                            net='RF', name=f'arm{n}'))
+        if zt:
+            r1 = r_disc + ln
+            shapes.append(Shape(
+                'path', [[cx + r_disc * math.cos(a), cy + r_disc * math.sin(a)],
+                         [cx + r1 * math.cos(a), cy + r1 * math.sin(a)]],
+                width=wt, layer='In1.Cu', net='RF', name=f'transformer{n}'))
+        ports.append(_edge_port(n, cx, cy, ang, arm, W, 'In1.Cu'))
+    bd = Board()
+    bd.plane('F.Cu', W, H)
+    if fence:
+        # stitching vias on a square lattice (shared mesh lines), none within
+        # vgap of the copper (2 vgap of the junction disc and the ferrite):
+        # the arms' fences, and no parallel-plate cavity about the junction
+        from shapely.ops import unary_union
+        from shapely.geometry import Point
+        keep = unary_union(
+            [q.outline().buffer(vgap + 0.25) for q in shapes
+             if q.layer == 'In1.Cu' and q.material == 'copper']
+            + [Point(cx, cy).buffer(max(r_disc, r_fer) + 2 * vgap + 0.25)])
+        nx, ny = int(W / pitch), int(H / pitch)
+        x0, y0 = (W - (nx - 1) * pitch) / 2, (H - (ny - 1) * pitch) / 2
+        for i in range(nx):
+            for j in range(ny):
+                x, y = x0 + i * pitch, y0 + j * pitch      # KiCad's y
+                if not keep.contains(Point(x, -y)):
+                    bd.via(x, y, size=0.5, drill=0.25)
+    bd.write(path, W, H, sub=RO4003, stack=(h, h / 2, h / 2))
+    if magnets:
+        for nm, z0 in (('magnet_above', 2 * h + gap),
+                       ('magnet_below', -gap - mag_len)):
+            shapes.append(Shape('circle', [[cx, cy]], radius=r_mag,
+                                material='magnet', z0=round(z0, 4),
+                                z1=round(z0 + mag_len, 4), br=br, name=nm))
+    Drawing(shapes).save(os.path.splitext(path)[0] + '_shapes.json')
+    return dict(w50=w, wt=wt, lt=round(ln, 3), ports=ports)
+
+
 KINDS = dict(branchline=branchline, wilkinson=wilkinson, steplpf=steplpf,
              stubnotch=stubnotch, gcpw=gcpw, coupler=coupler, ratrace=ratrace,
              radialstub=radialstub, stripline=stripline, diffvia=diffvia,
@@ -1317,7 +1457,8 @@ KINDS = dict(branchline=branchline, wilkinson=wilkinson, steplpf=steplpf,
              serpentine=serpentine, crosstalk=crosstalk,
              crosstalk_guard=crosstalk_guard, bus=si_bus, ddr=ddr, pcoupled=pcoupled,
              combline=combline, openloop=openloop, dgs=dgs, ebg=ebg, idc=idc,
-             meander=meander, spiral=spiral, circulator=circulator)
+             meander=meander, spiral=spiral, circulator=circulator,
+             circulator_stripline=circulator_stripline, isolator=isolator)
 # drawn solids in a can
 KINDS.update(dr_bandpass=dr_bandpass, dr_bandstop=dr_bandstop,
              can_mode=can_mode, can_absorber=can_absorber, insert=insert)

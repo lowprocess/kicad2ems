@@ -1,0 +1,196 @@
+{
+ "format": "kicad2ems-shapes",
+ "version": 1,
+ "units": "mm",
+ "coordinates": "model (y up)",
+ "shapes": [
+  {
+   "kind": "circle",
+   "points": [
+    [
+     12.0,
+     -10.3925
+    ]
+   ],
+   "material": "ferrite",
+   "radius": 2.7,
+   "z0": 0.0,
+   "z1": 0.508,
+   "er": 15.0,
+   "tand": 0.0002,
+   "ms": 1200.0,
+   "dh": 30.0,
+   "name": "ferrite_below"
+  },
+  {
+   "kind": "circle",
+   "points": [
+    [
+     12.0,
+     -10.3925
+    ]
+   ],
+   "material": "ferrite",
+   "radius": 2.7,
+   "z0": 0.508,
+   "z1": 1.016,
+   "er": 15.0,
+   "tand": 0.0002,
+   "ms": 1200.0,
+   "dh": 30.0,
+   "name": "ferrite_above"
+  },
+  {
+   "kind": "circle",
+   "points": [
+    [
+     12.0,
+     -10.3925
+    ]
+   ],
+   "material": "copper",
+   "layer": "In1.Cu",
+   "net": "RF",
+   "radius": 2.7,
+   "name": "junction"
+  },
+  {
+   "kind": "path",
+   "points": [
+    [
+     12.0,
+     -10.3925
+    ],
+    [
+     -0.2400000000000002,
+     -10.392499999999998
+    ]
+   ],
+   "material": "copper",
+   "layer": "In1.Cu",
+   "net": "RF",
+   "width": 0.569,
+   "name": "arm1"
+  },
+  {
+   "kind": "path",
+   "points": [
+    [
+     9.3,
+     -10.3925
+    ],
+    [
+     5.699999999999999,
+     -10.3925
+    ]
+   ],
+   "material": "copper",
+   "layer": "In1.Cu",
+   "net": "RF",
+   "width": 1.851,
+   "name": "transformer1"
+  },
+  {
+   "kind": "path",
+   "points": [
+    [
+     12.0,
+     -10.3925
+    ],
+    [
+     18.12,
+     0.20765094232152848
+    ]
+   ],
+   "material": "copper",
+   "layer": "In1.Cu",
+   "net": "RF",
+   "width": 0.569,
+   "name": "arm2"
+  },
+  {
+   "kind": "path",
+   "points": [
+    [
+     13.35,
+     -8.054231409782016
+    ],
+    [
+     15.150000000000002,
+     -4.936539956158036
+    ]
+   ],
+   "material": "copper",
+   "layer": "In1.Cu",
+   "net": "RF",
+   "width": 1.851,
+   "name": "transformer2"
+  },
+  {
+   "kind": "path",
+   "points": [
+    [
+     12.0,
+     -10.3925
+    ],
+    [
+     18.12,
+     -20.99265094232153
+    ]
+   ],
+   "material": "copper",
+   "layer": "In1.Cu",
+   "net": "RF",
+   "width": 0.569,
+   "name": "arm3"
+  },
+  {
+   "kind": "path",
+   "points": [
+    [
+     13.35,
+     -12.730768590217984
+    ],
+    [
+     15.150000000000002,
+     -15.848460043841964
+    ]
+   ],
+   "material": "copper",
+   "layer": "In1.Cu",
+   "net": "RF",
+   "width": 1.851,
+   "name": "transformer3"
+  },
+  {
+   "kind": "circle",
+   "points": [
+    [
+     12.0,
+     -10.3925
+    ]
+   ],
+   "material": "magnet",
+   "radius": 4.0,
+   "z0": 1.016,
+   "z1": 2.516,
+   "br": 0.4,
+   "name": "magnet_above"
+  },
+  {
+   "kind": "circle",
+   "points": [
+    [
+     12.0,
+     -10.3925
+    ]
+   ],
+   "material": "magnet",
+   "radius": 4.0,
+   "z0": -1.5,
+   "z1": 0.0,
+   "br": 0.4,
+   "name": "magnet_below"
+  }
+ ]
+}

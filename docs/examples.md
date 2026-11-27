@@ -72,24 +72,93 @@ boundary, for 6 % more run time ([drawn solids](meshing.md#drawn-solids)). mom25
 examples/make_rf_examples.py circulator` writes it and the board): a bare 0.508 mm RO4003C board with its ground,
 and drawn on it a garnet puck (4πMs 1200 G, ΔH 30 Oe, εr 15, 6.4 mm across) set into the laminate, a copper
 junction disc (r 2.45 mm), three 50 Ω arms 120° apart with 30 Ω quarter-wave transformers, three ports, and a
-NdFeB magnet (Br 1.2 T, 8 mm across, 3 mm tall) 2 mm over the copper. The magnet saturates the puck (`core.magnets`:
-260–830 Oe inside it: highest at its centre nearest the magnet, lowest 2.8 mm out at its bottom face) and gfdtd
-runs the magnetised ferrite ([gfdtd](gfdtd/README.md#how-it-works)); openEMS and Palace refuse it. 0.90 M cells, 1.3 s for P1 on an RX 7800 XT.
+NdFeB magnet (Br 1.2 T, 8 mm across, 3 mm tall) 2 mm over the copper. The magnet saturates the puck
+(`core.magnets.magnetisation`, self-consistent: its internal field 490–1370 Oe over its cells, its magnetisation
+36° off z on the mean and up to 49°, where the magnet's field spreads) and gfdtd runs the magnetised ferrite, each
+cell about its own direction ([gfdtd](gfdtd/README.md#how-it-works)); openEMS and Palace refuse it. 0.94 M cells,
+2 s a port on an RX 7800 XT.
 
 ![rf_circulator: S11, S21 and S31 with the magnet and without it, and the isolation as the magnet is raised](img/rf_circulator.png)
 
 | | P1 → P2 (S21) | P1 → P3 (S31) | S11 | isolation and match > 20 dB |
 |---|---|---|---|---|
-| the magnet 2 mm over the copper, at 9.22 GHz | −0.21 dB | −29.5 dB | −29.1 dB | 8.78–9.72 GHz |
+| the magnet 2 mm over the copper, at 9.22 GHz | −0.23 dB | −29.5 dB | −31.5 dB | 8.68–9.66 GHz |
 | no magnet (the puck unbiased: reciprocal), at 9.22 GHz | −3.8 dB | −3.9 dB | −8.7 dB | — |
-| the magnet reversed (Br −1.2 T), at 9.22 GHz | −26.7 dB | −0.21 dB | −29.2 dB | (P1 → P3) |
-| the magnet 1.0 / 1.5 / 2.5 / 3.0 / 4.0 mm over | | best −20.1 / −27.1 / −24.5 / −16.7 / — dB | | — / 8.85–10.03 / 8.78–9.45 / — / — GHz |
+| the magnet reversed (Br −1.2 T), at 9.22 GHz | −26.4 dB | −0.23 dB | −31.5 dB | (P1 → P3) |
+| the magnet 1.0 / 1.5 / 2.5 / 3.0 / 4.0 / 5.0 mm over | | best −28.3 (6.4 GHz) / −25.7 / −24.3 / −19.9 / −15.0 / −10.4 dB | | — / 8.76–9.92 / 8.82–9.34 / — / — / — GHz |
 
 All three ports driven, the matrix turns with the ports (S21 = S32 = S13, S31 = S12 = S23, S11 = S22 = S33 within
-0.02); reversing the magnet swaps P2 and P3 within 0.025 (the board is its own mirror image); −60 dB instead of
-−40 dB to stop moves S by 0.6 dB at most, and a 0.07 mm mesh instead of 0.1 mm moves the band 0.9 % up. The
-magnet is the circuit's tuning: too far and the puck's rim, then all of it, is no longer saturated (4 mm: no
-circulation); too close and its metal loads the junction while the bias rises.
+0.02, 0.03, 0.04); reversing the magnet swaps P2 and P3 within 0.05 (the board is its own mirror image); −60 dB
+instead of −40 dB to stop moves S by 0.2 dB at most from 6.5 to 14 GHz, and a 0.07 mm mesh instead of 0.1 mm moves
+the band to 8.80–9.72 GHz (its lower edge 1.4 %, its upper 0.6 %). The magnet is the circuit's tuning: too far and
+the puck is no longer saturated (4 mm: 6 % of its cells, at its rim, partly magnetised, M/Ms 0.58–1; 5 mm: 95 %,
+0.38–1); too close (1 mm) and the bias rises until the ferrite's resonance nears the band (the ripple at 6–7 GHz)
+while its metal loads the junction. The partly magnetised ferrite (Green and Sandy's μ, Rado's κ) still circulates:
+with the magnet 4 mm over, S31 −15.0 dB at 8.64 GHz (S21 −0.48 dB), where those cells left at μ 1 (the model
+before) gave −12.0 dB (S21 −0.74 dB); 5 mm over, −10.4 dB at 8.54 GHz (S21 −0.95 dB) against nothing (S21 = S31,
+−6.5 dB, the unbiased puck's).
+
+The bias model moved the circuit little. With the ferrite taken saturated along z (the face model alone: 300–840
+Oe, along z) the band was 8.76–9.74 GHz (S21 −0.21, S31 −29.6, S11 −28.9 dB at 9.22 GHz); along its own direction
+it is 8.68–9.66 (−0.23, −29.5, −31.5 dB): above resonance (f ≈ 2.5 (f0 + fm) here) κ ≈ fm/f hardly depends on H0,
+and the tilt's cos θ is partly made up by the higher internal field (S moved by 0.14 at most from 8 to 10.5 GHz).
+gfdtd's faces' scheme (the grid's own magnetostatic modes gone) moved it by 0.006 at most there.
+
+`rf_circulator_stripline` is Bosma's stripline Y-junction circulator, built on the Draw page
+(`rf_circulator_stripline_shapes.json`; `python examples/make_rf_examples.py circulator_stripline`): a copper
+junction disc (r 2.7 mm) on In1.Cu between two garnet discs (4πMs 1200 G, ΔH 30 Oe, εr 15, each 0.508 mm and the
+disc's radius) that replace the RO4003C above and below it, between ground planes on F.Cu and B.Cu (In2.Cu empty:
+the stack 0.508, 0.254, 0.254 mm), three 50 Ω stripline arms (0.57 mm) with 22 Ω transformers (1.85 mm, 3.6 mm
+long), stitching vias on a 1.5 mm lattice wherever they clear the copper by 0.8 mm (a fence along each arm, no
+parallel-plate cavity between them: the ports, from In1.Cu to B.Cu, launch that wave too), and two ceramic magnets
+(Br 0.4 T, 8 mm across, 1.5 mm tall) on the planes, both magnetised up. Their in-plane fields cancel at the
+mid-plane: the discs are magnetised within 23° of z (7° on the mean), their internal field 300–1180 Oe (mean 600).
+3.0 M cells, about 18 s a port.
+
+![rf_circulator_stripline: S11, S21 and S31 with the magnets, without them and reversed, and the disc's split resonances](img/rf_circulator_stripline.png)
+
+| | P1 → P2 (S21) | P1 → P3 (S31) | S11 | isolation and match > 20 dB |
+|---|---|---|---|---|
+| the magnets, at 9.88 GHz (the best isolation) | −0.18 dB | −46.9 dB | −33.9 dB | 7.60–10.34 GHz (31 %) |
+| no magnets (reciprocal), at 9 GHz | −3.6 dB | −3.7 dB | −9.4 dB | — |
+| the magnets reversed (Br −0.4 T), at 9 GHz | −24.5 dB | −0.2 dB | −25.2 dB | (P1 → P3) |
+
+All three ports driven, the three transmissions agree within 0.02 dB and 5.4° over 7.6–10.3 GHz, and every port's
+isolation and match is better than 20.3 dB there; unbiased, S11 is the reciprocal junction's least, 1/3 (−9.5 dB);
+a 0.07 mm mesh moves the band to 7.62–10.36 GHz (0.2 %).
+
+Against Bosma and Fay and Comstock: in the magnetic-wall model the disc's n = ±1 modes split to x = kR with
+J1′(x) ∓ (κ/μ) J1(x)/x = 0, k = ω √(εr μ_eff) / c, μ_eff = (μ² − κ²)/μ (Polder's), and the circulator works between
+them, centred where kR = 1.841. gfdtd on the junction alone (the discs between PEC plates, no arms, a source at its
+rim):
+
+| | gfdtd | magnetic wall at R | |
+|---|---|---|---|
+| unbiased (μ 1) | 8.337 GHz | 8.401 GHz | −0.8 % |
+| uniform H0 300 Oe: f−, f+ | 7.386, 10.082 GHz | 7.366, 10.206 GHz | +0.3 %, −1.2 % |
+| uniform H0 550 Oe | 7.499, 10.240 GHz | 7.484, 10.375 GHz | +0.2 %, −1.3 % |
+| uniform H0 800 Oe | 7.590, 10.422 GHz | 7.599, 10.567 GHz | −0.1 %, −1.4 % |
+| the magnets' bias (300–1180 Oe) | 7.522, 10.195 GHz | 7.506, 10.410 GHz (the mean, 598 Oe) | +0.2 %, −2.1 % |
+
+The disc's field reaches past its rim into the laminate (εr 3.55, a quarter of the garnet's), so the magnetic wall
+is not quite at R: with a uniform bias f− is within 0.3 %, the unbiased mode 0.8 % low and f+ 1.2–1.4 % low. The
+magnets' bias is not uniform (about 300 Oe at the axis, up to 1180 near the rim): f+ moves a further 0.8 % against
+the mean. Fay and Comstock's centre at the mean bias is 9.45 GHz (κ/μ −0.39); the circulator's 20 dB band runs from
+f− to f+ (7.60–10.34 GHz), its best isolation at 9.88, its band's middle 8.97: its 22 Ω transformers couple it far
+more strongly (ψ 20°) than the weak coupling their model assumes, and they set where across the split band it is
+matched.
+
+`rf_isolator` is `rf_circulator` with its third arm ended in a 50 Ω 0603 resistor (R1, a footprint on the board,
+along y) to a via to the ground in its far pad: a two-port (`python examples/make_rf_examples.py isolator`).
+Against `rf_circulator`'s three-port with P3 matched (its 2 × 2 corner), the forward path and both matches are the
+same (S21 −0.2 dB, S11 −40 dB at 9.24 GHz), but the isolation (S12) is 9–10 dB across the band where the corner has
+21–37 dB: what P2 sends to P3 comes back from the load and goes on to P1, S12′ = S12 + S13 Γ S32 / (1 − S33 Γ), and
+the resistor and its via reflect Γ −8.3 dB at 9.2 GHz (its current's path, pad, gap and via, an inductance in
+series). A 0402 to a via has −9.3 dB, an 0603 to three vias in a ground pad −10.7; the 0603 to a 2.5 mm radial stub
+(an RF ground with no via, the generator's `stub=2.5`) −15 to −17 dB from 8 to 10 GHz: isolation and both matches
+better than 20 dB from 9.16 to 9.74 GHz, the best isolation 26.1 dB at 9.66. 1.05 M cells, 3 s a port.
+
+![rf_isolator: the isolation with the resistor to a via and to a radial stub, against the circulator with P3 matched, and the load's reflection](img/rf_isolator.png)
 
 <a id="dielectric-resonator"></a>
 `rf_dr_bandpass` is a dielectric resonator filter built on the Draw page (`rf_dr_bandpass_shapes.json`; `python

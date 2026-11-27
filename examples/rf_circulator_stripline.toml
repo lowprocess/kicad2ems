@@ -1,0 +1,33 @@
+# kicad2ems example: Bosma's stripline Y-junction circulator, built on the
+# Draw page (rf_circulator_stripline_shapes.json): a copper junction disc
+# (r 2.7 mm) on In1.Cu between two garnet discs (4 pi Ms 1200 G, er 15, each
+# 0.508 mm) that replace the RO4003C above and below it, between ground
+# planes on F.Cu and B.Cu (In2.Cu empty), three 50 ohm stripline arms with
+# 22 ohm transformers 3.6 mm long, stitching vias wherever they clear the
+# copper (each arm fenced), and two ceramic magnets (Br 0.4 T, 8 mm across,
+# 1.5 mm tall) on the ground planes, both magnetised up.
+# Board and drawing: python examples/make_rf_examples.py circulator_stripline
+#   kicad2ems examples/rf_circulator_stripline.toml    (auto: gfdtd)
+# The magnetised ferrite runs on gfdtd only.
+# 2026-11-27 (RX 7800 XT, 3.0 M cells, about 18 s a port): at 9.88 GHz S21
+# -0.18 dB, S31 -46.9 dB, S11 -33.9 dB; isolation and match better than
+# 20 dB from 7.60 to 10.34 GHz (31 %), every port. The junction alone's split
+# resonances (gfdtd, the magnets' bias): 7.52 / 10.20 GHz, the magnetic-wall
+# model's at the mean bias (598 Oe) 7.51 / 10.41. No magnets: reciprocal
+# (S21, S31 -3.6, -3.7 dB, S11 -9.4 dB); reversed (br -0.4): P1 to P3.
+board   = "rf_circulator_stripline.kicad_pcb"   # paths are relative to this file
+shapes  = "rf_circulator_stripline_shapes.json"
+ports   = ["P1@0.6000,10.3925,In1.Cu,0", "P2@17.6536,0.6002,In1.Cu,240",
+           "P3@17.6536,20.1848,In1.Cu,120"]
+ground  = "B.Cu"
+fmin    = 6.0           # GHz
+fmax    = 14.0
+points  = 401
+out     = "out"
+
+[solver.openems]
+bc      = "MUR"
+air     = 2.0
+fine    = 0.1
+excite  = ["P1"]
+max_steps = 2000000

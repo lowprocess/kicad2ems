@@ -7,8 +7,9 @@
 #   kicad2ems examples/rf_circulator.toml          (auto: gfdtd)
 # The magnetised ferrite runs on gfdtd only (openEMS and Palace have no
 # gyrotropic medium; mom25d no solids).
-# 2026-11-27 (RX 7800 XT, 0.90 M cells, 1.3 s): at 9.22 GHz S21 -0.21 dB,
-# S31 -29.5 dB, S11 -29.1 dB, both better than 20 dB from 8.78 to 9.72 GHz.
+# 2026-11-27 (RX 7800 XT, 0.94 M cells, 2 s a port; the puck magnetised along
+# its own field, 36 deg off z on the mean): at 9.22 GHz S21 -0.23 dB, S31
+# -29.5 dB, S11 -31.5 dB, both better than 20 dB from 8.68 to 9.66 GHz.
 # Without the magnet the puck is unbiased and the junction reciprocal (S21,
 # S31 -3.8, -3.9 dB); reversed (br -1.2 in the drawing) P1 goes to P3.
 board   = "rf_circulator.kicad_pcb"   # paths are relative to this file
