@@ -42,10 +42,16 @@ class Draw3D:
         from .volumetab import gl_problem, _view_class
         self.shown3d = {k: True for k in ('substrate',) + SHOWN_MATERIALS}
         self.clip = None  # (axis, value, keep)
+        # what is drawn: the overlays (grid, outline, gizmo), the board's
+        # items (made again when the board, the clip or what is shown of it
+        # changes) and each shape's (index: dict(key, mesh, item, look), kept
+        # while its mesh is the same)
         self._gl_items, self._board3d, self._board3d_at = [], None, None
-        self._meshes3d, self._shape_gl = {}, {}
+        self._board_gl, self._board_gl_key, self._board_ver = [], None, 0
+        self._entries3d, self._meshes3d, self._shape_gl = {}, {}, {}
         self._press3d_at, self._drag3d = None, None
-        self._outline_gl = self._gizmo_gl = self._grid_gl = None
+        self._outline_gl = self._outline_fixed_gl = None
+        self._gizmo_gl = self._grid_gl = None
         self._gizmo = None  # (base, length, axes) as drawn
         try:
             import pyqtgraph.opengl as gl
@@ -229,9 +235,9 @@ class Draw3D:
             s = self.drawing.shapes[i]
             if s.hidden and which is None:
                 continue
-            m = self._meshes3d.get(i) or _mesh_of(s, self.stack)
-            if m is not None and len(m[0]):
-                boxes.append([*m[0].min(0), *m[0].max(0)])
+            b = self._box3d(i)
+            if b is not None:
+                boxes.append(b)
         if which is None and self.layout_ and self.layout_.get('outline'):
             from .drawtab import shape_bounds
             x0, y0, x1, y1 = shape_bounds(self.layout_)
@@ -243,28 +249,80 @@ class Draw3D:
         b = np.asarray(boxes, float)
         return (*b[:, :3].min(0), *b[:, 3:].max(0))
 
+    def _box3d(self, i):
+        """Shape i's 3D box (x0, y0, z0, x1, y1, z1), kept with its mesh."""
+        e = self._entries3d.get(i)
+        if e is not None:
+            if e.get('box') is None:
+                v = e['mesh'][0]
+                e['box'] = np.r_[v.min(0), v.max(0)]
+            return e['box']
+        m = _mesh_of(self.drawing.shapes[i], self.stack)
+        return None if m is None or not len(m[0]) else np.r_[m[0].min(0),
+                                                              m[0].max(0)]
+
     # ---- drawing it ----
     def _redraw_3d(self):
+        """The 3D view as the drawing is: the board's items made again only
+        when the board, the clip or what is shown of it changed; a shape whose
+        mesh is the same keeps its item (recoloured if its look changed), the
+        rest are made anew. (Made anew every time, 300 vias took 106 ms.)"""
         if self.gl is None:
             return
+        self._3d_timer.stop()  # (drawn now)
         view = self.view3d
         for it in self._gl_items:
             view.removeItem(it)
         self._gl_items = []
-        self._outline_gl = self._gizmo_gl = self._grid_gl = None
-        if self.board_on.isChecked():
-            for key, v, f, rgba, opaque in self._board_clipped():
-                if self.shown3d.get(key, True):
-                    self._mesh(v, f, rgba, opaque)
-        self._meshes3d, self._shape_gl = {}, {}
+        self._outline_gl = self._outline_fixed_gl = None
+        self._gizmo_gl = self._grid_gl = None
+        on = self.board_on.isChecked()
+        bkey = (self._board_ver, self.clip, on, tuple(sorted(
+            k for k, v in self.shown3d.items() if v)))
+        if bkey != self._board_gl_key:
+            for it in self._board_gl:
+                view.removeItem(it)
+            self._board_gl = [self._mesh(v, f, rgba, opaque) for key, v, f,
+                              rgba, opaque in (self._board_clipped() if on
+                                               else [])
+                              if self.shown3d.get(key, True)]
+            self._board_gl_key = bkey
+        pool = {}
+        for e in self._entries3d.values():
+            pool.setdefault(e['key'], []).append(e)
+        entries = {}
         for i, s in enumerate(self.drawing.shapes):
             if not self._shown3d(s):
                 continue
-            m = self._meshes3d[i] = self._shape_mesh3d(s)
-            if m is not None and len(m[0]):
-                self._shape_gl[i] = self._mesh(*m, *self._look(i, s))
+            key, look = self._mesh_key(s), self._look(i, s)
+            got = pool.get(key)
+            e = got.pop() if got else None
+            if e is None:
+                m = self._shape_mesh3d(s)
+                if m is None or not len(m[0]):
+                    continue
+                e = dict(key=key, mesh=m, item=self._mesh(*m, *look),
+                         look=look)
+            else:
+                e['item'].resetTransform()
+                if e['look'] != look:
+                    _relook(e['item'], look)
+                    e['look'] = look
+            entries[i] = e
+        for es in pool.values():
+            for e in es:
+                view.removeItem(e['item'])
+        self._entries3d = entries
+        self._meshes3d = {i: e['mesh'] for i, e in entries.items()}
+        self._shape_gl = {i: e['item'] for i, e in entries.items()}
         self._update_grid_3d()
         self._update_outline_3d()
+
+    def _mesh_key(self, s):
+        """What a shape's 3D mesh depends on."""
+        from .drawtab import _geo_key
+        return (_geo_key(s), s.material, None if s.solid else s.layer,
+                (s.z0, s.z1) if s.solid else None, self.clip, self._board_ver)
 
     def _look(self, i, s):
         """(rgba, opaque) of shape i in 3D: its material's colour, lighter
@@ -287,26 +345,48 @@ class Draw3D:
             glOptions='opaque' if opaque else 'translucent')
         it.setDepthValue(0 if opaque else 5)
         self.view3d.addItem(it)
-        self._gl_items.append(it)
         return it
 
     def _shape_mesh3d(self, s):
-        """Shape s's triangles as drawn: through the clip plane, a solid cut
-        and capped (its outline clipped, extruded again)."""
-        m = _mesh_of(s, self.stack)
-        if m is None or self.clip is None:
-            return m
-        axis, value, keep = self.clip
-        g = s.outline()
-        z0, z1 = float(m[0][:, 2].min()), float(m[0][:, 2].max())
-        if g is None:  # a port's post
-            v, f = v3.clip_mesh(*m, axis, value, keep)
+        """Shape s's triangles as drawn (core.shapes.shape_mesh's: a sheet a
+        slab at its layer, a cut just proud of it, a solid from z0 to z1, a
+        port a post), through the clip plane cut and capped (its outline
+        clipped, extruded again); a convex one's caps a fan
+        (view3d.prism_fast)."""
+        from .drawtab import _outline
+        if s.kind == 'port':
+            m = _mesh_of(s, self.stack)
+            if m is None or self.clip is None:
+                return m
+            v, f = v3.clip_mesh(*m, *self.clip)
             return (v, f) if len(f) else None
-        if axis == 2:
-            r = v3.clip_range(z0, z1, value, keep)
-            return None if r is None else _prisms(g, *r)
-        g = v3.clip_outline(g, axis, value, keep)
-        return None if g is None else _prisms(g, z0, z1)
+        g = _outline(s)
+        if g is None:
+            return None
+        if s.solid:
+            z0, z1 = sorted((s.z0, s.z1))
+            if z1 - z0 < 1e-9:
+                return None
+        else:
+            z = self.stack['cu_z'].get(s.layer)
+            if z is None:
+                return None
+            h = max(self.stack['cu_t'].get(s.layer, 0.035),
+                    sh.SHEET_SHOWN) / 2
+            lift = 0.01 if s.material == 'cut' else 0.0
+            z0, z1 = z - h - lift, z + h + lift
+        if self.clip is not None:
+            axis, value, keep = self.clip
+            if axis == 2:
+                r = v3.clip_range(z0, z1, value, keep)
+                if r is None:
+                    return None
+                z0, z1 = r
+            else:
+                g = v3.clip_outline(g, axis, value, keep)
+                if g is None:
+                    return None
+        return v3.prism_fast(g, z0, z1)
 
     def _board_clipped(self):
         """The board's meshes [(key, v, f, rgba, opaque)], made once a board
@@ -324,8 +404,8 @@ class Draw3D:
                 from shapely.geometry import shape as geo
                 g = v3.clip_outline(geo(self.layout_['outline']), axis, value,
                                     keep)
-                m = None if g is None else _prisms(g, v[:, 2].min(),
-                                                   v[:, 2].max())
+                m = None if g is None else v3.prism_fast(g, v[:, 2].min(),
+                                                         v[:, 2].max())
             else:
                 m = v3.clip_mesh(v, f, axis, value, keep)
             if m is not None and len(m[1]):
@@ -347,7 +427,7 @@ class Draw3D:
             z0 = min(l['z0'] for l in layers)
             z1 = max(l['z1'] for l in layers)
             try:
-                v, f = sh.prism(geo(d['outline']), z0, z1)
+                v, f = v3.prism_fast(geo(d['outline']), z0, z1)
                 out.append(('substrate', v, f, (0.30, 0.62, 0.36, 0.25),
                             False))
             except Exception:  # noqa: BLE001
@@ -375,9 +455,10 @@ class Draw3D:
             return  # (drawn whole soon)
         ss = self.drawing.shapes
         for i in set(was) ^ set(self.selected):
-            it = self._shape_gl.get(i)
-            if it is not None and i < len(ss):
-                it.setColor(self._look(i, ss[i])[0])
+            e = self._entries3d.get(i)
+            if e is not None and i < len(ss):
+                e['look'] = self._look(i, ss[i])
+                _relook(e['item'], e['look'])
         self._update_outline_3d()
 
     def _update_grid_3d(self):
@@ -405,41 +486,59 @@ class Draw3D:
 
     def _update_outline_3d(self):
         """The selected shapes outlined (their solids' edges, drawn over
-        everything), and the gizmo at them."""
+        everything: those that move with a drag apart from the rest), and
+        the gizmo at them."""
         if self.gl is None:
             return
-        if self._outline_gl is not None:
-            self.view3d.removeItem(self._outline_gl)
-            self._gl_items.remove(self._outline_gl)
-            self._outline_gl = None
-        segs = []
+        for name in ('_outline_gl', '_outline_fixed_gl'):
+            it = getattr(self, name, None)
+            if it is not None:
+                self.view3d.removeItem(it)
+                self._gl_items.remove(it)
+            setattr(self, name, None)
+        movable = set(self._movable())
+        segs = {True: [], False: []}
         for i in self.selected:
             if i >= len(self.drawing.shapes):
                 continue
-            s = self.drawing.shapes[i]
-            m = self._meshes3d.get(i)
-            if m is None or not len(m[0]):
+            e = self._entries3d.get(i)
+            if e is None:
                 continue
-            g = s.outline() if s.kind != 'port' else None
-            if g is not None and self.clip is not None and self.clip[0] != 2:
-                g = v3.clip_outline(g, *self.clip)
-            if g is None:  # a port: its post's box
-                from shapely.geometry import box
-                x0, y0 = m[0][:, :2].min(0)
-                x1, y1 = m[0][:, :2].max(0)
-                g = box(x0, y0, x1, y1)
-            segs.append(v3.prism_edges(g, m[0][:, 2].min(), m[0][:, 2].max()))
-        if segs:
-            from .drawtab import SELECTED
-            c = SELECTED
+            if e.get('edges') is None:
+                e['edges'] = self._edges3d(self.drawing.shapes[i], e)
+            segs[i in movable].append(e['edges'])
+        from .drawtab import SELECTED
+        c = SELECTED
+        for moving, name in ((True, '_outline_gl'),
+                             (False, '_outline_fixed_gl')):
+            if not segs[moving]:
+                continue
             it = self.gl.GLLinePlotItem(
-                pos=np.concatenate(segs).astype(np.float32), mode='lines',
-                width=2.0, antialias=True,
+                pos=np.concatenate(segs[moving]).astype(np.float32),
+                mode='lines', width=2.0, antialias=True,
                 color=(c.redF(), c.greenF(), c.blueF(), 1.0))
             self.view3d.addItem(it)
             self._gl_items.append(it)
-            self._outline_gl = it
+            setattr(self, name, it)
         self._update_gizmo_3d()
+
+    def _edges3d(self, s, e):
+        """The outline (segment ends) of shape s as drawn (its entry e)."""
+        from .drawtab import _outline
+        b = self._box3d_of(e)
+        g = _outline(s) if s.kind != 'port' else None
+        if g is not None and self.clip is not None and self.clip[0] != 2:
+            g = v3.clip_outline(g, *self.clip)
+        if g is None:  # a port: its post's box
+            from shapely.geometry import box
+            g = box(b[0], b[1], b[3], b[4])
+        return v3.prism_edges(g, b[2], b[5])
+
+    def _box3d_of(self, e):
+        if e.get('box') is None:
+            v = e['mesh'][0]
+            e['box'] = np.r_[v.min(0), v.max(0)]
+        return e['box']
 
     # ---- the gizmo ----
     def _gizmo_frame(self):
@@ -448,9 +547,8 @@ class Draw3D:
         movable = self._movable()
         if not movable:
             return None
-        boxes = [np.r_[m[0].min(0), m[0].max(0)] for m in
-                 (self._meshes3d.get(i) for i in movable)
-                 if m is not None and len(m[0])]
+        boxes = [b for b in (self._box3d(i) for i in movable
+                             if i in self._entries3d) if b is not None]
         if not boxes:
             return None
         b = np.asarray(boxes)
@@ -626,16 +724,20 @@ class Draw3D:
         axis = st['axis'] if st['kind'] == 'axis' else (
             'xyz'.index(self._axis) if self._axis else None)
         new = {}
-        if axis is not None:
-            s = v3.along_axis(o, d, at, axis)
-            if s is None:
-                return True
-            delta = rnd(s - st.get('s0', 0.0))
-            for j, s0 in st['orig'].items():
-                new[j] = (s0.lifted(delta) if axis == 2 and s0.solid else
-                          s0 if axis == 2 else
-                          s0.moved(delta, 0) if axis == 0 else
-                          s0.moved(0, delta))
+        if axis is not None or st['kind'] == 'move':
+            if axis is not None:
+                s = v3.along_axis(o, d, at, axis)
+                if s is None:
+                    return True
+                d3 = [0.0, 0.0, 0.0]
+                d3[axis] = rnd(s - st.get('s0', 0.0))
+            else:  # on its level
+                if abs(d[2]) < 1e-9:
+                    return True
+                p = o + ((at[2] - o[2]) / d[2]) * d
+                d3 = [rnd(p[0] - at[0]), rnd(p[1] - at[1]), 0.0]
+            self._shift3d(st, tuple(d3))
+            return True
         elif st['kind'] == 'face':
             n = st['normal']
             if n is None:  # looking straight down: the mouse's rows
@@ -649,13 +751,6 @@ class Draw3D:
             face = None if st['face'] == 'side' else st['face']
             for j, s0 in st['orig'].items():
                 new[j] = s0.lifted(rnd(dz), face) if s0.solid else s0
-        else:  # moved on its level
-            if abs(d[2]) < 1e-9:
-                return True
-            p = o + ((at[2] - o[2]) / d[2]) * d
-            dx, dy = rnd(p[0] - at[0]), rnd(p[1] - at[1])
-            for j, s0 in st['orig'].items():
-                new[j] = s0.moved(dx, dy)
         changed = [j for j, s in new.items()
                    if s.to_dict() != self.drawing.shapes[j].to_dict()]
         for j in changed:
@@ -671,12 +766,48 @@ class Draw3D:
         """Esc while dragging in 3D: the shapes back where they were (the
         rest of the drag moves nothing)."""
         st = self._drag3d
-        if st['moved']:
+        if 'd' in st:  # (moved by a transform: the drawing is as it was)
+            self._shift3d(st, (0.0, 0.0, 0.0))
+        elif st['moved']:
             from kicad2ems.core.shapes import Drawing
             self.drawing = Drawing.from_dict(st['before'])
             self._refresh(listing=False)
         st.update(kind='none', moved=False, toggle=False)
         self.status.setText('the drag undone (Esc)')
+
+    def _shift3d(self, st, d3):
+        """The shapes dragged shown d3 = (dx, dy, dz) from where they were:
+        their 3D items, their outline and the gizmo moved by a transform,
+        their plan items by an offset (the drawing changes at the release:
+        made again on each move, the whole 300-via fence took 122 ms a
+        move)."""
+        if d3 == st.get('d'):
+            return
+        st['d'] = d3
+        st['moved'] = any(d3)
+        dx, dy, dz = d3
+        for j, s0 in st['orig'].items():
+            it = self._shape_gl.get(j)
+            if it is not None:
+                it.resetTransform()
+                it.translate(dx, dy, dz if s0.solid else 0.0)
+            for p in self._items_of(j):
+                p.setPos(dx, dy)
+        for it in (self._outline_gl, self._gizmo_gl):
+            if it is not None:
+                it.resetTransform()
+                it.translate(dx, dy, dz)
+        self.status.setText(
+            f"3D: moved ({dx:g}, {dy:g}" + (f", {dz:g}" if dz else '') +
+            ') mm' + (f" along {'xyz'[st['axis']]}" if st['kind'] == 'axis'
+                      else f" along {self._axis} only" if self._axis else ''))
+
+    def _shifted(self, st):
+        """The drawing as a drag by a transform left it."""
+        dx, dy, dz = st.get('d', (0.0, 0.0, 0.0))
+        for j, s0 in st['orig'].items():
+            s = s0.moved(dx, dy) if dx or dy else s0
+            self.drawing.shapes[j] = s.lifted(dz) if dz and s0.solid else s
 
     def _release3d(self, ev):
         st, at = self._drag3d, self._press3d_at
@@ -685,6 +816,8 @@ class Draw3D:
         if st is not None:
             self.view3d.setCursor(Qt.OpenHandCursor)
             if st['moved']:
+                if 'd' in st:
+                    self._shifted(st)
                 self._commit(st['before'])
             elif st.get('toggle'):
                 self.select(st['i'], 'toggle')
@@ -706,6 +839,9 @@ class Draw3D:
         s = self.drawing.shapes[i]
         m = self._meshes3d[i] = self._shape_mesh3d(s)
         it = self._shape_gl.get(i)
+        e = self._entries3d.get(i)
+        if e is not None and m is not None:
+            e.update(mesh=m, box=None, edges=None)
         if it is None or m is None:
             return
         it.setMeshData(meshdata=self.gl.MeshData(
@@ -750,6 +886,14 @@ def _mesh_of(s, stack):
         return sh.shape_mesh(s, stack)
     except Exception:  # noqa: BLE001 (a shape shapely cannot fill)
         return None
+
+
+def _relook(it, look):
+    """A shape's GL item recoloured (rgba, opaque)."""
+    rgba, opaque = look
+    it.setColor(rgba)
+    it.setGLOptions('opaque' if opaque else 'translucent')
+    it.setDepthValue(0 if opaque else 5)
 
 
 def _prisms(g, z0, z1):

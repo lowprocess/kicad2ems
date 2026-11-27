@@ -582,3 +582,57 @@ def test_the_3d_view_camera_clip_and_gizmo(tab, app):
     tab.z0.setValue(2.5)
     assert tab._grid_gl.transform().map(pg.Vector(0, 0, 0)).z() == (
         pytest.approx(2.5))
+
+
+def test_the_3d_view_keeps_what_did_not_change(tab, app):
+    import numpy as np
+    import pytest
+    from kicad2ems.core import shapes as sh
+    from kicad2ems.core.shapes import Shape
+    if tab.gl is None:
+        pytest.skip('no 3D view here')
+    kinds = [Shape('rect', [[0, 0], [2, 1]], layer='F.Cu'),
+             Shape('circle', [[5, 5]], radius=0.4, material='cut',
+                   layer='B.Cu'),
+             Shape('polygon', [[0, 0], [3, 0], [3, 3], [2, 1]],
+                   material='dielectric', z0=1.6, z1=2.2),
+             Shape('path', [[0, 4], [4, 4], [4, 8]], width=0.3),
+             Shape('port', [[1, 1]])]
+    # the page's own meshes are core.shapes.shape_mesh's solids
+    for s in kinds:
+        mine, theirs = tab._shape_mesh3d(s), sh.shape_mesh(s, tab.stack)
+        vol = [np.einsum('ij,ij->i', t[:, 0], np.cross(t[:, 1], t[:, 2])
+                         ).sum() / 6 for t in (mine[0][mine[1]],
+                                               theirs[0][theirs[1]])]
+        assert vol[0] == pytest.approx(vol[1], rel=1e-9)
+        assert mine[0].min(0) == pytest.approx(theirs[0].min(0))
+        assert mine[0].max(0) == pytest.approx(theirs[0].max(0))
+    for s in kinds:
+        tab.add(s)
+    tab._redraw_3d()
+    items = dict(tab._shape_gl)
+    # a shape added: the others keep their items; one moved: only its own
+    tab.add(Shape('rect', [[8, 8], [9, 9]], material='metal', z0=0, z1=1))
+    tab._redraw_3d()
+    assert all(tab._shape_gl[i] is items[i] for i in items)
+    tab.select(1)
+    tab.move_by(1, 0)
+    tab._redraw_3d()
+    assert tab._shape_gl[1] is not items[1]
+    assert tab._shape_gl[0] is items[0] and tab._shape_gl[2] is items[2]
+    # a selection recolours, nothing is made again
+    tab.select_many([0, 2])
+    assert tab._shape_gl[0] is items[0]
+    assert tab._entries3d[0]['look'][0] != tab._entries3d[3]['look'][0]
+    # the whole drawing dragged in 3D: moved by a transform, then the
+    # drawing at the release, one undo step
+    tab.select_all()
+    tab._redraw_3d()
+    tab.camera('top')
+    n = len(tab._undo)
+    a = tab.project3d([8.5, 8.5, 1])  # (on the metal block's top)
+    b = tab.project3d([10.5, 9.5, 1])
+    _press_3d(tab, app, a, b)
+    assert tab.drawing.shapes[0].points == [[2, 1], [4, 2]]
+    assert tab.drawing.shapes[5].points == [[10, 9], [11, 10]]
+    assert len(tab._undo) == n + 1

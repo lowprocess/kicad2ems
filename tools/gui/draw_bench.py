@@ -20,7 +20,9 @@ the median of --repeat tries, in ms:
     select all    Ctrl+A: the list, the plan and the 3D view follow
     plan drag all one mouse move of a drag of the whole fence
     array         the fence made from one via (Array: a row), and undone
-    3D redraw     the 3D view's items made again (DrawTab._redraw_3d)
+    3D first draw the 3D view's items of every shape made (all new)
+    3D redraw     the 3D view drawn again, nothing changed (the page of
+                  2026-11-20 made every item again: its first draw)
     3D pick       the shape under a pixel (DrawTab.pick3d)
     3D drag       one mouse move of a drag of a via in 3D
     3D drag all   one mouse move of a drag of the whole fence in 3D
@@ -196,6 +198,16 @@ def main():
         out['array'] = statistics.median(array() for _ in range(5))
         app.processEvents()
     if tab.gl is not None:
+        if hasattr(tab, '_entries3d'):  # (a redraw keeps what is the same)
+            def first3d():
+                for e in tab._entries3d.values():
+                    tab.view3d.removeItem(e['item'])
+                tab._entries3d = {}
+                a_ = time.perf_counter()
+                tab._redraw_3d()
+                return (time.perf_counter() - a_) * 1e3
+            out['3D first draw'] = statistics.median(
+                first3d() for _ in range(a.repeat))
         out['3D redraw'] = ms(tab._redraw_3d, a.repeat)
         view = tab.view3d
         view.setCameraPosition(distance=40, elevation=50, azimuth=-90)

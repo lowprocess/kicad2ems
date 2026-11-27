@@ -522,7 +522,7 @@ class DrawTab(QWidget, Draw3D):
         board.json's; None: none, a default two-layer stack)."""
         self.layout_ = layout
         self.stack = sh.stack_of(layout)
-        self._board3d = None
+        self._board3d, self._board_ver = None, self._board_ver + 1
         self.snapper, self._snap_stale = so.Snapper(layout), True
         layers = sorted(self.stack['cu_z'], key=lambda l: -self.stack['cu_z'][l])
         keep = self.layer.currentText()

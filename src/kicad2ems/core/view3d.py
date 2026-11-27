@@ -16,6 +16,8 @@ grid.
                                         # `at` the ray passes nearest
     v, f = clip_mesh(v, f, axis, value, keep='below')
     g = clip_outline(polygon, axis, value, keep='below')
+    v, f = prism_fast(polygon, z0, z1)  # core.shapes.prism, a convex one
+                                        # quicker
     lines = prism_edges(polygon, z0, z1)        # (2k, 3) segment ends
     spec = grid_spec((x0, y0, x1, y1), step)    # centre, size, spacing
 
@@ -28,7 +30,8 @@ import numpy as np
 
 __all__ = ['view_matrix', 'projection_matrix', 'mvp', 'ray', 'project',
            'PRESETS', 'preset', 'frame', 'along_axis', 'pixel_to_segment',
-           'clip_mesh', 'clip_outline', 'clip_range', 'prism_edges',
+           'clip_mesh', 'clip_outline', 'clip_range', 'prism_fast',
+           'prism_edges',
            'grid_spec']
 
 # name: (elevation, azimuth): from above (x right, y up), from the front
@@ -217,6 +220,42 @@ def clip_range(z0, z1, value, keep='below'):
     else:
         lo = max(lo, value)
     return None if hi - lo <= 1e-9 else (lo, hi)
+
+
+def prism_fast(g, z0, z1):
+    """core.shapes.prism (polygon g extruded from z0 to z1: vertices, faces,
+    wound outward), its caps a fan from the first corner when g is convex
+    with no holes (a via, a pad, a box: shapely's triangulation took three
+    quarters of a 300-via 3D view's time); anything else, and a multipolygon
+    part by part, is prism's."""
+    from .shapes import prism
+    if g.geom_type == 'MultiPolygon':
+        ms = [prism_fast(p, z0, z1) for p in g.geoms if p.area > 1e-12]
+        v = np.concatenate([m[0] for m in ms]) if ms else np.zeros((0, 3))
+        return v, np.arange(len(v)).reshape(-1, 3)
+    xy = np.asarray(g.exterior.coords, float)[:-1]
+    if g.interiors or len(xy) < 3:
+        return prism(g, z0, z1)
+    e = np.roll(xy, -1, axis=0) - xy
+    turn = e[:, 0] * np.roll(e, -1, axis=0)[:, 1] - e[:, 1] * np.roll(
+        e, -1, axis=0)[:, 0]
+    if turn.sum() < 0:  # clockwise: anticlockwise
+        xy = xy[::-1]
+        turn = -turn[::-1]
+    if (turn < -1e-12 * max(float(np.abs(e).max()), 1e-9) ** 2).any():
+        return prism(g, z0, z1)  # not convex
+    z0, z1 = sorted((float(z0), float(z1)))
+    n = len(xy)
+    at = lambda p, z: np.c_[p, np.full(len(p), z)]
+    a = np.repeat(xy[:1], n - 2, axis=0)
+    b, c = xy[1:-1], xy[2:]
+    q = np.roll(xy, -1, axis=0)
+    tri = [np.stack([at(a, z1), at(b, z1), at(c, z1)], 1),  # top: up
+           np.stack([at(a, z0), at(c, z0), at(b, z0)], 1),  # bottom: down
+           np.stack([at(xy, z0), at(q, z0), at(q, z1)], 1),  # walls: out
+           np.stack([at(xy, z0), at(q, z1), at(xy, z1)], 1)]
+    v = np.concatenate(tri).reshape(-1, 3)
+    return v, np.arange(len(v)).reshape(-1, 3)
 
 
 def prism_edges(g, z0, z1):

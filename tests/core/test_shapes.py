@@ -378,6 +378,36 @@ def test_the_clip_plane():
     assert v3.clip_range(0, 2, 3, keep='above') is None
 
 
+def test_a_convex_prism_as_a_fan():
+    from shapely.geometry import box, Point, Polygon
+    from kicad2ems.core import view3d as v3
+
+    def volume(v, f):
+        t = v[f]
+        return np.einsum('ij,ij->i', t[:, 0], np.cross(t[:, 1], t[:, 2])).sum() / 6
+
+    def outward(v, f, g):
+        """Every face's normal points away from the solid's centre line."""
+        t = v[f]
+        n = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
+        c = t.mean(1) - [*g.centroid.coords[0], 0.5]
+        return ((n * c).sum(1) > -1e-12).all()
+
+    for g in (Point(1, 2).buffer(0.3), box(0, 0, 2, 1),
+              Polygon([[0, 0], [2, 0], [2, 1], [0, 1]][::-1])):
+        v, f = v3.prism_fast(g, 1, 0)
+        assert volume(v, f) == pytest.approx(g.area)
+        assert outward(v, f, g)
+        assert v[:, 2].min() == 0 and v[:, 2].max() == 1
+        assert len(f) < len(prism(g, 0, 1)[1]) + 4
+    # not convex, or with a hole: prism's own
+    ell = Polygon([[0, 0], [2, 0], [2, 1], [1, 1], [1, 2], [0, 2]])
+    ring = box(0, 0, 4, 4).difference(box(1, 1, 3, 3))
+    for g in (ell, ring):
+        v, f = v3.prism_fast(g, 0, 1)
+        assert volume(v, f) == pytest.approx(g.area)
+
+
 def test_outlines_and_the_grid():
     from shapely.geometry import box, Point
     from kicad2ems.core import view3d as v3
