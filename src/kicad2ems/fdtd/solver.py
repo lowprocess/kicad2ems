@@ -356,8 +356,8 @@ class FDTD(Solver):
 
     # ---- what it changes, and what it holds ---------------------------------
     def deviations(self, run, p):
-        """Vias moved onto mesh lines, parts split in two elements, edge walls
-        moved onto mesh lines."""
+        """Vias and drawn posts moved onto mesh lines, parts split in two
+        elements, edge walls moved onto mesh lines."""
         m, out = run.m, []
         for i, (v, q) in enumerate(zip(m.vias, p.grid.get('vias', m.vias))):
             d = float(np.hypot(q[0] - v[0], q[1] - v[1]))
@@ -365,6 +365,15 @@ class FDTD(Solver):
                 out.append(
                     Deviation(f"via:{i}", 'vias', 'moved onto the mesh', d,
                               to=list(q)))
+        if p.grid.get('posts'):
+            from kicad2ems.core.solids import pieces
+            ps = pieces(m)
+            for k, dx, dy in p.grid['posts']:
+                d = float(np.hypot(dx, dy))
+                if d > 1e-9 and k < len(ps):
+                    out.append(Deviation(f"solid:{ps[k].name}", 'solids',
+                                         'moved onto the mesh', d,
+                                         to=[float(dx), float(dy)]))
         for pt in m.parts:
             n = len(pt.pieces())
             if n > 1 and not pt.short:

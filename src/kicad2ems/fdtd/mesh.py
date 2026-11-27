@@ -2,10 +2,11 @@
 Automatic rectilinear mesh for openEMS.
 
   x / y : thirds rule at Manhattan copper edges (1/3 inside, 2/3 outside the
-          metal), end points of oblique edges, via centre +- radius, port
-          planes and the board outline kept exactly; lines closer than fine/2
-          merged by priority; graded smoothing (<= ratio growth) up to
-          lambda/res in the dielectric and in air
+          metal), end points of oblique edges, via centre +- radius, drawn
+          solids' faces (small posts snapped as ground vias), port planes and
+          the board outline kept exactly; lines closer than fine/2 merged by
+          priority; graded smoothing (<= ratio growth) up to lambda/res in the
+          dielectric and in air
   z     : every interface, >= nz cells per dielectric, copper sheets exactly
           on lines, air margin (none below a PEC bottom plane), PML cells added
           only on PML sides; with --thickness on, both faces of each copper
@@ -427,6 +428,77 @@ def _snap_vias(m, mode, mesh_xy, via_snap):
     return placed, far
 
 
+# mm: a drawn metal piece no wider than this in plan (both ways) is a post,
+# meshed as the ground vias are with --vias snap / auto: no lines of its own,
+# moved onto the nearest line crossing (a fence of 300 posts had put lines at
+# every one's extremes: docs/meshing.md#drawn-solids)
+POST_MAX = 1.0
+
+
+def posts(ps, vias='auto'):
+    """Indices into ps (core.solids pieces) of the drawn metal posts the mesh
+    snaps (POST_MAX; vias 'snap' or 'auto', as a ground via): none for
+    'exact' or 'centre'."""
+    if vias not in ('snap', 'auto'):
+        return []
+    out = []
+    for k, p in enumerate(ps):
+        if (p.material != 'metal' or p.around or p.magnet is not None
+                or p.z1 - p.z0 <= 1e-9):
+            continue
+        x0, y0, x1, y1 = p.polygon.bounds
+        if max(x1 - x0, y1 - y0) <= POST_MAX:
+            out.append(k)
+    return out
+
+
+def _snap_posts(ps, idx, mesh_xy, via_snap):
+    """({piece index: (dx, dy)}, {axis: [centre]}): each post's move onto the
+    line crossing nearest its centre (its box's) within via_snap mm, and the
+    centres of those with no line that near, on the axis that has none."""
+    moved, far = {}, {0: [], 1: []}
+    for k in idx:
+        x0, y0, x1, y1 = ps[k].polygon.bounds
+        c = (0.5 * (x0 + x1), 0.5 * (y0 + y1))
+        s = [mesh_xy[a][np.argmin(np.abs(mesh_xy[a] - c[a]))] for a in (0, 1)]
+        off = [abs(s[a] - c[a]) > via_snap for a in (0, 1)]
+        if not any(off):
+            moved[k] = (float(s[0] - c[0]), float(s[1] - c[1]))
+        for a in (0, 1):
+            if off[a]:
+                far[a].append(c[a])
+    return moved, far
+
+
+def post_lines(cs, reach):
+    """Lines for posts with none within `reach`: their centres cs in runs no
+    longer than 2 reach, a line at each run's middle (every post within reach
+    of one). A fence at a pitch under the cell: one line every 2 reach, not
+    one a post (the merge's fine / 2 had kept one every 0.2 mm on a 0.147 mm
+    fence)."""
+    out, run = [], []
+    for c in sorted(cs):
+        if run and c - run[0] > 2 * reach:
+            out.append(0.5 * (run[0] + run[-1]))
+            run = []
+        run.append(c)
+    if run:
+        out.append(0.5 * (run[0] + run[-1]))
+    return out
+
+
+def moved_pieces(ps, shifts):
+    """ps with the snapped posts moved (shifts: the mesh's 'posts', [[k, dx,
+    dy], ...]); the others as they are."""
+    if not shifts:
+        return list(ps)
+    from dataclasses import replace
+    from shapely.affinity import translate
+    by = {int(k): (dx, dy) for k, dx, dy in shifts}
+    return [replace(p, polygon=translate(p.polygon, *by[k])) if k in by else p
+            for k, p in enumerate(ps)]
+
+
 def signal_sheets(m, plane=0.85):
     """Heights of the copper sheets with signal edges on them: the ports' layers
     and every layer that is not a plane (copper over less than `plane` of the
@@ -722,10 +794,13 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
               via_snap=0.2, refine=(), z_sheet=1.0, curve_res=6.0, zone=False,
               thickness=False, nz_mask=None, log=print):
     """Mesh lines (mm) for model m. Returns dict(x, y, z, vias, info, thick,
-    enclosure): thick is the copper thickness plan (thick.plan, None:
+    enclosure, posts): thick is the copper thickness plan (thick.plan, None:
     zero-thickness sheets) that build_fdtd builds the model with; enclosure
     the drawn metal's box (core.solids.enclosure, board heights) when it
-    closes round the board and the mesh ends at its outer faces, else None.
+    closes round the board and the mesh ends at its outer faces, else None;
+    posts the drawn metal posts snapped onto line crossings, [[k, dx, dy]]
+    (k: the piece's index in core.solids.pieces, moved by dx, dy mm:
+    moved_pieces).
 
     curves: 'extremes' (default) or 'vertices' - see curve_lines().
     vias:   'exact'  lines at the centre and +-radius of every via (round
@@ -737,6 +812,9 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
                      it gets centre lines)
             'auto'   (default) 'exact' for vias on the port (signal) nets,
                      'snap' for all others (ground stitching / fence vias)
+            with 'snap' and 'auto' a drawn metal post (no wider than
+            POST_MAX in plan) is snapped as a ground via: no x / y lines of
+            its own, its centre moved onto the nearest line crossing
     refine: [(x0, y0, x1, y1, step)] boxes (model coordinates, mm) with x and
             y lines every `step`
     z_sheet: the first z cell either side of a copper sheet with signal edges,
@@ -758,9 +836,9 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
 
     Drawn solids (board.solids, as core.solids.pieces resolves them): lines at
     their pieces' faces (solid_lines; a metal face wins a merge, a
-    dielectric's or air's gives way to the copper's), the dielectric ones'
-    own largest cell, and the air margin past them as well as past the
-    board."""
+    dielectric's or air's gives way to the copper's; a post's heights alone),
+    the dielectric ones' own largest cell, and the air margin past them as
+    well as past the board."""
     from . import thick
     from kicad2ems.core.solids import pieces as solid_pieces, describe
     th = thick.plan(m) if thickness else None
@@ -804,7 +882,11 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
         if shut is not None:
             dom = [shut[0], shut[1], shut[3], shut[4]]
             ext = [npml[i] * M_air for i in range(6)]
-    sl = solid_lines(sp, fine, curves) if sp else {0: [], 1: [], 2: []}
+    post = posts(sp, vias)  # snapped as ground vias: no x / y lines
+    lone = set(post)
+    sl = (solid_lines([p for k, p in enumerate(sp) if k not in lone], fine,
+                      curves) if sp else {0: [], 1: [], 2: []})
+    sl[2] += [(z, True) for k in post for z in (sp[k].z0, sp[k].z1)]
     if shut is not None:  # (what is drawn outside the metal: not meshed)
         sl = {k: [(v, mt) for v, mt in sl[k]
                   if shut[k] - 1e-9 <= v <= shut[k + 3] + 1e-9]
@@ -868,14 +950,17 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
 
     mesh = xy_lines({0: [], 1: []})
     placed, far = _snap_vias(m, mode, mesh, via_snap)
-    if far:  # too far from any line: give them centre lines
-        mesh = xy_lines(
-            {0: [m.vias[i][0] for i in far], 1: [m.vias[i][1] for i in far]})
+    shifts, pfar = _snap_posts(sp, post, mesh, via_snap)
+    if far or pfar[0] or pfar[1]:  # too far from any line: centre lines
+        mesh = xy_lines({a: [m.vias[i][a] for i in far]
+                         + post_lines(pfar[a], via_snap) for a in (0, 1)})
         placed, far = _snap_vias(m, mode, mesh, via_snap)
         # their lines were merged away: snap them anyway
         if far:
             # (left off the grid, openEMS would drop them)
             placed, _ = _snap_vias(m, mode, mesh, np.inf)
+    if post:
+        shifts, _ = _snap_posts(sp, post, mesh, np.inf)
     moved = [np.hypot(a[0] - b[0], a[1] - b[1]) for a, b in zip(placed, m.vias)]
     nsnap = sum(1 for md in mode if md == 'snap')
     mesh[2] = _z_lines(m, ext, M_die, M_air, nz_min, ratio,
@@ -897,6 +982,10 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
     if sp:
         info['solids'] = describe(sp)
         info['enclosed'] = shut is not None
+        if post:
+            info['posts_snapped'] = len(post)
+            info['post_max_move_mm'] = float(max(
+                np.hypot(dx, dy) for dx, dy in shifts.values()))
     log(f"mesh: {nx} x {ny} x {nz} = {nx * ny * nz / 1e6:.2f} M cells (fine "
         f"{fine:.3f} mm, max {M_die:.2f} mm in dielectric / {M_air:.2f} mm in "
         f"air, air margin {air_text(air)}), boundaries "
@@ -910,7 +999,12 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
         log(f"{info['solids']}, lines at their faces"
             + ("; the metal closes round the board: the mesh ends at its "
                "outer faces (no air outside it)" if shut is not None else ""))
-        _check_solids(sp, mesh, log)
+        _check_solids(moved_pieces(sp, [[k, *v] for k, v in shifts.items()]
+                                   if post else None), mesh, log)
+        if post:
+            log(f"drawn posts: {len(post)} snapped onto existing lines as "
+                f"ground vias are (moved <= {info['post_max_move_mm']:.3f} "
+                f"mm), none with lines of its own (--vias exact: their faces')")
     if nsnap:
         log(f"vias: {nsnap} snapped onto existing lines (moved <= "
             f"{info['via_max_move_mm']:.3f} mm), {len(m.vias) - nsnap} with "
@@ -918,4 +1012,6 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
             + (f"; {len(far)} moved further than --via-snap {via_snap:g} mm "
                "(no line nearer)" if far else ""))
     return dict(x=mesh[0], y=mesh[1], z=mesh[2], vias=placed, info=info,
-                thick=th, enclosure=list(shut) if shut is not None else None)
+                thick=th, enclosure=list(shut) if shut is not None else None,
+                posts=[[k, dx, dy] for k, (dx, dy) in sorted(shifts.items())]
+                if post else [])

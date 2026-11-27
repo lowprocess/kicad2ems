@@ -159,6 +159,10 @@ The mesh:
   as past the board.
 - Metal with no line across it would be left out: the log says so. A metal piece of no height, or with no z line
   through it, is a sheet on its nearest line.
+- A metal piece no wider than 1 mm in plan is a post: with `--vias auto` (the default) or `snap` it is meshed as a
+  ground via, with no x or y lines of its own (its heights keep theirs), its centre moved onto the nearest line
+  crossing within `--via-snap`; where none is that near, a line every 2 × `--via-snap` along a row of them, not one
+  a post. `--vias exact` gives it its faces' lines.
 
 Two rules keep a drawn can from costing more than the PEC boundary it stands for (`rf_shielded_can.toml` against
 `rf_shielded.toml`, gfdtd on an RX 7800 XT, 2026-11-27):
@@ -182,6 +186,20 @@ magnetised ferrite (its low-field loss).
 S21's peak is 4.6255 GHz in each of them, as with the PEC boundary, on gfdtd and on openEMS (EMerge's converged
 3D FEM: 4.621 GHz). A dielectric cover over the board, 0.2 mm of εr 2.2, gives 4.4774 GHz drawn as a solid and as a
 stackup layer alike.
+
+**Posts.** A fence of 300 posts 0.25 mm across, 0.36 mm apart in four rows through rf_shielded_can's board
+(`tools/gui/draw_bench.py`'s), had lines at every post's extremes: 484 × 132 lines in plan and 1.98 M cells, the
+time step 0.069 ps. Snapped, the board keeps its own mesh: 129 × 112 and 0.45 M cells, 0.083 ps; gfdtd's run 36 s
+to 14 s, its peak memory 1.93 to 0.56 GB. What it costs (gfdtd, 2026-11-27):
+
+| Posts | Lines in plan, cells | Result, snapped against their faces' lines |
+|---|---|---|
+| rf_siw's 60 via rows (0.6 mm at 1 mm) drawn as posts | 243 × 90, 0.35 M → 164 × 106, 0.28 M | TE10 cut-off 6.195 → 6.204 GHz; 7–12 GHz: \|S21\| within 0.03 dB, 0.8° |
+| 300 posts 0.2 mm across, 0.24 mm apart along rf_shielded_can's long edges | 792 × 116, 2.85 M (0.064 ps) → 133 × 112, 0.46 M (0.083 ps); 345 → 95 s, 2.66 → 0.56 GB | S21's peak 4.62554 GHz, the posts 0.05 MHz over the can's 4.62549; with their faces' lines 4.66252, and 4.66251 with them made air: those 37 MHz are the lines' (x lines 0.03–0.2 mm apart across the board), not the posts' |
+
+A post snapped is a wire on its line crossing where the cells are larger than it (as a via is); among finer cells
+it keeps its shape, moved. rf_siw's own KiCad vias (on the RF net: exact lines) cut off at 6.363 GHz, and at 6.292
+snapped (`--vias snap`): their pads' lines make a finer mesh at the rows than the posts have.
 
 <a id="drawn-metal-loss"></a>
 **Conductor loss.** With `--sigma` the drawn metal's faces the field reaches are conducting sheets on openEMS and

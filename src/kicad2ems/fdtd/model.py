@@ -5,9 +5,10 @@ excitation and the boundaries, built through openEMS's Python interface
 (ContinuousStructure, openEMS) of whichever engine runs it (engines.py). With
 the mesh's copper thickness plan (--thickness on, thick.py) the copper is solid
 and the stack moved to make room for it. Drawn solids (board.solids) are
-core.solids' disjoint pieces as extruded polygons (_solids, SOLID_PRIORITY); with
---sigma the metal's faces the field reaches are conducting sheets (faces.py), and
-a closed can's sides PEC.
+core.solids' disjoint pieces as extruded polygons (_solids, SOLID_PRIORITY), the
+posts the mesh snapped moved onto their line crossings; with --sigma the metal's
+faces the field reaches are conducting sheets (faces.py), and a closed can's
+sides PEC.
 """
 import math
 import numpy as np
@@ -113,7 +114,10 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR', ) * 6, end_db=-40,
     # cut-outs, under the copper
     if getattr(m, 'solids', None):
         from kicad2ems.core.solids import pieces as solid_pieces
-        _solids(CSX, solid_pieces(m), zm, lines, diel, diel_fref, fmin, fmax,
+        from .mesh import moved_pieces
+        # (the posts the mesh snapped onto line crossings: moved there)
+        _solids(CSX, moved_pieces(solid_pieces(m), mesh.get('posts')), zm,
+                lines, diel, diel_fref, fmin, fmax,
                 f0, mesh['info']['dt_ps'] * 1e-12, board=m, sigma=sigma,
                 f_fit=f0 + fc, fine=mesh['info'].get('fine_mm'),
                 box=mesh.get('enclosure'))

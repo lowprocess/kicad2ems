@@ -356,3 +356,57 @@ def test_a_foil_is_a_conducting_sheet_of_its_thickness(demo_files):
     assert type(q) is C.Polygon and q.elevation == 1.6
     q, = props['solid3_leaf'].primitives
     assert isinstance(props['solid3_leaf'], C.Metal) and type(q) is C.Polygon
+
+
+def _fence(n=40, pitch=0.147, r=0.06, y=-5.0):
+    """A row of n small metal posts through the demo board's stack."""
+    from shapely.geometry import Point
+    return [_solid(Point(4 + k * pitch, y).buffer(r, quad_segs=8), 'metal',
+                   0.0, 0.6, f'post{k + 1}') for k in range(n)]
+
+
+def test_small_posts_are_snapped_as_ground_vias(demo_files):
+    """A fence of small metal posts (0.12 mm at 0.147 mm): no x / y lines of
+    their own (--vias auto, snap), each moved onto the nearest line crossing
+    (the model's piece too), a line every 2 --via-snap at most for those no
+    line is near; --vias exact gives them their faces' lines (merged at fine
+    / 2: one every 0.147 mm). The move is logged."""
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.mesh import auto_mesh
+    from kicad2ems.core.solids import pieces
+    from kicad2ems.gfdtd import csx as C
+
+    def mesh(m, **kw):
+        return auto_mesh(m, 1e9, 4e9, res=8, fine=0.1, air=1.0, nz_min=2,
+                         bc=resolve_bc('MUR', m), **kw)
+    plain = mesh(_demo(demo_files, []), log=lambda *a: None)
+    m = _demo(demo_files, _fence())
+    logs = []
+    snap = mesh(m, log=logs.append)
+    exact = mesh(m, vias='exact', log=lambda *a: None)
+    assert len(snap['posts']) == 40 and exact['posts'] == []
+    assert snap['info']['posts_snapped'] == 40
+    # (each way within --via-snap, or a line's merge further)
+    assert max(max(abs(dx), abs(dy)) for _, dx, dy in snap['posts']) <= 0.3
+    assert snap['info']['post_max_move_mm'] == pytest.approx(max(
+        np.hypot(dx, dy) for _, dx, dy in snap['posts']))
+    assert any('drawn posts: 40 snapped' in s for s in logs)
+    # along the fence (5.7 mm)
+    near = lambda g: np.sum((np.asarray(g['x']) > 3.5)
+                            & (np.asarray(g['x']) < 10.5))
+    assert near(snap) <= near(plain) + np.ceil(5.73 / 0.4) + 1
+    assert near(exact) >= 5.73 / 0.147 > near(snap)
+    ps = pieces(m)
+    x, y = np.asarray(snap['x']), np.asarray(snap['y'])
+    for k, dx, dy in snap['posts']:
+        b = ps[k].polygon.bounds
+        cx, cy = 0.5 * (b[0] + b[2]) + dx, 0.5 * (b[1] + b[3]) + dy
+        assert np.min(np.abs(x - cx)) < 1e-9 and np.min(np.abs(y - cy)) < 1e-9
+    _, CSX, _ = _model(m, snap)
+    q = next(p for p in CSX.GetAllProperties()
+             if p.name == 'solid1_post1').primitives[0]
+    k, dx, dy = snap['posts'][0]
+    b = ps[k].polygon.bounds
+    assert isinstance(q, C.LinPoly)
+    assert np.mean(q.points[0]) == pytest.approx(0.5 * (b[0] + b[2]) + dx,
+                                                 abs=1e-6)
