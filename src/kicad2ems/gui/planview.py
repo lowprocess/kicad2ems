@@ -1,9 +1,10 @@
 """
 The viewer's plan: the board seen from above (model mm, y up as in the 3D view):
-its outline, the copper of one layer (the others faint), a solver's mesh on that
-layer, the ports, and the line model's sections drawn at their width and
-coloured by Z0 against the ports' impedance. Hover a section to read it; click
-to select it (the viewer's section list and the 3D view follow).
+its outline, the copper of one layer (the others faint), the drawn solids as
+the solvers mesh them (dashed), a solver's mesh on that layer, the ports, and
+the line model's sections drawn at their width and coloured by Z0 against the
+ports' impedance. Hover a section to read it; click to select it (the viewer's
+section list and the 3D view follow).
 
 The KiCad plugin's map subclasses PlanView. A subclass may use, beside its
 public methods (load, set_board, set_lines_visible, current_layer, z_of, redraw,
@@ -110,8 +111,13 @@ class PlanView(QWidget):
         self.solved = QCheckBox(
             'solved', styleSheet=f'QCheckBox {{ color: {mp.SOLVED_COLOUR}; }}',
             toggled=self.redraw)
-        for w in (QLabel('Layer'), self.layer, self.copper, QLabel('Mesh'),
-                  self.mesh, self.solved, QPushButton('Fit', clicked=self.fit)):
+        self.solids = QCheckBox(
+            'solids', checked=True, toggled=self.redraw, visible=False,
+            toolTip='the drawn solids as the solvers mesh them (dashed; '
+            'filled where they meet the layer shown)')
+        for w in (QLabel('Layer'), self.layer, self.copper, self.solids,
+                  QLabel('Mesh'), self.mesh, self.solved,
+                  QPushButton('Fit', clicked=self.fit)):
             bar.addWidget(w)
         lay.addLayout(bar)
         self.plot = pg.PlotWidget()
@@ -158,6 +164,8 @@ class PlanView(QWidget):
                     if board else None)
         self.meshes = found_meshes or {}
         self.lines = lines
+        self._pieces = None  # (the drawn solids' pieces, made when drawn)
+        self.solids.setVisible(bool((board or {}).get('solids')))
         # top first
         cu = (sorted(board['stack']['copper'], key=lambda c: -c['z'])
               if board else [])
@@ -226,6 +234,9 @@ class PlanView(QWidget):
                           QBrush(self.copper_colour if own
                                  else self.other_colour),
                           -10 if own else -20))
+        if self.solids.isChecked() and self.board.get('solids'):
+            for it in self._solid_items(self.z_of(lay)):
+                add(it)
         solver = self.mesh.currentData()
         self._solved_state()
         if solver and self.box is not None and self.z_of(lay) is not None:
@@ -321,6 +332,35 @@ class PlanView(QWidget):
         else:
             self.info.setText('hover a section to read it; click to select'
                               if self.lines and self.show_lines else ' ')
+
+    def _solid_items(self, z):
+        """The drawn solids' pieces (volume3d.solid_pieces: as the solvers
+        mesh them), a dashed outline a material over the copper, and under
+        it their fill, stronger where a piece meets the layer at height
+        z."""
+        if self._pieces is None:
+            try:
+                self._pieces = v3.solid_pieces(self.board)
+            except Exception:  # noqa: BLE001 (a solid shapely cannot read)
+                self._pieces = []
+        by = {}
+        for p in self._pieces:
+            look, rgba = v3.solid_look(p)
+            here = z is not None and p.z0 - 1e-6 <= z <= p.z1 + 1e-6
+            g = p.polygon
+            by.setdefault((look, here), []).append(
+                [list(g.exterior.coords)] + [list(r.coords)
+                                             for r in g.interiors])
+        out = []
+        for (look, here), polys in by.items():
+            c = QColor(*v3.MATERIAL_RGB.get(look, (150, 150, 150)))
+            path = _path(polys)
+            fill = QColor(c)
+            fill.setAlpha(110 if here else 30)
+            out += [_item(path, QPen(c.darker(130), 1.2, Qt.DashLine),
+                          None, 5),
+                    _item(path, None, QBrush(fill), -15 if here else -25)]
+        return out
 
     def _mark(self):
         """Outline the selected section (thick) and the hovered one (thin)."""

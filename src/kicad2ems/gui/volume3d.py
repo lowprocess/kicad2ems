@@ -12,6 +12,9 @@ and its GIF / MP4 export. No Qt here: the arrays the OpenGL items take.
                                         # transparent
     tris = copper_triangles(geometry)
         # [(layer, z mm, vertices (n, 3), faces (m, 3))]
+    ps = solid_pieces(board)            # the drawn solids as the solvers mesh
+                                        # them (core.solids.pieces)
+    for look, rgba, v, f in solid_meshes(ps, zs): ...   # one mesh a look
 
 The openEMS mesh is graded (fine at the copper, coarse in the air): the dump is
 resampled onto a uniform grid of about `n` points along its longest side (OpenGL
@@ -296,6 +299,11 @@ def geometry_from_board(path):
                                  max(c['z'] for c in b['stack']['copper'])),
         parts=b.get('parts') or [], components=b.get('components', []),
         active_nets=b.get('active_nets', []),
+        # the drawn solids (core.shapes.apply's) and what core.solids reads
+        # of the board with them: its outline (GeoJSON: its cut-outs) and
+        # dielectric layers
+        solids=b.get('solids') or [], outline_geo=b['outline'],
+        layers=b['stack'].get('layers', []),
         **({
             key: {
                 lay: [
@@ -309,6 +317,71 @@ def geometry_from_board(path):
             for key, flag in [('active_copper', True), ('inactive_copper',
                                                         False)]
         } if 'active_nets' in b else {}))
+
+
+class _SolidsBoard:
+    """What core.solids reads of a board: its outline (shapely, or None), its
+    dielectric layers and its drawn solids."""
+
+    def __init__(self, outline, layers, solids):
+        self.outline, self.layers, self.solids = outline, layers, solids
+
+
+def solid_pieces(board):
+    """The drawn solids of a board (a board.json's dict, or
+    geometry_from_board's) as the solvers mesh them: core.solids.pieces
+    (disjoint; a later solid over an earlier one, a solid round the whole
+    board leaving its dielectric as it is). [] for none."""
+    b = board or {}
+    sol = b.get('solids') or []
+    if not sol:
+        return []
+    from shapely.geometry import shape
+    from kicad2ems.core import solids
+    o = b['outline_geo'] if 'outline_geo' in b else b.get('outline')
+    layers = b.get('layers') or (b.get('stack') or {}).get('layers') or []
+    return solids.pieces(_SolidsBoard(shape(o) if o else None,
+                                      [dict(l) for l in layers], list(sol)))
+
+
+# the drawn materials' colours (RGB 0-255), the Draw page's and the Viewer's
+MATERIAL_RGB = dict(copper=(214, 140, 64), cut=(225, 60, 60),
+                    metal=(140, 150, 165), dielectric=(60, 170, 90),
+                    air=(110, 165, 235), ferrite=(88, 88, 100),
+                    magnet=(190, 40, 95))
+# a solid's alpha in the Viewer, by material
+SOLID_ALPHA = dict(metal=0.5, magnet=0.5, dielectric=0.4, air=0.25,
+                   ferrite=1.0)
+
+
+def solid_look(p):
+    """(look, rgba 0-1) of a core.solids Piece: its material's colour (a
+    magnet's own, though it meshes as metal)."""
+    look = 'magnet' if p.magnet is not None else p.material
+    rgb = MATERIAL_RGB.get(look, (150, 150, 150))
+    return look, tuple(c / 255 for c in rgb) + (SOLID_ALPHA.get(look, 0.5),)
+
+
+def solid_meshes(pieces, zs=1.0, sheet=0.02):
+    """[(look, rgba, vertices, faces)]: the pieces extruded, one mesh a look
+    (300 posts: one item, not 300), heights times zs (the view's height
+    scale); a sheet of metal (no thickness) `sheet` mm thick on screen."""
+    from kicad2ems.core.view3d import prism_fast
+    by = {}
+    for p in pieces:
+        look, rgba = solid_look(p)
+        z0, z1 = p.z0 * zs, p.z1 * zs
+        if z1 - z0 < sheet:
+            z0, z1 = (z0 + z1 - sheet) / 2, (z0 + z1 + sheet) / 2
+        v, f = prism_fast(p.polygon, z0, z1)
+        if len(f):
+            by.setdefault((look, rgba), []).append((v, f))
+    out = []
+    for (look, rgba), ms in by.items():
+        at = np.cumsum([0] + [len(v) for v, _ in ms[:-1]])
+        out.append((look, rgba, np.concatenate([v for v, _ in ms]),
+                    np.concatenate([f + k for (_, f), k in zip(ms, at)])))
+    return out
 
 
 # green, cyan, pink

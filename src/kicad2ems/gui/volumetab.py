@@ -1,6 +1,7 @@
 """
 The 3D field panel: a volume dump as a translucent voxel cloud over the board
-(copper, vias, the board's box), in an OpenGL view you orbit (drag), zoom
+(copper, vias, the board's box, the drawn solids as the solvers mesh them:
+volume3d.solid_pieces), in an OpenGL view you orbit (drag), zoom
 (wheel) and pan (middle drag, or Ctrl + drag). A frequency-domain dump plays one
 period of Re(F e^jphi), a time-domain one its frames; *Save GIF / MP4* writes
 the animation as seen from the current camera. Needs PyOpenGL (pip install
@@ -400,6 +401,13 @@ class VolumeTab(QWidget):
              "lowest Z0 stands a quarter as high, so each step in height is a "
              "step in impedance. 0: flat"))
         self._relief_auto = True
+        self.solids_on = QCheckBox(
+            'drawn solids', checked=True, toggled=lambda *_: self._board(),
+            toolTip=(
+                'the solids drawn on the Draw page as the solvers mesh them '
+                '(core.solids: a later solid over an earlier one; metal grey, '
+                'dielectric green, air blue, ferrite charcoal, magnet '
+                'crimson)'))
         self.parts_on = QCheckBox(
             'Components', checked=True, toggled=lambda *_: self._board(),
             toolTip=
@@ -420,7 +428,8 @@ class VolumeTab(QWidget):
                    (('Height scale', self.zscale), ('', self.copper),
                     ('Copper shown', self.cu_t), ('', self.boxc),
                     ('Mesh', self.mesh), ('', self.solved), ('', self.lines_on),
-                    ('Z0 relief', self.relief), ('', self.parts_on))),
+                    ('Z0 relief', self.relief), ('', self.solids_on),
+                    ('', self.parts_on))),
                   ('Far field', True,
                    (('Pattern', self.far), ('Size', self.far_size),
                     ('Height', self.far_up), ('', self.steer))))
@@ -836,15 +845,21 @@ class VolumeTab(QWidget):
         cache[k] = (tuple(objs), made)
         return made
 
-    def _solid(self, key, verts, faces, color, depth, opaque=True):
-        """Shaded slabs (copper_shader) of these triangles into the view."""
+    def _solid(self, key, verts, faces, color, depth, opaque=True,
+               cull=False):
+        """Shaded slabs (copper_shader) of these triangles into the view
+        (cull: a translucent closed solid's faces turned from the camera not
+        drawn, as the Draw page's: its far walls blended into its near ones
+        in the triangles' order streaked)."""
+        from .draw3d import _gl_options
         md = self.gl.MeshData(vertexes=verts.astype(np.float32),
                               faces=faces.astype(np.uint32))
         self._put(
             key,
             self.gl.GLMeshItem(
                 meshdata=md, color=color, smooth=False, shader=copper_shader(),
-                glOptions=('opaque' if opaque else 'translucent')), depth)
+                glOptions=('opaque' if opaque else _gl_options(False) if cull
+                           else 'translucent')), depth)
 
     def _lines(self, key, pos, color, width, depth):
         """Line segments (pairs of points) into the view."""
@@ -959,6 +974,7 @@ class VolumeTab(QWidget):
                     self._lines(key, seg.astype(np.float32), colour, width,
                                 -1 if key == 'mesh' else 0)
         self._line_model(zs)
+        self._solids(zs)
         self._parts(zs)
         self._far_field(g, zs)
         # a layer dump: on top of them
@@ -1018,6 +1034,22 @@ class VolumeTab(QWidget):
                         np.concatenate(rims).astype(np.float32),
                         (0.1, 0.1, 0.1, 0.9), 1.2, 3)
 
+    def _solids(self, zs):
+        """The drawn solids as the solvers mesh them (volume3d.solid_pieces:
+        core.solids's disjoint pieces), one item a material, at the height
+        scale; a ferrite opaque, the rest see-through."""
+        g = self.board
+        if not self.solids_on.isChecked() or not (g or {}).get('solids'):
+            return
+        ps = self._memo((g['solids'],), ('pieces',),
+                        lambda: v3.solid_pieces(g))
+        made = self._memo((g['solids'],), ('solid meshes', zs),
+                          lambda: v3.solid_meshes(ps, zs))
+        for look, rgba, verts, faces in made:
+            self._solid(f"solid_{look}", verts, faces, rgba,
+                        1 if rgba[3] < 1 else -2, opaque=rgba[3] >= 1,
+                        cull=True)
+
     def _parts(self, zs):
         """The lumped parts as their chips (volume3d.part_solids): coloured
         body, metal end caps, a label; the components' packages (an active one
@@ -1065,12 +1097,13 @@ class VolumeTab(QWidget):
     def _fit_sections(self):
         """The control sections the folder has something for: the field's with a
         dump, the far field's with an antenna result, the line model's tick box
-        with a line model."""
+        with a line model, the drawn solids' with solids."""
         self.sections['Field'].setVisible(bool(self.srcs))
         self.sections['Far field'].setVisible(self.ant is not None)
         self.lines_on.setVisible(self.lines is not None)
         self.relief.setVisible(self.lines is not None)
         self.parts_on.setVisible(self._has_parts())
+        self.solids_on.setVisible(bool((self.board or {}).get('solids')))
         lab = (self.relief.parentWidget().layout().labelForField(self.relief)
                if self.relief.parentWidget() else None)
         if lab is not None:
