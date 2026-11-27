@@ -1,0 +1,74 @@
+{
+ "format": "kicad2ems-shapes",
+ "version": 1,
+ "units": "mm",
+ "coordinates": "model (y up)",
+ "shapes": [
+  {
+   "kind": "rect",
+   "points": [
+    [
+     -0.5,
+     -14.5
+    ],
+    [
+     18.5,
+     0.5
+    ]
+   ],
+   "material": "metal",
+   "z0": -0.5,
+   "z1": 7.608,
+   "name": "can"
+  },
+  {
+   "kind": "rect",
+   "points": [
+    [
+     0.0,
+     -14.0
+    ],
+    [
+     18.0,
+     0.0
+    ]
+   ],
+   "material": "air",
+   "z0": 0.0,
+   "z1": 7.108,
+   "name": "inside"
+  },
+  {
+   "kind": "circle",
+   "points": [
+    [
+     9.0,
+     -7.0
+    ]
+   ],
+   "material": "dielectric",
+   "radius": 1.5,
+   "z0": 0.508,
+   "z1": 1.708,
+   "er": 4.5,
+   "tand": 0.0001,
+   "name": "support"
+  },
+  {
+   "kind": "circle",
+   "points": [
+    [
+     9.0,
+     -7.0
+    ]
+   ],
+   "material": "dielectric",
+   "radius": 3.0,
+   "z0": 1.708,
+   "z1": 4.108,
+   "er": 38.0,
+   "tand": 0.0002,
+   "name": "puck"
+  }
+ ]
+}

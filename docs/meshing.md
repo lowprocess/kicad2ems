@@ -260,6 +260,10 @@ antenna examples need solids (gfdtd and openEMS, 2026-11-27, [Examples](examples
   2.4375; laid on the copper the plate gives 2.3600 GHz drawn or as a stackup layer alike (−3.2 %), and mom25d's
   laterally infinite layer −3.4 % (2.4500 to 2.3675 GHz).
 
+A puck of εr 38 is the hardest case for the staircase: `rf_dr_bandpass`'s TE01δ peak is 9.228 GHz on gfdtd and
+9.196 GHz on openEMS on the same default mesh, 9.2014 and 9.1987 GHz on one of 3.2 times the cells, and 9.210 GHz on
+Palace ([examples](examples.md#dielectric-resonator)).
+
 ## Time step
 
 The time step is limited by the smallest cell. kicad2ems estimates it from the mesh. openEMS's own value

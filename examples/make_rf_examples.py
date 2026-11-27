@@ -59,6 +59,12 @@ d 0.02), B.Cu ground:
               drawing (rf_circulator_shapes.json, the Draw page's) written
               beside the board
 
+and boards whose solids are drawn beside them (rf_<name>_shapes.json):
+
+  dr_bandpass a dielectric resonator band-pass, 9.2 GHz: a ceramic puck (er
+              38) on a support between two 50 ohm lines on RO4003C, in a can;
+              dr_bandstop: the puck beside one line
+
     python examples/make_rf_examples.py all
         # every board, examples/rf_<name>.kicad_pcb
     python examples/make_rf_examples.py coupler /tmp/c
@@ -1167,6 +1173,80 @@ def circulator(path, f0=9.6e9, r_disc=2.45, r_puck=3.2, r_mag=4.0,
     return w, ports
 
 
+# ---- plain boards, their solids drawn beside them (the Draw page's) ----
+
+# mm between a line's round end and a drawn can's wall (its port there)
+CAN_CLEAR = 1.0
+
+
+def _can(W, H, top, t=0.5):
+    """A can drawn round a W x H board (KiCad 0..W, 0..H) as the Draw page
+    would: a metal box `t` thick with an air box inside it, the board's
+    outline in plan and from the board's bottom up to `top` (model mm)."""
+    from kicad2ems.core.shapes import Shape
+    return [Shape('rect', [[-t, -H - t], [W + t, t]], material='metal',
+                  z0=-t, z1=round(top + t, 4), name='can'),
+            Shape('rect', [[0, -H], [W, 0]], material='air', z0=0.0,
+                  z1=round(top, 4), name='inside')]
+
+
+def dr_filter(path, mode='bandpass', r_dr=3.0, h_dr=2.4, er_dr=38.0,
+              tand_dr=2e-4, h_sp=1.2, r_sp=1.5, er_sp=4.5, tand_sp=1e-4,
+              gap=0.5, stub=5.0, lid=3.0, W=18.0, H=14.0):
+    """A dielectric resonator (DR) filter on 0.508 mm RO4003C in a drawn can:
+    a cylindrical puck (r_dr, h_dr tall, er_dr, tand_dr: a generic (Zr,Sn)TiO4
+    ceramic), on a support h_sp tall (r_sp, er_sp; 0: none) on the laminate,
+    beside 50 ohm lines `gap` mm from its rim in plan, its TE01-delta mode's
+    magnetic field coupling to them. mode 'bandpass': an input line on one
+    side and an output line on the other, each running `stub` mm past the
+    puck's centre to an open end (the current's maximum at the puck);
+    'bandstop': one line past it. The can: the board's outline (W x H), `lid`
+    mm over the puck. The board has the lines and ports; the puck, its support
+    and the can are the drawing (<path>_shapes.json). Returns (w50, the
+    puck's top, mm)."""
+    from kicad2ems.core.shapes import Drawing, Shape
+    h, er, tand = RO4003[:3]
+    w = round(solve(lambda x: microstrip(x, h, er)[0], 50.0, 0.05, 5.0), 3)
+    cx, cy = W / 2, H / 2
+    dy = r_dr + gap + w / 2
+    bd = Board()
+    # the lines' round ends short of the can's walls, a port at each
+    e = CAN_CLEAR + w / 2
+    if mode == 'bandstop':
+        bd.track([(e, cy - dy), (W - e, cy - dy)], w)
+        bd.port(1, e, cy - dy, 0)
+        bd.port(2, W - e, cy - dy, 180)
+    else:
+        bd.track([(e, cy - dy), (cx + stub, cy - dy)], w)
+        bd.track([(cx - stub, cy + dy), (W - e, cy + dy)], w)
+        bd.port(1, e, cy - dy, 0)
+        bd.port(2, W - e, cy + dy, 180)
+    bd.write(path, W, H, sub=RO4003)
+    z = h
+    shapes = []
+    if h_sp > 0:
+        shapes.append(Shape('circle', [[cx, -cy]], radius=r_sp,
+                            material='dielectric', z0=z, z1=round(z + h_sp, 4),
+                            er=er_sp, tand=tand_sp, name='support'))
+        z = round(z + h_sp, 4)
+    shapes.append(Shape('circle', [[cx, -cy]], radius=r_dr,
+                        material='dielectric', z0=z, z1=round(z + h_dr, 4),
+                        er=er_dr, tand=tand_dr, name='puck'))
+    top = round(z + h_dr + lid, 4)
+    Drawing(_can(W, H, top) + shapes).save(
+        os.path.splitext(path)[0] + '_shapes.json')
+    return w, round(z + h_dr, 4)
+
+
+def dr_bandpass(path, **kw):
+    return dr_filter(path, mode='bandpass', **kw)
+
+
+def dr_bandstop(path, **kw):
+    # the line 1 mm under the puck's rim: a deeper notch
+    return dr_filter(path, mode='bandstop', **{'gap': -1.0, **kw})
+
+
 KINDS = dict(branchline=branchline, wilkinson=wilkinson, steplpf=steplpf,
              stubnotch=stubnotch, gcpw=gcpw, coupler=coupler, ratrace=ratrace,
              radialstub=radialstub, stripline=stripline, diffvia=diffvia,
@@ -1176,6 +1256,8 @@ KINDS = dict(branchline=branchline, wilkinson=wilkinson, steplpf=steplpf,
              crosstalk_guard=crosstalk_guard, bus=si_bus, ddr=ddr, pcoupled=pcoupled,
              combline=combline, openloop=openloop, dgs=dgs, ebg=ebg, idc=idc,
              meander=meander, spiral=spiral, circulator=circulator)
+# drawn solids in a can
+KINDS.update(dr_bandpass=dr_bandpass, dr_bandstop=dr_bandstop)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2 or sys.argv[1] not in list(KINDS) + ['all']:

@@ -1,0 +1,29 @@
+# kicad2ems example: a dielectric resonator band-stop filter at 9.2 GHz: the
+# puck, support and can of rf_dr_bandpass beside one 50 ohm line through the
+# can (rf_dr_bandstop_shapes.json), its TE01-delta mode taking the power out
+# of the line at resonance (a DR oscillator's stabilising resonator); the
+# line passes 1 mm under the puck's rim. Board and drawing: python
+# examples/make_rf_examples.py dr_bandstop
+#   kicad2ems examples/rf_dr_bandstop.toml --solvers gfdtd
+# 2026-11-27 (RX 7800 XT): the notch at 9.232 GHz, S21 -16.4 dB, 31 MHz wide
+# at -3 dB; 0.13 M cells, 270k timesteps, 8 s. The can's first mode makes a
+# second one at 10.47 GHz.
+board   = "rf_dr_bandstop.kicad_pcb"   # paths are relative to this file
+shapes  = "rf_dr_bandstop_shapes.json"
+ground  = "B.Cu"
+fmin    = 8.0           # GHz
+fmax    = 11.0
+points  = 601
+end_db  = -50
+out     = "out"
+
+[solver.openems]
+bc      = "MUR"
+air     = 1.0
+excite  = ["P1"]
+max_steps = 3000000
+
+[solver.palace]
+feature = 1
+margin  = 0.5
+modes   = 3

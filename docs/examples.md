@@ -91,6 +91,59 @@ All three ports driven, the matrix turns with the ports (S21 = S32 = S13, S31 = 
 magnet is the circuit's tuning: too far and the puck's rim, then all of it, is no longer saturated (4 mm: no
 circulation); too close and its metal loads the junction while the bias rises.
 
+<a id="dielectric-resonator"></a>
+`rf_dr_bandpass` is a dielectric resonator filter built on the Draw page (`rf_dr_bandpass_shapes.json`; `python
+examples/make_rf_examples.py dr_bandpass` writes it and the board): a plain board of two 50 Ω lines on 0.508 mm
+RO4003C, and drawn on it a ceramic puck (εr 38, tan δ 2·10⁻⁴, 6 mm across, 2.4 mm tall) on a support (εr 4.5, 3 mm
+across, 1.2 mm tall) between the lines, 0.5 mm from its rim, and a can round the board (a metal box with air inside,
+18 × 14 mm, 3 mm over the puck). Each line runs 5 mm past the puck's centre to an open end, its current's maximum
+at the puck, and couples to the TE01δ mode's magnetic field. `rf_dr_bandstop` (`dr_bandstop`) is the same puck
+beside one line through the can, 1 mm under its rim. The first drawn-solid example all three volume solvers run
+(2026-11-27; gfdtd on an RX 7800 XT, openEMS on 24 threads of an i7-13700K, Palace on 8 processes):
+
+| `rf_dr_bandpass`, P1 driven | gfdtd | openEMS | Palace |
+|---|---|---|---|
+| TE01δ: S21's peak | 9.228 GHz | 9.196 GHz | 9.210 GHz (its eigenmode 9.2096) |
+| S21, S11 there | −0.56, −20.1 dB | −0.85, −20.5 dB | −0.47, −27.1 dB |
+| −3 dB band (loaded Q) | 9.209–9.248 GHz (235) | 9.176–9.217 GHz (224) | 9.190–9.230 GHz (228; eigenmode 227) |
+| unloaded Q, from S21 and the loaded Q | 3,740 | 2,410 | 4,370 (eigenmode 4,420) |
+| the can's first mode, pulled down by the puck | 10.45 GHz | 10.45 GHz | 10.458 GHz |
+| model, time | 0.20 M cells, 274k timesteps, 8 s | the same mesh, 254k timesteps, 100 s | 23,750 tetrahedra (`feature = 1`), 58 s; eigenmodes 139 s; 2.4 GB |
+| a finer mesh (`--res 40 --fine 0.1 --nz 8`, 0.64 M cells) | 9.2014 GHz, −0.61 dB, 56 s | 9.1987 GHz, −0.70 dB, 448 s | |
+
+The two FDTD engines are 0.35 % apart on the default mesh (the puck's staircase at εr 38) and 0.03 % on the finer
+one, which moves both towards Palace's. Their dielectric loss is a conductivity set at the band centre (`--diel
+fixed`), 3 % too high at 9.2 GHz; Palace's is tan δ itself. The unloaded Q is the loss: openEMS's is 0.55 of
+Palace's on the default mesh and 0.67 on the finer one, gfdtd's 0.85 and 0.76.
+
+Against the closed forms for a puck alone (a = 3 mm, H = 2.4 mm): Kajfez & Guillon's f = 34 / (a √εr) (a/H + 3.45)
+GHz, mm (±2 % for 0.5 < a/H < 2 and 30 < εr < 50) gives 8.641 GHz; Cohn's magnetic-wall waveguide 8.240 GHz and
+Itoh & Rudokas's dielectric waveguide 9.501 GHz. Palace's eigenmode of the same puck nearly alone (a 24 × 24 mm can
+6 mm over it, an air support 4 mm over the board, the line 4 mm from its rim) is 8.856 GHz, 2.5 % above Kajfez &
+Guillon's. From there, Palace's eigenmodes step to the filter:
+
+| | TE01δ | |
+|---|---|---|
+| the puck nearly alone (support εr 1 / 4.5) | 8.856 / 8.868 GHz | |
+| on the 1.2 mm support, the board's ground 1.7 mm under it | 9.101 GHz | +2.6 % |
+| the lid 3 mm over it | 9.181 GHz | +0.9 % |
+| the walls of an 18 × 16 mm can, 5–6 mm from its rim | 9.188 GHz | +0.07 % |
+| the filter: 18 × 14 mm, its lines 0.5 mm from the rim | 9.210 GHz | +0.24 % |
+
+The two models with the support, the board and the lid as TE01 sections ending in metal over and under the puck
+put the ground's and the lid's share at +0.6 % (dielectric waveguide) and +1.1 % (Cohn), where Palace has +3.5 %:
+both keep the fields above and below inside the puck's radius, and the ground's pull spreads past it.
+
+![rf_dr_bandpass on gfdtd, openEMS and Palace, its pass band against the closed form, and rf_dr_bandstop](img/rf_dr_filter.png)
+
+`rf_dr_bandstop` on gfdtd: the notch at 9.232 GHz, −16.4 dB, 31 MHz wide at −3 dB (0.13 M cells, 270k timesteps,
+8 s); the can's first mode makes a second at 10.47 GHz. The line further under the rim deepens it (0 / 0.5 / 1 mm
+under it: −12.3 / −14.7 / −17.3 dB). Without the support, the puck on the laminate (in a 20 × 16 mm can, the lines
+1 mm from it), the ground pulls TE01δ up to 9.86 GHz, between the can's first mode (9.38 GHz) and the puck's hybrid
+modes (10.06 and 10.14 GHz): the support is what keeps the pass band clean. The gfdtd times are the GPU's alone;
+shared with other runs they were up to three times longer.
+
+
 The figures above sit at single frequencies; a small reflection there mostly says where its ripple falls. Over the whole band, each solver's agreement with openEMS's reference (the rms of the complex difference of the input reflection, dB, and the rms difference of the transmission's |S|):
 
 | Board | gfdtd | mom25d | line model |

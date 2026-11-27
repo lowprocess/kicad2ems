@@ -1,0 +1,36 @@
+# kicad2ems example: a dielectric resonator band-pass filter at 9.2 GHz built
+# on the Draw page (rf_dr_bandpass_shapes.json): a ceramic puck (er 38, tan d
+# 2e-4, 6 mm across, 2.4 mm tall) on a 1.2 mm support (er 4.5) between two 50
+# ohm lines on 0.508 mm RO4003C, each ending 5 mm past the puck's centre, in a
+# can drawn as a metal box with air inside, 18 x 14 mm and 3 mm over the
+# puck. The puck's TE01-delta mode couples the lines through its magnetic
+# field. Board and drawing: python examples/make_rf_examples.py dr_bandpass
+#   kicad2ems examples/rf_dr_bandpass.toml --solvers gfdtd,openems,palace
+# 2026-11-27, P1 driven: S21's peak 9.228 GHz on gfdtd (-0.56 dB, S11 -20.1
+# dB, 39 MHz wide at -3 dB; 0.20 M cells, 274k timesteps, 8 s on an RX 7800
+# XT), 9.196 GHz on openEMS (-0.85 dB, the same mesh, 100 s), 9.210 GHz on
+# Palace (-0.47 dB; 23,750 tetrahedra, 58 s; its eigenmode 9.2096 GHz, loaded
+# Q 227, unloaded 4,420, 139 s). A finer FDTD mesh (--res 40 --fine 0.1
+# --nz 8, 0.64 M cells): 9.2014 / 9.1987 GHz. The puck alone, Kajfez &
+# Guillon's closed form: 8.641 GHz; Palace's, nearly alone: 8.856 GHz. The
+# can's first mode, pulled down by the puck, passes at 10.45 GHz.
+board   = "rf_dr_bandpass.kicad_pcb"   # paths are relative to this file
+shapes  = "rf_dr_bandpass_shapes.json"
+ground  = "B.Cu"
+fmin    = 8.0           # GHz
+fmax    = 11.0
+points  = 601
+end_db  = -50           # the resonance rings for ~100 ns
+out     = "out"
+
+[solver.openems]
+# the drawn can is the shield: the mesh ends at its outer faces
+bc      = "MUR"
+air     = 1.0
+excite  = ["P1"]
+max_steps = 3000000
+
+[solver.palace]
+feature = 1
+margin  = 0.5           # air outside the can: none needed
+modes   = 3             # the TE01-delta mode's frequency and Q
