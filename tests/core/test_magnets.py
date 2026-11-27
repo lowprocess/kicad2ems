@@ -114,7 +114,7 @@ def test_summary_of_a_biased_puck():
     s = mg.summary(_Board([puck, mag]))[0]
     assert s['name'] == 'puck' and s['saturated'] == 1.0
     lo, mean, hi = s['internal_oe']
-    # its rim demagnetised less: a higher internal field there
+    # the field varies across it (magnet and demagnetising field both fall off)
     assert 900 < lo < mean < hi < 2000
     # a magnet only the puck's size saturates the middle, not the rim
     puck, mag = _puck_and_magnet(r=3.0, length=2.0)

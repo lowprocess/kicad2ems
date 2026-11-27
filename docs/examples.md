@@ -71,8 +71,8 @@ examples/make_rf_examples.py circulator` writes it and the board): a bare 0.508 
 and drawn on it a garnet puck (4πMs 1200 G, ΔH 30 Oe, εr 15, 6.4 mm across) set into the laminate, a copper
 junction disc (r 2.45 mm), three 50 Ω arms 120° apart with 30 Ω quarter-wave transformers, three ports, and a
 NdFeB magnet (Br 1.2 T, 8 mm across, 3 mm tall) 2 mm over the copper. The magnet saturates the puck (`core.magnets`:
-300–840 Oe inside it, its rim the highest: less demagnetised there) and gfdtd runs the magnetised ferrite
-([gfdtd](gfdtd/README.md#how-it-works)); openEMS and Palace refuse it. 0.90 M cells, 1.3 s for P1 on an RX 7800 XT.
+260–830 Oe inside it: highest at its centre nearest the magnet, lowest 2.8 mm out at its bottom face) and gfdtd
+runs the magnetised ferrite ([gfdtd](gfdtd/README.md#how-it-works)); openEMS and Palace refuse it. 0.90 M cells, 1.3 s for P1 on an RX 7800 XT.
 
 ![rf_circulator: S11, S21 and S31 with the magnet and without it, and the isolation as the magnet is raised](img/rf_circulator.png)
 

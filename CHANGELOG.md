@@ -10,6 +10,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **The Draw page as a modelling front end (2026-11-27).**
+  - **Templates** (`core.templates`, *Templates* menu): a dialog of the template's numbers, then its shapes follow
+    the mouse until a click places them, selected, one undo step. A shield can (a metal box, air inside, posts
+    through the board under its walls); a dielectric resonator beside a ported 50 Ω line; rf_circulator's
+    Y-junction circulator (on its board, the example's drawing exactly); an edge-launch SMA as a square coax
+    (its pin sized for 50 Ω: 60/√εr ln(1.0787 d / 1.18 a)); an absorber sheet; a via fence along the selected
+    traces. Lines are sized on the stack, to the next copper layer in.
+  - **Booleans and rounded corners** (`core.shapeops`, *Modify*): union, subtract and intersect into polygons, a
+    hole joined to the outline by a cut of no width (a plate less 300 posts 0.11 s, 6.5 s before a k-d tree);
+    fillet or chamfer of every corner, and of a trace's bends.
+  - **The page**: its own menus (Drawing, Edit, Modify, Templates, View) in place of the side panel's ten buttons;
+    a bar over the list; an icon per shape (its kind's glyph in its material's colour); the form in groups; each
+    tab scrolled at the width shown, so nothing is cut off at 1500 × 950. Its least size 605 × 381 → 406 × 333 px
+    (DejaVu 618 × 357 → 412 × 312). Select alike (material, layer, net, kind); the arrow keys nudge a grid step
+    (Shift ten), one undo step while they go on.
+  - **The 3D view**: Top, Front and Side orthographic (Iso perspective; an *Ortho* button), the GL's matrix the
+    one picking uses; cones on the gizmo's arrows; Shift + drag on nothing selects by a box, as the plan's.
+  - **The bias map**: with a ferrite or magnet selected, the ferrite's internal H0 in colour over it in plan (32 ×
+    32 at mid-height, grey where not saturated).
+  - **The Viewer** draws the drawn solids as the solvers mesh them (`core.solids` pieces), in 3D and in the plan,
+    against a preview's mesh.
+  - The list's rows kept as data: the plan's redraw with a 300-via fence 1.94 → 0.47 ms (3D redraw 1.45 → 1.6,
+    first 3D draw 32.0 → 32.3, drags unchanged; under the other runs' load, both measured back to back).
 - **Ferrites and magnets on the Draw page, and a circulator simulated (`core.magnets`, gfdtd's `FerriteMaterial`,
   `rf_circulator`, 2026-11-27).** Two solid materials: `ferrite` (εr, tan δ, 4πMs in gauss, the FMR linewidth ΔH in
   Oe at 9.4 GHz) and `magnet` (Br in tesla, its sign up or down; metal to the RF, rare-earth magnets conduct).

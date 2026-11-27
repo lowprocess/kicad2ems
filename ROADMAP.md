@@ -52,7 +52,6 @@ magnets too (2026-11-27), so a circulator is built and run from it. What it lack
    - Palace meshes the air outside a drawn can that closes round the board (125,000 tetrahedra against its PEC
      box's 118,000, 161 s against 145 s); the FDTD leaves it out;
    - mom25d could take a dielectric solid over the whole board as a stack layer (a cover) instead of refusing it;
-   - the run's mesh preview and the Viewer do not draw the solids yet (the page's item 1);
    - set aside: a box-shaped closed can as the PEC boundary at its inner faces. The PEC-boundary run is that model:
      0.41 M cells and 33 s against the drawn can's 0.45 M and 35 s (−6 %), under the 10 % a pass must gain.
 2. **Ferrites and magnets, the rest** (done 2026-11-27: the `ferrite` and `magnet` materials, `core.magnets`'s bias,
@@ -73,40 +72,41 @@ magnets too (2026-11-27), so a circulator is built and run from it. What it lack
    - the linewidth as Gilbert damping, ΔH ∝ f (from the datasheet's at 9.4 GHz); temperature (4πMs and Br at
      25 °C);
    - Palace: its μ is a real symmetric tensor; a ferrite's is Hermitian (its operator code, not ours);
-   - a circulator template (the item below) and study question: isolation, insertion loss and the 20 dB band,
-     the magnet's height and the disc's radius optimised.
-   - the page: a map of Hz over a ferrite in plan (or a slice through it), the magnet's field lines in 3D; the
-     *Bias* readout's 20 ms is three quarters `core.magnets._omega_up` (numpy over every face triangle).
-3. **Templates:** a shield can with its fence vias, an enclosure with a lid, an edge-launch SMA, a via fence along
-   a trace, a coax or probe feed, an absorber sheet; each placed with a click, then edited as shapes.
+   - a circulator study question: isolation, insertion loss and the 20 dB band, the magnet's height and the
+     disc's radius optimised (the template is done);
+   - the page: an H0 slice in 3D and the magnet's field lines (the H0 map in plan is done); the *Bias* readout's
+     20 ms is three quarters `core.magnets._omega_up` (numpy over every face triangle).
+3. **Templates, the rest** (done 2026-11-27, `core.templates`: a shield can with posts, a dielectric resonator
+   on a ported line, rf_circulator's Y junction, an edge-launch SMA as a square coax, an absorber sheet, a via
+   fence along traces): templates are one-shot, so a group that keeps its template and numbers, reopened by a
+   double click and made again (the step to item 4); a can with openings where traces pass, its posts kept off
+   them, and "a can over the selection"; an enclosure with a lid; a vertical coax or probe feed; a waveguide; a
+   port on the SMA's coax face (item 5).
 4. **Dimensions as variables:** a shape's numbers as named variables (w, gap, h) in the drawing, which the study's
    *Vary* sweeps, and later an optimiser (the study 10's optimisation).
 5. **Ports, the rest:** a port's kind (lumped, wave), impedance and direction in the form; a port on a solid's face
    for the FDTD; lumped R, L and C between two points.
 6. **Import:** DXF outlines as polygons; STEP or STL of an enclosure or a connector as a solid (its triangles, for
    the FDTD and Palace).
-7. **Booleans and curves:** union, subtraction and intersection of polygons (shapely); arcs and fillets in
-   polygons and traces; chamfers.
+7. **Booleans and curves, the rest** (done 2026-11-27, `core.shapeops`: union, subtract, intersect into polygons,
+   holes kept by a cut of no width; fillets and chamfers of every corner and of a trace's bends): per-corner
+   fillets; true arcs kept as arcs, not facets; growing and shrinking a shape; booleans of solids of different
+   heights (3D CSG).
 
 **The page (UI)** (selection, exact edits, snapping, measuring, the 3D view's tools and the speed with 300 shapes
-were done on 2026-11-27: CHANGELOG)
+were done on 2026-11-27; then its menus, icons, grouped form, scrolled tabs, the drawn solids in the Viewer and the
+mesh preview, an orthographic camera, arrowheads, a 3D box selection, select alike and the arrow keys: CHANGELOG)
 
-1. **The page itself:** the shape list with icons and each material's colour, the form in groups, a toolbar that
-   names each tool's key; the drawn shapes in the main Viewer, and the run's mesh of them (the solids as the
-   solver sees them). The side panel's last buttons are cut off at a 1500 × 950 window (*Use in runs* half shown,
-   *Region from shape* and *Ports to settings* below it, 2026-11-27): the panel scrolled, or its buttons in a menu.
-2. **The 3D view, the rest:** seen drawn on 2026-11-27 under software OpenGL (docs/testing.md, *The 3D view
-   without a display*): the outline, gizmo, working grid, clip (the solids cut and capped) and Show menu draw as
-   meant; the presets' fit was too far and is fixed. Left: an orthographic camera for Top / Front / Side
-   (pyqtgraph's is perspective: framed tight at its 60° field, a board's near edge is drawn well wider than its
-   far one from the front and the side), the gizmo's arrowheads (lines alone now), a box selection in 3D, and the
-   board's copper capped at the clip (its thin slabs are cut open).
-3. **Selecting and editing, the rest:** select alike (a net, a material, a layer); arrow keys to nudge; a point
-   typed while drawing (a corner at x, y); snapping to a pad's corners and edges and along a track's centre line
-   (pads' centres and tracks' ends and corners now) and to intersections; snapping while dragging in 3D (the
-   grid alone there); the measure tool in 3D; dimensions shown on the shapes.
+1. **The page itself, the rest:** the list as a tree of groups (a template's shapes one group, selected, moved,
+   locked or hidden at a click); a command palette (Ctrl+K) and an undo history list; the side-by-side views
+   remembered.
+2. **The 3D view, the rest:** the 3D box adding to the selection (it replaces it now); a plane handle on the gizmo;
+   the board's copper capped at the clip (its thin slabs are cut open).
+3. **Selecting and editing, the rest:** a point typed while drawing (a corner at x, y); snapping to a pad's corners
+   and edges and along a track's centre line and to intersections; snapping while dragging in 3D (the grid alone
+   there); the measure tool in 3D; dimensions shown on the shapes and edited there.
 4. **Speed, the rest** (tools/gui/draw_bench.py, a 300-via fence over sma_launch, offscreen):
-   - a first 3D draw (31 ms: every shape's items made, as on opening a drawing) is now mostly pyqtgraph's
+   - a first 3D draw (31–32 ms: every shape's items made, as on opening a drawing) is now mostly pyqtgraph's
      GLMeshItem construction, and each shape is a draw call every frame (the GPU's time is not measured
      offscreen): items batched by look would cut both, at the cost of splitting a batch when a shape in it is
      selected or dragged;
