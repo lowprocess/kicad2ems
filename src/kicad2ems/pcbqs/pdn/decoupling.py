@@ -971,7 +971,10 @@ def figure(dec, out):
     ax.grid(True, which='both', alpha=0.3)
     ax.set_title(f"decoupling: {dec['parts']} part(s) chosen "
                  f"({dec['parts_before']} fitted); target "
-                 f"{'met' if dec['met'] else 'not met'}", fontsize=10)
+                 f"{'met' if dec['met'] else 'not met'}"
+                 + (" where in reach" if any(
+                     l.get('out_of_reach') for l in dec['loads'].values())
+                    else ''), fontsize=10)
     ax.legend(fontsize=7, ncol=2)
     fig.tight_layout()
     fig.savefig(os.path.join(out, 'decoupling.png'), dpi=110)

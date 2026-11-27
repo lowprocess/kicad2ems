@@ -98,7 +98,7 @@ def run(a, echo=print):
              for n, legs in pf.pairs}
     ix = [[names.index(l) for l in legs] for _, legs in pf.pairs]
     echo(f"susceptibility: {a.fmin * 1e3:.4g}-{a.fmax * 1e3:.4g} MHz, "
-         + (f"the file's frequencies" if pf.freq is not None else
+         + ("the file's frequencies" if pf.freq is not None else
             f"at most {a.points} frequencies (where the curves peak)")
          + f", {len(names)} ports, directions every {a.step:g} deg "
          f"({pf.engine})")
@@ -387,7 +387,7 @@ class Susceptibility(Analysis):
                            y=[float(R.dbuv(d['threshold_mv'] * 1e-3))] * 2,
                            role='limit', unit='dBuV'))
         return [dict(title=f"On each port at {lv:g} V/m", xlabel='MHz',
-                     ylabel='dBuV', logx=True, curves=cs)]
+                     ylabel='dBuV', logx=True, logy=False, curves=cs)]
 
     def figures(self, folder):
         d = _result(folder)

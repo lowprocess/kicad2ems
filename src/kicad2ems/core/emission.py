@@ -37,7 +37,6 @@ board edge and anything below mom25d's infinite ground, an enclosure.
 """
 import argparse
 import json
-import math
 import os
 import re
 import sys
@@ -484,7 +483,7 @@ class Emission(Analysis):
                                unit='dBuV/m'))
         return [dict(title=f"Class {d['site']['cls']} at "
                      f"{d['site']['distance']:g} m", xlabel='MHz',
-                     ylabel='dBuV/m', logx=True, curves=cs)]
+                     ylabel='dBuV/m', logx=True, logy=False, curves=cs)]
 
     def figures(self, folder):
         d = _result(folder, FORMAT, RESULT)

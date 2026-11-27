@@ -203,6 +203,14 @@ def test_kept_parts_sites_and_an_unreachable_band(rail_pdn):
     dec = D.choose(pdn, f, ['U1'], {'U1': 0.02}, 3.3, **kw)
     assert (not dec['met'] and dec['loads']['U1']['out_of_reach_from']
             and any('own pads' in n for n in dec['notes']))
+    # the report says where it is out of reach, not 'to' the band's top
+    from kicad2ems.pcbqs import reports
+    out = dict(summary='', sections=[], images=[])
+    reports._decoupling_sections(dec, out)
+    a = dec['loads']['U1']['out_of_reach'][0][0]
+    assert (f"where in reach (out of reach from {reports._hz(a)} at U1"
+            in out['summary'] and ' to 1 GHz' not in out['summary'])
+    assert 'out of reach from' in out['sections'][0]['text']
     assert all(s['excess'] < p['excess'] * (1 - D.EARN)
                for p, s in zip(dec['steps'], dec['steps'][1:])
                if s['move'] == 'added')

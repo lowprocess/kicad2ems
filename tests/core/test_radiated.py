@@ -259,7 +259,9 @@ def test_susceptibility_runs_and_reports(tmp_path, monkeypatch):
     figs = {d['name']: d['value'] for d in an.figures(str(tmp_path))}
     assert np.isclose(figs['worst at 10 V/m'], top[0]['mv'])
     assert figs['ports over the threshold'] == 0
-    assert an.curves(str(tmp_path))[0]['curves'][0]['name'] == 'P1'
+    cs = an.curves(str(tmp_path))[0]
+    # dBuV: on a linear axis (the window's default is a log one)
+    assert cs['curves'][0]['name'] == 'P1' and cs['logy'] is False
     cmd = an.command(dict(field='3,10', threshold=5, load=['P2=1e6']),
                      'b.kicad_pcb', 'out')
     assert cmd[2:4] == ['kicad2ems.core.susceptibility', 'b.kicad_pcb']
@@ -292,6 +294,8 @@ def test_emission_runs_against_the_limits(tmp_path, monkeypatch):
     assert 'margin' in rep['summary'] and rep['sections'][0]['table']['rows']
     figs = {d['name']: d['value'] for d in an.figures(str(tmp_path))}
     assert np.isclose(figs['margin'], w['margin_db'])
+    # dBuV/m: on a linear axis (the window's default is a log one)
+    assert an.curves(str(tmp_path))[0]['logy'] is False
     with pytest.raises(ValueError, match="clock's frequency"):
         an.command(dict(signal='clock'), 'b.kicad_pcb', 'out')
     cmd = an.command(dict(signal='clock', f0=25, cispr_class='A'),

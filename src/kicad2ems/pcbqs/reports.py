@@ -211,14 +211,28 @@ def pdn_report(res, folder=''):
     return out
 
 
+def _reach(dec):
+    """Where no parts at the sites can meet a load's target (its own pads and
+    the sites' mounts are over it there), load by load: '' when nowhere."""
+    top, out = dec['band'][1], []
+    for r, l in dec['loads'].items():
+        for a, b in l.get('out_of_reach') or ():
+            out.append((a, (f"from {_hz(a)}" if b >= top * (1 - 1e-6) else
+                            f"{_hz(a)} – {_hz(b)}") + f" at {r}"))
+    return ', '.join(t for _, t in sorted(out))
+
+
 def _decoupling_sections(dec, out):
     """The decoupling's sections (pdn.decoupling's result) into a report."""
     worst = max(dec['loads'].items(), key=lambda kv: kv[1]['worst_after'])
+    met, gaps = ('met' if dec['met'] else 'not met'), _reach(dec)
     out['summary'] += (
         f"; decaps chosen: {dec['parts']} part(s) ({dec['parts_before']} "
-        f"fitted), the target {'met' if dec['met'] else 'not met'} to "
-        f"{_hz(dec['band'][1])} (worst {worst[0]} at "
-        f"{worst[1]['worst_after']:.3g} x its target)")
+        f"fitted), the target {met} "
+        + (f"where in reach (out of reach {gaps})" if gaps else
+           f"to {_hz(dec['band'][1])}")
+        + f" (worst {worst[0]} at {worst[1]['worst_after']:.3g} x its "
+        "target)")
     how = ('the fewest parts' if dec['mode'] == 'fewest' else
            f"the least cost ({dec['cost_before']:.3g} fitted, "
            f"{dec['cost']:.3g} chosen, the library's relative cost)")
@@ -230,7 +244,11 @@ def _decoupling_sections(dec, out):
         + ('the derating table given' if dec['derating'] == 'table' else
            'a typical curve by package and value') + "). "
         f"{dec['parts']} part(s) against {dec['parts_before']} fitted: the "
-        f"target is {'met' if dec['met'] else 'not met'}. The closed form "
+        f"target is {met}"
+        + (f" where any parts could meet it: it is out of reach {gaps}, where "
+           "the load's own pads and the sites' mounts are over it" if gaps
+           else '')
+        + ". The closed form "
         f"(the bare PDN between the loads and the sites, solved once) is "
         f"within {dec['check']['max_rel']:.2g} of a full solve with the parts "
         "attached.")

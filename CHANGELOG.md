@@ -718,6 +718,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **The window's EMC plots and the decoupling summary** (seen in screenshots of the five new tools, 2026-11-27):
+  - radiated emission's and susceptibility's curves (dBµV/m, dBµV) were drawn on a log y axis, the window's
+    default for a curve set that does not say: `logy=False` in both, as conducted emission had;
+  - the decoupling summary said "the target met to 2 GHz" (the band's top) on the Jetson's +1V15, where it is out
+    of reach from 43.1 MHz (U21's own pads and the sites' mounts over 115 mΩ): it now reads "met where in reach
+    (out of reach from 43.1 MHz at U21)", the report's text and `decoupling.png`'s title the same
+    (`reports._reach`, from each load's `out_of_reach` bands).
 - **CI's `ipc-as-installed` job tests its own commit (2026-11-25; F92).** It installed kicad2ems from the
   plugin's requirements as KiCad does, an archive of `main`, so a run tested its commit's `tests/ipc` against
   whichever commit `main` served then (pushes minutes apart, or an archive cached): code older than its tests.
