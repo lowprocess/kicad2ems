@@ -110,6 +110,13 @@ QUESTIONS = {
             "the impedance along the channel, ohm; delay, rise: the step's at "
             "the far end, ps"),
         Question(
+            'rlgc', 'Line parameters', 'Signal integrity',
+            "each distinct cross-section of the named nets: R, L, G, C per "
+            "metre over frequency (skin and proximity effect), W-element "
+            "models", order=30, figures=
+            "R <net> (<section>): its own resistance at f max, ohm/m; L <net> "
+            "(<section>): nH/m; loss <section> [mode <k>]: dB/mm at f max"),
+        Question(
             'dc', 'Rail drop', 'Power',
             "a rail's DC drop, its current density and its loss", order=10,
             figures="drop <load>: the rail's own copper from the source to the "

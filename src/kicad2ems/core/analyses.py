@@ -3,9 +3,9 @@ The analyses: tools that work on the same board as a run but are not
 S-parameter solvers (the crosstalk between traces, a rail's DC drop and
 impedance, a converter's near field, a circuit on the board's copper, the
 board's temperature). Each is an Analysis subclass, listed in ANALYSES by its
-module and class: the crosstalk (kicad2ems.core.si), pcbqs's five
-(kicad2ems.pcbqs.analyses: with the conducted emission), the Elmer and Palace
-tools (kicad2ems.fem.analyses).
+module and class: the crosstalk (kicad2ems.core.si), the line parameters
+(kicad2ems.core.rlgc), pcbqs's five (kicad2ems.pcbqs.analyses: with the
+conducted emission), the Elmer and Palace tools (kicad2ems.fem.analyses).
 A front end lists what the registry holds, builds each one's settings from its
 options, starts it as the command it gives and shows what its result folder
 holds.
@@ -146,6 +146,7 @@ __all__ = ['RF', 'KINDS', 'Analysis', 'registry', 'analysis_of', 'read_config',
 ANALYSES = ('kicad2ems.core.si:Crosstalk',
             'kicad2ems.core.coupling:Coupling',
             'kicad2ems.core.timedomain:TimeDomain',
+            'kicad2ems.core.rlgc:LineParameters',
             'kicad2ems.pcbqs.analyses:PowerIntegrity',
             'kicad2ems.pcbqs.analyses:NearField',
             'kicad2ems.pcbqs.analyses:Circuit',

@@ -72,7 +72,8 @@ def test_study_dock(window):
                                   'EMC'])
     assert ([[g.child(k).text(0) for k in range(g.childCount())] for g in groups
              ] == [['S-parameters', 'Antenna pattern', 'Trace impedances'],
-                   ['Crosstalk', 'Board coupling', 'Time domain'],
+                   ['Crosstalk', 'Board coupling', 'Time domain',
+                    'Line parameters'],
                    [
                        'Rail drop', 'Rail impedance', 'Converter near field',
                        'Circuit', 'Coils and ferrite', 'Capacitance'

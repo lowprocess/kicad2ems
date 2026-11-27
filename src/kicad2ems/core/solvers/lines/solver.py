@@ -20,8 +20,11 @@ _CAPS = dict(
     "yes: each section's copper thickness (the formulas' correction, the "
     "cross-section's rectangles)",
     conductor_loss=
-    "approximated: microstrip's by its formula, the other sections' as 2 Rs / "
-    "w (strip and return; qucsator: at the band centre)",
+    "yes: each trace's and coupled section's from its cross-section (a 2D "
+    "eddy-current solve: skin and proximity effect, the return in the planes; "
+    "up to 48 distinct cross-sections, else microstrip's by its formula and "
+    "the rest as 2 Rs / w; qucsator's microstrip models their own, the rest "
+    "at the band centre)",
     roughness='approximated: its conductivity at the band centre (Hammerstad)',
     finish=
     'approximated: its conductivity at the band centre, by the finished '
@@ -78,6 +81,8 @@ class LineSolver(Solver):
             wideband=(getattr(run.s, 'diel_fref', 1.0) * 1e9 if wide else None),
             info=info)
         Smm, names, zref = mixed_mode(S, run.m)
+        if info.get('loss'):
+            run.log(f"{self.label}: the conductor loss from {info['loss']}")
         held = info.get('held')
         run.log(f"{self.label}: {seconds * 1e3:.0f} ms" + (
             f" (wideband dielectric: {len(held)} solves with the materials at "

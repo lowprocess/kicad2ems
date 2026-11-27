@@ -17,11 +17,31 @@ comparable with openEMS; sheet=False uses the stackup's copper thickness.
 
 A ballpark: no coupling between sections, no radiation, no plane resonances,
 quasi-static impedances.
+
+With --sigma, each trace section's and coupled section's conductor loss comes
+from its own cross-section (field_losses: lines.mqs, a 2D eddy-current solve,
+R(f) and the internal inductance with the skin and proximity effect), each
+distinct cross-section solved once at a few frequencies across the band and
+interpolated, when the model has at most FIELD_LOSS_MAX of them; with more, or
+FIELD_LOSS off, the formulas' (microstrip and grounded CPW by scikit-rf's
+media, Hammerstad and Jensen's; the rest 2 Rs / w). qucsator keeps its own
+microstrip models' (MLIN, MCOUPLED, CLIN), the rest at the band centre.
 """
 import math, os, re, shutil, subprocess, sys, tempfile, warnings
 import numpy as np
 from ...constants import C0, MU0
 from ...touchstone import log_spaced, write_touchstone
+
+# the conductor loss from each section's cross-section (field_losses), with
+# --sigma: on, for up to FIELD_LOSS_MAX distinct cross-sections (about 0.1-0.3
+# s each); more, or off: the formulas
+FIELD_LOSS = True
+FIELD_LOSS_MAX = 48
+# the frequencies a cross-section is solved at: this many a decade over the
+# band (down to its top / LOSS_SPAN), DC as well
+LOSS_PER_DECADE = 3
+LOSS_SPAN = 1e4
+_LOSS_CACHE = {}
 
 __all__ = ['resolve_backend', 'solve']
 
@@ -61,6 +81,90 @@ def conductor_r(w_mm, t_mm, f, sigma):
     return (np.maximum(rs, rdc) + rs) / (w_mm * 1e-3)
 
 
+def loss_frequencies(freq):
+    """DC and LOSS_PER_DECADE points a decade from the band's lowest
+    frequency (at least its top / LOSS_SPAN) to its top: where field_losses
+    solves a cross-section (between them it interpolates, R as log-log)."""
+    f = np.asarray(freq, float)
+    hi = float(f.max())
+    pos = f[f > 0]
+    lo = max(float(pos.min()) if len(pos) else hi, hi / LOSS_SPAN)
+    if hi <= 0:
+        return np.array([0.0])
+    n = max(3, int(math.ceil(LOSS_PER_DECADE * math.log10(hi / lo))) + 1)
+    return np.r_[0.0, np.geomspace(lo, hi, n)] if hi > lo else np.r_[0.0, hi]
+
+
+def field_losses(lm, freq, sigma, info=None):
+    """{id(element) or ('g', group index): (R, L_int)}, each (nf, N, N) at
+    freq (ohm/m, H/m): the trace sections' and coupled sections' resistance
+    and internal inductance from their cross-sections (lines.mqs.rlgc; the
+    board's cut where the line model took one, else as classified), each
+    distinct one solved once (cached across calls) at loss_frequencies and
+    interpolated. {} without sigma, with FIELD_LOSS off or more than
+    FIELD_LOSS_MAX distinct cross-sections; info['loss'] says which."""
+    if not (sigma and FIELD_LOSS):
+        return {}
+    from ...lines import mqs
+    from ...lines.reference import _strips_section
+    want = {}
+    for e in lm.elements:
+        if e.kind != 'trace' or e.group is not None or not e.z0:
+            continue
+        got = mqs.section_of(e)
+        if got is not None:
+            k = mqs.section_key(got[0], round(got[1], 9))
+            want.setdefault(k, (got[0], got[1], []))[2].append(id(e))
+    for gid, g in enumerate(lm.groups):
+        e0 = g['members'][0][0]
+        sec = (_strips_section(*g['cut']) if g.get('cut') else
+               (e0.coupled or {}).get('section'))
+        if sec is not None:
+            t = float(g['cut'][2] if g.get('cut') else e0.t or 0.0) or 0.035
+            k = mqs.section_key(sec, round(t, 9))
+            want.setdefault(k, (sec, t, []))[2].append(('g', gid))
+    if len(want) > FIELD_LOSS_MAX:
+        if info is not None:
+            info['loss'] = (f"the formulas' ({len(want)} cross-sections, more "
+                            f"than FIELD_LOSS_MAX {FIELD_LOSS_MAX})")
+        return {}
+    fpts = loss_frequencies(freq)
+    out, failed = {}, 0
+    for k, (xs, t, targets) in want.items():
+        ck = (k, float(sigma), tuple(fpts))
+        r = _LOSS_CACHE.get(ck)
+        if r is None:
+            try:
+                r = mqs.rlgc(xs, fpts, sigma, t, t)
+            # (a cross-section it cannot mesh: the formula's)
+            except Exception:  # noqa: BLE001
+                failed += 1
+                continue
+            if len(_LOSS_CACHE) > 1024:
+                _LOSS_CACHE.clear()
+            _LOSS_CACHE[ck] = r
+        ri = r.at(freq)
+        val = (ri.R, ri.L - ri.L_inf[None])
+        for tg in targets:
+            out[tg] = val
+    if info is not None and want:
+        info['loss'] = (f"each section's cross-section ({len(want)} solved "
+                        "by the eddy-current solver"
+                        + (f", {failed} by the formulas" if failed else '')
+                        + ")")
+    return out
+
+
+def _lossy(skrf, fr, med, R, Lint):
+    """A medium's lossless line with a section's conductor loss added: gamma +
+    (R + j w L_int) / (2 Z0) (low loss), its Z0 kept."""
+    w = 2 * np.pi * fr.f
+    z0 = np.asarray(med.z0, complex)
+    return skrf.media.DefinedGammaZ0(
+        frequency=fr, z0=z0, z0_port=50.0,
+        gamma=np.asarray(med.gamma) + (R + 1j * w * Lint) / (2 * z0))
+
+
 def mode_tand(e):
     """The loss tangent of a section's mode, for a model of it as one effective
     medium (eeff, Z0): the field solver's (G / w C) where it solved it, else the
@@ -75,7 +179,7 @@ def mode_tand(e):
     return tand
 
 
-def _skrf(lm, ports, freq, sheet, sigma):
+def _skrf(lm, ports, freq, sheet, sigma, loss=None):
     try:
         import skrf
         from skrf.circuit import Circuit
@@ -120,8 +224,10 @@ def _skrf(lm, ports, freq, sheet, sigma):
         warnings.simplefilter('ignore')
         # coupled sections: one multiconductor block each
         for gid, g in enumerate(lm.groups):
-            ntw = skrf.Network(frequency=fr, s=group_s(g, fr.f, sigma), z0=50.0,
-                               name=f"group{gid}")
+            ntw = skrf.Network(frequency=fr,
+                               s=group_s(g, fr.f, sigma,
+                                         (loss or {}).get(('g', gid))),
+                               z0=50.0, name=f"group{gid}")
             n = len(g['members'])
             for k, (e, near, far) in enumerate(g['members']):
                 nodes.setdefault(near, []).append((ntw, k))
@@ -162,10 +268,12 @@ def _skrf(lm, ports, freq, sheet, sigma):
             # field-solved: its own Z0 below
             elif e.xs in ('microstrip', 'cpwg') and e.er and not e.field:
                 t = 1e-9 if sheet else max(e.t, 1e-6) * 1e-3
+                lz = (loss or {}).get(id(e))
                 if e.xs == 'microstrip':
                     med = skrf.media.MLine(
                         frequency=fr, w=e.w * 1e-3, h=e.h * 1e-3, t=t,
-                        ep_r=e.er, tand=e.tand, rho=rho,
+                        ep_r=e.er, tand=e.tand,
+                        rho=1e-15 if lz is not None else rho,
                         model='hammerstadjensen', disp='kirschningjansen',
                         diel='frequencyinvariant', z0_port=50.0)
                 else:
@@ -179,18 +287,25 @@ def _skrf(lm, ports, freq, sheet, sigma):
                            max(e.t or 0.035, 1e-9) * 1e-3),
                         # (a thickness: its loss needs one)
                         has_metal_backside=True,
-                        rho=rho if sigma else None,
+                        # (its own cross-section's loss below: none here)
+                        rho=((1e-15 if lz is not None else rho) if sigma
+                             else None),
                         tand=e.tand,
                         diel='frequencyinvariant',
                         z0_port=50.0)
+                if lz is not None:  # its own cross-section's loss
+                    med = _lossy(skrf, fr, med, lz[0][:, 0, 0], lz[1][:, 0, 0])
                 ntw = med.line(span(e), 'm', name=name)
             elif e.z0:
                 z0, ee = _line_params(e, sheet)
                 if sigma:  # the copper's loss too: gamma of R, L, G, C
                     beta = w * np.sqrt(ee) / C0
+                    lz = (loss or {}).get(id(e))
+                    zc = (conductor_r(e.w, e.t or 0.035, fr.f, sigma)
+                          if lz is None else
+                          lz[0][:, 0, 0] + 1j * w * lz[1][:, 0, 0])
                     gamma = (1j * beta * np.sqrt(1 - 1j * mode_tand(e))
-                             + conductor_r(e.w, e.t or 0.035, fr.f, sigma) /
-                             (2 * z0))
+                             + zc / (2 * z0))
                     med = skrf.media.DefinedGammaZ0(frequency=fr, z0=z0,
                                                     gamma=gamma, z0_port=50.0)
                 else:
@@ -307,16 +422,27 @@ def discontinuity_c(j, sheet=True):
                             arms[0].er, j.get('angle', 90.0))
 
 
-def group_s(g, freq, sigma=None):
+def group_s(g, freq, sigma=None, loss=None):
     """S-parameters (nf, 2N, 2N) of a coupled section of the line model
-    (coupled.py); sigma: its copper's loss."""
-    from ...lines.coupled import group_lc, mtl_s
+    (coupled.py); sigma: its copper's loss, as 2 Rs / w on each line; loss:
+    (R, L_int) (nf, N, N) of its cross-section (field_losses) in its place,
+    every line's on every other's."""
+    from ...lines.coupled import group_lc, mtl_s, zy_s
     members = [e for e, _, _ in g['members']]
     if g.get('C') is not None:  # the field solver's (lines.reference.FIELD)
         C, Ca = g['C'], g['Ca']
     else:
         C, Ca = group_lc([e.w for e in members], g['gaps'], g['h'], g['er'],
                          g.get('xs', 'microstrip'))
+    if loss is not None:
+        C, Ca = np.asarray(C, float), np.asarray(Ca, float)
+        er, tand = g['er'], g['tand'] or 0.0
+        Cd = (C - Ca) * (er / (er - 1) if er > 1 else 0.0)
+        w = 2 * np.pi * np.asarray(freq, float)[:, None, None]
+        L = np.linalg.inv(Ca) / C0 ** 2
+        Z = 1j * w * (L[None] + loss[1]) + loss[0]
+        Y = 1j * w * C[None] + w * tand * Cd[None]
+        return zy_s(Z, Y, g['length'], 50.0)
     R = ((lambda f: np.array(
         [conductor_r(e.w, e.t or 0.035, f, sigma)
          for e in members])) if sigma else None)
@@ -476,7 +602,8 @@ def _radial_stubs(lm):
     return out, skip
 
 
-def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
+def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None,
+                 loss=None):
     """The line model as a qucsator netlist (S-parameter sweep over freq).
     Microstrip lines, corners, steps, tees, crosses, open ends, end gaps and
     vias to ground use qucsator's microstrip models (MLIN, MCORN, MSTEP, MTEE,
@@ -579,7 +706,9 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
             # dielectric loss matched at the band centre
             g = 2 * math.pi * f0 * cp * mode_tand(e)
             # (at the band centre, as G)
-            r = (float(conductor_r(e.w, e.t or 0.035, f0, sigma))
+            lz = (loss or {}).get(id(e))
+            r = (float(np.interp(f0, freq, lz[0][:, 0, 0])) if lz is not None
+                 else float(conductor_r(e.w, e.t or 0.035, f0, sigma))
                  if sigma else 0.0)
             L.append(
                 f'RLCG:{name} {a} {b} R="{r:.9g}" L="{lp:.9g}" C="{cp:.9g}" '
@@ -669,8 +798,10 @@ def qucs_netlist(lm, ports, freq, sheet=True, sigma=None, workdir=None):
                     "folder for its Touchstone"
                 )
             path = os.path.join(workdir, f"group{gid}.s{2 * len(mem)}p")
-            write_touchstone(path, freq, group_s(g, freq, sigma), [50.0] *
-                             (2 * len(mem)), comment='coupled section')
+            write_touchstone(path, freq,
+                             group_s(g, freq, sigma,
+                                     (loss or {}).get(('g', gid))),
+                             [50.0] * (2 * len(mem)), comment='coupled section')
             # (outside the f-string: Python 3.10 and 3.11)
             unix = path.replace(os.sep, '/')
             L.append(
@@ -713,12 +844,13 @@ def read_qucs_dataset(text, n):
     return f, S
 
 
-def _qucsator(lm, ports, freq, sheet, sigma, exe, timeout=120.0):
+def _qucsator(lm, ports, freq, sheet, sigma, exe, timeout=120.0, loss=None):
     exe = find_qucsator(exe)
     with tempfile.TemporaryDirectory() as d:
         inp, out = (os.path.join(d, 'line_model.net'),
                     os.path.join(d, 'line_model.dat'))
-        text, order = qucs_netlist(lm, ports, freq, sheet, sigma, workdir=d)
+        text, order = qucs_netlist(lm, ports, freq, sheet, sigma, workdir=d,
+                                   loss=loss)
         with open(inp, 'w', encoding='utf-8') as fh:
             fh.write(text)
         try:
@@ -755,8 +887,11 @@ def solve(lm, ports, freq, backend='skrf', sheet=True, sigma=None,
             "no port has a line model (ports must sit on routed traces or pads)"
         )
     t0 = time.time()
-    one = ((lambda m: _skrf(m, ports, freq, sheet, sigma)) if backend == 'skrf'
-           else (lambda m: _qucsator(m, ports, freq, sheet, sigma, qucsator)))
+    loss = field_losses(lm, freq, sigma, info)
+    one = ((lambda m: _skrf(m, ports, freq, sheet, sigma, loss))
+           if backend == 'skrf' else
+           (lambda m: _qucsator(m, ports, freq, sheet, sigma, qucsator,
+                                loss=loss)))
     from ...lines import dispersion
     held = dispersion.nodes(lm, freq, wideband) if wideband else None
     if held is None:

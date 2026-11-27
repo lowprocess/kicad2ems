@@ -330,8 +330,11 @@ The sections become a circuit, solved in milliseconds by one of two programs:
 
 `--solvers lines` uses qucsator when it's installed, otherwise scikit-rf; `--fast` adds the line model next to the
 other solvers as a reference. The copper is zero-thickness, as in the other solvers, and `--sigma` adds copper loss:
-microstrip's by its formula, every other section's (stripline, a field-solved or a coupled one) as about 2 Rs / w
-per metre, the strip's and its return's (qucsator's RLCG holds it at the band centre, as its dielectric loss).
+each trace's and coupled section's from its own cross-section ([line parameters](rlgc.md#line-model):
+a 2D eddy-current solve, R and the internal inductance with the skin and proximity effect and the return in the
+planes; each distinct cross-section solved once, up to 48 of them). Beyond that, microstrip's by its formula and
+every other section's as about 2 Rs / w per metre, the strip's and its return's. qucsator's own microstrip models
+(MLIN, MCOUPLED, CLIN) keep theirs, and its RLCG sections hold it at the band centre, as their dielectric loss.
 Dielectric loss is the mode's own tan δ: the field solver's where it solved a section, the formulas' filling
 factor elsewhere, and a stack's layers weighted as the field crosses them.
 

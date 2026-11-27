@@ -1,6 +1,6 @@
 # Time domain: TDR, step response and eye
 
-[← Signal integrity](si.md) · [Index](index.md) · [Next: Whole-board studies →](segment-studies.md)
+[← Signal integrity](si.md) · [Index](index.md) · [Next: Line parameters →](rlgc.md)
 
 The time-domain question takes a channel's S-parameters into time: its impedance along its length (TDR), its step
 response at the far end (delay, rise, overshoot), its eye for a bit pattern at a data rate (height, width) and,

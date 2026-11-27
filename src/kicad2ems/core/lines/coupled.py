@@ -140,22 +140,33 @@ def mtl_s(C, Ca, er, tand, length_mm, freq, z0=50.0, R=None):
     port i -> port N + i), reference z0. R(f): each line's series resistance per
     metre, (N,) (its copper and its return's; None: lossless conductors)."""
     C, Ca = np.asarray(C, float), np.asarray(Ca, float)
-    n = len(C)
     L = np.linalg.inv(Ca) / C0 ** 2                            # mu0 eps0 Ca^-1
     # the part of C held by the dielectric
     Cd = (C - Ca) * (er / (er - 1) if er > 1 else 0.0)
+    freq = np.asarray(freq, float)
+    w = 2 * np.pi * freq[:, None, None]
+    Z = 1j * w * L[None] + (np.stack([np.diag(R(f)) for f in freq])
+                            if R is not None else 0.0)
+    Y = 1j * w * C[None] + w * tand * Cd[None]
+    return zy_s(Z, Y, length_mm, z0)
+
+
+def zy_s(Z, Y, length_mm, z0=50.0):
+    """S-parameters (nf, 2N, 2N) of a uniform N-line section length_mm long
+    from its per-unit-length series impedance Z and shunt admittance Y (nf, N,
+    N; ohm/m and S/m, Z = R + j w L, Y = G + j w C, any matrices: an RLGC's):
+    ports 1..N at the near ends, N+1..2N at the far ends, reference z0. The
+    modes of Z Y, the section's admittance from them."""
+    n = Z.shape[-1]
     ell = length_mm * 1e-3
-    S = np.zeros((len(freq), 2 * n, 2 * n), complex)
+    S = np.zeros((len(Z), 2 * n, 2 * n), complex)
     eye = np.eye(2 * n)
-    for k, f in enumerate(np.asarray(freq, float)):
-        w = 2 * np.pi * f
-        Z = 1j * w * L + (np.diag(R(f)) if R is not None else 0.0)
-        Y = 1j * w * C + w * tand * Cd
-        g2, T = np.linalg.eig(Z @ Y)
+    for k in range(len(Z)):
+        g2, T = np.linalg.eig(Z[k] @ Y[k])
         g = np.sqrt(g2)
         g = np.where(g.real < 0, -g, g)
         Ti = np.linalg.inv(T)
-        Zi = np.linalg.inv(Z)
+        Zi = np.linalg.inv(Z[k])
         coth = 1 / np.tanh(g * ell)
         csch = 1 / np.sinh(g * ell)
         Y11 = Zi @ T @ np.diag(g * coth) @ Ti

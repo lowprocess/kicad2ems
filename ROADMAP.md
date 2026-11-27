@@ -5,7 +5,7 @@ emsdev}`), most useful first within each section. Each item comes from something
 validation showed. Finished work leaves this file: what was done, measured and set aside is in CHANGELOG.md
 (pcbqs's history before the merge: docs/pcbqs/CHANGELOG.md). R numbers (R-E1, ...) are the stack review of
 2026-11-14 (`REVIEW-2026-11-14.md` in kicad2ems-project), C numbers docs/pcbqs/power-tools-review.md, F numbers
-the code review of 2026-11-25. Last updated 2026-11-25.
+the code review of 2026-11-25. Last updated 2026-11-27.
 
 ## Waiting on a decision
 
@@ -73,6 +73,20 @@ the code review of 2026-11-25. Last updated 2026-11-25.
 6. **The time grid:** whether 1 / rise as fmax (the top 20 % faded) loses an edge's corner on short, fast traces,
    against a grid to 3 / rise.
 7. **The coupled stretches drawn on the plan**, coloured by their share.
+8. **Line parameters, the rest** (`core.rlgc`, docs/rlgc.md):
+   - the W-element files checked in a simulator that reads them (HSPICE's tabular `sp` models are written from its
+     manual, lower triangles, not run here); a SPICE subcircuit of the RLGC (ngspice has no W element) for the
+     circuit and time-domain questions;
+   - broadside groups (the line model's are of one layer) and a cut along a section's length (it is cut once);
+   - the lowest frequencies' L is that of a plane as wide as the box (24 heights either side): a plane's own
+     width from the board's outline;
+   - speed, measured and set aside (2026-11-27, an 8-line bus of 19.2k nodes, 23 frequencies, the machine shared
+     by four other runs): a Galerkin reduced model of K + jωσM from solves at adaptive shifts needed 13
+     factorisations for Z within 6.5e-7 (5 for 3e-3) and took 5.3 s against 1.3 s direct (its basis grows by 9
+     columns a shift); the fill-reducing ordering reused across frequencies (one pattern) saves 7 % of a
+     factorisation (45.5 → 43.7 ms); one figure is about one section's solve (0.12 s): drawn for the 12 longest
+     sections alone. Each concurrent frequency's LU holds ~37 MB on that bus (threads 1 / 4 / 8: 11.2 / 5.6 /
+     3.8 s, 132 / 280 / 432 MB peak on rf_ddr's 20 sections).
 
 ## Segment: a board in pieces (`core.segment`)
 
@@ -90,7 +104,10 @@ the code review of 2026-11-25. Last updated 2026-11-25.
    whole board's 0.41): mom25d 2.
 6. **Speed:**
    - straight coupled runs as analytic multi-line sections (an N-line cross-section, exact for TEM) with MoM
-     at the breakouts, bends and vias alone: the largest gain on bus-heavy boards (the Thor's In7 bus);
+     at the breakouts, bends and vias alone: the largest gain on bus-heavy boards (the Thor's In7 bus). The
+     section itself exists now (`core.rlgc`: a cut's RLGC with skin and proximity loss, `coupled.zy_s` its S over
+     a length, 0.2-1 s a cross-section); what is left is segment's side: finding the straight runs, cutting the
+     pieces at their ends and joining the sections' S as pieces;
    - a piece's file keeps whole any plane that reaches its neighbourhood (12.7 MB median, ~1 MB clipped);
    - the physics-based via models run one at a time last; in a thread they stalled the run (not found why): a
      process of their own;
@@ -120,8 +137,14 @@ the code review of 2026-11-25. Last updated 2026-11-25.
 
 1. **`edge` thickness's copper loss** (F90): 2.9× the strip's share over the ideal ground, 2.4× the line's with
    the plane meshed (docs/mom.md#thickness-loss), and every whole-stack run with `sides` or `mixed` gets `edge`.
-   Spreading the edge triangles' loss over their walls takes 0.229 to 0.157 dB of the line's 0.097: measure
-   against a 2D solve of the loss with the skin effect, then fit as the heights were.
+   Spreading the edge triangles' loss over their walls takes 0.229 to 0.157 dB. The 2D reference is measured now
+   (`core.lines.mqs`, docs/rlgc.md#checks, 2026-11-27): that microstrip at 10 GHz has R = 64.9 Ω/m, 0.00589
+   dB/mm at Z0 47.8 Ω, the strip's 0.00437 (0.741 of it) and the plane's 0.00152. Over 10.4 mm that is 0.061 dB,
+   the strip's 0.046, against the table's references of 0.097 and 0.072 (Hammerstad and Jensen's formula, 1.6×
+   the 2D solve; Wheeler's rule on the field solver gives 65.6 Ω/m). Against the 2D numbers, `sides` over the
+   ideal ground (0.066 dB) is 1.45× the strip's, `grow` 2.0×, `off` 2.1× and `edge` 4.6×. With the plane meshed,
+   `grow` (0.109) is 1.8× the line's 0.061, `off` 1.9× and `edge` 3.7×. The table and the test's
+   `STRIP_DB_MM` (tests/mom25d/test_conductor_loss.py) are to move to these, then the rules fitted.
 2. **The ideal ground's own loss:** over the infinite plane (stack `ground`, segment's layer pieces) its share
    of a line's conductor loss (0.26 on a 50 Ω microstrip) is missing: a surface impedance at the bottom of the
    layered Green's function, or Wheeler's share added per line.
@@ -292,10 +315,17 @@ The window keeps its docks (the user's word, 2026-11-12): nothing below may fix 
    rf_combline); copper between or beside coupled lines that is no ground net should be a line of its own.
 2. **A coupled section's cut along its length:** cut once, across its middle; copper beside part of it counts for
    all of it or none. Cut at a few places and split where they differ.
-3. **The conductor loss from the cross-section** (Wheeler's rule) in place of 2 Rs / w, and each frequency's in
-   qucsator.
+3. **The conductor loss from the cross-section, the rest** (done for scikit-rf's trace and coupled sections: each
+   distinct cross-section's eddy-current solve, `fastsolve.field_losses`): qucsator's microstrip models
+   (MLIN, MCOUPLED, CLIN) keep their own Hammerstad-Jensen loss (1.6× the 2D solve's on a 50 Ω microstrip) and
+   its RLCG sections the band centre's (an SPfile per section would take each frequency's); pads and
+   de-embedding's line sections keep 2 Rs / w; above 48 distinct cross-sections (`FIELD_LOSS_MAX`) the formulas
+   come back: the solves in worker processes, as the field solver's cuts are, would let that rise.
 4. **Discontinuities, the rest** (R-E15): a tee's and a cross's reactances on the scikit-rf backend.
 5. **One multiconductor model** (R-F5): dfsynth's and `coupled.mtl_s` are two; so are the Touchstone readers.
+   `coupled.zy_s` (2026-11-27) takes any per-unit-length Z and Y matrices at each frequency (an RLGC's: full R,
+   the internal inductance, G, C), and `mtl_s` and the line model's lossy groups go through it: dfsynth's
+   `mtl.Array` could too, with `core.lines.mqs` for its loss.
 6. **The mesh's key lines** run across the whole box; merging cells away from the corners needs constraints for
    sides that overlap without nesting.
 7. **Boundary elements with a layered Green's function**, only if the mesh's 0.2 s becomes the limit.

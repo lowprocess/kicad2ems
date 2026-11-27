@@ -10,6 +10,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Line parameters: R, L, G, C per metre over frequency with the skin and proximity effect (`kicad2ems.core.rlgc`,
+  `kicad2ems.core.lines.mqs`, docs/rlgc.md, 2026-11-27).**
+  - *The solver.* A 2D eddy-current cross-section solve beside xsection's electrostatic one: A_z with the copper
+    meshed inside, xsection's bilinear rectangles and hanging nodes, cells a third of a skin depth at every copper
+    face (at the band's top), growing inward and along it. Each conductor's total current is imposed (the ground
+    copper one net). Z = R + jωL comes per frequency from one complex symmetric factorisation and an (N+1) ×
+    (N+1) closure; at DC the currents are uniform. The planes are copper of their layers' thickness behind their
+    faces, and the return crowds under the lines as the frequency rises. L is xsection's extrapolated L_inf plus
+    the internal inductance (the solve's L less its own perfect-conductor limit on the same mesh), so Z0 and the
+    delay stay the field solver's; G and C are xsection's, and `--diel wideband` solves them at each frequency's
+    materials. `--rough` uses σ / K(f)² at each frequency.
+  - *Checks.* A coax as staircases against the Bessel forms of the wire and the tube, DC to a / δ = 5: R within
+    0.55 %, L within 0.2 %. A strip's DC resistance exactly. (L − L_inf) ω / R 0.985–1.005 at 1–10 GHz on a 50 Ω
+    microstrip. Wheeler's incremental inductance on the field solver: 65.6 against 64.9 Ω/m, the strip's share
+    0.747 against 0.741. A centred stripline's conductor loss against Pozar's closed form (Wheeler's rule) within
+    0.6–1.6 % at w 0.15–0.6 mm. A pair's R and L symmetric and positive definite, R(10 GHz) / R(2.5 GHz) 2.02.
+    The losses add up to R to 1e-9.
+  - *F90's reference.* mom25d's thickness-loss microstrip (w 0.383 mm on 0.2 mm, εr 4.4, 35 µm) has R = 64.9 Ω/m
+    at 10 GHz: 0.00589 dB/mm, the strip's 0.00437, against the 0.00935 of Hammerstad and Jensen's formula, which
+    is 1.6× high. The ROADMAP's mom25d Accuracy 1 has the comparison with each thickness rule.
+  - *The question.* *Line parameters* (Signal integrity) on a board's nets by name patterns: each distinct cross-
+    section of each coupled group and single trace, cut as the line model cuts the board, with lengths added and
+    mirror images solved once. It writes each section's W-element RLGC file (HSPICE `RLGCfile=`, Rs and Gd fitted),
+    its tabular model (`MODELTYPE=TABLE`, `sp` models), its S-parameters over its length (`coupled.zy_s`: any
+    RLGC), a figure, and `rlgc.json`. Also `--xs microstrip|stripline|file.json` for a cross-section by its sizes.
+    On rf_diffvia (D_*, 6 sections, DC + 22 frequencies to 20 GHz) it runs in 3.1 s; on rf_ddr (DQ*, 20 sections)
+    in 4.2 s, the machine shared with four other runs (load 7–30).
+  - *Optimisation passes*, under load averages of 7–30 from four other runs:
+    1. The frequencies on threads (SuperLU lets go of the interpreter). `rlgc()` over DC + 22 points went from
+       0.294 / 0.433 / 0.497 / 1.393 s to 0.204 / 0.305 / 0.353 / 0.800 s (microstrip, pair, stripline pair, 8-line
+       bus), results bit-identical. Peak memory went from 25 / 27 / 30 / 45 to 37 / 47 / 57 / 107 MB (tracemalloc).
+       On rf_ddr, 1 / 4 / 8 threads take 11.2 / 5.6 / 3.8 s at 132 / 280 / 432 MB peak RSS.
+    2. Fixed figure margins in place of `tight_layout` (0.24 s a figure): rf_diffvia 3.92 → 3.11 s wall.
+    3. A cross-section and its mirror image as one solve (R the same to 3e-10): rf_diffvia's solves 2.50 →
+       2.17 s, min of 3.
+    4. Figures for the 12 longest sections alone (a figure takes about as long as a section's solve): rf_ddr
+       5.76 → 4.16 s, min of 3 (spread 4.2–7.1 s).
+
+    Measured and set aside (ROADMAP Signal integrity 8): a reduced model over frequency, the ordering reused, and
+    a figure's minor grid. Tests: tests/core/test_rlgc.py.
 - **Conducted emission (`kicad2ems.pcbqs.conducted`, docs/pcbqs/conducted.md, 2026-11-27; the user's ask, item 5's
   first half).** A circuit model (pcbqs.circuit, ngspice, on its board's copper with `--copper`) with a CISPR
   network in each supply line: `cispr16`, CISPR 16-1-2's 50 Ω / 50 µH + 5 Ω V-network (CISPR 32's), realised from
@@ -1129,6 +1169,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   glyphs; the notes say which. It had all been read as nothing, with nothing said.
 
 ### Changed
+- **The line model's conductor loss from each section's cross-section (2026-11-27; ROADMAP line model 3).** With
+  `--sigma`, scikit-rf's trace and coupled sections take R(f) and the internal inductance from their own cross-
+  sections (`fastsolve.field_losses`: `core.lines.mqs` on the board's cut, or the section as classified). Each
+  distinct one is solved at 3 frequencies a decade, interpolated as log-log and cached. A coupled group gets its
+  full R matrix. This replaces Hammerstad and Jensen's microstrip loss (1.6× the 2D solve's) and 2 Rs / w on
+  every other section (3× a stripline's). Up to 48 distinct cross-sections; above that the formulas stay, and the
+  log says which.
+  - S21's loss at 10 GHz: rf_stripline 0.566 → 0.189 dB, rf_msvia 0.197 → 0.128, rf_coupler 0.117 → 0.080,
+    hairpin 1.02 → 0.69. It costs 0.2–1.4 s uncached on the examples (2–8 cross-sections), a few ms cached.
+  - qucsator's RLCG sections take the cross-section's R at the band centre; its MLIN, MCOUPLED and CLIN keep
+    their own loss.
 - **cavities: the field round each via resolved, and the mesh's dispersion cancelled (2026-11-24).** A via's
   disc fanned out to far vertices: its loop inductance to a ground via 0.5-5 mm away was 36-71 % of the two-wire
   formula's (the linear elements miss the log field round a small disc); the ground vias shorted too much round
