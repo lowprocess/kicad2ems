@@ -32,10 +32,12 @@ the code review of 2026-11-25. Last updated 2026-11-27.
 
 ## The Draw page: a 3D editor (`gui.drawtab`, `core.shapes`)
 
-The next focus for extension and the window's UI (the user's word, 2026-11-27). The prototype (2026-11-20, on main
+The next focus for extension and the window's UI (the user's word, 2026-11-27). The page (2026-11-20, on main
 since 2026-11-27) draws rectangles, circles, polygons, traces and ports as copper or cuts on a layer, and metal,
-dielectric and air solids between two heights. It has plan and 3D views, selection and dragging in both, a
-properties form, undo, and writes the `shapes`, `region` and `ports` settings. What it lacks, most useful first:
+dielectric and air solids between two heights. It has plan and 3D views, selection of several shapes, the
+clipboard, locking and hiding, exact edits and arrays, snapping, measuring, camera presets, a clip plane and a
+gizmo in 3D, a properties form, undo, and writes the `shapes`, `region` and `ports` settings. What it lacks, most
+useful first:
 
 **What the drawing does**
 
@@ -57,22 +59,36 @@ properties form, undo, and writes the `shapes`, `region` and `ports` settings. W
 6. **Booleans and curves:** union, subtraction and intersection of polygons (shapely); arcs and fillets in
    polygons and traces; chamfers.
 
-**The page (UI)**
+**The page (UI)** (selection, exact edits, snapping, measuring, the 3D view's tools and the speed with 300 shapes
+were done on 2026-11-27: CHANGELOG)
 
-1. **Selection:** several shapes at once (Shift or Ctrl + click, a dragged box), moved, duplicated and deleted
-   together; copy and paste, between drawings too; a shape locked or hidden from the list.
-2. **Exact edits:**
-   - move by a typed offset, rotate by any angle, mirror, align and distribute;
-   - arrays (a row, a grid, a circle: via fences, stitching);
-   - snapping to the board's pads, track ends and edges, and to shapes' corners and midpoints;
-   - a measure tool (distance, angle), and the cursor's coordinates and the size being drawn in the status bar.
-3. **The 3D view:** camera presets (top, front, side, iso), zoom to the selection, the selected shape outlined, an
-   axis-constrained move (a gizmo), a clip plane through the board, layers and materials shown or hidden, and the
-   working level's grid.
-4. **The page itself:** the shape list with icons and each material's colour, the form in groups, a toolbar that
+1. **The page itself:** the shape list with icons and each material's colour, the form in groups, a toolbar that
    names each tool's key; the drawn shapes in the main Viewer, and the run's mesh of them (the solids as the
    solver sees them).
-5. **Speed with many shapes:** a via fence of 300 shapes, its redraw and pick times in plan and 3D.
+2. **The 3D view, on a screen:** its outline, gizmo, grid, clip and Show menu were built and tested offscreen (the
+   camera, rays, picking and drags against pyqtgraph's own matrices), but no display was there to see them drawn:
+   look at them on one, and make docs/img/gui/draw.png again (its 3D half needs a display). Then the gizmo's
+   arrowheads (lines alone now), a box selection in 3D, an orthographic camera for Top / Front / Side (pyqtgraph's
+   is perspective), and the board's copper capped at the clip (its thin slabs are cut open; solids are capped).
+3. **Selecting and editing, the rest:** select alike (a net, a material, a layer); arrow keys to nudge; a point
+   typed while drawing (a corner at x, y); snapping to a pad's corners and edges and along a track's centre line
+   (pads' centres and tracks' ends and corners now) and to intersections; snapping while dragging in 3D (the
+   grid alone there); the measure tool in 3D; dimensions shown on the shapes.
+4. **Speed, the rest** (tools/gui/draw_bench.py, a 300-via fence over sma_launch, offscreen):
+   - a first 3D draw (31 ms: every shape's items made, as on opening a drawing) is now mostly pyqtgraph's
+     GLMeshItem construction, and each shape is a draw call every frame (the GPU's time is not measured
+     offscreen): items batched by look would cut both, at the cost of splitting a batch when a shape in it is
+     selected or dragged;
+   - the plan's paint is 6 ms for 300 items, and a move of the whole fence is that paint; on a large board
+     (LibreVNA) the board's own copper is most of a move's 11.6 ms.
+   - Tried and rejected (the same fence, load 11 from other runs, so the times are ~2× a quiet machine's):
+     - the plan's items cached as pixmaps (DeviceCoordinateCache): a repaint with nothing moved 12.2 → 6.2 ms,
+       but panned 14.4 → 12.7 (−12 %) and zoomed 15.9 → 18.8 (+18 %), with a pixmap an item; a repaint with
+       nothing moved is the rare one;
+     - one path item for every unselected shape of a look: painted slower (15.3 ms against 12.2: no culling of
+       what is off the view) and made again (3.2 ms) at every change to any of them;
+     - the shapes' 1,500 snap points in a k-d tree: a query 0.014 ms against numpy's 0.015, and 0.15 ms to
+       build at each change (no gain below ~10⁴ points).
 
 ## The study: questions and engines
 

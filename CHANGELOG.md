@@ -17,6 +17,69 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `board.json` keeps the solids, though no solver meshes them yet. The page also writes the `region` and `ports`
   settings from the shapes. Shapes are selected and edited in the 3D view too: a click picks one, a drag moves
   it on its level, and Shift + drag stretches or lifts a solid (`core.shapes.pick`: a ray against the triangles).
+- **Draw page: selection, exact edits, snapping, measuring, the 3D view's tools, and speed with many shapes
+  (2026-11-27).** `gui.drawtab` and its 3D half `gui.draw3d`; the edits, snapping, camera, picking and clip are
+  `kicad2ems.core.shapeops` and `kicad2ems.core.view3d`, with no Qt (docs/gui.md's Draw section).
+  - *Selection:* Shift or Ctrl + click adds or takes off. A box on nothing selects: left to right what is wholly
+    inside it, right to left what it touches (Shift: added). Ctrl + drag or the middle button pans. The selection
+    moves, duplicates (Ctrl+D), deletes and goes through the clipboard together (Ctrl+A, Ctrl+C / X / V), one undo
+    step each. The clipboard holds `kicad2ems-shapes` text, so shapes paste into another drawing or session. The
+    list's ticks show or hide and lock each shape (`hidden`, `locked` in the file when set): a hidden shape is not
+    drawn or picked and still applies; a locked one is not moved, turned or deleted. A change in the form applies
+    to the whole selection.
+  - *Exact edits:*
+    - *Arrange* moves by (dx, dy, dz), rotates by any angle about the selection's centre, each shape's own or a
+      point (typed or picked), mirrors, aligns (locked shapes stay, as anchors) and distributes.
+    - *Array* makes a row, a grid or a circle of copies (via fences, stitching).
+    - Points snap to the board's pads, vias, track ends and corners and edges, and to the shapes' corners,
+      midpoints and centres within 8 px, with a marker; else to the grid.
+    - The status bar has the cursor (model and KiCad mm), the size being drawn and what it snapped to.
+    - A *Measure* tool (M) gives a distance, dx, dy and angle, and the angle between two legs.
+    - X / Y (and Z in 3D) hold a drag to an axis; Esc puts it back.
+  - *The 3D view:*
+    - *Top*, *Front*, *Side* and *Iso* (7, 1, 3, 5) and *Fit* (F, the plan too);
+    - the selection outlined, with a gizmo (an arrow per axis), and X / Y / Z while dragging;
+    - a clip plane across x, y or z (solids cut and capped, and not picked past it);
+    - the board's layers and each material shown or hidden;
+    - the grid at the working level.
+
+    The camera, rays, picking and the drag along an axis are tested against pyqtgraph's own matrices offscreen.
+    The GL drawing of the outline, gizmo, grid and clip was not seen on a screen: there was no display (ROADMAP).
+  - *Fixed on the way:* the snap marker and the handles took the clicks under them; a status message that wrapped
+    moved the 3D view under a drag; with no board the layer list was empty.
+  - *Speed* (`tools/gui/draw_bench.py`: a fence of 300 metal vias through sma_launch, offscreen, the median of
+    15, against the page of 2026-11-20 run by the same bench):
+
+    | | before | after |
+    |---|---|---|
+    | plan redraw | 22.4 ms | 1.8 ms |
+    | a dragged move, plan (the whole fence) | 34.7 ms | 1.6 ms (5.9) |
+    | pick, plan | 2.2–4.3 ms | 0.2–0.4 ms |
+    | 3D redraw (every shape's items made) | 67.1 ms | 2.4 ms (30.9) |
+    | pick, 3D | 14.4 ms | 0.2 ms |
+    | a dragged move, 3D (the whole fence) | 34.4 ms | 1.0 ms (6.5) |
+    | box, select all, the fence made by an Array | – | 1.3, 3.5, 23.3 ms |
+    | memory the fence holds in both views (peak) | 14.6 MB (18.1) | 7.3 MB (13.1) |
+
+    On LibreVNA (the same fence): plan redraw 28.5 → 1.8 ms, a plan move 47.1 → 11.6 (now the board's own
+    paint), 3D redraw 95.8 → 2.4, pick 21.7 → 0.25, a 3D move 74.5 → 10.5. The passes (from the new page before
+    them), each profiled first:
+    1. **The plan:** a shape keeps its item while its outline is the same (restyled for a selection), a drag moves
+       the items and changes the drawing at its end, outlines are kept per shape, and paths are made in one go.
+       Plan redraw 23.2 → 1.7 ms, a move 34.1 → 1.3, the box 26.7 → 1.3, select all 22.9 → 2.3.
+    2. **The 3D view:** a shape keeps its mesh and GL item (recoloured for a selection), the board's items are
+       made again only when the board, clip or what is shown changes, a drag moves items by a transform, and a
+       convex outline is extruded as a fan (`view3d.prism_fast`; shapely's triangulation was three quarters of
+       the time). A 3D move 33.1 → 0.8 ms (the whole fence 115 → 6.4), a redraw 102 → 3.1.
+    3. **Picking, the list, the meshes:** meshes are tried nearest box first (`view3d.pick_boxed`), the list
+       changes only what changed (its tick columns are fixed; sized to their contents, every row was measured,
+       24 ms a change), and a prism's corners are shared by its faces, with the faces kept per corner count.
+       Pick 14.2 → 0.2 ms, the first 3D draw 60 → 31, memory held 9.1 → 7.3 MB.
+    4. **A hole-free outline's path from its ring alone:** the fence made by an Array 30.4 → 25.6 ms.
+    5. **New list rows made with their text and ticks:** 25.6 → 23.6 ms, under a tenth, so the passes stopped.
+
+    Tried and rejected (ROADMAP, with numbers): the plan's items cached as pixmaps, one path item for many
+    shapes, a k-d tree of the snap points.
 - **Decoupling chosen to a target impedance (`pcbqs.pdn --choose-decaps`, `kicad2ems.pcbqs.pdn.decoupling`,
   docs/pcbqs/decoupling.md, 2026-11-27).** The fewest capacitors (`--decap-mode cost`: the least relative cost)
   at a rail's decap sites that keep every load under its target over the band. The sites are its two-pad `C*`
