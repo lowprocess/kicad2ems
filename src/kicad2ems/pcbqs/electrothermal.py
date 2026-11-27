@@ -308,7 +308,9 @@ def couple(rail, volts, problem, alpha=ALPHA, t_sigma=T_SIGMA, dmax=1.0,
     value) heat the board at their pads (board: the thermal problem's board,
     default the rail's), unless the problem has a loss for them already."""
     from .pdn.dc import rail_networks, solve_networks
+    t = time.perf_counter()
     pw, gn, no_gnd = rail_networks(rail, dmax=dmax, plating=plating, log=log)
+    t_mesh = time.perf_counter() - t
     first = [True]
 
     def solve_dc():
@@ -330,6 +332,7 @@ def couple(rail, volts, problem, alpha=ALPHA, t_sigma=T_SIGMA, dmax=1.0,
     out = iterate((pw, gn), solve_dc, problem, alpha, t_sigma, pitch, passes,
                   tolerance, log, prepare=prepare)
     out['series_heat'] = added
+    out['seconds']['networks'] = t_mesh
     return out
 
 
@@ -417,6 +420,7 @@ def run(a):
         say(line.strip())
     # the thermal model's board: all the copper (it all spreads the heat)
     tboard = (board if a.board.endswith('.json') else load_board(a.board))
+    t_read = time.time() - t0
     losses = {}
     if a.loads_heat:
         losses.update({ref: a.volts * i for ref, i in rail.loads.items()})
@@ -476,6 +480,8 @@ def run(a):
         f"({(w['drop'] / w['drop_cold'] - 1) * 100:+.2f} %); hottest copper "
         f"{res.hottest:.1f} C; copper loss {out['loss_W'] * 1e3:.1f} mW "
         f"(cold {out['loss_cold_W'] * 1e3:.1f})")
+    out['seconds']['read'] = round(t_read, 2)
+    t = time.time()
     figs = []
     try:
         from .thermal.picture import picture
@@ -485,6 +491,7 @@ def run(a):
     except Exception as e:  # noqa: BLE001 (a figure never fails the run)
         out['notes'].append(f"figures not written: {type(e).__name__}: {e}")
     out['figures'] = figs
+    out['seconds']['figures'] = round(time.time() - t, 2)
     if a.transient:
         t = time.time()
         # each point's loss about the hot pattern, with its self-heating
@@ -536,6 +543,7 @@ def run(a):
         say(f"transient: hottest copper {top:.1f} C at "
             f"{out['transient']['at_s']:.3g} s; time constants "
             + ', '.join(f"{v:.3g}" for v in tr['tau_s'][:3]) + " s")
+    t = time.time()
     try:  # the maps for the viewer; a failure costs only them
         from .thermal.viewer import write_viewer as thermal_viewer
         from .pdn.viewer import write_viewer as dc_viewer
@@ -547,6 +555,7 @@ def run(a):
     except Exception as e:  # noqa: BLE001
         out['notes'].append(
             f"the viewer's maps were not written: {type(e).__name__}: {e}")
+    out['seconds']['viewer'] = round(time.time() - t, 2)
     out['seconds']['wall'] = round(time.time() - t0, 1)
     with open(os.path.join(a.out, 'electrothermal.json'), 'w') as fh:
         json.dump(out, fh, indent=1)

@@ -129,7 +129,7 @@ def write_viewer(out, board, dc, volts, nets, ground, refs=()):
     nets, ground = set(nets), set(ground)
     layout = crop_layout(board, outline, nets | ground, set(refs))
     with open(os.path.join(out, 'pdn_board.json'), 'w', encoding='utf-8') as fh:
-        json.dump(layout, fh)
+        fh.write(json.dumps(layout))  # (dumps: the C encoder, 5-10x dump's)
     nodes, tris, off = [], [], 0
     # one mesh: every sheet at its layer's height
     for side in ('power', 'ground'):
@@ -185,6 +185,6 @@ def write_viewer(out, board, dc, volts, nets, ground, refs=()):
         # the whole layout and the parts, as the near field's
         info.update(geometry(layout))
         with open(path, 'w', encoding='utf-8') as fh:
-            json.dump(info, fh)
+            fh.write(json.dumps(info))
     return dict(board='pdn_board.json',
                 mesh=('pdn_mesh_pdn.npz' if nodes else None), dumps=files)

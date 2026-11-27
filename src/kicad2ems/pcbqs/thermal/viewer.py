@@ -43,7 +43,7 @@ def write_viewer(out, board, problem, result):
     layout = crop_layout(board, p.outline, nets, set(p.powers))
     with open(os.path.join(out, 'thermal_board.json'), 'w',
               encoding='utf-8') as fh:
-        json.dump(layout, fh)
+        fh.write(json.dumps(layout))  # (dumps: the C encoder, 5-10x dump's)
     exc = os.path.join(out, GROUP, RUN)
     os.makedirs(exc, exist_ok=True)
     dumps, meta, files = [], {}, []
@@ -82,5 +82,5 @@ def write_viewer(out, board, problem, result):
         d.update(meta[d['name']])
     info.update(geometry(layout))  # the copper, the vias and the parts
     with open(path, 'w', encoding='utf-8') as fh:
-        json.dump(info, fh)
+        fh.write(json.dumps(info))
     return dict(board='thermal_board.json', dumps=files)
