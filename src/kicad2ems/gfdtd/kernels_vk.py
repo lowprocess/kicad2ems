@@ -314,32 +314,15 @@ void series_rlc(uint3 tid: SV_DispatchThreadID)
     }
 }
 
-// the ferrite (gfdtd.operator._ferrite): each cell's magnetisation from b (h +
-// the cells' m on its four edges), the trapezoidal rule m+ = P m- + Q (b+ +
-// b-), its change into fc_d (component rows of n_fc + 1, the last a zero
-// dummy); then each edge's h less its cells' change
+// the ferrite (gfdtd.operator._ferrite; fdtd_core.h's gf_ferrite_cell /
+// gf_ferrite_edge): each cell's magnetisation, then each edge's h less its
+// cells' change
 [shader("compute")] [numthreads(GF_BLOCK, 1, 1)]
 void ferrite_m(uint3 tid: SV_DispatchThreadID)
 {
     GF_LOOP(M->n_fc) {
-        float b[4];
-        for (int q = 0; q < 4; q++) {
-            const int x = M->fc_e[4 * t + q];
-            b[q] = M->I[M->fe_i[x]] * M->fe_li[x] + M->fe_m[x];
-        }
-        const float bx = 0.5f * (b[0] + b[1]), by = 0.5f * (b[2] + b[3]);
-        float* st = M->fc_s + 4 * t;
-        const float* k = M->fc_k + 4 * t;
-        const float mx = st[0], my = st[1];
-        const float sx = bx + st[2], sy = by + st[3];
-        const float nx = k[0] * mx - k[1] * my + k[2] * sx - k[3] * sy;
-        const float ny = k[0] * my + k[1] * mx + k[2] * sy + k[3] * sx;
-        M->fc_d[t] = nx - mx;
-        M->fc_d[(uint)M->n_fc + 1 + t] = ny - my;
-        st[0] = nx;
-        st[1] = ny;
-        st[2] = bx;
-        st[3] = by;
+        gf_ferrite_cell(t, M->n_fc, M->fc_e, M->fc_k, M->fc_s, M->fc_d, M->fe_i,
+                        M->fe_li, M->fe_m, M->I);
     }
 }
 
@@ -347,10 +330,8 @@ void ferrite_m(uint3 tid: SV_DispatchThreadID)
 void ferrite_h(uint3 tid: SV_DispatchThreadID)
 {
     GF_LOOP(M->n_fe) {
-        const float d = M->fe_w[2 * t] * M->fc_d[M->fe_c[2 * t]]
-                        + M->fe_w[2 * t + 1] * M->fc_d[M->fe_c[2 * t + 1]];
-        M->fe_m[t] += d;
-        M->I[M->fe_i[t]] -= d * M->fe_l[t];
+        gf_ferrite_edge(t, M->fe_c, M->fe_w, M->fc_d, M->fe_m, M->I, M->fe_i,
+                        M->fe_l);
     }
 }
 

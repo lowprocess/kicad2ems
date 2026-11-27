@@ -192,6 +192,33 @@ GF_SIMD
     }
 }
 
+// the ferrite (fdtd_core.h): the cells, then the edges (each edge's two cells'
+// changes, so after all the cells)
+static void ferrite(arr<float> I, arr<int32_t> ce, arr<float> ck,
+                    arr<float> cs, arr<float> cd, arr<int64_t> ei,
+                    arr<float> el, arr<float> eli, arr<int32_t> ec,
+                    arr<float> ew, arr<float> em)
+{
+    float* cur = ptr(I);
+    const int* e4 = ptr(ce); const float* k = ptr(ck);
+    float *st = ptr(cs), *d = ptr(cd), *m = ptr(em);
+    const idx_t* ix = (const idx_t*)ptr(ei);
+    const float *l = ptr(el), *li = ptr(eli), *w = ptr(ew);
+    const int* c2 = ptr(ec);
+    const idx_t nc = cs.size() / 4, ne = em.size();
+    py::gil_scoped_release nogil;
+#pragma omp parallel
+    {
+        FlushDenormals ftz;
+#pragma omp for schedule(static)
+        for (idx_t c = 0; c < nc; ++c)
+            gf_ferrite_cell(c, (int)nc, e4, k, st, d, ix, li, m, cur);
+#pragma omp for schedule(static)
+        for (idx_t e = 0; e < ne; ++e)
+            gf_ferrite_edge(e, c2, w, d, m, cur, ix, l);
+    }
+}
+
 PYBIND11_MODULE(_core, m)
 {
     m.doc() = "gfdtd's CPU core (OpenMP): the updates of core/fdtd_core.h";
@@ -204,6 +231,7 @@ PYBIND11_MODULE(_core, m)
     m.def("energy", &energy<uint32_t>);
     m.def("mur_pre", &mur_pre);
     m.def("mur_post", &mur_post);
+    m.def("ferrite", &ferrite);
     m.def("pml_e", &pml<true>);
     m.def("pml_h", &pml<false>);
     m.def("set_threads", [](int n) { omp_set_num_threads(n); });

@@ -52,3 +52,9 @@ class OpenEMS(FDTD):
 
     def validate(self, s):
         return self.validate_converge(s)
+
+    def assess(self, run):
+        from kicad2ems.core.magnets import refusal
+        out = list(super().assess(run))
+        why = refusal(run.m, 'openEMS')
+        return out + ([why] if why else [])

@@ -105,7 +105,7 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR', ) * 6, end_db=-40,
     if getattr(m, 'solids', None):
         from kicad2ems.core.solids import pieces as solid_pieces
         _solids(CSX, solid_pieces(m), zm, lines, diel, diel_fref, fmin, fmax,
-                f0, mesh['info']['dt_ps'] * 1e-12)
+                f0, mesh['info']['dt_ps'] * 1e-12, board=m)
     ckw = copper_kw or {}
     fin = ckw.get('finish') if sigma else None
     cu_props = {}  # sheet copper's property by layer (line probes)
@@ -232,29 +232,36 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR', ) * 6, end_db=-40,
 # pieces are disjoint; at a face a metal piece shares with another the metal
 # wins (the face is the metal's surface: openEMS takes the edges there by
 # priority, gfdtd takes every metal edge)
-SOLID_PRIORITY = dict(dielectric=3, air=3, metal=4)
+SOLID_PRIORITY = dict(dielectric=3, air=3, ferrite=3, metal=4)
 
 
-def _solids(CSX, ps, zm, lines, diel, fref, fmin, fmax, f0, dt):
+def _solids(CSX, ps, zm, lines, diel, fref, fmin, fmax, f0, dt, board=None):
     """The solids' pieces (core.solids.pieces) as CSX: a property per solid
-    (solid<n>_<name>: metal, a material of er and tand as the layers', air),
-    each piece an extruded polygon (its holes split), heights through zm (the
-    thick-copper plan). A metal piece with no z line across it (or of no
-    height) is a sheet on its nearest line."""
+    (solid<n>_<name>: metal, a material of er and tand as the layers', air, a
+    magnetised ferrite: _ferrite), each piece an extruded polygon (its holes
+    split), heights through zm (the thick-copper plan). A metal piece with no
+    z line across it (or of no height) is a sheet on its nearest line. A
+    ferrite with no magnet drawn is a dielectric (unbiased)."""
     import re
+    from kicad2ems.core import magnets
     props = {}
+    biased = bool(board is not None and magnets.magnetised(board))
     for p in ps:
         prop = props.get(p.index)
         if prop is None:
             nm = f"solid{p.index + 1}_" + re.sub(r'\W+', '_', p.name)
-            if p.material == 'metal':
+            if p.material == 'ferrite' and biased:
+                prop = _ferrite(CSX, nm, board, ps, p, zm, lines, f0)
+            elif p.material == 'metal':
                 prop = CSX.AddMetal(nm)
-            elif p.material == 'dielectric' and diel == 'wideband' and p.tand:
+            elif (p.material in ('dielectric', 'ferrite') and diel == 'wideband'
+                  and p.tand):
                 prop = _debye_material(CSX, nm, dict(er=p.er, tand=p.tand),
                                        fref, fmin, fmax, dt)
             else:
-                er = p.er if p.material == 'dielectric' else 1.0
-                tand = p.tand if p.material == 'dielectric' else 0.0
+                d_ = p.material in ('dielectric', 'ferrite')
+                er = p.er if d_ else 1.0
+                tand = p.tand if d_ else 0.0
                 prop = CSX.AddMaterial(
                     nm, epsilon=float(er),
                     kappa=float(2 * np.pi * f0 * EPS0 * er * tand))
@@ -277,6 +284,40 @@ def _solids(CSX, ps, zm, lines, diel, fref, fmin, fmax, f0, dt):
             else:
                 prop.AddLinPoly(xy, 'z', float(z0), float(z1 - z0),
                                 priority=pr)
+
+
+def _ferrite(CSX, nm, board, ps, p, zm, lines, f0):
+    """A drawn ferrite solid (all its pieces) as gfdtd's FerriteMaterial: er
+    and its loss at the band centre f0 as the dielectrics', Ms, Gilbert's
+    damping from the linewidth, and the bias (core.magnets: the magnets' and
+    its own field, at the mesh's cell centres over its pieces, in the mesh's
+    heights; NaN where it is not saturated). openEMS has no such medium: its
+    CSX has no AddFerriteMaterial (the solver refuses it before this)."""
+    from kicad2ems.core import magnets
+    if not hasattr(CSX, 'AddFerriteMaterial'):
+        raise ValueError(magnets.refusal(board, 'this engine'))
+    mine = [q for q in ps if q.index == p.index]
+    x0 = min(q.polygon.bounds[0] for q in mine)
+    y0 = min(q.polygon.bounds[1] for q in mine)
+    x1 = max(q.polygon.bounds[2] for q in mine)
+    y1 = max(q.polygon.bounds[3] for q in mine)
+    z0, z1 = min(zm(q.z0) for q in mine), max(zm(q.z1) for q in mine)
+    mids = []
+    for a, (lo, hi) in enumerate(((x0, x1), (y0, y1), (z0, z1))):
+        c = 0.5 * (lines[a][1:] + lines[a][:-1])
+        c = c[(c >= lo - 1e-9) & (c <= hi + 1e-9)]
+        mids.append(c if len(c) else np.array([0.5 * (lo + hi)]))
+    X, Y, Z = np.meshgrid(*mids, indexing='ij')
+    pts = np.stack([X.ravel(), Y.ravel(), Z.ravel()], axis=1)
+    b = magnets.bias(board, ps, pts, np.full(len(pts), p.index), zmap=zm)
+    fer = p.ferrite
+    return CSX.AddFerriteMaterial(
+        nm, epsilon=float(p.er),
+        kappa=float(2 * np.pi * f0 * EPS0 * p.er * p.tand),
+        ms=magnets.ms_si(fer['ms']), alpha=magnets.alpha(fer['dh']),
+        gamma=2 * np.pi * magnets.GAMMA,
+        bias=dict(x=mids[0], y=mids[1], z=mids[2],
+                  hz=b['hz'].reshape(X.shape)))
 
 
 def _finished_sheet(CSX, name, sigma, t_mm, fin, share, rkw, face):

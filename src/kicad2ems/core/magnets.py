@@ -45,7 +45,8 @@ import math
 import numpy as np
 
 __all__ = ['MU0', 'OE', 'GAMMA', 'sources', 'ferrite_sources', 'field_z',
-           'bias', 'summary', 'fmr']
+           'bias', 'summary', 'fmr', 'magnetised', 'alpha', 'ms_si',
+           'refusal']
 
 MU0 = 4e-7 * math.pi
 OE = 1000.0 / (4 * math.pi)     # A/m in an oersted
@@ -169,6 +170,41 @@ def bias(board, ps, pts, owner=None, zmap=None):
     sat = (hz * s_at > 0) if src else np.zeros(len(pts), bool)
     return dict(hz=np.where(sat, hz, np.nan), applied=app, sign=sign,
                 sat=sat, raw=hz)
+
+
+def magnetised(board):
+    """The drawn ferrites' names when a magnet is drawn too ([] when there is
+    no ferrite or no magnet: an unbiased ferrite is a dielectric to every
+    solver)."""
+    sol = getattr(board, 'solids', None) or []
+    if not any(d.get('material') == 'magnet' and d.get('br') for d in sol):
+        return []
+    return [str(d.get('shape') or 'ferrite') for d in sol
+            if d.get('material') == 'ferrite']
+
+
+def refusal(board, solver):
+    """A solver's assess() reason for a magnetised ferrite it cannot model
+    (None: none drawn)."""
+    names = magnetised(board)
+    if not names:
+        return None
+    return (f"drawn ferrite {', '.join(names[:3])} under a magnet: a "
+            f"gyrotropic medium, which {solver} does not model; run gfdtd "
+            "(--solvers gfdtd), or leave the magnet out (the ferrite a "
+            "dielectric)")
+
+
+def ms_si(ms_g):
+    """Saturation magnetisation (A/m) of 4 pi Ms in gauss."""
+    return float(ms_g) * GAUSS / MU0
+
+
+def alpha(dh_oe, f=9.4e9, g=2.0):
+    """Gilbert's damping of a ferrite whose FMR linewidth (full width at half
+    maximum, Oe) is dh_oe at f Hz (the datasheets': 9.4 GHz): dH = 2 alpha w /
+    gamma."""
+    return GAMMA * g / 2 * float(dh_oe) * OE / (2 * float(f))
 
 
 def fmr(h0, ms_g, g=2.0):

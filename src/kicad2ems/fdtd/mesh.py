@@ -471,11 +471,12 @@ SOLID_PRIO = {True: 3.0, False: 0.5}
 
 def _solid_spans(ps, lam0, res, axis):
     """[(lo, hi, cell)]: the largest cell (lambda / sqrt(er) / res) over each
-    dielectric piece along an axis (0, 1: its outline's extent; 2: its
-    heights)."""
+    dielectric or ferrite piece along an axis (0, 1: its outline's extent; 2:
+    its heights; a ferrite's by its er: its mu is near 1 or below it above
+    its resonance, where a circulator works below resonance)."""
     out = []
     for p in ps:
-        if p.material != 'dielectric' or p.er <= 1.0:
+        if p.material not in ('dielectric', 'ferrite') or p.er <= 1.0:
             continue
         lo, hi = ((p.polygon.bounds[axis], p.polygon.bounds[axis + 2])
                   if axis < 2 else (p.z0, p.z1))

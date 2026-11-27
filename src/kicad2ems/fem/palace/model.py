@@ -397,7 +397,7 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
                 r for r in role_of.get(dt, ())
                 if isinstance(r, tuple) and r[0] == 'diel'
             ]
-            if p is not None and p.material == 'dielectric':
+            if p is not None and p.material in ('dielectric', 'ferrite'):
                 sdiel_v.setdefault(p.index, []).append(dt[1])
             elif p is None and d:
                 diel_v.setdefault(d[0][1], []).append(dt[1])

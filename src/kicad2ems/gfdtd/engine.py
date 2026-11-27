@@ -647,6 +647,15 @@ class CoreBackend(_Compressed, NumpyBackend):
                    sl[f'k{f}1'], sl[f'k{f}2'], *self.idims, sl['axis'],
                    sl[f.lower() + '0'], sl['n'])
 
+    def ferrite(self):
+        if not self.n_fc:
+            return
+        if not hasattr(self.core, 'ferrite'):  # (a core built before it)
+            return NumpyBackend.ferrite(self)
+        self.core.ferrite(self.I, self.fc_e, self.fc_k, self.fc_s, self.fc_d,
+                          self.fe_i, self.fe_l, self.fe_li, self.fe_c,
+                          self.fe_w, self.fe_m)
+
     def mur_pre(self):
         if self.op.mur is not None:
             self.core.mur_pre(self.V, self.m0, self.m1, self.o0, self.o1)

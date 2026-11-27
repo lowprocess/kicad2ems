@@ -186,7 +186,11 @@ class Palace(Solver):
         return None
 
     def assess(self, run):
+        from kicad2ems.core.magnets import refusal
         out = []
+        why = refusal(run.m, 'Palace')
+        if why:
+            out.append(why)
         if getattr(run, 'antenna', False) and getattr(run.s, 'drive', None):
             out.append(
                 "antenna mode: --drive (a phased drive) is not modelled, one "

@@ -219,6 +219,46 @@ GF_DEV void gf_pml_h(idx_t e, idx_t m, const float* V, float* I, float* psi,
     GF_ADD(&I[o2 + t], -k2[e] * p2);
 }
 
+// the magnetised ferrite (operator._ferrite), cell c: its magnetisation from b
+// = h + m on its four edges (ce: their places in the edge list; ei: their flat
+// indices into I, eli: 1 / their dual lengths, em: the cells' m there), the
+// trapezoidal rule m+ = P m- + Q (b+ + b-) (ck: p0 p1 q0 q1; cs: mx my bx by),
+// its change into cd (component rows of nc + 1, the last a zero dummy)
+GF_DEV void gf_ferrite_cell(idx_t c, int nc, const int* ce, const float* ck,
+                            float* cs, float* cd, const idx_t* ei,
+                            const float* eli, const float* em, const float* I)
+{
+    float b[4];
+    for (int q = 0; q < 4; q++) {
+        const int x = ce[4 * c + q];
+        b[q] = I[ei[x]] * eli[x] + em[x];
+    }
+    const float bx = 0.5f * (b[0] + b[1]), by = 0.5f * (b[2] + b[3]);
+    const idx_t o = 4 * c;
+    const float mx = cs[o], my = cs[o + 1];
+    const float sx = bx + cs[o + 2], sy = by + cs[o + 3];
+    const float k0 = ck[o], k1 = ck[o + 1], k2 = ck[o + 2], k3 = ck[o + 3];
+    const float nx = k0 * mx - k1 * my + k2 * sx - k3 * sy;
+    const float ny = k0 * my + k1 * mx + k2 * sy + k3 * sx;
+    cd[c] = nx - mx;
+    cd[(idx_t)nc + 1 + c] = ny - my;
+    cs[o] = nx;
+    cs[o + 1] = ny;
+    cs[o + 2] = bx;
+    cs[o + 3] = by;
+}
+
+// edge e: its h less its two cells' change (ec: their places in cd, ew: their
+// weights; el: its dual length, I = H el)
+GF_DEV void gf_ferrite_edge(idx_t e, const int* ec, const float* ew,
+                            const float* cd, float* em, float* I,
+                            const idx_t* ei, const float* el)
+{
+    const float d = ew[2 * e] * cd[ec[2 * e]] + ew[2 * e + 1] * cd[ec[2 * e + 1]];
+    em[e] += d;
+    I[ei[e]] -= d * el[e];
+}
+
 #ifndef GF_GPU
 // ---- CPU rows: one (i, j) line along z with the boundary tests out of the
 // loops, so that they vectorise ----

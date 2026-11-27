@@ -157,3 +157,77 @@ def test_thin_metal_is_a_sheet_on_its_nearest_line(demo_files):
     q, = next(p for p in _model(m, mesh)[1].GetAllProperties()
               if p.name == 'solid1_foil').primitives
     assert type(q) is C.LinPoly and _on(mesh['z'], 1.65)
+
+
+def _puck_magnet(demo_files, magnet=True, br=1.2):
+    """A garnet puck set into the demo board under a NdFeB magnet."""
+    from shapely.geometry import Point
+    puck = dict(_solid(Point(12, -5).buffer(2.5, quad_segs=32), 'ferrite',
+                       0.0, 0.6, 'puck', er=15.0, tand=2e-4),
+                ms=1200.0, dh=30.0)
+    mag = dict(_solid(Point(12, -5).buffer(3.5, quad_segs=32), 'magnet',
+                      2.0, 5.0, 'magnet'), br=br)
+    return _demo(demo_files, [puck, mag] if magnet else [puck])
+
+
+def test_a_magnetised_ferrite_in_the_model_and_the_operator(demo_files):
+    """The puck as gfdtd's FerriteMaterial (er, its loss, Ms, the damping of
+    its linewidth, a bias table at the mesh's cell centres from core.magnets),
+    the magnet as metal; in the operator the puck's cells magnetised with the
+    table's field. Reversed, the bias is too."""
+    from kicad2ems.gfdtd.operator import build
+    from kicad2ems.gfdtd import csx as C
+    from kicad2ems.core import magnets as mg
+    m = _puck_magnet(demo_files)
+    mesh = _mesh(m)
+    FDTD, CSX, _ = _model(m, mesh)
+    props = {p.name: p for p in CSX.GetAllProperties()}
+    f = props['solid1_puck']
+    assert isinstance(f, C.FerriteMaterial)
+    assert isinstance(props['solid2_magnet'], C.Metal)
+    assert f.epsilon == 15.0 and f.kappa > 0
+    assert f.ms == pytest.approx(1200 * 1e-4 / mg.MU0)
+    assert f.alpha == pytest.approx(2.8e6 * 30 / (2 * 9.4e9), rel=2e-3)
+    t = f.bias
+    x = np.asarray(mesh['x'])
+    mids = 0.5 * (x[1:] + x[:-1])
+    assert set(np.round(t['x'], 9)) <= set(np.round(mids, 9))
+    # the table's field is core.magnets' at those points
+    k = len(t['x']) // 2, len(t['y']) // 2, len(t['z']) // 2
+    p = np.array([[t['x'][k[0]], t['y'][k[1]], t['z'][k[2]]]])
+    from kicad2ems.core.solids import pieces
+    ref = mg.bias(m, pieces(m), p, [0])['hz'][0]
+    assert t['hz'][k] == pytest.approx(ref, rel=1e-9) and ref > 0
+    op = build(CSX, FDTD.settings())
+    assert op.ferrite is not None and op.ferrite.nc > 0
+    assert (op.ferrite.h0 > 0).all()
+    m2 = _puck_magnet(demo_files, br=-1.2)
+    FDTD2, CSX2, _ = _model(m2, mesh)
+    t2 = [p for p in CSX2.GetAllProperties()
+          if isinstance(p, C.FerriteMaterial)][0].bias
+    np.testing.assert_allclose(t2['hz'], -t['hz'], rtol=1e-9)
+
+
+def test_an_unbiased_ferrite_is_a_dielectric(demo_files):
+    """No magnet drawn: the ferrite is its er and loss (every solver can
+    model it), no FerriteMaterial."""
+    from kicad2ems.gfdtd import csx as C
+    m = _puck_magnet(demo_files, magnet=False)
+    FDTD, CSX, _ = _model(m, _mesh(m))
+    p = {q.name: q for q in CSX.GetAllProperties()}['solid1_puck']
+    assert type(p) is C.Material and p.epsilon == 15.0
+
+
+def test_openems_and_palace_refuse_a_magnetised_ferrite(demo_files):
+    from types import SimpleNamespace
+    from kicad2ems.fdtd.openems.solver import OpenEMS
+    from kicad2ems.fdtd.gfdtd import GFDTD
+    from kicad2ems.fem.palace.solver import Palace
+    run = SimpleNamespace(m=_puck_magnet(demo_files), s=SimpleNamespace(),
+                          antenna=False)
+    for cls in (OpenEMS, Palace):
+        why = cls().assess(run)
+        assert any('gyrotropic' in w and 'gfdtd' in w for w in why), cls
+    assert not any('gyrotropic' in w for w in GFDTD().assess(run))
+    run.m = _puck_magnet(demo_files, magnet=False)
+    assert not any('gyrotropic' in w for w in OpenEMS().assess(run))
