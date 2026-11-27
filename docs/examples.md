@@ -36,7 +36,9 @@ ports pink (`python tools/doc_figures.py gallery`).*
 | `launch` | a 4-layer edge launch with a grounded-CPW feed | none: `--nets RF,GND --fmin 1 --fmax 6` |
 
 `make_antennas.py KIND OUT [param=mm …]` makes antennas, most for 2.45 GHz, each with a config
-`antenna_<kind>.toml`; dimensions can be changed on the command line (`make_antennas.py ifa out arm=19`).
+`antenna_<kind>.toml`; dimensions can be changed on the command line (`make_antennas.py ifa out arm=19`). Two
+need drawn solids, written beside the board as the Draw page's shapes (`antenna_<kind>_shapes.json`): `dra` (a
+dielectric resonator and its feed slot) and `patch_radome` (the patch and a plate over it).
 
 ![The antenna examples](img/examples_antennas.png)
 
@@ -245,6 +247,20 @@ More antennas, on gfdtd (the ground plane finite or absent: mom25d's infinite gr
 | `bowtie`: printed bowtie | −16.0 dB | 2.288-2.688 GHz | 1.9 dBi | 97 % | |
 | `uwb`: disc monopole, partial ground | −32.2 dB | 91 % of 2-11 GHz | 2.3 / 3.5 / 5.1 dBi at 3 / 6 / 9 GHz | 83-85 % | |
 | `loop`: full-wave square loop | −23.0 dB | 2.336-2.648 GHz | 2.7 dBi | 95 % | 100 Ω reference |
+| `dra`: cylindrical dielectric resonator, εr 10, slot-fed, 6.5 GHz | −24.7 dB | 6.290-6.770 GHz | 6.0 dBi (5.3 broadside) | 98 % | HEM11δ; peak 34° off broadside in the E-plane, 14.8 dB front to back; openEMS within 0.1 dB |
+| `patch_radome`: the patch under a 2 mm plate of εr 3, 3 mm above it | −26.2 dB | 2.397-2.458 GHz | 3.1 dBi | 41 % | 2.4275 GHz, the bare patch's 2.4375 (gfdtd and openEMS alike) |
+
+The **dielectric resonator** (`antenna_dra.toml`, gfdtd 2 s, openEMS 22 s) is a DR of εr 10, 6 mm in radius and
+6 mm tall, on the F.Cu ground of 0.508 mm RO4003C, fed through a 5.5 × 1.2 mm slot in it (a drawn cut) by a 50 Ω
+microstrip on B.Cu, the stub 5 mm past the slot. Mongia and Bhartia's HEM11δ (the DR and its image) is 6.61 GHz;
+fed through a 3.5 mm slot, too short to match (the load's resistance peaks at 10 Ω), it resonates at 6.63 GHz. A
+longer slot couples more and pulls it down: 6.30 GHz at 5.5 mm (matched at 6.51 GHz), 5.72 at 7.5 mm, where the
+match moves to the slot's own resonance (S11 −11.9 dB). Its E-plane (yz) is the flat one of a horizontal magnetic
+dipole on a finite ground, its H-plane (xz) peaks broadside.
+
+The **radome** (`antenna_patch_radome.toml`) moves the patch 10 MHz down (−0.4 %) and adds 0.2 dB of gain at 2.45
+GHz. Laid on the copper (`make_antennas.py patch_radome out gap=0`) the plate moves it 3.2 % (2.3600 GHz), the same
+drawn or as a 2 mm solder mask in the stackup (`--mask`); mom25d, whose layers are laterally infinite, 3.4 %.
 
 The antenna results give the polarisation at the gain maximum: the axial ratio and the hand (RHCP / LHCP,
 or linear above 20 dB), and the gain in each hand ([Results](postprocessing.md#antenna-mode)).

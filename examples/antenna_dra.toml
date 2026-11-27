@@ -1,0 +1,22 @@
+# kicad2ems antenna example: a cylindrical dielectric resonator antenna at
+# 6.5 GHz: a DR of er 10 (6 mm radius, 6 mm tall) on the F.Cu ground of 0.508
+# mm RO4003C, fed through a 5.5 x 1.2 mm slot in the ground by a 50 ohm
+# microstrip on B.Cu (HEM11d, broadside). The DR and the slot (a cut) are the
+# Draw page's shapes (antenna_dra_shapes.json).
+#   python examples/make_antennas.py dra examples/antenna_dra
+#   kicad2ems examples/antenna_dra.toml          (auto: gfdtd)
+# 2026-11-27 (RX 7800 XT, 0.78 M cells, 2 s; openEMS 22 s): 6.51 GHz, S11
+# -24.7 dB, -10 dB from 6.29 to 6.77 GHz; at 6.5 GHz directivity 6.1 dBi,
+# efficiency 98 %, gain 6.0 dBi 34 deg off broadside in the E-plane (yz),
+# 5.3 dBi broadside, 14.8 dB front to back; openEMS within 0.1 dB and 0.01 GHz.
+# The DR alone (a 3.5 mm slot, weakly coupled): 6.63 GHz, Mongia and Bhartia's
+# HEM11d 6.61 GHz; the 5.5 mm slot pulls it to 6.30 GHz. mom25d refuses the DR
+# (laterally infinite layers).
+board   = "antenna_dra.kicad_pcb"   # paths are relative to this file
+shapes  = "antenna_dra_shapes.json"
+# PML on all sides, air lambda/4, far field: gain, efficiency, patterns
+mode    = "antenna"
+fmin    = 5.0           # GHz
+fmax    = 8.0
+points  = 301
+out     = "out"

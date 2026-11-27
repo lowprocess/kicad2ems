@@ -1,0 +1,19 @@
+# kicad2ems antenna example: the inset-fed patch (antenna_patch) under a
+# radome: a plate 2 mm thick of er 3 (tan d 0.01) over the whole board, 3 mm
+# above its copper, drawn as a solid (the Draw page's shapes,
+# antenna_patch_radome_shapes.json).
+#   python examples/make_antennas.py patch_radome examples/antenna_patch_radome
+#   kicad2ems examples/antenna_patch_radome.toml   (auto: gfdtd)
+# 2026-11-27 (RX 7800 XT, 0.49 M cells, 2 s; openEMS 65 s): 2.4275 GHz on both,
+# 10 MHz below the bare patch's 2.4375 GHz (-0.4 %), S11 -26.2 dB (openEMS
+# -25.2); at 2.45 GHz directivity 7.0 dBi as bare, gain 3.1 dBi (2.9 bare).
+# The plate on the copper (gap=0): 2.3600 GHz (-3.2 %), the same drawn or as a
+# stackup layer; mom25d's laterally infinite layer -3.4 %.
+board   = "antenna_patch_radome.kicad_pcb"   # paths are relative to this file
+shapes  = "antenna_patch_radome_shapes.json"
+# PML on all sides, air lambda/4, far field: gain, efficiency, patterns
+mode    = "antenna"
+fmin    = 2.0           # GHz
+fmax    = 3.0
+points  = 401
+out     = "out"

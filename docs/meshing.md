@@ -241,6 +241,17 @@ the can's floor (PEC before: a sheet in the Mur boundary's cell); the can's wall
 from the board. It has 85,013 sheet edges (3,779 before, the traces'): the ground's 27,700, the lid's and walls'
 53,600. Finding the faces takes 2 ms, 0.14 s with 300 posts in the can.
 
+<a id="drawn-solids-antenna"></a>
+**Antenna mode.** The NF2FF box follows the mesh, which runs past the solids' air margin, so it holds them. Two
+antenna examples need solids (gfdtd and openEMS, 2026-11-27, [Examples](examples.md#verified-results)):
+- `antenna_dra`, a cylindrical dielectric resonator (εr 10, 6 mm radius, 6 mm tall) fed through a slot (a cut) in
+  the ground: its HEM11δ with a 3.5 mm slot, weakly coupled, at 6.63 GHz against Mongia and Bhartia's 6.61 GHz; the
+  5.5 mm slot of the example pulls it to 6.30 GHz and matches at 6.51 GHz (S11 −24.7 dB on both engines, gain 6.0
+  dBi, 5.3 dBi broadside, the two within 0.1 dB);
+- `antenna_patch_radome`, the patch under a 2 mm plate of εr 3, 3 mm above it: 2.4275 GHz on both, the bare patch's
+  2.4375; laid on the copper the plate gives 2.3600 GHz drawn or as a stackup layer alike (−3.2 %), and mom25d's
+  laterally infinite layer −3.4 % (2.4500 to 2.3675 GHz).
+
 ## Time step
 
 The time step is limited by the smallest cell. kicad2ems estimates it from the mesh. openEMS's own value

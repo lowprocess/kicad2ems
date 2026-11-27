@@ -38,6 +38,14 @@ needed), most for 2.45 GHz on FR4 (er 4.4, tan d 0.02):
   bowtie    printed bowtie, gap-fed, no ground
   uwb       UWB disc monopole on a partial ground, 3-10 GHz
   loop      full-wave square loop, gap-fed, no ground
+  dra       cylindrical dielectric resonator antenna, 6.5 GHz: a DR of er 10
+            (r 6, 6 mm tall) on the F.Cu ground of 0.508 mm RO4003C, fed
+            through a slot in it (a cut) by a 50 ohm microstrip on B.Cu; the
+            DR and the slot are a drawing (antenna_dra_shapes.json, the Draw
+            page's) written beside the board
+  patch_radome  the patch under a drawn radome: a 2 mm plate of er 3 (tan d
+            0.01) over the board, `gap` mm above the copper (a drawing,
+            antenna_patch_radome_shapes.json)
 
     python examples/make_antennas.py patch examples/antenna_patch
     python examples/make_antennas.py ifa /tmp/ifa arm=20 s=2.5
@@ -778,12 +786,68 @@ def loop(path, side=28.0, w=1.0, gap=1.0, W=50.0):
     b.write(path, W, W)
 
 
+def _shapes():
+    """kicad2ems.core.shapes, the generator's own source tree's first."""
+    import os
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(
+        __file__)), '..', 'src'))
+    from kicad2ems.core import shapes
+    return shapes
+
+
+def _drawing(path, shapes):
+    """The Draw page's shapes beside the board (<path>_shapes.json, model
+    coordinates: y up)."""
+    _shapes().Drawing(shapes).save(path.rsplit('.', 1)[0] + '_shapes.json')
+
+
+def dra(path, r=6.0, h=6.0, er=10.0, tand=1e-4, ls=5.5, ws=1.2, stub=5.0,
+        wf=1.137, W=60.0):
+    """Cylindrical dielectric resonator antenna (HEM11d, broadside), 0.508 mm
+    RO4003C: a DR of radius r, h tall and er (tan d tand) centred on the F.Cu
+    ground plane, fed through an ls x ws slot in it (a cut, its long side
+    along x) by a 50 ohm microstrip on B.Cu from the bottom edge, running
+    stub mm past the slot's middle. Mongia and Bhartia's HEM11d (the DR and
+    its image, 2h tall): k0 r = 6.324 / sqrt(er + 2) (0.27 + 0.36 r / 2h +
+    0.02 (r / 2h)^2), 6.61 GHz here; Q 7.5. A longer slot couples more and
+    pulls the resonance down (3.5 mm: 6.63 GHz, 5.5 mm: 6.30, 7.5 mm: 5.72,
+    the load's R peak on gfdtd). The board has the ground and the feed; the
+    DR and the slot are the drawing beside it."""
+    Shape = _shapes().Shape
+    b = Board(0.508, er=3.55, tand=0.0027, material='RO4003C')
+    xc = yc = W / 2
+    b.rect(0, 0, W, W, layer='F.Cu', net=1)
+    b.rect(xc - wf / 2, yc - stub, xc + wf / 2, W, layer='B.Cu')
+    b.port('TP1', 'P1', xc, W - 0.5, 90, layer='B.Cu')
+    b.write(path, W, W)
+    top = 0.508  # F.Cu: the DR stands on the ground
+    _drawing(path, [
+        Shape('rect', [[xc - ls / 2, -yc - ws / 2], [xc + ls / 2,
+                                                       -yc + ws / 2]],
+              material='cut', layer='F.Cu', name='slot'),
+        Shape('circle', [[xc, -yc]], radius=r, material='dielectric',
+              z0=top, z1=top + h, er=er, tand=tand, name='DR')])
+
+
+def patch_radome(path, gap=3.0, t=2.0, er=3.0, tand=0.01, **kw):
+    """The inset-fed patch (patch(**kw)) under a radome: a plate t mm thick of
+    er (tan d tand) over the whole board, gap mm above its top copper."""
+    Shape = _shapes().Shape
+    patch(path, **kw)
+    top = 1.6
+    _drawing(path, [Shape('rect', [[0.0, -80.0], [80.0, 0.0]],
+                          material='dielectric', z0=top + gap,
+                          z1=top + gap + t, er=er, tand=tand,
+                          name='radome')])
+
+
 KINDS = dict(patch=patch, ifa=ifa, dipole=dipole, slot=slot, array2x2=array2x2,
              array2x2_phased=array2x2_phased, array4x4_phased=array4x4_phased,
              vivaldi=vivaldi, vivaldi_antipodal=vivaldi_antipodal,
              vivaldi_antipodal_array=vivaldi_antipodal_array, cp_patch=cp_patch,
              aperture=aperture, monopole=monopole, yagi=yagi, lpda=lpda,
-             bowtie=bowtie, uwb=uwb, loop=loop)
+             bowtie=bowtie, uwb=uwb, loop=loop, dra=dra,
+             patch_radome=patch_radome)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2 or sys.argv[1] not in KINDS:

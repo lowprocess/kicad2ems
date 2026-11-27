@@ -1,0 +1,40 @@
+{
+ "format": "kicad2ems-shapes",
+ "version": 1,
+ "units": "mm",
+ "coordinates": "model (y up)",
+ "shapes": [
+  {
+   "kind": "rect",
+   "points": [
+    [
+     27.25,
+     -30.6
+    ],
+    [
+     32.75,
+     -29.4
+    ]
+   ],
+   "material": "cut",
+   "layer": "F.Cu",
+   "name": "slot"
+  },
+  {
+   "kind": "circle",
+   "points": [
+    [
+     30.0,
+     -30.0
+    ]
+   ],
+   "material": "dielectric",
+   "radius": 6.0,
+   "z0": 0.508,
+   "z1": 6.508,
+   "er": 10.0,
+   "tand": 0.0001,
+   "name": "DR"
+  }
+ ]
+}

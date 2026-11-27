@@ -1,0 +1,27 @@
+{
+ "format": "kicad2ems-shapes",
+ "version": 1,
+ "units": "mm",
+ "coordinates": "model (y up)",
+ "shapes": [
+  {
+   "kind": "rect",
+   "points": [
+    [
+     0.0,
+     -80.0
+    ],
+    [
+     80.0,
+     0.0
+    ]
+   ],
+   "material": "dielectric",
+   "z0": 4.6,
+   "z1": 6.6,
+   "er": 3.0,
+   "tand": 0.01,
+   "name": "radome"
+  }
+ ]
+}

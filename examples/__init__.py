@@ -38,9 +38,10 @@ BOARDS = ('hairpin', 'rf_interdig', 'sma_launch')
 # there, in order); OTHER: one not listed
 GROUPS = (
     ('Antennas', 'Patches and arrays',
-     ('antenna_patch', 'antenna_cp_patch', 'antenna_aperture',
-      'antenna_array2x2', 'antenna_array2x2_phased',
+     ('antenna_patch', 'antenna_patch_radome', 'antenna_cp_patch',
+      'antenna_aperture', 'antenna_array2x2', 'antenna_array2x2_phased',
       'antenna_array4x4_phased')),
+    ('Antennas', 'Dielectric resonators', ('antenna_dra',)),
     ('Antennas', 'Dipoles, loops and monopoles',
      ('antenna_dipole', 'antenna_bowtie', 'antenna_loop', 'antenna_monopole',
       'antenna_ifa', 'antenna_slot')),
