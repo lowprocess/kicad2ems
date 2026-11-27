@@ -511,7 +511,14 @@ class Simulation:
                     nd, tr = make_mesh_ml(shapes[k], dm, ncross,
                                           1.01 * max(wr or 0, 1.5 * dm), xl, yl,
                                           grade=grade)
+                    # a via here is on a node of the grid (mesher='tensor'
+                    # asked for with vias: dfsynth.freeform's pixel grid and
+                    # its ports' vias), its barrel that single vertex
                     vids = []
+                    for _, v in vias_here:
+                        dv = np.hypot(nd[:, 0] - v.x, nd[:, 1] - v.y)
+                        vids.append(int(np.argmin(dv))
+                                    if dv.min() < 1e-9 else -1)
                 else:
                     wr = wr or self._guess_wref(geoms[k], lp_here)
                     seg = [self._segs[(id(lp), s, k)] for lp, s in lines[k]]

@@ -700,6 +700,32 @@ class FastOperator:
         self.history[k] = max(self.history.get(k, 0.0), f)
         return self.history[k]
 
+    def dense(self, f):
+        """The whole of Z at f, dense and double (the RWG edges, then the via
+        chains; the lumped elements and the copper's loss in): for a caller
+        that solves with parts of it itself (dfsynth.freeform: a copper
+        pattern's Z is the full grid's, its absent edges' rows and columns
+        left out). Sheets and via chains only: no quad cells, sides, holes
+        or openings."""
+        sim = self.sim
+        if (sim.qT is not None or sim.sides is not None or sim.frills
+                or sim.slots):
+            raise ValueError("dense: sheets and via chains only")
+        N = sim.Ne + sim.Nv
+        self.setup(f, mode='direct')
+        Z = np.zeros((N, N), complex)
+        self.core.fill_far(Z, self.g, self.tb, self.w)
+        self._qcorr = self.core.near_into_dense(Z, self.g, self.tb, self.q,
+                                                self.nP32, self.nQ32, self.w)
+        self._near_kept()
+        self.dZ_exact, self._ready = None, None
+        self._vias(f, Z)
+        Sx = self.extra_blocks(f)
+        if Sx.nnz:
+            Sc = Sx.tocoo()
+            np.add.at(Z, (Sc.row, Sc.col), Sc.data)
+        return Z
+
     def _rwg_system(self, f, E, Sx, plan):
         """The RWG basis's Z at f (dense: complex128; else complex64, with the
         exact near field kept sparse for the matrix-free products), the

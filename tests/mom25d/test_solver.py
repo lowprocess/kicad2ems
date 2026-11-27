@@ -1235,3 +1235,51 @@ def test_the_openmp_cap_holds_in_every_thread():
     assert got[-2:] == ['3', '3']
 
 
+
+
+def _grid_line(via_dx=0.0):
+    """A strip of 0.5 mm square cells, three wide, on the tensor mesh, a
+    lumped port in a via at a grid node near each end."""
+    mm = 1e-3
+    p, nx, nw = 0.5 * mm, 16, 3
+    rects = [(i * p, j * p, (i + 1) * p, (j + 1) * p)
+             for i in range(nx) for j in range(nw)]
+    vias = [Via(p + via_dx, p, 0, 1, 0.15 * mm, ring=False),
+            Via((nx - 1) * p, p, 0, 1, 0.15 * mm, ring=False)]
+    return Simulation(LayerStack([Layer(0.8 * mm, 3.55, 0.003)]), {1: rects},
+                      [ViaPort(v, 50.0, name=f'P{k + 1}')
+                       for k, v in enumerate(vias)], dmax=p, mesher='tensor',
+                      ncross=1, grade=0.0, verbose=False, gpu='off',
+                      precision='double', solver='direct')
+
+
+def test_tensor_mesh_takes_a_via_on_a_grid_node():
+    """mesher='tensor' with vias (dfsynth.freeform's pixel grid): each on a
+    node of the grid, its barrel that vertex; one off the grid is refused. The
+    line is matched: a 1.5 mm strip on 0.8 mm of er 3.55 is near 54 ohm."""
+    sim = _grid_line()
+    assert sim.mesher_used == {1: 'tensor'} and sim.Nv == 2
+    assert len(sim.rwg.tris) == 2 * 16 * 3
+    S = sim.sparams(3e9)
+    assert abs(S[0, 1] - S[1, 0]) < 1e-9
+    assert abs(S[0, 0]) < 0.1 and abs(S[1, 0]) > 0.99
+    with pytest.raises(ValueError, match='not on the M1 mesh'):
+        _grid_line(via_dx=0.1e-3)
+
+
+def test_dense_is_the_matrix_the_solver_solves():
+    """FastOperator.dense: Z whole (edges and via chains, the copper's loss
+    in), symmetric; its solution is the Simulation's own."""
+    from kicad2ems.mom25d.sim import Metal
+    sim = _grid_line()
+    sim.metal = Metal(5.8e7, 35e-6)
+    f = 4e9
+    Z = sim.fast.dense(f)
+    n = sim.Ne + sim.Nv
+    assert Z.shape == (n, n) and np.abs(Z - Z.T).max() < 1e-12 * np.abs(Z).max()
+    E = sim.excitation()
+    I = np.linalg.solve(Z, E)
+    assert np.abs(I - sim.currents(f, E)).max() < 1e-9 * np.abs(I).max()
+    # lossless: the copper's loss is what the difference is
+    sim.metal = None
+    assert np.abs(sim.fast.dense(f) - Z).max() > 1e-6
