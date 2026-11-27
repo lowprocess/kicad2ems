@@ -794,8 +794,7 @@ class Draw3D:
             if it is not None:
                 it.resetTransform()
                 it.translate(dx, dy, dz if s0.solid else 0.0)
-            for p in self._items_of(j):
-                p.setPos(dx, dy)
+            self._shift_items(j, dx, dy)
         for it in (self._outline_gl, self._gizmo_gl):
             if it is not None:
                 it.resetTransform()
@@ -897,13 +896,3 @@ def _relook(it, look):
     it.setColor(rgba)
     it.setGLOptions('opaque' if opaque else 'translucent')
     it.setDepthValue(0 if opaque else 5)
-
-
-def _prisms(g, z0, z1):
-    """sh.prism of a polygon or of each part of a multipolygon, together."""
-    parts = list(getattr(g, 'geoms', [g]))
-    ms = [sh.prism(p, z0, z1) for p in parts if p.area > 1e-12]
-    if not ms:
-        return None
-    v = np.concatenate([m[0] for m in ms])
-    return v, np.arange(len(v)).reshape(-1, 3)

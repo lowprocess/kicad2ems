@@ -309,6 +309,25 @@ def test_several_selected_and_moved_together(tab, app):
                                                         'copper', 'metal']
 
 
+def test_a_port_keeps_its_label(tab, app):
+    from kicad2ems.core.shapes import Shape
+    tab.add(Shape('port', [[5, 5]], name='P1'))
+    tab.add(Shape('rect', [[10, 10], [12, 12]]))
+
+    def label_near(x, y):
+        p = tab._gfx[0]['items'][1].pos()
+        return abs(p.x() - x) < 1 and abs(p.y() - y) < 1
+    txt = tab._gfx[0]['items'][1]
+    assert label_near(5, 5)
+    # the plan drawn again: the port's items kept, and where they were
+    tab.select(1)
+    tab._refresh()
+    assert tab._gfx[0]['items'][1] is txt and label_near(5, 5)
+    # dragged: the label goes with it
+    _drag(tab, app, (5, 5), (7, 6))
+    assert tab.drawing.shapes[0].points == [[7, 6]] and label_near(7, 6)
+
+
 def test_duplicate_delete_and_the_clipboard(tab, app):
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest

@@ -875,8 +875,7 @@ class DrawTab(QWidget, Draw3D):
             # the shapes' items moved (the drawing itself at the end: made
             # again on each move, 300 shapes took 34 ms a move)
             for j in st['orig']:
-                for it in self._items_of(j):
-                    it.setPos(dx, dy)
+                self._shift_items(j, dx, dy)
             if len(st['orig']) == 1 and len(self.selected) == 1:
                 self.handles.setPos(dx, dy)
             self._show_snap()
@@ -1569,9 +1568,12 @@ class DrawTab(QWidget, Draw3D):
         if not quick:
             self._3d_timer.start()
 
-    def _items_of(self, i):
+    def _shift_items(self, i, dx=0.0, dy=0.0):
+        """Shape i's plan items shown (dx, dy) from where they belong (a
+        drag; 0, 0: back)."""
         e = self._gfx[i] if i < len(self._gfx) else None
-        return e['items'] if e else []
+        for it, (x, y) in zip(e['items'], e['home']) if e else ():
+            it.setPos(x + dx, y + dy)
 
     def _draw_shapes(self):
         """The shapes' plan items as the drawing is: a shape whose outline
@@ -1595,12 +1597,14 @@ class DrawTab(QWidget, Draw3D):
             got = pool.get(geo)
             e = got.pop() if got else None
             if e is None:
-                e = dict(geo=geo, style=None, items=self._make_items(s))
-                for it in e['items']:
+                items = self._make_items(s)
+                e = dict(geo=geo, style=None, items=items, home=[
+                    (it.pos().x(), it.pos().y()) for it in items])
+                for it in items:
                     self.vb.addItem(it)
-            else:
-                for it in e['items']:
-                    it.setPos(0, 0)
+            else:  # (where a drag may have left them)
+                for it, (x, y) in zip(e['items'], e['home']):
+                    it.setPos(x, y)
             if e['style'] != style:
                 self._style_items(e['items'], s, i in sel)
                 e['style'] = style
