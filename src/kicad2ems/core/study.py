@@ -125,6 +125,13 @@ QUESTIONS = {
         Question('pdn', 'Rail impedance', 'Power',
                  "the impedance a rail's loads see over frequency", shares='dc',
                  order=20),
+        Question(
+            'decoupling', 'Decoupling', 'Power',
+            "the fewest capacitors at a rail's decap sites that keep the "
+            "impedance its loads see under the target", shares='dc', order=25,
+            figures="parts: the capacitors chosen; margin <load>: how far "
+            "under its target the impedance it sees stays over the band, % "
+            "(negative: over it)"),
         Question('nearfield', 'Converter near field', 'Power',
                  "a converter's input loop and the magnetic field over it",
                  order=30),
@@ -540,8 +547,12 @@ def load_config(path):
         from .analyses import registry
         reg, st = registry(), {'run': [], 'said': 'analysis'}
         for name in [x.lower() for x in strlist(old['run']) or []]:
+            # an analysis: what a run of its table answers (Analysis.answers:
+            # a rail's table, its drop and impedance, the decaps only where it
+            # chooses them)
             qs = (['sparams'] if name == RF else
-                  provided(reg[name]) if name in reg else [name])
+                  list(reg[name].answers((sets.get(name) or [{}])[0]))
+                  if name in reg else [name])
             for q in qs:
                 e = ([] if name == RF else [name] if name not in reg else
                      (_variant(q, sets, run=name) or [name])[:1])

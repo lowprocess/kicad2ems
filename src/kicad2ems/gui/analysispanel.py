@@ -676,8 +676,7 @@ class AnalysisPanel(QWidget):
         except ValueError as e:
             return said + str(e)
         from kicad2ems.core.runs import mark
-        from kicad2ems.core.study import provided
-        mark(out, engine or self.a.name, asked or provided(self.a), preview,
+        mark(out, engine or self.a.name, asked or self.a.answers(vals), preview,
              config=getattr(getattr(self.win, 'setup', None), 'path', None),
              settings=row)
         return Command(self.a.name, argv, out, env=dict(self.a.env or {}),

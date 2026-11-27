@@ -89,8 +89,8 @@ def test_the_tree_lists_every_question_with_its_engines(fakes):
     assert (list(rows) == [
         'sparams', 'antenna', 'lines', 'crosstalk', 'coupling', 'timedomain',
         'rlgc',
-        'dc', 'pdn', 'nearfield', 'circuit', 'coils', 'capacitance', 'thermal',
-        'conducted', 'emission', 'susceptibility'
+        'dc', 'pdn', 'decoupling', 'nearfield', 'circuit', 'coils',
+        'capacitance', 'thermal', 'conducted', 'emission', 'susceptibility'
     ])
     # kicad2ems's own (analyses.BUILTIN): not these fakes'
     assert (rows['crosstalk']['engines'] == [] == rows['coupling']['engines']
@@ -178,7 +178,7 @@ def test_check_lists_the_questions(fakes):
     fakes(Drop, Warm)
     _, lines = check_report()
     i = lines.index('questions, and the engines that answer them:')
-    text = '\n'.join(lines[i:i + 30])
+    text = '\n'.join(lines[i:i + 31])
     assert ('Rail drop             pdn' in text
             and 'Temperature           thermal' in text)
     assert ("Circuit               none (no engine for it is installed)"

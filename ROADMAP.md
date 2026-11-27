@@ -39,8 +39,8 @@ the code review of 2026-11-25. Last updated 2026-11-27.
    behavioural switches ngspice could not, 2-7× slower).
 3. **New questions:** segment and the plane-pair cavities as study questions (they are command-line tools); a
    return-path check (traces over plane splits and voids, layer changes with no stitching via near); via stubs
-   and backdrill (each via's stub resonance against the data rate); decoupling chosen to a target impedance;
-   matching networks from a solved S11 with real part values (`core.embed`).
+   and backdrill (each via's stub resonance against the data rate); matching networks from a solved S11 with
+   real part values (`core.embed`).
 4. **S-parameters compared per engine in the window** (its *Engines compared* table asks the analyses alone), and
    a resonance's or a line's delay as figures.
 5. **One setting for one thing:** pcbqs's rail tool takes `rail`, Elmer's `net`; asked both, the rail is typed
@@ -267,13 +267,27 @@ the code review of 2026-11-25. Last updated 2026-11-27.
    connector as the rail's source.
 4. **Several rails, the rest:** their drops side by side in one report, each row's state in the questions' list, a
    rail's own board or output folder.
-5. **What a PI user takes away, the rest** (R-E14): an impedance for a rail with no planes, DC-bias derating from
-   a curve, a ground pour beside the rail on its own layer (Palace's PDN engine read the buck example's bare |Z|
-   0.68 of pcbqs's, R-E22).
-6. **Low-frequency S-parameters, the rest** (docs/pcbqs/sparams.md): gap ports; the two-face copper with the
+5. **What a PI user takes away, the rest** (R-E14): an impedance for a rail with no planes, a vendor's DC-bias
+   curve by part number (`--derate-bias` takes a typical one by package and value, `--derate-table` a file), a
+   ground pour beside the rail on its own layer (Palace's PDN engine read the buck example's bare |Z| 0.68 of
+   pcbqs's, R-E22).
+6. **Decoupling, the rest** (`pcbqs.pdn --choose-decaps`, docs/pcbqs/decoupling.md):
+   - sites it could add (a footprint where none is) and packages a footprint does not take: neither is proposed;
+   - a rail with no plane pair has no PDN model, so no choice;
+   - the droop after a load step with the chosen parts (pdn.json's `droop` is the fitted parts'), and a target in
+     time as well as in frequency;
+   - a second engine: Palace's bare port matrix (`fem.palace.pdn`) closed by the same search;
+   - the search is greedy with local moves (drop, two for one, move), not proven optimal: an exhaustive check
+     beyond one-part sets on a real rail;
+   - speed (measured, load average 5-9 from other runs): on the Jetson's +3V3 (49 sites, 3 loads, 160
+     frequencies) the search is 3.4-5.4 s, two thirds of it the two-for-one move over every pair, and few of its
+     15 calls succeed (one in the result kept): first-improvement there would save little. Rejected: the
+     reciprocal at (f, site, option) and a product in place of the batch's division (4.22 s against 4.46 s,
+     within the noise).
+7. **Low-frequency S-parameters, the rest** (docs/pcbqs/sparams.md): gap ports; the two-face copper with the
    charge slow on several dielectrics (25-77 s a frequency); the window's Plots page draws a log sweep on a linear
    GHz axis, and the report's table reads "0.000 GHz" for a run in kHz.
-7. **Accuracy:**
+8. **Accuracy:**
    - thick copper and AC resistance (C14): a trace close over a plane is 19-30 % low in R on one sheet, 12.5 % on
      two faces; the inductance 2-3 % low with face sheets; the compressed backend as `slab`'s default; one sheet
      or two in the circuit (6 % in wpthb's ripple at 2.6× the time);
@@ -284,10 +298,10 @@ the code review of 2026-11-25. Last updated 2026-11-27.
    - models: vendor MOSFETs, datasheet capacitor ESR and ESL, measured coil Q, switch capacitances as elements;
    - a complete PEEC model to ~λ/10 (proximity currents, via skin loss, mutuals between parts and copper);
    - pcbqs's Palace validations again on Palace 0.19 (made on 0.18.1).
-8. **Losses and thermal:** a convection film that grows with the rise and radiation, air one part warms reaching
+9. **Losses and thermal:** a convection film that grows with the rise and radiation, air one part warms reaching
    the next; the heating from cold, a load step's transient; the iGSE's DC-bias and relaxation terms; the DC
    drop's copper at its temperature.
-9. **Conducted emission, the rest** (`pcbqs.conducted`, docs/pcbqs/conducted.md):
+10. **Conducted emission, the rest** (`pcbqs.conducted`, docs/pcbqs/conducted.md):
    - radiated emission from a converter: its switch node's loop and its input cable, driven by the conducted
      run's currents (the radiated question's far field);
    - an AC mains source with its rectifier: a 10-20 ms period, so the lines are unresolved and the QP's
@@ -307,7 +321,7 @@ the code review of 2026-11-25. Last updated 2026-11-27.
    - the averaged detector's start with one convergence test for a whole batch: 40 iterations and 2.38 s, because
      a few rows cycle at 2e-5 at a kink of the period map;
    - an in-place bisection: 1.08 s against 1.09.
-10. **Speed:** the full bridge on ngspice (1 min 47 s with copper against the old tool's 6 s); two faces in the
+11. **Speed:** the full bridge on ngspice (1 min 47 s with copper against the old tool's 6 s); two faces in the
    circuit by a local loop basis (iterations 217 at DC, 575 at 20 MHz); the LU of the dense solves compressed (90
    % of a two-face S-parameter solve); whole-board near field's mesh and crop convergence; the quasi-static
    solver's 10× target shown on real boards.

@@ -36,6 +36,7 @@ from .._cli import (add_options, describe as describe_options, load_board,
 from kicad2ems.core.options import table
 
 G_RAIL, G_DC, G_PDN, G_MESH = 'Rail', 'DC', 'PDN impedance', 'Mesh'
+G_DEC = 'Decoupling'
 OPTIONS = table([
     # key, kind, default, help, group (pcbqs._cli: the flag is --key)
     ('rail', 'str', '',
@@ -88,6 +89,15 @@ OPTIONS = table([
     ('cap_derate', 'list', [],
      "an MLCC's capacitance at its DC bias, a share of its value: REF=0.6, or "
      "all=0.6 for every decap without a file (repeat)", G_PDN),
+    ('derate_bias', 'bool', False,
+     "every fitted MLCC without a file or a --cap-derate share at its "
+     "capacitance at the rail's DC bias (--volts), from a typical curve by "
+     "package, value, dielectric and rating (pcbqs.pdn.decoupling), or "
+     "--derate-table", G_PDN),
+    ('derate_table', 'str', '',
+     "the DC-bias derating as a CSV of package, C, volts, share (C empty: "
+     "every value of that package), in place of the typical curve: for "
+     "--derate-bias and --choose-decaps", G_PDN),
     ('stop', 'str', '', "parts the tree never follows, comma-separated",
      G_RAIL),
     ('plating', 'float', 0.025, "via plating thickness, mm", G_DC),
@@ -134,6 +144,33 @@ OPTIONS = table([
      "also that port matrix as a SPICE subcircuit (pdn_ports.sub; vector "
      "fitted and made passive: needs scikit-rf)", G_PDN),
     ('no_pdn', 'bool', False, "the DC drop only", G_PDN),
+    ('choose_decaps', 'bool', False,
+     "choose the decaps: the fewest capacitors at the rail's decap sites (its "
+     "C footprints from the tree to ground, fitted and unfitted) that keep "
+     "each load under its target over the band (pdn.json's decoupling, "
+     "decoupling.png; pcbqs.pdn.decoupling); every MLCC at its DC bias, as "
+     "--derate-bias", G_DEC),
+    ('decap_mode', 'str', 'fewest',
+     "what the choice keeps low: fewest (parts) or cost (the library's "
+     "relative cost)", G_DEC, ('fewest', 'cost')),
+    ('decap_start', 'str', 'both',
+     "where the search starts: both (from no part and from the fitted ones, "
+     "the better kept), empty or built", G_DEC, ('both', 'empty', 'built')),
+    ('decap_sites', 'str', '',
+     "the sites to choose for, comma-separated (default: every decap "
+     "footprint of the rail, fitted or not)", G_DEC),
+    ('decap_keep', 'str', '',
+     "parts kept as fitted, comma-separated (a part with a --cap-file, or of "
+     "a package the library has no MLCC of, is kept too)", G_DEC),
+    ('decap_values', 'str', '',
+     "the values to choose from, comma-separated (100n,1u,10u: a short BOM; "
+     "default every value of the library)", G_DEC),
+    ('decap_library', 'str', '',
+     "the parts to choose from: a CSV of name, package, C [, ESR, ESL, "
+     "dielectric, volts, cost] (default: MLCCs 1 nF - 100 uF, E3, by "
+     "package)", G_DEC),
+    ('decap_fmax', 'float', 0.0,
+     "the top of the band the target is held over, Hz (0: --fmax)", G_DEC),
 ])
 
 
@@ -185,7 +222,7 @@ def bands(f, z, target):
 
 
 def run(a):
-    from .rail import Rail, field_loads, LOAD_FIELD
+    from .rail import Rail, field_loads, LOAD_FIELD, part_value
     from .dc import solve_rail
     t0 = time.time()
     os.makedirs(a.out, exist_ok=True)
@@ -194,6 +231,26 @@ def run(a):
         raise SystemExit('pdn: --rail is required')
     if a.plane_min < 0:  # every option checked before the (slow) board import
         raise SystemExit('pdn: error: --plane-min must be nonnegative')
+    from . import decoupling as D
+    table_ = lib = None
+    try:
+        if a.derate_table:
+            table_ = D.read_derating(a.derate_table)
+        if a.choose_decaps:
+            if a.no_pdn:
+                raise ValueError('--choose-decaps needs the PDN (not --no-pdn)')
+            vals = D.parse_values(a.decap_values)
+            lib = (D.read_library(a.decap_library) if a.decap_library else
+                   D.library())
+            if vals:
+                lib = [c for c in lib
+                       if any(abs(c.C - v) <= 1e-3 * v for v in vals)]
+                if not lib:
+                    raise ValueError(
+                        f"--decap-values {a.decap_values}: no such part in the "
+                        "library")
+    except (OSError, ValueError) as e:
+        raise SystemExit(f'pdn: error: {e}')
     returns, plain = {}, []
     for item in a.load:                                 # REF=AMPS[@RETURN]
         head, at, back = item.partition('@')
@@ -364,8 +421,16 @@ def run(a):
                                        d.ref, {}) else None))
                 if share:
                     caps.setdefault(d.ref, {})['derate'] = share
+                elif ((a.derate_bias or a.choose_decaps)
+                      and 'Zf' not in caps.get(d.ref, {})):
+                    # (R-E14: the curve by package and value)
+                    C = caps.get(d.ref, {}).get('C') or part_value(d)
+                    if C and 0 < C <= 1:
+                        caps.setdefault(d.ref, {})['derate'] = D.part_share(
+                            d, C, a.volts, table_)
             pdn = RailPDN(rail, dmax=a.dmax, plane_min=a.plane_min or None,
-                          vrm=vrm, caps=caps, log=say)
+                          vrm=vrm, caps=caps, log=say,
+                          sites=rail.sites() if a.choose_decaps else ())
         # (no plane pair: the DC drop solved above had been lost too)
         except ValueError as e:
             out['notes'].append(f"PDN impedance not computed: {e}")
@@ -379,8 +444,13 @@ def run(a):
         obs = [
             r for r in loads if pdn.dof(r) is not None and r not in pdn.isolated
         ]
-        # loaded and bare from one factorisation a frequency
-        Z, Z0 = pdn.sweep(f, observe=obs)
+        # loaded and bare from one factorisation a frequency (and the bare
+        # network between every part, for the decaps' choice)
+        if a.choose_decaps:
+            Z, Z0, between = pdn.sweep(f, observe=obs,
+                                       between=list(pdn.parts))
+        else:
+            (Z, Z0), between = pdn.sweep(f, observe=obs), None
         t_z = time.time() - t
         step = a.step or 0.5 * sum(loads.values())
         target = (None if a.no_target else
@@ -412,6 +482,7 @@ def run(a):
                         if k not in ('defaulted', 'Zf')
                     }, defaulted=bool((i['el'] or {}).get('defaulted')))
                 for n, i in pdn.parts.items()
+                if i['role'] != 'site'
             }, vertices=pdn.nv)
         # each load's step in time (R-E14), its
         from .droop import summary as droop_of
@@ -497,6 +568,19 @@ def run(a):
                     f'{abs(Z[r][i]):.6g},{np.degrees(np.angle(Z[r][i])):.3f}'
                     for r in obs) + '\n')
         figs.append(z_figure(f, Z, Z0, targets, a.out))
+        if a.choose_decaps:
+            say('decoupling: choosing the decaps')
+            t = time.time()
+            dec = D.choose(
+                pdn, f, obs, targets, a.volts,
+                sites=[x.strip() for x in a.decap_sites.split(',')
+                       if x.strip()],
+                keep=[x.strip() for x in a.decap_keep.split(',') if x.strip()],
+                lib=lib, table=table_, mode=a.decap_mode, start=a.decap_start,
+                fmax=a.decap_fmax or None, bare=between, log=say)
+            out['pdn']['decoupling'] = dec
+            out['seconds']['decoupling'] = round(time.time() - t, 1)
+            figs.append(D.figure(dec, a.out))
         worst = max(obs, key=lambda r: np.abs(Z[r]).max()) if obs else None
         if worst and targets.get(worst):
             say(f'PDN done in {t_b + t_z:.1f} s; target '

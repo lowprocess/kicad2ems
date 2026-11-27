@@ -10,6 +10,59 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Decoupling chosen to a target impedance (`pcbqs.pdn --choose-decaps`, `kicad2ems.pcbqs.pdn.decoupling`,
+  docs/pcbqs/decoupling.md, 2026-11-27).** The fewest capacitors (`--decap-mode cost`: the least relative cost)
+  at a rail's decap sites that keep every load under its target over the band. The sites are its two-pad `C*`
+  footprints from the tree to ground, fitted and unfitted (DNP: `Rail.sites`, `RailPDN(sites=)` as ports with
+  nothing attached), or `--decap-sites`.
+  - **Kept as fitted:** `--decap-keep`, a vendor file's part, a package with no MLCC in the library, the
+    regulator.
+  - **The library:** MLCCs 1 nF-100 µF (E3) by package, 0201-1210; ESR 12 mΩ (C / 1 µF)^-0.4; ESL by package; a
+    relative cost; `--decap-library` CSV, `--decap-values` for a short BOM.
+  - **DC-bias derating** (ROADMAP Power tools 5): 1 / (1 + (V / Vh)²), Vh = 2.4 V (Cmax / C)^¼, a quarter of the
+    rating where higher, C0G none (`--derate-table` CSV replaces it). It applies to every MLCC while choosing,
+    and alone with `--derate-bias`.
+  - **The closed form:** the bare PDN between the loads and the sites comes from the impedance sweep's own
+    factorisations (`RailPDN.sweep(between=)`), the fixed parts attached by Woodbury's identity. Each candidate
+    part is a rank-one term, so no set is solved again.
+  - **The search:** greedy on the excess (log |Z| / target over it, log-f weighted), then drop, two-for-one and
+    move until nothing changes, from no part and from the fitted ones, the better kept. Frequencies where a
+    load's own pads, or the floor (an ideal part at every site: mount and package ESL alone), are over the
+    target are out of reach, left out and said.
+  - **Results:** pdn.json's `decoupling` (each site's part and its capacitance at bias, a BOM, |Z| as fitted and
+    as chosen, margins, the bands still over, out of reach), `decoupling.png`, three report sections and a
+    curve set.
+  - **The study:** a *Decoupling* question (Power, figures `parts` and `margin <load>`) answered by the
+    power-integrity analysis. `Analysis.answers(values)` gives the questions a run of these settings answers,
+    which the window's own Run marks: a rail run without `--choose-decaps` no longer claims the decaps.
+  - **Checks:**
+    - the closed form against a full solve with the chosen parts attached (`RailPDN.z`) at 16 frequencies and
+      each load's worst: 1e-9 on the test board, 1.6e-8 and 7.7e-11 on the Jetson's rails;
+    - the fitted set through the closure against the rail's own sweep (1e-7);
+    - the rank-one terms against Woodbury's closure (1e-9);
+    - the derating curve at its closed-form points (35 / 63 / 84 % at 3.3 V for the package's largest value,
+      a decade and two below);
+    - on the test board, 0.15 Ω to 20 MHz: the three fitted parts miss it (2.6×), the search meets it with two,
+      and an exhaustive search over every one-part set finds none that does.
+  - **Jetson AGX Thor carrier:**
+    - +1V15 to U21 (115 mΩ): five parts against the thirteen fitted hold it to 43 MHz, out of reach above that
+      (worst 0.976 against 0.967 of the target). The choice took 0.1 s of a 75 s run (DC 49 s).
+    - +3V3 (J13, U21, J12, 110 mΩ): ten parts against 49 fitted, worst 0.978 (0.970 as fitted). The choice
+      took 7.5 s beside a 22 s sweep.
+  - **Speed, four passes** on +3V3's choice (49 sites, 3 loads, 160 frequencies; load average 5-9 from other
+    runs), the result the same at each:
+    1. the closure from the sweep's factorisations, and the check at 16 frequencies, not 160: 20.2 s to 0.8 s
+       (the closure 12.3 s to 0.0, the check 7.8 s to 0.7);
+    2. once the reach took the floor (more of the band left to search: 14.1 s, the search 13.2 s), trial moves
+       on the loads' rows and the diagonal alone, O(f nl k) in place of a full rank-one update, O(f k²): 14.1 s
+       to 5.6 s;
+    3. the trials on |Z|² in the batch's own layout, and the worst alone where only feasibility is read: 5.6 s to
+       4.2 s;
+    4. the reciprocal at the smaller shape: 4.5 s, no gain, rejected.
+
+    The peak memory of the choice is 72 MB (tracemalloc) throughout. `between=` costs the sweep nothing
+    measurable (15.3 s against 15.7 s, 60 MB against 53 MB peak).
+  - **Tests:** tests/pcbqs/test_pdn_decoupling.py.
 - **Radiated emission and susceptibility (`kicad2ems.core.emission`, `kicad2ems.core.susceptibility` on
   `kicad2ems.core.radiated`; docs/emc.md; 2026-11-27).** Two study questions in the EMC group, both from each
   port's far field on mom25d. Each frequency is one factor with every port's source; with each port on its load

@@ -75,7 +75,8 @@ def test_study_dock(window):
                    ['Crosstalk', 'Board coupling', 'Time domain',
                     'Line parameters'],
                    [
-                       'Rail drop', 'Rail impedance', 'Converter near field',
+                       'Rail drop', 'Rail impedance', 'Decoupling',
+                       'Converter near field',
                        'Circuit', 'Coils and ferrite', 'Capacitance'
                    ], ['Temperature'], ['Conducted emission', 'Radiated emission',
                                         'Radiated susceptibility']])

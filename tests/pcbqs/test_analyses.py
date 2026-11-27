@@ -481,7 +481,8 @@ def test_the_tools_are_engines_of_the_questions_they_answer(tmp_path):
     pdn, mqs, circuit, thermal = (A.PowerIntegrity(), A.NearField(),
                                   A.Circuit(), A.Thermal())
     assert ([a.provides
-             for a in (pdn, mqs, circuit, thermal)] == [('dc', 'pdn'),
+             for a in (pdn, mqs, circuit, thermal)] == [('dc', 'pdn',
+                                                         'decoupling'),
                                                         ('nearfield', ),
                                                         ('circuit', ),
                                                         ('thermal', )])

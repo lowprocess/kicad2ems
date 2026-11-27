@@ -188,11 +188,11 @@ class StudyTree(QTreeWidget):
         if self.m.set_fields(q, on):
             self.ticks_changed.emit()
 
-    def ask(self, key):
+    def ask(self, key, questions=None):
         """The questions a run answers asked too (the model's ask), the list's
         signal with it."""
         before = set(self.m.on)
-        self.m.ask(key)
+        self.m.ask(key, questions)
         if self.m.on != before:
             self.ticks_changed.emit()
 

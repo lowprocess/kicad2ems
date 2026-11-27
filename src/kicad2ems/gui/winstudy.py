@@ -276,8 +276,12 @@ class WindowStudy:
         }
         panel.status.setText(s.get('note', ''))
         panel.changed.emit()
-        # proposed for it: asked, so Run includes it
-        self.study.ask(s['to'])
+        # proposed for it: asked, so Run includes it (the questions its
+        # settings answer: a rail's drop and impedance, not its decaps)
+        a = getattr(panel, 'a', None)
+        self.study.ask(s['to'],
+                       a.answers(dict(panel.values()))
+                       if a is not None and hasattr(panel, 'values') else None)
         # its settings, and its page (the schematic)
         self.show_analysis(s['to'])
 

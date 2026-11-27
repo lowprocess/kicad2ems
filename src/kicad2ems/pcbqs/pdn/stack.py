@@ -120,7 +120,11 @@ class Conn:
 
 class RailPDN:
     def __init__(self, rail, dmax=1.0, plane_min=None, vrm=None, hole_fill=2.0,
-                 window=6.0, log=print, caps=None):
+                 window=6.0, log=print, caps=None, sites=()):
+        """sites: Parts (rail.Rail.sites: decap footprints, fitted or not) that
+        are ports with nothing attached where the model has no element for them
+        (unfitted, no value): role 'site', for pdn.decoupling to place
+        capacitors at."""
         self.rail, self.log, self.vrm = (rail, log,
                                          dict(vrm or dict(R=1e-3, L=30e-9)))
         b = self.board = rail.board
@@ -232,6 +236,9 @@ class RailPDN:
                 el.update(Zf=given['Zf'], file=given.get('file'),
                           defaulted=False)
             self.parts[p.ref] = dict(role='decap', el=el, part=p)
+        for p in sites or ():
+            if p.ref not in self.parts:
+                self.parts[p.ref] = dict(role='site', el=None, part=p)
         for p in rail.source_parts:
             self.parts[p.ref] = dict(role='source', el=dict(self.vrm), part=p)
         for ref in rail.loads:
@@ -593,13 +600,16 @@ class RailPDN:
                 out[n][i] = X[self.dof(n), k] + extra
         return out
 
-    def sweep(self, f, observe=None):
+    def sweep(self, f, observe=None, between=None):
         """(loaded, bare): z's two answers, {name: Z(f)} each, from one
         factorisation a frequency: the bare network's (the planes, their ties
         and the series parts), the parts added by Woodbury's identity (the
         columns of the observed and the parts' DOFs, a small dense solve).
         z(loaded) and z(bare) had factorised twice (320 factorisations, 5.9 s of
-        the CM5 +5V rail's 22.3 s)."""
+        the CM5 +5V rail's 22.3 s). between: part names; then (loaded, bare,
+        B) with B = dict(names, Z (nf, m, m)), the bare network between their
+        plane nodes (no part's own connection) from the same factorisation
+        (pdn.decoupling's Closure)."""
         names = [
             n for n in (
                 observe
@@ -612,10 +622,14 @@ class RailPDN:
         parts = [(n, self.dof(n), i)
                  for n, i in self.parts.items()
                  if i['el'] is not None and self.dof(n) is not None]
+        among = [n for n in (between or ()) if self.dof(n) is not None]
         cols = list(
             dict.fromkeys([self.dof(n)
-                           for n in names] + [d for _, d, _ in parts]))
+                           for n in names] + [d for _, d, _ in parts]
+                          + [self.dof(n) for n in among]))
         at = {d: k for k, d in enumerate(cols)}
+        b = [at[self.dof(n)] for n in among]
+        B = np.empty((len(f), len(b), len(b)), complex)
         E = np.zeros((self.n, len(cols)))
         E[cols, np.arange(len(cols))] = 1.0
         o = [at[self.dof(n)] for n in names]
@@ -624,6 +638,8 @@ class RailPDN:
             w = 2 * np.pi * fi
             # Zb on the columns
             X = splu(self.matrix(fi, bare=True)).solve(E.astype(complex))[cols]
+            if b:
+                B[i] = X[np.ix_(b, b)]
             zp = np.array([self._part_z(info, w) for _, _, info in parts],
                           complex)
             Zb_oo = X[np.ix_(o, o)]
@@ -640,6 +656,8 @@ class RailPDN:
                          if info['rail'].vias else 0.0)
                 loaded[n][i] = Zl_oo[k, k] + extra
                 bare[n][i] = Zb_oo[k, k] + extra
+        if between is not None:
+            return loaded, bare, dict(names=among, Z=B)
         return loaded, bare
 
     def transfer(self, f, sources, observe, pads=True):

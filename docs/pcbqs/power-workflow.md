@@ -64,6 +64,12 @@ impedance seen by each load.
   in place of `--vrm-r` and `--vrm-l` (its loop's gain, its output capacitors: whatever its
   maker's model gives). Where the sweep reaches past a file's band, its end values hold and the
   notes say so.
+- **Decaps chosen to the target.** `--choose-decaps` chooses the fewest capacitors (or the
+  least cost) at the rail's decap sites, fitted or unfitted, that keep every load under its
+  target, each at its DC bias, from the sweep's one solve: a BOM, every site's part, |Z| as
+  fitted and as chosen (`decoupling.png`). On the Jetson's +1V15, five parts hold U21's
+  115 mΩ to 43 MHz where thirteen are fitted ([Decoupling](decoupling.md)). `--derate-bias`
+  takes the fitted MLCCs at their bias alone, from a typical curve by package and value.
 - **The decap sites as ports.** `--ports-touchstone` writes the bare PDN (the planes, their ties
   and the series parts, without the decaps, the regulator or the loads) between every part's
   port as `pdn_ports.zNp`, each port at its part's pads: attach any capacitor or regulator

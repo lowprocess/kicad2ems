@@ -15,6 +15,7 @@ of moments) or a transmission-line model, and writes S-parameters, antenna resul
 | [Line parameters](rlgc.md) | R, L, G, C per metre over frequency of one line or N coupled lines (skin and proximity effect, a 2D eddy-current solve), W-element models and S-parameters, for every cross-section of a board's nets |
 | [Conducted emission](pcbqs/conducted.md) | A switching circuit through a CISPR network (LISN) in each supply line, read with peak, quasi-peak and average detectors against CISPR 32 or CISPR 25: margins, differential and common mode |
 | [Radiated EMC](emc.md) | The board's radiated emission for a clock or data against CISPR 32 at a test site, and the voltage a plane wave puts on each port (IEC 61000-4-3), from each port's far field on mom25d |
+| [Decoupling](pcbqs/decoupling.md) | The fewest capacitors at a rail's decap sites that keep the impedance its loads see under the target, each at its DC bias, from one solve of the rail |
 | [Whole-board studies](segment-studies.md) | A large board in pieces (the Jetson Thor carrier, the LimeRFE): the settings and why, the checks, how to make each result again |
 | [KiCad plugin](kicad-plugin.md) | In KiCad's PCB editor: the impedance map of the open board, a region and ports, a simulation |
 | [Examples](examples.md) | The example boards and how the solvers compare on them |

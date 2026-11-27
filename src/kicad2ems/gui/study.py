@@ -414,12 +414,14 @@ class StudyModel:
     def set_ticked(self, keys):
         self.set_study(self.study_of_runs(keys))
 
-    def ask(self, key):
+    def ask(self, key, questions=None):
         """The questions a run answers asked too (those that can be, by that run
         where it is one of several engines: the others stay as they are): what a
-        result proposed for it is to be run."""
+        result proposed for it is to be run. questions: those of them its
+        settings answer (Analysis.answers), default all."""
         for q in self.questions:
-            if key != RF and key in self.runs_for(q):
+            if (key != RF and key in self.runs_for(q)
+                    and (questions is None or q in questions)):
                 self.tick(q, True)
 
     def set_available(self, key, ok, why=''):

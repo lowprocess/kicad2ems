@@ -155,8 +155,10 @@ class PowerIntegrity(_Tool):
                                         'kicad2ems.pcbqs.pdn', 20)
     about = "a rail's DC drop and the impedance its loads see"
     result = 'pdn.json'
-    # one run: the drop alone when the impedance is not asked for
-    provides = ('dc', 'pdn')
+    # one run: the drop alone when the impedance is not asked for, the decaps
+    # chosen when that is
+    provides = ('dc', 'pdn', 'decoupling')
+    paths = ('decap_library', 'derate_table')
     # a study may hold several rails, a run each (kicad2ems 2.10)
     several = 'rail'
     # what differs by rail
@@ -164,7 +166,20 @@ class PowerIntegrity(_Tool):
                     'load_spectrum')
 
     def for_questions(self, values, asked):
+        if 'decoupling' in asked:
+            return dict(values, choose_decaps=True, no_pdn=False)
         return values if 'pdn' in asked else dict(values, no_pdn=True)
+
+    def answers(self, values):
+        """The drop always; the impedance unless no_pdn; the decaps where
+        they are chosen."""
+        def on(k):
+            v = values.get(k)
+            return (v.strip().lower() in ('1', 'true', 'yes', 'on')
+                    if isinstance(v, str) else bool(v))
+        if on('no_pdn'):
+            return ('dc', )
+        return ('dc', 'pdn') + (('decoupling', ) if on('choose_decaps') else ())
 
     def figures(self, folder):
         """Each load's drop in the rail's own copper (what an engine of that
@@ -195,6 +210,14 @@ class PowerIntegrity(_Tool):
             out.append(
                 dict(name='series parts loss', value=r['series_loss_W'] * 1e3,
                      unit='mW'))
+        dec = (r.get('pdn') or {}).get('decoupling') or {}
+        if isinstance(dec.get('parts'), int):
+            out.append(dict(name='parts', value=dec['parts'], unit=''))
+            out += [
+                dict(name=f"margin {ref}", value=l['margin_after'], unit='%')
+                for ref, l in (dec.get('loads') or {}).items()
+                if isinstance(l.get('margin_after'), (int, float))
+            ]
         return out
 
     basic = ('rail', 'ground', 'volts', 'load')

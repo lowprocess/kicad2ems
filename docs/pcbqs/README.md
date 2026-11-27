@@ -48,6 +48,8 @@ Execution controls use `PCBQS_FILL_BACKEND`, `PCBQS_FILL_THREADS`,
 remain supported. Another static-fill backend is registered with
 `register_fill_backend`.
 
+- [Decoupling chosen to a target impedance](decoupling.md): `pcbqs.pdn --choose-decaps`, the fewest
+  capacitors at a rail's decap sites (fitted or not) that keep its loads under the target, at their DC bias
 - [Quasistatic guide](quasistatic.md)
 - [Low-frequency S-parameters](sparams.md): a board's ports from DC to a tenth of a wavelength, with the
   return current where it flows; `--solvers pcbqs` in a kicad2ems run. Its example,

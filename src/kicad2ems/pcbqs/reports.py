@@ -199,12 +199,67 @@ def pdn_report(res, folder=''):
                 "the current spectra"
                 + (f", over the {rp['allowed_V'] * 1e3:.3g} mV allowed"
                    if l['pp_V'] > rp['allowed_V'] else ''))
+        dec = p.get('decoupling')
+        if dec:
+            _decoupling_sections(dec, out)
     s = res.get('seconds', {})
     out['footer'] = (
         f"{res['vertices']['power']:,} + {res['vertices']['ground']:,} DC "
         "vertices; "
         + ', '.join(f"{k} {v} s" for k, v in s.items()))
     return out
+
+
+def _decoupling_sections(dec, out):
+    """The decoupling's sections (pdn.decoupling's result) into a report."""
+    worst = max(dec['loads'].items(), key=lambda kv: kv[1]['worst_after'])
+    out['summary'] += (
+        f"; decaps chosen: {dec['parts']} part(s) ({dec['parts_before']} "
+        f"fitted), the target {'met' if dec['met'] else 'not met'} to "
+        f"{_hz(dec['band'][1])} (worst {worst[0]} at "
+        f"{worst[1]['worst_after']:.3g} x its target)")
+    how = ('the fewest parts' if dec['mode'] == 'fewest' else
+           f"the least cost ({dec['cost_before']:.3g} fitted, "
+           f"{dec['cost']:.3g} chosen, the library's relative cost)")
+    text = (
+        f"Capacitors chosen for the rail's decap sites, {how}, so the "
+        f"impedance each load sees stays under its target from "
+        f"{_hz(dec['band'][0])} to {_hz(dec['band'][1])}; each part at its "
+        f"capacitance at {dec['volts']:g} V DC bias ("
+        + ('the derating table given' if dec['derating'] == 'table' else
+           'a typical curve by package and value') + "). "
+        f"{dec['parts']} part(s) against {dec['parts_before']} fitted: the "
+        f"target is {'met' if dec['met'] else 'not met'}. The closed form "
+        f"(the bare PDN between the loads and the sites, solved once) is "
+        f"within {dec['check']['max_rel']:.2g} of a full solve with the parts "
+        "attached.")
+    rows = [[
+        r, l['target'], l['margin_before'], l['margin_after'],
+        ('; '.join(f"{_hz(a)} – {_hz(b)}" for a, b in l['over_after'])
+         or 'never'),
+        _hz(l['out_of_reach_from']) if l.get('out_of_reach_from') else ''
+    ] for r, l in dec['loads'].items()]
+    out['sections'].append(
+        dict(title='Decoupling: the loads', text=text, table=_table(
+            ['load', 'target (Ω)', 'margin fitted (%)', 'margin chosen (%)',
+             'over the target', 'out of reach from'],
+            rows, [None, '.3g', '.3g', '.3g', None, None])))
+    out['sections'].append(
+        dict(title='Decoupling: the parts (a BOM)', table=_table(
+            ['part', 'count', 'sites'],
+            [[b['part'], b['count'], ', '.join(b['refs'])]
+             for b in dec['bom']], [None, 'd', None])))
+    rows = [[
+        r['site'], r['fitted'] or ('DNP' if r.get('dnp') else 'none'),
+        r['part'] or 'none', r['C_bias'] * 1e6 if r['C_bias'] else '',
+        r['mount_nH'], 'changed' if r['changed'] else ''
+    ] for r in dec['sites']]
+    out['sections'].append(
+        dict(title='Decoupling: each site', table=_table(
+            ['site', 'fitted', 'chosen', 'C at bias (µF)', 'mount (nH)', ''],
+            rows, [None, None, None, '.3g', '.2f', None]),
+            notes=list(dec.get('notes') or [])))
+    out['images'].append('decoupling.png')
 
 
 def pdn_curves(res, folder=''):
@@ -231,6 +286,23 @@ def pdn_curves(res, folder=''):
             dict(name=f"target {_ohm(t)}", x=[f[0], f[-1]], y=[t, t],
                  role='limit', unit='Ω'))
     sets = [cs]
+    dec = p.get('decoupling')
+    if dec and dec.get('loads'):  # as fitted and as chosen
+        fd = [float(x) for x in dec['f']]
+        dc = dict(title='Decoupling: as fitted and as chosen',
+                  xlabel='frequency (Hz)', ylabel='|Z| (Ω)', logx=True,
+                  logy=True, info=cs['info'], curves=[])
+        for r, l in dec['loads'].items():
+            dc['curves'] += [
+                dict(name=f"{r} chosen", x=fd, y=l['mag_after'], role='data',
+                     unit='Ω'),
+                dict(name=f"{r} as fitted", x=fd, y=l['mag_before'],
+                     role='reference', unit='Ω')]
+        for t in sorted({l['target'] for l in dec['loads'].values()}):
+            dc['curves'].append(
+                dict(name=f"target {_ohm(t)}", x=[fd[0], dec['band'][1]],
+                     y=[t, t], role='limit', unit='Ω'))
+        sets.append(dc)
     rp = p.get('ripple')
     if rp and rp.get('loads'):  # what the loads' current spectra make of it
         sets.append(

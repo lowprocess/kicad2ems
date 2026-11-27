@@ -192,10 +192,11 @@ class Series:
         return [q for q in self.part.pads if q.net == net]
 
 
-def parts_of(board):
+def parts_of(board, dnp=False):
+    """The board's parts (Part), the unfitted ones (DNP) too when dnp."""
     out = []
     for fp in board['prims']['footprints']:
-        if fp.get('dnp'):
+        if fp.get('dnp') and not dnp:
             continue
         pads = [
             Pad(fp['ref'], p.get('name'), p.get('net'), p.get('layers', []),
@@ -336,11 +337,7 @@ class Rail:
         # decaps: two-pad capacitors from the tree to ground (C1, and prefixed
         # series such as CA1 / CE1 / CP1; one whose value is not a capacitance
         # is reported and left out by the PDN model)
-        self.decaps = [
-            p for p in self.parts.values()
-            if re.match(r'C[A-Z]{0,2}\d', p.ref.upper()) and len(p.pads) == 2
-            and len(p.nets()) == 2 and p.nets() & self.nets and p.nets() & g
-        ]
+        self.decaps = [p for p in self.parts.values() if self.is_decap(p)]
         missing = [r for r in self.loads if r not in self.parts]
         if missing:
             raise ValueError(f"loads not on the board: {', '.join(missing)}")
@@ -377,6 +374,19 @@ class Rail:
                     f"{r} has no pad on ground: its return is taken through "
                     f"{back}, on its other net and on ground ({r}=AMPS@PART "
                     "names another)")
+
+    def is_decap(self, p):
+        """Whether part p is a decap footprint of the rail: a two-pad C (C1,
+        CA1, CE1 ...) from the tree to ground."""
+        return bool(
+            re.match(r'C[A-Z]{0,2}\d', p.ref.upper()) and len(p.pads) == 2
+            and len(p.nets()) == 2 and p.nets() & self.nets
+            and p.nets() & set(self.ground))
+
+    def sites(self):
+        """Every decap footprint of the rail, fitted or not (DNP), by
+        reference: where a capacitor can go (pdn.decoupling's sites)."""
+        return [p for p in parts_of(self.board, dnp=True) if self.is_decap(p)]
 
     def pads_of(self, part, role=None):
         """(rail pads, ground pads) of a part: the source's are source_pads and

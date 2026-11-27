@@ -90,6 +90,9 @@ and implements
                           its settings for a run that is asked only some of its
                           questions (the rail's drop without its impedance): the
                           values, changed where that matters
+  answers(values)         the questions a run of these settings answers (one
+                          started with none asked, from its settings alone);
+                          the default is all it provides
   status(line)            the progress a line of its output states, or None
                           (most lines)
   finds, discover(values, board), choices(text) what the board can propose
@@ -197,6 +200,12 @@ class Analysis:
         """The settings for a run asked only the questions `asked` of those it
         provides."""
         return values
+
+    def answers(self, values):
+        """The questions a run of these settings answers, of those it provides
+        (a run started with no question asked: its mark's); default all."""
+        from .study import provided
+        return provided(self)
 
     def owns(self, folder, preview=False):
         """Whether the folder holds its result (preview: its preview)."""
