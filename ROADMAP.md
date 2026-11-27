@@ -30,6 +30,50 @@ the code review of 2026-11-25. Last updated 2026-11-27.
 4. **The KiCad plugin's release:** its Plugin and Content Manager entry (`"VERSION"` in its metadata today) and
    a v0.1.0 tag.
 
+## The Draw page: a 3D editor (`gui.drawtab`, `core.shapes`)
+
+The next focus for extension and the window's UI (the user's word, 2026-11-27). The prototype (2026-11-20, on main
+since 2026-11-27) draws rectangles, circles, polygons, traces and ports as copper or cuts on a layer, and metal,
+dielectric and air solids between two heights. It has plan and 3D views, selection and dragging in both, a
+properties form, undo, and writes the `shapes`, `region` and `ports` settings. What it lacks, most useful first:
+
+**What the drawing does**
+
+1. **Solids in the solvers:** `board.solids` are drawn and kept, but no solver meshes them.
+   - The FDTD model (`fdtd.model.build_fdtd`'s CSX, which openEMS and gfdtd both read) takes metal, dielectric and
+     air as extruded polygons, a later shape over an earlier one, with mesh lines at their edges and heights.
+   - Palace's gmsh model takes them as volumes; mom25d (laterally infinite layers) refuses a solid it cannot take
+     and says so.
+   - Checks: rf_shielded's can drawn as a metal shell inside an open boundary against its PEC boundary (4.62 GHz;
+     EMerge 4.621), and a dielectric block's resonance against its closed form.
+2. **Templates:** a shield can with its fence vias, an enclosure with a lid, an edge-launch SMA, a via fence along
+   a trace, a coax or probe feed, an absorber sheet; each placed with a click, then edited as shapes.
+3. **Dimensions as variables:** a shape's numbers as named variables (w, gap, h) in the drawing, which the study's
+   *Vary* sweeps, and later an optimiser (the study 10's optimisation).
+4. **Ports, the rest:** a port's kind (lumped, wave), impedance and direction in the form; a port on a solid's face
+   for the FDTD; lumped R, L and C between two points.
+5. **Import:** DXF outlines as polygons; STEP or STL of an enclosure or a connector as a solid (its triangles, for
+   the FDTD and Palace).
+6. **Booleans and curves:** union, subtraction and intersection of polygons (shapely); arcs and fillets in
+   polygons and traces; chamfers.
+
+**The page (UI)**
+
+1. **Selection:** several shapes at once (Shift or Ctrl + click, a dragged box), moved, duplicated and deleted
+   together; copy and paste, between drawings too; a shape locked or hidden from the list.
+2. **Exact edits:**
+   - move by a typed offset, rotate by any angle, mirror, align and distribute;
+   - arrays (a row, a grid, a circle: via fences, stitching);
+   - snapping to the board's pads, track ends and edges, and to shapes' corners and midpoints;
+   - a measure tool (distance, angle), and the cursor's coordinates and the size being drawn in the status bar.
+3. **The 3D view:** camera presets (top, front, side, iso), zoom to the selection, the selected shape outlined, an
+   axis-constrained move (a gizmo), a clip plane through the board, layers and materials shown or hidden, and the
+   working level's grid.
+4. **The page itself:** the shape list with icons and each material's colour, the form in groups, a toolbar that
+   names each tool's key; the drawn shapes in the main Viewer, and the run's mesh of them (the solids as the
+   solver sees them).
+5. **Speed with many shapes:** a via fence of 300 shapes, its redraw and pick times in plan and 3D.
+
 ## The study: questions and engines
 
 1. **gfdtd is not offered for the antenna question:** `study.engines` reads a solver's `antenna` capability up
