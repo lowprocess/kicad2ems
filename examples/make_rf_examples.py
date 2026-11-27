@@ -64,6 +64,8 @@ and boards whose solids are drawn beside them (rf_<name>_shapes.json):
   dr_bandpass a dielectric resonator band-pass, 9.2 GHz: a ceramic puck (er
               38) on a support between two 50 ohm lines on RO4003C, in a can;
               dr_bandstop: the puck beside one line
+  can_mode    two 50 ohm lines on FR-4 under a can, coupled at its first
+              resonance; can_absorber: a lossy sheet under its lid
 
     python examples/make_rf_examples.py all
         # every board, examples/rf_<name>.kicad_pcb
@@ -1247,6 +1249,38 @@ def dr_bandstop(path, **kw):
     return dr_filter(path, mode='bandstop', **{'gap': -1.0, **kw})
 
 
+def can_mode(path, W=30.0, H=20.0, lid=4.0, sep=10.0, absorber=False,
+             t_abs=1.0, er_abs=2.0, tand_abs=1.0):
+    """Two 50 ohm lines `sep` mm apart across 0.8 mm FR-4 under a drawn can
+    (the board's W x H outline, `lid` mm over the board): P1 -> P2 one line,
+    P3 -> P4 the other. Apart from the can's modes the lines barely couple;
+    at its first mode (E vertical, one half-wave along x and along y) they
+    do. absorber: a lossy dielectric sheet (t_abs thick, er_abs, tand_abs: a
+    carbon-loaded foam) under the lid over the whole can. Returns the lines'
+    width."""
+    from kicad2ems.core.shapes import Drawing, Shape
+    w = width(50.0)
+    bd = Board()
+    e = CAN_CLEAR + w / 2  # the round ends short of the walls
+    for k, y in ((1, H / 2 - sep / 2), (3, H / 2 + sep / 2)):
+        bd.track([(e, y), (W - e, y)], w)
+        bd.port(k, e, y, 0)
+        bd.port(k + 1, W - e, y, 180)
+    bd.write(path, W, H)
+    top = round(H_SUB + lid, 4)
+    shapes = _can(W, H, top)
+    if absorber:
+        shapes.append(Shape('rect', [[0, -H], [W, 0]], material='dielectric',
+                            z0=round(top - t_abs, 4), z1=top, er=er_abs,
+                            tand=tand_abs, name='absorber'))
+    Drawing(shapes).save(os.path.splitext(path)[0] + '_shapes.json')
+    return w
+
+
+def can_absorber(path, **kw):
+    return can_mode(path, absorber=True, **kw)
+
+
 KINDS = dict(branchline=branchline, wilkinson=wilkinson, steplpf=steplpf,
              stubnotch=stubnotch, gcpw=gcpw, coupler=coupler, ratrace=ratrace,
              radialstub=radialstub, stripline=stripline, diffvia=diffvia,
@@ -1257,7 +1291,8 @@ KINDS = dict(branchline=branchline, wilkinson=wilkinson, steplpf=steplpf,
              combline=combline, openloop=openloop, dgs=dgs, ebg=ebg, idc=idc,
              meander=meander, spiral=spiral, circulator=circulator)
 # drawn solids in a can
-KINDS.update(dr_bandpass=dr_bandpass, dr_bandstop=dr_bandstop)
+KINDS.update(dr_bandpass=dr_bandpass, dr_bandstop=dr_bandstop,
+             can_mode=can_mode, can_absorber=can_absorber)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2 or sys.argv[1] not in list(KINDS) + ['all']:

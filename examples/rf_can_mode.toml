@@ -1,0 +1,31 @@
+# kicad2ems example: a shield can's first box resonance, drawn on the Draw page
+# (rf_can_mode_shapes.json): two 50 ohm lines 10 mm apart across 0.8 mm FR-4
+# under a can drawn as a metal box with air inside, 30 x 20 mm and 4 mm over
+# the board. Apart from the can's modes the lines barely couple; at its first
+# (E vertical, a half wave along each side) they do. rf_can_absorber damps it.
+# Board and drawing: python examples/make_rf_examples.py can_mode
+#   kicad2ems examples/rf_can_mode.toml --solvers gfdtd
+# 2026-11-27 (RX 7800 XT): the mode at 8.418 GHz (closed form, the board on
+# the can's floor: 8.383 GHz; the empty can 9.008 GHz), loaded Q 395; there
+# the lines couple at -11.7 dB (S31) and -11.1 dB (S41), against -45 to -55
+# dB below it, and the driven line loses 3.9 dB. 0.07 M cells, 345k
+# timesteps, 6 s. Palace: 8.419 GHz, Q 431 (17,000 tetrahedra, 112 s).
+board   = "rf_can_mode.kicad_pcb"   # paths are relative to this file
+shapes  = "rf_can_mode_shapes.json"
+ground  = "B.Cu"
+fmin    = 6.0           # GHz
+fmax    = 11.0
+points  = 1001
+end_db  = -60           # the can rings for ~100 ns
+out     = "out"
+
+[solver.openems]
+bc      = "MUR"
+air     = 1.0
+excite  = ["P1"]
+max_steps = 3000000
+
+[solver.palace]
+feature = 1
+margin  = 0.5
+modes   = 3

@@ -143,6 +143,24 @@ under it: −12.3 / −14.7 / −17.3 dB). Without the support, the puck on the 
 modes (10.06 and 10.14 GHz): the support is what keeps the pass band clean. The gfdtd times are the GPU's alone;
 shared with other runs they were up to three times longer.
 
+<a id="shield-can-resonance"></a>
+`rf_can_mode` is two 50 Ω lines 10 mm apart across 0.8 mm FR-4 under a can drawn round the board (30 × 20 mm, 4 mm
+over it; `make_rf_examples.py can_mode`). Apart from the can's modes the lines barely couple; its first, TE101 with
+the height as the short side (E vertical, half a wave along each side), couples them. `rf_can_absorber`
+(`can_absorber`) draws 1 mm of a lossy foam (εr 2, tan δ 1: a carbon-loaded foam's) under the lid. The closed form:
+the empty can c/2 √(1/a² + 1/b²) = 9.008 GHz; with the board's FR-4 on its floor (transverse resonance through the
+FR-4 and the air, TM to z) 8.383 GHz; and the foam under the lid (its εr) 7.873 GHz.
+
+| | closed form | gfdtd | Palace |
+|---|---|---|---|
+| the can's first mode | 8.383 GHz | 8.418 GHz, loaded Q 395 (from S31's −3 dB) | 8.419 GHz, Q 431 (Q_ext 3,370 each port) |
+| there: S31, S41; the driven line's S21 | | −11.7, −11.1 dB (−45 to −55 dB below it); −3.9 dB | |
+| with the foam | 7.873 GHz (its εr alone) | no peak: S31 at most −33 dB | 7.643 GHz, Q 12.4 |
+| tan δ 0.1 / 0.3 | | S31 −23.6 / −30.8 dB at 7.92 GHz | |
+| model, time | | 0.07 M cells, 345k timesteps, 6 s; the foam: 0.08 M cells, 14k timesteps, 1 s | 17,000 / 22,700 tetrahedra, 112 / 179 s |
+
+![rf_can_mode and rf_can_absorber: the lines' coupling and the driven line's S21, without the foam and with it](img/rf_can_mode.png)
+
 
 The figures above sit at single frequencies; a small reflection there mostly says where its ripple falls. Over the whole band, each solver's agreement with openEMS's reference (the rms of the complex difference of the input reflection, dB, and the rms difference of the transmission's |S|):
 

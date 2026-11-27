@@ -262,7 +262,8 @@ antenna examples need solids (gfdtd and openEMS, 2026-11-27, [Examples](examples
 
 A puck of εr 38 is the hardest case for the staircase: `rf_dr_bandpass`'s TE01δ peak is 9.228 GHz on gfdtd and
 9.196 GHz on openEMS on the same default mesh, 9.2014 and 9.1987 GHz on one of 3.2 times the cells, and 9.210 GHz on
-Palace ([examples](examples.md#dielectric-resonator)).
+Palace ([examples](examples.md#dielectric-resonator)). Another drawn-solid example: a can's box resonance and an
+absorber under its lid ([`rf_can_mode`](examples.md#shield-can-resonance)).
 
 ## Time step
 

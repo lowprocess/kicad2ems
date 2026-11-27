@@ -1,0 +1,61 @@
+{
+ "format": "kicad2ems-shapes",
+ "version": 1,
+ "units": "mm",
+ "coordinates": "model (y up)",
+ "shapes": [
+  {
+   "kind": "rect",
+   "points": [
+    [
+     -0.5,
+     -20.5
+    ],
+    [
+     30.5,
+     0.5
+    ]
+   ],
+   "material": "metal",
+   "z0": -0.5,
+   "z1": 5.3,
+   "name": "can"
+  },
+  {
+   "kind": "rect",
+   "points": [
+    [
+     0.0,
+     -20.0
+    ],
+    [
+     30.0,
+     0.0
+    ]
+   ],
+   "material": "air",
+   "z0": 0.0,
+   "z1": 4.8,
+   "name": "inside"
+  },
+  {
+   "kind": "rect",
+   "points": [
+    [
+     0.0,
+     -20.0
+    ],
+    [
+     30.0,
+     0.0
+    ]
+   ],
+   "material": "dielectric",
+   "z0": 3.8,
+   "z1": 4.8,
+   "er": 2.0,
+   "tand": 1.0,
+   "name": "absorber"
+  }
+ ]
+}

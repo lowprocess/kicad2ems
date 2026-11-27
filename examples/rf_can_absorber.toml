@@ -1,0 +1,29 @@
+# kicad2ems example: rf_can_mode's can with a lossy sheet drawn under its lid
+# (rf_can_absorber_shapes.json): 1 mm of a carbon-loaded foam, er 2, tan d 1,
+# over the whole can. The can's first resonance, which couples the two lines,
+# is damped flat. Board and drawing: python examples/make_rf_examples.py
+# can_absorber
+#   kicad2ems examples/rf_can_absorber.toml --solvers gfdtd
+# 2026-11-27 (RX 7800 XT): no peak in the lines' coupling (S31 at most -33
+# dB, -11.7 dB without the foam; tan d 0.1 / 0.3: -23.6 / -30.8 dB at 7.92
+# GHz); 0.08 M cells, 14k timesteps, 1 s. Palace: the mode at 7.643 GHz, Q
+# 12.4 (431 without; 22,700 tetrahedra, 179 s).
+board   = "rf_can_absorber.kicad_pcb"   # paths are relative to this file
+shapes  = "rf_can_absorber_shapes.json"
+ground  = "B.Cu"
+fmin    = 6.0           # GHz
+fmax    = 11.0
+points  = 1001
+end_db  = -60
+out     = "out"
+
+[solver.openems]
+bc      = "MUR"
+air     = 1.0
+excite  = ["P1"]
+max_steps = 3000000
+
+[solver.palace]
+feature = 1
+margin  = 0.5
+modes   = 3

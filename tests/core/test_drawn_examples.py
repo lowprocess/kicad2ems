@@ -34,7 +34,8 @@ def _made(gen, kind, tmp_path):
     return b, json.load(open(shapes))
 
 
-@pytest.mark.parametrize('kind', ['dr_bandpass', 'dr_bandstop'])
+@pytest.mark.parametrize('kind', ['dr_bandpass', 'dr_bandstop', 'can_mode',
+                                  'can_absorber'])
 def test_the_kept_drawing_is_the_generators(gen, kind, tmp_path):
     """examples/rf_<kind>_shapes.json (in the repository, shipped) is what the
     generator writes: a changed generator needs its drawing written again."""
@@ -44,11 +45,13 @@ def test_the_kept_drawing_is_the_generators(gen, kind, tmp_path):
 
 
 @pytest.mark.parametrize('kind,ports', [('dr_bandpass', 2),
-                                        ('dr_bandstop', 2)])
+                                        ('dr_bandstop', 2),
+                                        ('can_mode', 4),
+                                        ('can_absorber', 4)])
 def test_a_can_closes_round_the_board(gen, kind, ports, tmp_path):
     """The can: a metal shell round the board (the mesh ends at its outer
     faces), the board's dielectric kept inside it, the lines' ends clear of
-    its walls; the puck and its support drawn inside."""
+    its walls; the puck and its support, or the absorber, drawn inside."""
     from kicad2ems.core.solids import pieces, enclosure, extent
     b, d = _made(gen, kind, tmp_path)
     assert len(b.ports) == ports
@@ -64,7 +67,10 @@ def test_a_can_closes_round_the_board(gen, kind, ports, tmp_path):
     for poly in b.copper['F.Cu']:  # no line touches the can's walls
         assert all(poly.distance(m) > 0.5 for m in metal)
     names = {s['name']: s for s in d['shapes']}
-    puck, sup = names['puck'], names['support']
-    assert puck['er'] == 38.0 and puck['z0'] == sup['z1']
-    assert [p.er for p in ps if p.name == 'puck'] == [38.0]
+    if kind.startswith('dr_'):
+        puck, sup = names['puck'], names['support']
+        assert puck['er'] == 38.0 and puck['z0'] == sup['z1']
+        assert [p.er for p in ps if p.name == 'puck'] == [38.0]
+    else:
+        assert ('absorber' in names) == (kind == 'can_absorber')
 
