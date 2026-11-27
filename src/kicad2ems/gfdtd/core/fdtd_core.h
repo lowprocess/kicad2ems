@@ -222,8 +222,12 @@ GF_DEV void gf_pml_h(idx_t e, idx_t m, const float* V, float* I, float* psi,
 // the magnetised ferrite (operator._ferrite), cell c: its magnetisation from b
 // = h + m on its four edges (ce: their places in the edge list; ei: their flat
 // indices into I, eli: 1 / their dual lengths, em: the cells' m there), the
-// trapezoidal rule m+ = P m- + Q (b+ + b-) (ck: p0 p1 q0 q1; cs: mx my bx by),
-// its change into cd (component rows of nc + 1, the last a zero dummy)
+// trapezoidal rule m+ = P m- + Q (b+ + b-) on the edges' mean (ck: p0 p1 q0
+// q1), and each component's faces' difference D = (b1 - b0) / 2 a precession
+// of its own from (D, 0) whose first part goes back to the faces, - to the
+// lower, + to the upper (cs: mx my bx by, then the differences' mDx mDy qDx
+// qDy Dx Dy), the faces' changes into cd (rows x lower, x upper, y lower, y
+// upper of nc + 1, the last a zero dummy)
 GF_DEV void gf_ferrite_cell(idx_t c, int nc, const int* ce, const float* ck,
                             float* cs, float* cd, const idx_t* ei,
                             const float* eli, const float* em, const float* I)
@@ -234,18 +238,88 @@ GF_DEV void gf_ferrite_cell(idx_t c, int nc, const int* ce, const float* ck,
         b[q] = I[ei[x]] * eli[x] + em[x];
     }
     const float bx = 0.5f * (b[0] + b[1]), by = 0.5f * (b[2] + b[3]);
-    const idx_t o = 4 * c;
+    const float Dx = 0.5f * (b[1] - b[0]), Dy = 0.5f * (b[3] - b[2]);
+    const idx_t o = 10 * c, ok = 4 * c;
     const float mx = cs[o], my = cs[o + 1];
     const float sx = bx + cs[o + 2], sy = by + cs[o + 3];
-    const float k0 = ck[o], k1 = ck[o + 1], k2 = ck[o + 2], k3 = ck[o + 3];
+    const float k0 = ck[ok], k1 = ck[ok + 1], k2 = ck[ok + 2], k3 = ck[ok + 3];
     const float nx = k0 * mx - k1 * my + k2 * sx - k3 * sy;
     const float ny = k0 * my + k1 * mx + k2 * sy + k3 * sx;
-    cd[c] = nx - mx;
-    cd[(idx_t)nc + 1 + c] = ny - my;
     cs[o] = nx;
     cs[o + 1] = ny;
     cs[o + 2] = bx;
     cs[o + 3] = by;
+    float cD[2];
+    const float Dn[2] = {Dx, Dy};
+    for (int a = 0; a < 2; a++) {
+        const float mD = cs[o + 4 + a], qD = cs[o + 6 + a];
+        const float SD = Dn[a] + cs[o + 8 + a];
+        const float mDn = k0 * mD - k1 * qD + k2 * SD;
+        cs[o + 6 + a] = k0 * qD + k1 * mD + k3 * SD;
+        cs[o + 4 + a] = mDn;
+        cs[o + 8 + a] = Dn[a];
+        cD[a] = mDn - mD;
+    }
+    const idx_t r = (idx_t)nc + 1;
+    cd[c] = nx - mx - cD[0];
+    cd[r + c] = nx - mx + cD[0];
+    cd[2 * r + c] = ny - my - cD[1];
+    cd[3 * r + c] = ny - my + cD[1];
+}
+
+// the same, magnetised along its own direction u (or partly magnetised): b
+// from all six edges (x, y, z lower and upper), m+ = p0 m + p1 u x m + q0 (S -
+// u (u . S)) + q1 u x S, S = b+ + b-, and the instant qs (b+ - b-) added to
+// its change; each component's difference's first part times 1 - u_a^2, plus
+// its instant qs (D+ - D-) (ck: p0 p1 q0 q1 ux uy uz qs; cs: mx my mz bx by
+// bz, then the differences' mD (3) qD (3) D (3); cd: six face rows)
+GF_DEV void gf_ferrite_cell3(idx_t c, int nc, const int* ce, const float* ck,
+                             float* cs, float* cd, const idx_t* ei,
+                             const float* eli, const float* em, const float* I)
+{
+    float b[6];
+    for (int q = 0; q < 6; q++) {
+        const int x = ce[6 * c + q];
+        b[q] = I[ei[x]] * eli[x] + em[x];
+    }
+    const float bx = 0.5f * (b[0] + b[1]), by = 0.5f * (b[2] + b[3]),
+                bz = 0.5f * (b[4] + b[5]);
+    const idx_t o = 15 * c, ok = 8 * c;
+    const float mx = cs[o], my = cs[o + 1], mz = cs[o + 2];
+    const float px = cs[o + 3], py = cs[o + 4], pz = cs[o + 5];
+    const float sx = bx + px, sy = by + py, sz = bz + pz;
+    const float k0 = ck[ok], k1 = ck[ok + 1], k2 = ck[ok + 2], k3 = ck[ok + 3];
+    const float ux = ck[ok + 4], uy = ck[ok + 5], uz = ck[ok + 6],
+                qs = ck[ok + 7];
+    const float us = ux * sx + uy * sy + uz * sz;
+    const float nx = k0 * mx + k1 * (uy * mz - uz * my) + k2 * (sx - ux * us) +
+                     k3 * (uy * sz - uz * sy);
+    const float ny = k0 * my + k1 * (uz * mx - ux * mz) + k2 * (sy - uy * us) +
+                     k3 * (uz * sx - ux * sz);
+    const float nz = k0 * mz + k1 * (ux * my - uy * mx) + k2 * (sz - uz * us) +
+                     k3 * (ux * sy - uy * sx);
+    const float dm[3] = {nx - mx + qs * (bx - px), ny - my + qs * (by - py),
+                         nz - mz + qs * (bz - pz)};
+    const float uu[3] = {ux, uy, uz};
+    cs[o] = nx;
+    cs[o + 1] = ny;
+    cs[o + 2] = nz;
+    cs[o + 3] = bx;
+    cs[o + 4] = by;
+    cs[o + 5] = bz;
+    const idx_t r = (idx_t)nc + 1;
+    for (int a = 0; a < 3; a++) {
+        const float D = 0.5f * (b[2 * a + 1] - b[2 * a]);
+        const float mD = cs[o + 6 + a], qD = cs[o + 9 + a], Dp = cs[o + 12 + a];
+        const float SD = D + Dp;
+        const float mDn = k0 * mD - k1 * qD + k2 * SD;
+        cs[o + 9 + a] = k0 * qD + k1 * mD + k3 * SD;
+        cs[o + 6 + a] = mDn;
+        cs[o + 12 + a] = D;
+        const float cD = (1.f - uu[a] * uu[a]) * (mDn - mD) + qs * (D - Dp);
+        cd[2 * a * r + c] = dm[a] - cD;
+        cd[(2 * a + 1) * r + c] = dm[a] + cD;
+    }
 }
 
 // edge e: its h less its two cells' change (ec: their places in cd, ew: their

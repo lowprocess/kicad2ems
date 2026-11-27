@@ -287,12 +287,18 @@ class NumpyBackend:
         fe = getattr(op, 'ferrite', None)
         self.n_fc = fe.nc if fe is not None else 0
         self.n_fe = fe.ne if fe is not None else 0
+        # the ferrite's components: 2 (along +-z, the fast path) or 3; faces:
+        # each face's own difference too (operator._ferrite)
+        self.fc_na = getattr(fe, 'na', 2) if fe is not None else 2
+        self.fc_faces = bool(getattr(fe, 'faces', False))
         if fe is not None:
+            na, fc = self.fc_na, self.fc_faces
             f32 = lambda a: np.ascontiguousarray(a, np.float32).ravel()
             self.fc_e = np.ascontiguousarray(fe.e, np.int32).ravel()
             self.fc_k = f32(fe.k)
-            self.fc_s = np.zeros(4 * fe.nc, np.float32)
-            self.fc_d = np.zeros(2 * (fe.nc + 1), np.float32)
+            self.fc_s = np.zeros((5 if fc else 2) * na * fe.nc, np.float32)
+            self.fc_d = np.zeros((2 if fc else 1) * na * (fe.nc + 1),
+                                 np.float32)
             self.fe_i = np.asarray(fe.idx, np.int64)
             self.fe_l, self.fe_li = f32(fe.lh), f32(1.0 / fe.lh)
             self.fe_c = np.ascontiguousarray(fe.cells, np.int32).ravel()
@@ -370,16 +376,50 @@ class NumpyBackend:
             return
         I = self.I.reshape(-1)
         b = I[self.fe_i] * self.fe_li + self.fe_m
-        e = self.fc_e.reshape(-1, 4)
-        bx, by = 0.5 * (b[e[:, 0]] + b[e[:, 1]]), 0.5 * (b[e[:, 2]] + b[e[:, 3]])
-        st, k = self.fc_s.reshape(-1, 4), self.fc_k.reshape(-1, 4)
-        mx, my = st[:, 0].copy(), st[:, 1].copy()
-        sx, sy = bx + st[:, 2], by + st[:, 3]
-        nx = k[:, 0] * mx - k[:, 1] * my + k[:, 2] * sx - k[:, 3] * sy
-        ny = k[:, 0] * my + k[:, 1] * mx + k[:, 2] * sy + k[:, 3] * sx
-        d = self.fc_d.reshape(2, -1)
-        d[0, :-1], d[1, :-1] = nx - mx, ny - my
-        st[:, 0], st[:, 1], st[:, 2], st[:, 3] = nx, ny, bx, by
+        na, fc = self.fc_na, self.fc_faces
+        e = self.fc_e.reshape(-1, 2 * na)
+        b0, b1 = b[e[:, 0::2]], b[e[:, 1::2]]       # the lower, upper faces'
+        B = 0.5 * (b0 + b1)                         # (nc, na) at the centres
+        st = self.fc_s.reshape(-1, (5 if fc else 2) * na)
+        d = self.fc_d.reshape((2 if fc else 1) * na, -1)
+        m, S = st[:, :na].copy(), B + st[:, na:2 * na]
+        if na == 2:
+            k = self.fc_k.reshape(-1, 4)
+            nx = k[:, 0] * m[:, 0] - k[:, 1] * m[:, 1] + k[:, 2] * S[:, 0] \
+                - k[:, 3] * S[:, 1]
+            ny = k[:, 0] * m[:, 1] + k[:, 1] * m[:, 0] + k[:, 2] * S[:, 1] \
+                + k[:, 3] * S[:, 0]
+            new = np.stack([nx, ny], axis=1)
+            dm = new - m
+            fac, qs = 1.0, 0.0
+        else:
+            k = self.fc_k.reshape(-1, 8)
+            u = k[:, 4:7]
+            us = (u * S).sum(axis=1, keepdims=True)
+            new = (k[:, 0:1] * m + k[:, 1:2] * np.cross(u, m)
+                   + k[:, 2:3] * (S - u * us) + k[:, 3:4] * np.cross(u, S))
+            qs = k[:, 7:8]
+            dm = new - m + qs * (B - st[:, na:2 * na])
+            fac = 1 - u * u
+        if fc:
+            # each component's faces' difference D = (b1 - b0) / 2 drives a
+            # precession of its own (the cell's coefficients) from (D, 0):
+            # its first part Xd D, times 1 - u_a^2 (Xd P's a, a), and the
+            # instant qs D: the lower face takes the mean's change less it,
+            # the upper one plus it
+            D = 0.5 * (b1 - b0)
+            mD, qD = st[:, 2 * na:3 * na].copy(), st[:, 3 * na:4 * na].copy()
+            SD = D + st[:, 4 * na:5 * na]
+            k0, k1, k2, k3 = (k[:, j:j + 1] for j in range(4))
+            mDn = k0 * mD - k1 * qD + k2 * SD
+            st[:, 3 * na:4 * na] = k0 * qD + k1 * mD + k3 * SD
+            cD = fac * (mDn - mD) + qs * (D - st[:, 4 * na:5 * na])
+            st[:, 2 * na:3 * na], st[:, 4 * na:5 * na] = mDn, D
+            d[0::2, :-1] = (dm - cD).T
+            d[1::2, :-1] = (dm + cD).T
+        else:
+            d[:, :-1] = dm.T
+        st[:, :na], st[:, na:2 * na] = new, B
         c, w = self.fe_c.reshape(-1, 2), self.fe_w.reshape(-1, 2)
         delta = w[:, 0] * self.fc_d[c[:, 0]] + w[:, 1] * self.fc_d[c[:, 1]]
         self.fe_m += delta
@@ -650,11 +690,12 @@ class CoreBackend(_Compressed, NumpyBackend):
     def ferrite(self):
         if not self.n_fc:
             return
-        if not hasattr(self.core, 'ferrite'):  # (a core built before it)
+        f = getattr(self.core, 'ferrite' if self.fc_na == 2 else 'ferrite3',
+                    None)
+        if f is None:  # (a core built before it)
             return NumpyBackend.ferrite(self)
-        self.core.ferrite(self.I, self.fc_e, self.fc_k, self.fc_s, self.fc_d,
-                          self.fe_i, self.fe_l, self.fe_li, self.fe_c,
-                          self.fe_w, self.fe_m)
+        f(self.I, self.fc_e, self.fc_k, self.fc_s, self.fc_d, self.fe_i,
+          self.fe_l, self.fe_li, self.fe_c, self.fe_w, self.fe_m)
 
     def mur_pre(self):
         if self.op.mur is not None:
@@ -951,7 +992,8 @@ class VulkanBackend(_Compressed, NumpyBackend):
         self._launch('update_h', self.n)
 
     def ferrite(self):
-        self._launch('ferrite_m', self.n_fc)
+        self._launch('ferrite_m' if self.fc_na == 2 else 'ferrite_m3',
+                     self.n_fc)
         self._launch('ferrite_h', self.n_fe)
 
     def update_E(self):
@@ -1057,9 +1099,9 @@ def gpu_bytes(op):
                              if b != sl['axis']]))
               for sl in (op.pml or []))
     fe = getattr(op, 'ferrite', None)
-    # the ferrite: 56 B a cell (edges, coefficients, state, change), 28 an
-    # edge
-    fer = 56 * fe.nc + 28 * fe.ne if fe is not None else 0
+    # the ferrite: 56 B a cell along z (edges, coefficients, state, change),
+    # 92 along its own direction, 36 an edge
+    fer = fe.nbytes() if fe is not None else 0
     return 24 * n + code * n + 4 * n + pml + fer + 64e6
 
 
@@ -1086,11 +1128,15 @@ def make_backend(op, backend='auto', dtype=np.float32):
     name = resolve_backend(backend)
     kinds = {'vulkan': VulkanBackend, 'core': CoreBackend,
              'numpy': NumpyBackend}
-    # (the compiled H update is geometry alone)
-    if getattr(op, 'magnetic', False) and name != 'numpy':
+    # (the compiled H update is geometry alone; their ferrite the faces'
+    # scheme alone)
+    fe = getattr(op, 'ferrite', None)
+    why = ("magnetic materials (Mue / Sigma)" if getattr(op, 'magnetic', False)
+           else "a ferrite on the cells' centres alone (scheme 'centre')"
+           if fe is not None and not getattr(fe, 'faces', False) else None)
+    if why and name != 'numpy':
         be = NumpyBackend(op, dtype)
-        be.fallback = ("magnetic materials (Mue / Sigma): running on NumPy's "
-                       f"backend, not {name}")
+        be.fallback = f"{why}: running on NumPy's backend, not {name}"
         return be
     chosen = devices.preference(backend, 'GFDTD_BACKEND', ALIASES)
     try:

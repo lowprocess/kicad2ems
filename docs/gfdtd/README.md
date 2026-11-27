@@ -66,7 +66,7 @@ among them) work on gfdtd unchanged.
 | Grid | rectilinear, Cartesian; CSXCAD's helpers: `SmoothMeshLines` (CSXCAD's own function: the lines openEMS gets), `GetLine`, `Snap2LineNumber`, `GetSimArea`, `IsValid`, `Clear`; `openEMS.AddEdges2Grid` (box edges, `metal_edge_res`) |
 | Materials | isotropic epsilon and conductivity (kappa), averaged over the four cells around each edge; mue and magnetic loss (sigma) along each dual edge (such a model runs on the NumPy backend: the compiled kernels' H update is geometry alone) |
 | Dispersion | Debye materials (`DebyeMaterial`, any number of poles): `--diel wideband` |
-| Ferrite | gfdtd's own, beyond openEMS: `FerriteMaterial` (`CSX.AddFerriteMaterial`; in the XML as `<FerriteMaterial>`), a microwave ferrite magnetised along z, its permeability the Polder tensor ([How it works](#how-it-works)): εr and κ, saturation magnetisation `ms` (A/m), Gilbert damping `alpha`, `gamma` (γμ0, rad/s per A/m), and the internal bias `bias` (A/m, its sign the direction) as one value or a table read at each cell's centre (NaN: not saturated, the cell left unbiased) |
+| Ferrite | gfdtd's own, beyond openEMS: `FerriteMaterial` (`CSX.AddFerriteMaterial`; in the XML as `<FerriteMaterial>`), a magnetised microwave ferrite, its permeability the Polder tensor turned to each cell's magnetisation ([How it works](#how-it-works)): εr and κ, saturation magnetisation `ms` (A/m), Gilbert damping `alpha`, `gamma` (γμ0, rad/s per A/m), the internal bias `bias` (A/m) as one value along z (its sign the direction), one vector, or a table read at each cell's centre (`hz`, and `hx`, `hy`; `mx`, `my`, `mz`: M/Ms, below 1 partly magnetised, Green and Sandy's μ at `freq`; NaN: the cell left unbiased) |
 | Metal | `Metal` as PEC; `ConductingSheet` (conductivity, thickness: kicad2ems's `--sigma`) with openEMS's conductor-loss model on flat primitives, PEC on others and next to the boundaries, as openEMS's; with `roughness` (m RMS, gfdtd's own) rough copper |
 | Primitives | Box, Polygon, LinPoly, Cylinder, CylindricalShell, Sphere, SphericalShell, Curve (a wire along the mesh edges nearest to it, as openEMS's) |
 | Lumped elements | R, L, C: parallel, or series RLC (`LEtype=1`), with metal caps |
@@ -171,30 +171,55 @@ V   = vv * V + vi * (loop sum of I around the dual face)  from C = eps A' / l, G
   branches are poles driven by the voltage, L di/dt + R i = V, integrated and folded into the E update like the
   Debye ones (openEMS updates them explicitly).
 - **Magnetised ferrite** (`FerriteMaterial`): the linearised Landau–Lifshitz–Gilbert equation of the small
-  magnetisation m = (mx, my) about a static bias along z, written in b = B/μ0 = h + m, which the H update advances by
-  Faraday's law alone (the ferrite's H edges are vacuum's):
-  dm/dt = s J (ωr m − ωm b) + α s J dm/dt, J (x, y) = (−y, x), ωr = γ(H0 + Ms), ωm = γMs, s the bias's sign. In the
-  frequency domain that is Polder's tensor, B = μ0 [μ, jκ; −jκ, μ] h for +z. m lives at the cell centres: b there
-  is the mean of its two x (y) edges', and each edge's h is b less its cells' m weighted by their half lengths over
-  its dual length (the transpose of the mean in the cells' and edges' volumes). The trapezoidal rule makes the
-  update m+ = P m− + Q (b+ + b−), with P and Q two numbers each times I and J: unbiased by b it is an exact rotation
-  by 2 atan(ωr dt / 2), stable at any step, and the time step is vacuum's. Two kernels run after the H update (the
-  cells, then their edges), `fdtd_core.h`'s `gf_ferrite_cell` and `gf_ferrite_edge` on the GPU and in the CPU
-  core.
+  magnetisation m, normal to each cell's static magnetisation u (internal field H0, saturation Ms), written in
+  b = B/μ0 = h + m, which the H update advances by Faraday's law alone (the ferrite's H edges are vacuum's):
+  dm/dt = U (ωr m − ωm b) + α U dm/dt, U v = u × v, ωr = γ(H0 + Ms), ωm = γMs. In the frequency domain that is
+  Polder's tensor turned to u (B = μ0 [μ, jκ; −jκ, μ] h for u = +z). The trapezoidal rule makes the update
+  m+ = p0 m− + p1 U m− + q0 P (b+ + b−) + q1 U (b+ + b−) (P across u; U² = −P): unbiased by b an exact rotation
+  by 2 atan(ωr dt / 2), stable at any step; the time step is vacuum's.
+  - Where: each cell runs that update on the mean of its two x, y and z edges' b, and each component's faces'
+    difference D = (b1 − b0)/2 drives a precession of its own (the cell's coefficients, from (D, 0)) whose first
+    part, times 1 − u_a², goes back to the faces, less to the lower, plus to the upper. Each edge's h is b less
+    its cells' faces' m weighted by their half lengths over its dual length (the transpose of the mean in the
+    cells' and edges' volumes). Without the faces' differences (scheme `centre`, the update until 2026-11-27,
+    on NumPy alone) an edge saw the mean of its two cells' m, and a field alternating from edge to edge none:
+    for a wave of wavenumber k the ferrite's diagonal susceptibility was cos²(k d/2) of its own, the grid's
+    short waves saw a mix of the ferrite and vacuum, and they propagated where nothing does, between
+    √(f0 (f0 + fm)) and f0 + fm (μ_eff < 0): the grid's own magnetostatic modes. With them an edge's own
+    component is its own b's at any k (only the cross terms, κ's, are averaged), and the modes are gone.
+  - Biased along ±z everywhere and saturated (one value, or a table of hz alone) the cells take x and y alone
+    (four edges, two components: half the ferrite's time on the GPU, two thirds in the CPU core); else all three
+    about their own u (`gf_ferrite_cell3`).
+  - A partly magnetised cell (M/Ms = r < 1, the table's m) is Green and Sandy's: μ = μd + (1 − μd) r^1.5 across
+    and along u (μd Schlömann's 1/3 + 2/3 √(1 − (fm/f)²) at the material's `freq`, 1/3 where f ≤ fm) and Rado's
+    κ = r fm / f: the same update with ωr = r ωm / μ and ωm → ωr / μ (no internal field), and an instant
+    (1 − 1/μ) b added to the cell's change (μ < 1 speeds the wave: the time step holds while εr μ ≥ 1). Its
+    low-field loss and Green and Sandy's μ_z are left out (μ along u is the same μ).
+  - Two kernels run after the H update (the cells, then their edges), `fdtd_core.h`'s `gf_ferrite_cell`,
+    `gf_ferrite_cell3` and `gf_ferrite_edge` on the GPU and in the CPU core.
   - A 10 × 10 × 1 mm PEC box full of ferrite (f0 = γH0 = 3 GHz, fm = γMs = 5 GHz, εr 15): its TM_mn0 modes are
     where (ω/c)² εr μ_eff(ω) = kc², μ_eff = (μ² − κ²)/μ, twice each, below the pole √(f0 (f0 + fm)) and above
-    f0 + fm. At 0.25 mm cells TM110 at 2.903 and 9.250 GHz (analytic 2.899, 9.250), TM210 3.811 and 11.148
-    (3.800, 11.156), TM220 4.169 and 12.887 (4.155, 12.906); at 0.5 mm within 1 %
-    (`tests/gfdtd/test_ferrite.py`). The update in steady state is the Polder tensor to O((ω dt)²) with either
-    bias.
-  - Between that pole and f0 + fm, where nothing propagates (μ_eff < 0), the grid has magnetostatic modes of its
-    own (short ones, whose coupling the centre-to-edge mean blurs): small peaks, 1–10 % of the main ones, that
-    stay as the cells shrink. A circulator works above f0 + fm (below resonance), clear of them.
-  - Lossless it rings in those modes, radiating slowly: no growth in 200,000 steps; damped (α from a 30 Oe
-    linewidth) it settles as a dielectric does. The end criterion watches the field's energy, not the
-    magnetisation's: on the circulator −60 dB moved its S by 0.6 dB at most against −40.
-  - Cost: 1.7–2.8 % a step on an RX 7800 XT (0.5–1.2 M nodes, 13–52 k ferrite cells); in the CPU core 63 µs a step
-    for 13 k cells (NumPy's 332 µs), beside 320 µs for H and E over 0.5 M nodes. 56 B a cell and 28 an edge.
+    f0 + fm. At 0.5 mm cells TM110 at 2.897 and 9.246 GHz (analytic 2.899, 9.250), TM210 3.794 and 11.134
+    (3.800, 11.156), TM220 4.147 and 12.870 (4.155, 12.906); at 0.25 mm 2.899 / 9.248, 3.799 / 11.150,
+    4.152 / 12.897 (the cells' centres alone had 2.915, 3.831, 4.243 at 0.5 mm and 2.903, 3.809, 4.175 at
+    0.25). Between 4.9 and 8 GHz the largest peak is 0.1 % of TM110's at 0.5 mm (`centre`: 10.5 % at 0.5 mm,
+    5.1 % at 0.25, 3.2 % at 0.125: smaller as the cells shrink, never gone) (`tests/gfdtd/test_ferrite.py`).
+  - The cavity turned to x (1 × 10 × 10 mm, biased along x) on the general update gives the z cavity's trace
+    on the fast one within 2e-5 of its peak (float32's rounding); the cell's μ in steady state is Polder's turned
+    to u = (1, 2, 2)/3, and Green and Sandy's at r 0.6 and 0, to O((ω dt)²); the backends agree within 1e-4 of
+    the peak, tilted and partly magnetised.
+  - Lossless it rings, radiating slowly: no growth in 200,000 steps on the GPU (biased along z, tilted, partly
+    magnetised: the energy's largest in each quarter after the pulse 4.4, 3.0, 2.4, 2.1 % of its peak along z);
+    damped (α from a 30 Oe linewidth) it settles as a dielectric does. The end criterion watches the field's
+    energy, not the magnetisation's: on `rf_circulator` −60 dB instead of −40 moved S by 0.2 dB at most from 6.5
+    to 14 GHz (1.6 dB at a −40 dB null).
+  - Cost, on an RX 7800 XT: 0.49 M nodes with 12.8 k ferrite cells take 60.4 µs a step biased along z, 63.3
+    along their own directions, against 57.1 without (+6 %, +11 %; the cells' centres alone: +1.6 %, +4.5 %);
+    1.19 M nodes with 59 k cells (5 % of them) +22 % and +31 %: the kernels read and write 88 B a cell along z
+    (edges, coefficients, the faces' state and changes), 140 B along its own direction, and 36 B an edge, about
+    as fast as the GPU's memory goes. In the CPU core the same cells take 56 µs a step along z and 85 along their
+    own directions (NumPy's 0.9 and 2–3 ms), beside 545 µs for H and E: a thread to each 4,096 cells at most (13 k
+    cells on all 24 threads had taken 75 µs, the threads' start and barrier more than their work).
 - **Rough copper** (`ConductingSheet(..., roughness=)`, m RMS; gfdtd's, written to the XML as `Roughness`, which
   openEMS reads past): the resistance per square times Hammerstad and Jensen's factor
   1 + 2/pi atan(1.4 (rms / delta)^2), fitted from f_max / 10^4 to 2 f_max as a passive R-L impedance (7–9

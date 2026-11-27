@@ -1280,105 +1280,214 @@ def _nearest(t, c):
 
 class Ferrite:
     """A model's magnetised ferrite (_ferrite): its cells' update and the H
-    edges they meet, flat arrays. Per cell c (nc): e[c] its four edges (x
-    lower, x upper, y lower, y upper: positions in the edge list), k[c] (p0,
-    p1, q0, q1), state (mx, my, bx, by: A/m, zero at the start). Per edge
-    (ne): idx (its flat index into I), lh (its dual length, m: I = H lh),
-    cells (its two cells' offsets into the change array dm[2 (nc + 1)]: the
-    component's row, the dummy cell nc where there is none), w (their
-    weights)."""
+    edges they meet, flat arrays. na: the components (2: every cell biased
+    along +-z, the fast path; 3: along its own direction u, or partly
+    magnetised). Per cell c (nc): e[c] its 2 na edges (x lower, x upper, y
+    lower, y upper[, z lower, z upper]: positions in the edge list), k[c]
+    (na 2: p0, s p1, q0, s q1; na 3: p0, p1, q0, q1, ux, uy, uz, qs), state
+    (m, the last b: 2 na floats, A/m, zero at the start; faces: and per
+    component its faces' difference mode m, its partner and the last
+    difference: 3 na more). Per edge (ne): idx (its flat index into I), lh
+    (its dual length, m: I = H lh), cells (its two cells' offsets into the
+    change array dm[rows (nc + 1)]: the component's row, faces: the face's,
+    the dummy cell nc where there is none), w (their weights)."""
 
     def __init__(self, **kw):
         self.__dict__.update(kw)
 
+    def nbytes(self):
+        """What its arrays take on the GPU (bytes): per cell the edges,
+        coefficients, state and change; per edge its index, lengths, cells,
+        weights and m."""
+        f = getattr(self, 'faces', False)
+        per_cell = 4 * (2 * self.na + self.k.shape[1] + (5 if f else 2)
+                        * self.na + (2 if f else 1) * self.na)
+        return per_cell * self.nc + 36 * self.ne
+
+
+def _cell_bias(p, grid, cells):
+    """The internal field h (n, 3, A/m) and M / Ms m (n, 3; None: saturated
+    along h) of a FerriteMaterial at the cells (index arrays), its bias
+    table's nearest point to each centre."""
+    n = len(cells[0])
+    b = p.bias
+    if isinstance(b, dict):
+        near = tuple(_nearest(b[a], grid.mid[k][q])
+                     for k, (a, q) in enumerate(zip('xyz', cells)))
+        h = np.stack([b[c][near] if b.get(c) is not None else np.zeros(n)
+                      for c in ('hx', 'hy', 'hz')], axis=1)
+        m = (np.stack([b[c][near] for c in ('mx', 'my', 'mz')], axis=1)
+             if b.get('mz') is not None else None)
+        return h, m
+    v = np.asarray(b, float)
+    h = np.tile(v if v.shape == (3,) else [0.0, 0.0, float(v)], (n, 1))
+    return h, None
+
+
+def schlomann(fm, f):
+    """Schlomann's demagnetised permeability: 1/3 + 2/3 sqrt(1 - (fm / f)^2)
+    (fm = gamma Ms, f the frequency; 1/3 where f <= fm, the low-field loss's
+    band, which it does not hold)."""
+    x = np.clip(np.asarray(fm, float) / np.maximum(f, 1e-300), 0.0, 1.0)
+    return 1.0 / 3.0 + 2.0 / 3.0 * np.sqrt(1.0 - x * x)
+
 
 def _ferrite(fer, fown, grid, sh, dt, notes):
     """The ferrite cells' update (gfdtd.csx.FerriteMaterial). The linearised
-    Landau-Lifshitz-Gilbert equation of the small magnetisation m = (mx, my)
-    about a bias along z (sign s, internal field H0, saturation Ms), written in
-    b = B / mu0 = h + m, which the H update advances by Faraday's law alone
-    (the ferrite's H edges are vacuum's: mu0):
+    Landau-Lifshitz-Gilbert equation of the small magnetisation m (normal to
+    the static magnetisation's direction u: internal field H0, saturation
+    Ms), written in b = B / mu0 = h + m, which the H update advances by
+    Faraday's law alone (the ferrite's H edges are vacuum's: mu0):
 
-        dm/dt = s J (wr m - wm b) + alpha s J dm/dt,  J (x, y) = (-y, x)
+        dm/dt = U (wr m - wm b) + alpha U dm/dt,  U v = u x v
 
     wr = gamma (H0 + Ms), wm = gamma Ms; in the frequency domain the Polder
-    tensor (B = mu0 [mu, j kappa; -j kappa, mu] h for +z). m lives at the cell
-    centres: b there is the mean of its two x (y) edges', and the edges get h
-    = b - the cells' m weighted by half their lengths over the edge's dual one
-    (the transpose of that mean in the cells' and edges' volumes). The
-    trapezoidal rule makes it m+ = P m- + Q (b+ + b-), P = p0 + p1 J, Q = q0 +
-    q1 J: a rotation by 2 atan(wr dt / 2) unbiased by b, at any step."""
+    tensor turned to u (B = mu0 [mu, j kappa; -j kappa, mu] h for +z). m
+    lives at the cell centres: b there is the mean of its two x (y, z)
+    edges', and the edges get h = b - the cells' m weighted by half their
+    lengths over the edge's dual one (the transpose of that mean in the
+    cells' and edges' volumes). The trapezoidal rule makes it m+ = p0 m- +
+    p1 U m- + q0 P (b+ + b-) + q1 U (b+ + b-) (P: across u; U^2 = -P): a
+    rotation by 2 atan(wr dt / 2) unbiased by b, at any step.
+
+    A partly magnetised cell (M / Ms = r < 1: the table's m) is Green and
+    Sandy's: a static mu_s = mu_d + (1 - mu_d) r^1.5 (mu_d Schlomann's at
+    the material's freq) and Rado's kappa = r wm / w, which is the same
+    update with wr = r wm / mu_s, wm -> wr / mu_s (no internal field) plus
+    an instant qs b+, qs = 1 - 1 / mu_s, its change (qs (b+ - b-)) in the
+    cell's.
+
+    Every cell along +-z and saturated: the two components x and y alone
+    (na 2, the fast path); else all three (na 3)."""
     ncell = tuple(n - 1 for n in sh)
-    H0 = np.full(ncell, np.nan)
-    MS, AL, GA = (np.zeros(ncell) for _ in range(3))
+    idx = np.nonzero(fown >= 0)
+    nf = len(idx[0])
+    # the faces' scheme unless every ferrite asks for the cells' centres alone
+    faces = any(getattr(p, 'scheme', 'faces') != 'centre' for p in fer)
+    h = np.full((nf, 3), np.nan)
+    m = np.full((nf, 3), np.nan)
+    has_m = np.zeros(nf, bool)
+    ms, al, ga, fq = (np.zeros(nf) for _ in range(4))
+    own = fown[idx]
     for n, p in enumerate(fer):
-        mine = fown == n
+        mine = own == n
         if not mine.any():
             continue
-        if isinstance(p.bias, dict):  # the table's nearest point to each centre
-            near = [_nearest(p.bias[a], grid.mid[n][q])
-                    for n, (a, q) in enumerate(zip('xyz', np.nonzero(mine)))]
-            H0[mine] = p.bias['hz'][tuple(near)]
-        else:
-            H0[mine] = float(p.bias)
-        MS[mine], AL[mine], GA[mine] = p.ms, p.alpha, p.gamma
-    live = (fown >= 0) & np.isfinite(H0) & (H0 != 0) & (MS > 0)
-    n_off = int(((fown >= 0) & ~live).sum())
+        hh, mm = _cell_bias(p, grid, tuple(q[mine] for q in idx))
+        h[mine] = hh
+        if mm is not None:
+            m[mine], has_m[mine] = mm, True
+        ms[mine], al[mine], ga[mine] = p.ms, p.alpha, p.gamma
+        fq[mine] = getattr(p, 'freq', 0.0) or 0.0
+    # M / Ms and its direction: the table's m where given, else saturated
+    # along h
+    with np.errstate(invalid='ignore'):
+        r = np.where(has_m, np.sqrt((m * m).sum(axis=1)), 1.0)
+        dirn = np.where(has_m[:, None], m, h)
+        nd = np.sqrt((dirn * dirn).sum(axis=1))
+        hn = np.sqrt((h * h).sum(axis=1))
+        sat = r >= 1 - 1e-6
+        live = (np.isfinite(h).all(axis=1) & np.isfinite(dirn).all(axis=1)
+                & (nd > 0) & (ms > 0) & (r > 0) & np.where(sat, hn > 0, True))
+    part = live & ~sat
+    n_off = nf - int(live.sum())
     if n_off:
         notes.append(
-            f"ferrite: {n_off} of {int((fown >= 0).sum())} cells not "
+            f"ferrite: {n_off} of {nf} cells not "
             "saturated (no bias there): left unbiased, a dielectric of mu 1")
-    ci, cj, ck = np.nonzero(live)
-    nc = len(ci)
-    if not nc:
+    if not live.any():
         return None
-    h0, ms, al, ga = H0[live], MS[live], AL[live], GA[live]
-    sg = np.sign(h0)
-    beta = ga * (np.abs(h0) + ms) * dt / 2
-    gm = ga * ms * dt / 2
-    a, c = al + beta, al - beta
+    ci, cj, ck = (q[live] for q in idx)
+    nc = len(ci)
+    u = dirn[live] / nd[live, None]
+    h0 = np.where(sat[live], hn[live], 0.0)
+    ms_, al_, ga_ = ms[live], al[live], ga[live]
+    r_ = np.minimum(r[live], 1.0)
+    pt = part[live]
+    # Green and Sandy's mu_s (1 where saturated), Rado's kappa
+    mu_s = np.ones(nc)
+    if pt.any():
+        mu_d = schlomann(ga_[pt] * ms_[pt] / (2 * np.pi), fq[live][pt])
+        mu_s[pt] = mu_d + (1 - mu_d) * r_[pt] ** 1.5
+    wr = np.where(pt, r_ * ga_ * ms_ / mu_s, ga_ * (h0 + ms_))
+    wm = np.where(pt, wr / mu_s, ga_ * ms_)
+    beta, gm = wr * dt / 2, wm * dt / 2
+    a, c = al_ + beta, al_ - beta
     den = 1 + a * a
-    k = np.stack([(1 + a * c) / den, sg * 2 * beta / den, gm * a / den,
-                  -sg * gm / den], axis=1)
-    # the cells' edges: x at lines i, i + 1; y at lines j, j + 1
-    flat = lambda ax, i, j, kk: _flat(sh, ax, i, j, kk)
-    eall = np.stack([flat(0, ci, cj, ck), flat(0, ci + 1, cj, ck),
-                     flat(1, ci, cj, ck), flat(1, ci, cj + 1, ck)], axis=1)
-    edges, inv = np.unique(eall.ravel(), return_inverse=True)
-    e_of = inv.reshape(nc, 4).astype(np.int32)
+    p0, p1, q0, q1 = (1 + a * c) / den, 2 * beta / den, gm * a / den, -gm / den
+    qs = 1 - 1 / mu_s
+    na = 2 if (not pt.any() and not np.any(u[:, :2])) else 3
+    if na == 2:
+        sg = np.sign(u[:, 2])
+        k = np.stack([p0, sg * p1, q0, sg * q1], axis=1)
+    else:
+        k = np.stack([p0, p1, q0, q1, u[:, 0], u[:, 1], u[:, 2], qs], axis=1)
+    # the cells' edges: along a at lines i and i + 1 of a
+    cols = []
+    for ax_ in range(na):
+        o = [int(ax_ == q) for q in range(3)]
+        cols += [_flat(sh, ax_, ci, cj, ck),
+                 _flat(sh, ax_, ci + o[0], cj + o[1], ck + o[2])]
+    edges, inv = np.unique(np.stack(cols, axis=1).ravel(), return_inverse=True)
+    e_of = inv.reshape(nc, 2 * na).astype(np.int32)
     # each edge's cells: the ferrite cell index map (-1: none)
     cmap = np.full(ncell, -1, np.int64)
     cmap[ci, cj, ck] = np.arange(nc)
     n_per = int(np.prod(sh))
     ax = edges // n_per
     rest = edges % n_per
-    ei, ej, ek = rest // (sh[1] * sh[2]), (rest // sh[2]) % sh[1], rest % sh[2]
+    e3 = (rest // (sh[1] * sh[2]), (rest // sh[2]) % sh[1], rest % sh[2])
     ne = len(edges)
     cells = np.full((ne, 2), nc, np.int64)
     w = np.zeros((ne, 2))
-    lh = np.where(ax == 0, grid.dual[0][ei], grid.dual[1][ej])
+    lh = np.choose(ax, [grid.dual[q][e3[q]] for q in range(3)])
     for side, off in ((0, -1), (1, 0)):  # the cell below the line, above it
-        li = np.where(ax == 0, ei + off, ei)
-        lj = np.where(ax == 1, ej + off, ej)
-        ok = ((li >= 0) & (li < ncell[0]) & (lj >= 0) & (lj < ncell[1])
-              & (ek < ncell[2]))
+        l3 = [np.where(ax == q, e3[q] + off, e3[q]) for q in range(3)]
+        ok = np.ones(ne, bool)
+        for q in range(3):
+            ok &= (l3[q] >= 0) & (l3[q] < ncell[q])
         cc = np.full(ne, -1, np.int64)
-        cc[ok] = cmap[li[ok], lj[ok], ek[ok]]
-        has = cc >= 0
-        d = np.where(ax == 0, grid.d[0][np.clip(li, 0, ncell[0] - 1)],
-                     grid.d[1][np.clip(lj, 0, ncell[1] - 1)])
-        cells[has, side] = cc[has]
-        w[has, side] = 0.5 * d[has] / lh[has]
-    # offsets into dm (2, nc + 1): the edge's component's row
-    cells = cells + ax[:, None] * (nc + 1)
+        cc[ok] = cmap[l3[0][ok], l3[1][ok], l3[2][ok]]
+        hs = cc >= 0
+        d = np.choose(ax, [grid.d[q][np.clip(l3[q], 0, ncell[q] - 1)]
+                           for q in range(3)])
+        cells[hs, side] = cc[hs]
+        w[hs, side] = 0.5 * d[hs] / lh[hs]
+    # offsets into dm: the edge's component's row (centre: na rows of nc + 1);
+    # faces: 2 na rows, each component's lower faces' then its upper ones',
+    # the edge the upper face of the cell below the line and the lower of
+    # the one above it
+    if faces:
+        cells = cells + (2 * ax[:, None] + np.array([[1, 0]])) * (nc + 1)
+    else:
+        cells = cells + ax[:, None] * (nc + 1)
     del cmap
-    notes.append(
-        f"ferrite: {nc} cells magnetised ({ne} H edges), bias "
-        f"{np.abs(h0).min():.4g} to {np.abs(h0).max():.4g} A/m "
-        f"({'+' if (sg > 0).all() else '-' if (sg < 0).all() else '+/-'}z)")
-    return Ferrite(nc=nc, ne=ne, e=e_of, k=k, idx=edges.astype(np.int64),
-                   lh=lh, cells=cells.astype(np.int32), w=w, ijk=(ci, cj, ck),
-                   h0=h0, ms=ms)
+    if na == 2:
+        sg = np.sign(u[:, 2])
+        notes.append(
+            f"ferrite: {nc} cells magnetised ({ne} H edges), bias "
+            f"{h0.min():.4g} to {h0.max():.4g} A/m "
+            f"({'+' if (sg > 0).all() else '-' if (sg < 0).all() else '+/-'}"
+            "z)")
+    else:
+        tilt = np.degrees(np.arccos(np.clip(np.abs(u[:, 2]), 0, 1)))
+        hsat = h0[~pt]
+        notes.append(
+            f"ferrite: {nc} cells magnetised ({ne} H edges) along their own "
+            f"directions (up to {tilt.max():.3g} deg off z, mean "
+            f"{tilt.mean():.2g}), bias "
+            + (f"{hsat.min():.4g} to {hsat.max():.4g} A/m" if len(hsat) else
+               "none saturated"))
+        if pt.any():
+            notes.append(
+                f"ferrite: {int(pt.sum())} of them partly magnetised (M / Ms "
+                f"{r_[pt].min():.2g} to {r_[pt].max():.2g}; Green and Sandy's "
+                f"mu {mu_s[pt].min():.3g} to {mu_s[pt].max():.3g}, Rado's "
+                "kappa)")
+    return Ferrite(nc=nc, ne=ne, na=na, faces=faces, e=e_of, k=k,
+                   idx=edges.astype(np.int64), lh=lh,
+                   cells=cells.astype(np.int32), w=w, ijk=(ci, cj, ck),
+                   h0=h0, ms=ms_, u=u, mr=r_, mu_s=mu_s)
 
 
 def _excitations(props, grid, sh, vv, vi, lE, lH, dt, notes):

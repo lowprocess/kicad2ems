@@ -2,6 +2,7 @@
 // core/fdtd_core.h, over OpenMP threads (x and y across the threads, z
 // innermost). Built by core/build.py into gfdtd._core, driven by
 // engine.CoreBackend.
+#include <algorithm>
 #include <cstdint>
 #include <omp.h>
 #include <vector>
@@ -193,7 +194,8 @@ GF_SIMD
 }
 
 // the ferrite (fdtd_core.h): the cells, then the edges (each edge's two cells'
-// changes, so after all the cells)
+// changes, so after all the cells); na: the components, 2 (along +-z) or 3
+template <int NA>
 static void ferrite(arr<float> I, arr<int32_t> ce, arr<float> ck,
                     arr<float> cs, arr<float> cd, arr<int64_t> ei,
                     arr<float> el, arr<float> eli, arr<int32_t> ec,
@@ -205,14 +207,24 @@ static void ferrite(arr<float> I, arr<int32_t> ce, arr<float> ck,
     const idx_t* ix = (const idx_t*)ptr(ei);
     const float *l = ptr(el), *li = ptr(eli), *w = ptr(ew);
     const int* c2 = ptr(ec);
-    const idx_t nc = cs.size() / 4, ne = em.size();
+    // (the cells' state: 5 floats a component, the faces' scheme)
+    const idx_t nc = cs.size() / (5 * NA), ne = em.size();
+    // a thread for each 4096 cells at most: a few thousand cells' work is
+    // less than the threads' start and barrier (13 k cells: 46 us on 3
+    // threads, 75 on 24)
+    const int nt = (int)std::max<idx_t>(
+        1, std::min<idx_t>(omp_get_max_threads(), (nc + 4095) / 4096));
     py::gil_scoped_release nogil;
-#pragma omp parallel
+#pragma omp parallel num_threads(nt)
     {
         FlushDenormals ftz;
 #pragma omp for schedule(static)
-        for (idx_t c = 0; c < nc; ++c)
-            gf_ferrite_cell(c, (int)nc, e4, k, st, d, ix, li, m, cur);
+        for (idx_t c = 0; c < nc; ++c) {
+            if (NA == 2)
+                gf_ferrite_cell(c, (int)nc, e4, k, st, d, ix, li, m, cur);
+            else
+                gf_ferrite_cell3(c, (int)nc, e4, k, st, d, ix, li, m, cur);
+        }
 #pragma omp for schedule(static)
         for (idx_t e = 0; e < ne; ++e)
             gf_ferrite_edge(e, c2, w, d, m, cur, ix, l);
@@ -231,7 +243,8 @@ PYBIND11_MODULE(_core, m)
     m.def("energy", &energy<uint32_t>);
     m.def("mur_pre", &mur_pre);
     m.def("mur_post", &mur_post);
-    m.def("ferrite", &ferrite);
+    m.def("ferrite", &ferrite<2>);
+    m.def("ferrite3", &ferrite<3>);
     m.def("pml_e", &pml<true>);
     m.def("pml_h", &pml<false>);
     m.def("set_threads", [](int n) { omp_set_num_threads(n); });

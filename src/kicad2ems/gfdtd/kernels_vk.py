@@ -33,7 +33,7 @@ SLAB = 6
 NAMES = ('update_h', 'update_e', 'energy', 'step_h', 'step_e', 'step_post',
          'pml_e', 'pml_h', 'mur_pre', 'mur_post', 'excite', 'assign', 'par_l',
          'series_rlc', 'probe', 'dump', 'copy_words', 'ferrite_m',
-         'ferrite_h')
+         'ferrite_m3', 'ferrite_h')
 
 # the struct the kernels read the model through: pointers first (8 bytes each),
 # then 32-bit values, so the layout is the same in every Vulkan layout rule (and
@@ -323,6 +323,15 @@ void ferrite_m(uint3 tid: SV_DispatchThreadID)
     GF_LOOP(M->n_fc) {
         gf_ferrite_cell(t, M->n_fc, M->fc_e, M->fc_k, M->fc_s, M->fc_d, M->fe_i,
                         M->fe_li, M->fe_m, M->I);
+    }
+}
+
+[shader("compute")] [numthreads(GF_BLOCK, 1, 1)]
+void ferrite_m3(uint3 tid: SV_DispatchThreadID)
+{
+    GF_LOOP(M->n_fc) {
+        gf_ferrite_cell3(t, M->n_fc, M->fc_e, M->fc_k, M->fc_s, M->fc_d,
+                         M->fe_i, M->fe_li, M->fe_m, M->I);
     }
 }
 

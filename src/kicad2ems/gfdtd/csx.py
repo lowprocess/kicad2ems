@@ -586,34 +586,56 @@ class DebyeMaterial(Material):
 
 
 class FerriteMaterial(Material):
-    """gfdtd's, beyond openEMS: a microwave ferrite magnetised along z, its
+    """gfdtd's, beyond openEMS: a magnetised microwave ferrite, its
     permeability the Polder tensor of the linearised Landau-Lifshitz-Gilbert
-    equation (gfdtd.operator._ferrite: the magnetisation at the cell centres,
-    the trapezoidal rule). epsilon and kappa as a Material's; ms the saturation
-    magnetisation (A/m); alpha Gilbert's damping; gamma the gyromagnetic ratio
-    times mu0 (rad/s per A/m: 2.21e5 at g = 2); bias the internal static
-    field along z (A/m; negative: along -z, the magnetisation with it), one
-    value, or a table dict(x, y, z: the lines (drawing units), hz: (len x, len
-    y, len z) A/m) read at each cell's centre (nearest point), NaN where the
-    ferrite is not saturated (those cells left unbiased: a dielectric of mu
+    equation about each cell's static magnetisation (gfdtd.operator._ferrite:
+    the magnetisation at the cell centres, the trapezoidal rule). epsilon and
+    kappa as a Material's; ms the saturation magnetisation (A/m); alpha
+    Gilbert's damping; gamma the gyromagnetic ratio times mu0 (rad/s per
+    A/m: 2.21e5 at g = 2); bias the internal static field (A/m), the ferrite
+    saturated along it: one value along z (negative: along -z), one vector
+    (hx, hy, hz), or a table dict(x, y, z: the lines (drawing units), hz and
+    optionally hx, hy: (len x, len y, len z) A/m, and optionally mx, my, mz:
+    M / Ms, its direction and how far it is magnetised) read at each cell's
+    centre (nearest point). Where m is given and |m| < 1 the cell is partly
+    magnetised (Green and Sandy's mu at freq, Hz: the band centre, and
+    Rado's kappa; its h unused); NaN: left unbiased (a dielectric of mu
     1)."""
     kind = 'FerriteMaterial'
+    TABLE = ('hx', 'hy', 'hz', 'mx', 'my', 'mz')
 
     def __init__(self, name, ms=0.0, alpha=0.0, gamma=2.2128e5, bias=0.0,
-                 **kw):
+                 freq=0.0, scheme='faces', **kw):
         super().__init__(name, **kw)
         self.ms, self.alpha, self.gamma = (_num(ms), _num(alpha), _num(gamma))
+        self.freq = _num(freq)
+        if scheme not in ('faces', 'centre'):
+            raise ValueError(f"ferrite {name}: scheme {scheme!r}, not faces "
+                             "or centre")
+        self.scheme = scheme
         if isinstance(bias, dict):
-            bias = dict(x=np.asarray(bias['x'], float),
-                        y=np.asarray(bias['y'], float),
-                        z=np.asarray(bias['z'], float),
-                        hz=np.asarray(bias['hz'], float))
-            if bias['hz'].shape != (len(bias['x']), len(bias['y']),
-                                    len(bias['z'])):
-                raise ValueError(
-                    f"ferrite {name}: its bias table is "
-                    f"{bias['hz'].shape}, its lines {len(bias['x'])} x "
-                    f"{len(bias['y'])} x {len(bias['z'])}")
+            out = dict(x=np.asarray(bias['x'], float),
+                       y=np.asarray(bias['y'], float),
+                       z=np.asarray(bias['z'], float))
+            shape = (len(out['x']), len(out['y']), len(out['z']))
+            for k in self.TABLE:
+                if bias.get(k) is None:
+                    continue
+                out[k] = np.asarray(bias[k], float)
+                if out[k].shape != shape:
+                    raise ValueError(
+                        f"ferrite {name}: its bias table's {k} is "
+                        f"{out[k].shape}, its lines {shape[0]} x {shape[1]} "
+                        f"x {shape[2]}")
+            if 'hz' not in out or (('mx' in out) != ('mz' in out)):
+                raise ValueError(f"ferrite {name}: its bias table needs hz "
+                                 "(and mx, my, mz together)")
+            bias = out
+        elif np.ndim(bias) == 1:
+            bias = np.asarray(bias, float)
+            if bias.shape != (3,):
+                raise ValueError(f"ferrite {name}: a bias vector has three "
+                                 "components")
         else:
             bias = _num(bias)
         self.bias = bias
@@ -1046,10 +1068,19 @@ def _write_property(parent, p, pid):
         ET.SubElement(el, 'Property', **pa)
         if isinstance(p, FerriteMaterial):  # gfdtd's own element
             fa = dict(Ms=_fmt(p.ms), Alpha=_fmt(p.alpha), Gamma=_fmt(p.gamma))
+            if p.freq:
+                fa['Freq'] = _fmt(p.freq)
+            if p.scheme != 'faces':
+                fa['Scheme'] = p.scheme
             if isinstance(p.bias, dict):
                 for k in ('x', 'y', 'z'):
                     fa[k.upper()] = ','.join(_fmt(v) for v in p.bias[k])
-                fa['HZ'] = ','.join(_fmt(v) for v in p.bias['hz'].ravel())
+                for k in p.TABLE:
+                    if k in p.bias:
+                        fa[k.upper()] = ','.join(_fmt(v)
+                                                 for v in p.bias[k].ravel())
+            elif np.ndim(p.bias) == 1:
+                fa['Bias'] = ','.join(_fmt(v) for v in p.bias)
             else:
                 fa['Bias'] = _fmt(p.bias)
             ET.SubElement(el, 'Ferrite', **fa)
@@ -1125,15 +1156,24 @@ def _read_property(pe, skipped):
             k) is not None else d
         f = lambda k, d: float(fe.get(k)) if fe is not None and fe.get(
             k) is not None else d
-        bias = f('Bias', 0.0)
+        bias = 0.0
+        if fe is not None and fe.get('Bias') is not None:
+            v = _floats(fe.get('Bias'))
+            bias = np.asarray(v) if len(v) == 3 else v[0]
         if fe is not None and fe.get('HZ') is not None:
             ax = {k: _floats(fe.get(k.upper())) for k in 'xyz'}
-            bias = dict(ax, hz=np.asarray(_floats(fe.get('HZ'))).reshape(
-                len(ax['x']), len(ax['y']), len(ax['z'])))
+            shape = (len(ax['x']), len(ax['y']), len(ax['z']))
+            bias = dict(ax, **{
+                k: np.asarray(_floats(fe.get(k.upper()))).reshape(shape)
+                for k in FerriteMaterial.TABLE
+                if fe.get(k.upper()) is not None})
         p = FerriteMaterial(name, epsilon=g('Epsilon', 1.0),
                             kappa=g('Kappa', 0.0), ms=f('Ms', 0.0),
                             alpha=f('Alpha', 0.0),
-                            gamma=f('Gamma', 2.2128e5), bias=bias)
+                            gamma=f('Gamma', 2.2128e5), bias=bias,
+                            freq=f('Freq', 0.0),
+                            scheme=(fe.get('Scheme') if fe is not None
+                                    else None) or 'faces')
     elif tag in ('Material', 'DebyeMaterial', 'LorentzMaterial'):
         pr = pe.find('Property')
         g = lambda k, d: _floats(pr.get(k))[0] if pr is not None and pr.get(
