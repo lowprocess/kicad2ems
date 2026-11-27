@@ -56,7 +56,7 @@ the selection in both views, 7 1 3 5 the 3D camera, X / Y / Z while dragging.
     tab.move_by(dx, dy); tab.rotate_by(30, about); tab.mirror('x')
     tab.align('left'); tab.distribute('x'); tab.make_array('row', n=5, dx=1)
 """
-import os
+import functools, os
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, Signal, QEvent, QTimer, QSignalBlocker
@@ -151,7 +151,9 @@ class DrawTab(QWidget, Draw3D):
         self.measure_pts, self._pick_point = [], None
         self._axis = None  # a drag held to one axis: 'x', 'y', 'z'
         self._undo, self._redo = [], []
-        self._items, self._board_items = [], []
+        # the plan's items of each shape (index): dict(geo, style, items),
+        # kept while its outline is the same
+        self._gfx, self._board_items = [], []
         self.snapper, self._snap_stale, self._snapped = so.Snapper(), True, None
         self.setFocusPolicy(Qt.StrongFocus)
         lay = QVBoxLayout(self)
@@ -865,12 +867,18 @@ class DrawTab(QWidget, Draw3D):
                 dy = 0.0
             elif self._axis == 'y':
                 dx = 0.0
-            dx, dy = round(dx, 6), round(dy, 6)
-            for j, s in st['orig'].items():
-                self.drawing.shapes[j] = s.moved(dx, dy)
+            st['d'] = dx, dy = round(dx, 6), round(dy, 6)
+            # the shapes' items moved (the drawing itself at the end: made
+            # again on each move, 300 shapes took 34 ms a move)
+            for j in st['orig']:
+                for it in self._items_of(j):
+                    it.setPos(dx, dy)
+            if len(st['orig']) == 1 and len(self.selected) == 1:
+                self.handles.setPos(dx, dy)
             self._show_snap()
             self._say_at(*q, f"moved dx {dx:.3f}, dy {dy:.3f} mm" + (
                 f" (along {self._axis} only)" if self._axis else ''))
+            return
         self._refresh(listing=False, quick=True)
 
     def _drag_end(self, st):
@@ -883,6 +891,14 @@ class DrawTab(QWidget, Draw3D):
             (x0, y0), (x1, y1) = st['p0'], st['last']
             self.box_select(x0, y0, x1, y1, crossing=x1 < x0, add=st['add'])
             return
+        if st['kind'] == 'move':
+            dx, dy = st.get('d', (0.0, 0.0))
+            for j, s in st['orig'].items():
+                self.drawing.shapes[j] = s.moved(dx, dy)
+            self.handles.setPos(0, 0)
+            if not dx and not dy:
+                self._refresh(listing=False, quick=True)
+                return
         if self.drawing.to_dict() != st['before']:
             self._commit(st['before'])
 
@@ -895,8 +911,12 @@ class DrawTab(QWidget, Draw3D):
                 self.band.setPath(QPainterPath())
             return
         st['cancelled'] = True
-        self.drawing = Drawing.from_dict(st['before'])
-        self._refresh(listing=False)
+        if st['kind'] == 'move':  # (the drawing is as it was: the items not)
+            self.handles.setPos(0, 0)
+            self._refresh(listing=False, quick=True)
+        else:
+            self.drawing = Drawing.from_dict(st['before'])
+            self._refresh(listing=False)
         self.status.setText('the drag undone (Esc)')
 
     def _tol(self):
@@ -915,7 +935,7 @@ class DrawTab(QWidget, Draw3D):
             s = self.drawing.shapes[i]
             if s.hidden:
                 continue
-            g = s.outline()
+            g = _outline(s)
             d = (pt.distance(Point(s.points[0])) if g is None else
                  g.distance(pt))
             if d <= tol:
@@ -931,7 +951,7 @@ class DrawTab(QWidget, Draw3D):
         for i, s in enumerate(self.drawing.shapes):
             if s.hidden:
                 continue
-            g = s.outline()
+            g = _outline(s)
             g = Point(s.points[0]) if g is None else g
             if b.intersects(g) if crossing else b.contains(g):
                 hits.append(i)
@@ -1514,20 +1534,15 @@ class DrawTab(QWidget, Draw3D):
     # ---- drawing it ----
     def _refresh(self, listing=True, board=False, quick=False):
         """The plan (and the list, and soon the 3D view) as the drawing is."""
+        n = len(self.drawing.shapes)
+        if any(j >= n for j in self.selected):  # (a drawing set anew)
+            self.selected = [j for j in self.selected if j < n]
         if board:
             self._draw_board()
         if listing:
             self._fill_list()
             self._fill_form()
-        for it in self._items:
-            self.vb.removeItem(it)
-        self._items = []
-        sel = set(self.selected)
-        for i, s in enumerate(self.drawing.shapes):
-            if not s.hidden:
-                self._items += self._shape_items(s, i in sel)
-        for it in self._items:
-            self.vb.addItem(it)
+        self._draw_shapes()
         one = (self.drawing.shapes[self.sel] if len(self.selected) == 1
                else None)
         hs = (one.handles() if one is not None and not one.locked
@@ -1536,7 +1551,62 @@ class DrawTab(QWidget, Draw3D):
         if not quick:
             self._3d_timer.start()
 
-    def _shape_items(self, s, selected):
+    def _items_of(self, i):
+        e = self._gfx[i] if i < len(self._gfx) else None
+        return e['items'] if e else []
+
+    def _draw_shapes(self):
+        """The shapes' plan items as the drawing is: a shape whose outline
+        is the same keeps its items (restyled when its look changed: a
+        selection), the rest are made anew. (Made anew every time, 300 vias
+        took 23 ms a redraw and 34 ms a dragged move.)"""
+        pool = {}
+        for e in self._gfx:
+            if e is not None:
+                pool.setdefault(e['geo'], []).append(e)
+        sel, out = set(self.selected), []
+        port_r = round(4 * self._tol() / 6, 9)
+        for i, s in enumerate(self.drawing.shapes):
+            if s.hidden:
+                out.append(None)
+                continue
+            geo = (_geo_key(s),) + ((port_r, s.name) if s.kind == 'port'
+                                    else ())
+            style = (s.material, s.kind == 'port', i in sel,
+                     self._on_layer(s))
+            got = pool.get(geo)
+            e = got.pop() if got else None
+            if e is None:
+                e = dict(geo=geo, style=None, items=self._make_items(s))
+                for it in e['items']:
+                    self.vb.addItem(it)
+            else:
+                for it in e['items']:
+                    it.setPos(0, 0)
+            if e['style'] != style:
+                self._style_items(e['items'], s, i in sel)
+                e['style'] = style
+            out.append(e)
+        for es in pool.values():
+            for e in es:
+                for it in e['items']:
+                    self.vb.removeItem(it)
+        self._gfx = out
+
+    def _make_items(self, s):
+        """A shape's plan items (unstyled): its outline, or a port's marker
+        and its name."""
+        g = _outline(s)
+        if g is not None:
+            return [_item(_qpath([_rings(g)]), z=20)]
+        x, y = s.points[0]
+        r = 4 * self._tol() / 6
+        diamond = [[x, y + r], [x + r, y], [x, y - r], [x - r, y], [x, y + r]]
+        txt = pg.TextItem(s.name or 'port', anchor=(0, 1))
+        txt.setPos(x + r, y + r)
+        return [_item(_qpath([[diamond]]), z=30), txt]
+
+    def _style_items(self, items, s, selected):
         rgb = PORT_COLOUR if s.kind == 'port' else COLOURS[s.material]
         here = self._on_layer(s)
         line = SELECTED if selected else _qc(rgb)
@@ -1544,22 +1614,18 @@ class DrawTab(QWidget, Draw3D):
                    Qt.DashLine if s.solid else Qt.SolidLine)
         if not here and not selected:
             pen.setColor(_qc(rgb, 90))
+        pen.setCosmetic(True)
+        items[0].setPen(pen)
+        if s.kind == 'port':
+            items[0].setBrush(QBrush(_qc(rgb)))
+            items[1].setColor(_qc(rgb))
+            return
         # a solid (a lid over the whole board) leaves the copper under it seen
         fill = _qc(rgb, 60 if s.material == 'cut' else 35 if s.solid else
                    150 if here else 35)
-        brush = QBrush(fill, Qt.BDiagPattern if s.material == 'cut' else
-                       Qt.SolidPattern)
-        g = s.outline()
-        if g is not None:
-            it = _item(_path([_rings(g)]), pen, brush, 20 if here else 10)
-            return [it]
-        x, y = s.points[0]
-        r = 4 * self._tol() / 6
-        diamond = [[x, y + r], [x + r, y], [x, y - r], [x - r, y]]
-        it = _item(_path([[diamond]]), pen, QBrush(_qc(rgb)), 30)
-        txt = pg.TextItem(s.name or 'port', color=_qc(rgb), anchor=(0, 1))
-        txt.setPos(x + r, y + r)
-        return [it, txt]
+        items[0].setBrush(QBrush(fill, Qt.BDiagPattern if s.material == 'cut'
+                                 else Qt.SolidPattern))
+        items[0].setZValue(20 if here else 10)
 
     def _draw_board(self):
         for it in self._board_items:
@@ -1677,6 +1743,47 @@ class DrawTab(QWidget, Draw3D):
                                  taken=taken)
         if self._set_setting('ports', '; '.join(have + specs)):
             self.status.setText(f"ports added: {', '.join(specs)}")
+
+
+def _geo_key(s):
+    """What a shape's outline depends on (hashable)."""
+    return (s.kind, tuple(tuple(p) for p in s.points),
+            s.radius if s.kind == 'circle' else None,
+            s.width if s.kind == 'path' else None)
+
+
+@functools.lru_cache(maxsize=4096)
+def _outline_of(key):
+    kind, pts, radius, width = key
+    if kind == 'port':
+        return None
+    try:
+        return Shape(kind, [list(p) for p in pts], radius=radius or 1.0,
+                     width=width or 0.5).outline()
+    except ValueError:
+        return None
+
+
+def _outline(s):
+    """s.outline(), kept for its shape (a shape's outline is asked for by
+    the plan, the picking, the box and the 3D view: shapely each time took
+    a third of a 300-shape redraw)."""
+    return _outline_of(_geo_key(s))
+
+
+def _qpath(polys):
+    """A QPainterPath (odd-even fill: holes stay open) of [[outer, hole,
+    ...], ...] closed rings, made in one go (pyqtgraph's arrayToQPath; a
+    lineTo a point took half a redraw)."""
+    rs = [np.asarray(r, float) for rings in polys for r in rings
+          if len(r) >= 3]
+    if not rs:
+        return QPainterPath()
+    xy = np.concatenate(rs)
+    c = np.ones(len(xy), np.int32)
+    c[np.cumsum([len(r) for r in rs]) - 1] = 0
+    return pg.functions.arrayToQPath(xy[:, 0], xy[:, 1], connect=c,
+                                     finiteCheck=False)
 
 
 def _key(s):

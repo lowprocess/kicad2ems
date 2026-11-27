@@ -358,7 +358,7 @@ def test_locked_and_hidden_shapes(tab, app):
     lst.topLevelItem(1).setCheckState(0, Qt.Unchecked)
     assert tab.drawing.shapes[1].hidden
     assert tab.hit(7, 3) is None
-    assert len(tab._items) == 3
+    assert sum(e is not None for e in tab._gfx) == 3  # (not drawn)
     _drag(tab, app, (1, 1), (13, 5))
     assert tab.selected == [0, 2]
     tab.undo()  # (the tick is a step too)
