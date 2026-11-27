@@ -53,7 +53,7 @@ def test_the_panels_are_pcbqs_s_options(window):
     assert (mqs.find_btn.text() == 'Find converters'
             and {'converter', 'fsw', 'heights'} <= set(mqs.w))
     assert (list(th.sections) == ['Files', 'Settings', 'Heat', 'Parts', 'Air',
-                                  'Solver']
+                                  'Transient', 'Solver']
             and th.w['film'].placeholderText() == '10.0')
     by = {
         q: w.study.rows[q].text(1).replace('  ▾', '')
