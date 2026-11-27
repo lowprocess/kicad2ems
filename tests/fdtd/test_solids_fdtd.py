@@ -172,9 +172,11 @@ def _puck_magnet(demo_files, magnet=True, br=1.2):
 
 def test_a_magnetised_ferrite_in_the_model_and_the_operator(demo_files):
     """The puck as gfdtd's FerriteMaterial (er, its loss, Ms, the damping of
-    its linewidth, a bias table at the mesh's cell centres from core.magnets),
-    the magnet as metal; in the operator the puck's cells magnetised with the
-    table's field. Reversed, the bias is too."""
+    its linewidth, a bias table at the mesh's cell centres from
+    core.magnets.magnetisation: the internal field and M / Ms, the band
+    centre for a partly magnetised cell), the magnet as metal; in the
+    operator the puck's cells magnetised along their own directions.
+    Reversed, the bias is too."""
     from kicad2ems.gfdtd.operator import build
     from kicad2ems.gfdtd import csx as C
     from kicad2ems.core import magnets as mg
@@ -192,20 +194,25 @@ def test_a_magnetised_ferrite_in_the_model_and_the_operator(demo_files):
     x = np.asarray(mesh['x'])
     mids = 0.5 * (x[1:] + x[:-1])
     assert set(np.round(t['x'], 9)) <= set(np.round(mids, 9))
-    # the table's field is core.magnets' at those points
+    # the table is core.magnets.magnetisation's at those points
     k = len(t['x']) // 2, len(t['y']) // 2, len(t['z']) // 2
     p = np.array([[t['x'][k[0]], t['y'][k[1]], t['z'][k[2]]]])
     from kicad2ems.core.solids import pieces
-    ref = mg.bias(m, pieces(m), p, [0])['hz'][0]
-    assert t['hz'][k] == pytest.approx(ref, rel=1e-9) and ref > 0
+    h, mm = mg.magnetisation(m, pieces(m)).at(p)
+    assert t['hz'][k] == pytest.approx(h[0, 2], rel=1e-9) and h[0, 2] > 0
+    assert t['mz'][k] == pytest.approx(mm[0, 2], rel=1e-9)
+    assert f.freq > 0      # the band centre: Green and Sandy's mu there
     op = build(CSX, FDTD.settings())
-    assert op.ferrite is not None and op.ferrite.nc > 0
-    assert (op.ferrite.h0 > 0).all()
+    fe = op.ferrite
+    assert fe is not None and fe.nc > 0 and fe.na == 3
+    assert (fe.u[:, 2] > 0).all() and (fe.mr > 0).all()
     m2 = _puck_magnet(demo_files, br=-1.2)
     FDTD2, CSX2, _ = _model(m2, mesh)
     t2 = [p for p in CSX2.GetAllProperties()
           if isinstance(p, C.FerriteMaterial)][0].bias
-    np.testing.assert_allclose(t2['hz'], -t['hz'], rtol=1e-9)
+    for c in ('hx', 'hy', 'hz', 'mx', 'my', 'mz'):
+        np.testing.assert_allclose(t2[c], -t[c], rtol=1e-6,
+                                   atol=1e-6 * np.abs(t[c]).max())
 
 
 def test_an_unbiased_ferrite_is_a_dielectric(demo_files):

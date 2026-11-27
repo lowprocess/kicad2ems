@@ -333,16 +333,29 @@ def _solids(CSX, ps, zm, lines, diel, fref, fmin, fmax, f0, dt, board=None,
                      FACE_PRIORITY, MAGNET_SIGMA)
 
 
+# the last drawing's ferrite magnetisation (core.magnets.magnetisation) and
+# what it was worked out for: each of its ferrite solids reads it
+_MAGNETISATION = [None, None]
+
+
 def _ferrite(CSX, nm, board, ps, p, zm, lines, f0):
     """A drawn ferrite solid (all its pieces) as gfdtd's FerriteMaterial: er
     and its loss at the band centre f0 as the dielectrics', Ms, Gilbert's
-    damping from the linewidth, and the bias (core.magnets: the magnets' and
-    its own field, at the mesh's cell centres over its pieces, in the mesh's
-    heights; NaN where it is not saturated). openEMS has no such medium: its
-    CSX has no AddFerriteMaterial (the solver refuses it before this)."""
+    damping from the linewidth, and the bias: core.magnets.magnetisation (the
+    magnets' field and every drawn ferrite's own, its magnetisation
+    self-consistent: its direction, partly magnetised where the magnets
+    cannot saturate it), read at the mesh's cell centres over its pieces in
+    the mesh's heights, the internal field and M / Ms (Green and Sandy's
+    partly magnetised mu at f0). openEMS has no such medium: its CSX has no
+    AddFerriteMaterial (the solver refuses it before this)."""
     from kicad2ems.core import magnets
     if not hasattr(CSX, 'AddFerriteMaterial'):
         raise ValueError(magnets.refusal(board, 'this engine'))
+    key = (board, ps, zm)
+    if _MAGNETISATION[0] is None or any(
+            x is not y for x, y in zip(_MAGNETISATION[0], key)):
+        _MAGNETISATION[:] = [key, magnets.magnetisation(board, ps, zmap=zm)]
+    mag = _MAGNETISATION[1]
     mine = [q for q in ps if q.index == p.index]
     x0 = min(q.polygon.bounds[0] for q in mine)
     y0 = min(q.polygon.bounds[1] for q in mine)
@@ -356,15 +369,17 @@ def _ferrite(CSX, nm, board, ps, p, zm, lines, f0):
         mids.append(c if len(c) else np.array([0.5 * (lo + hi)]))
     X, Y, Z = np.meshgrid(*mids, indexing='ij')
     pts = np.stack([X.ravel(), Y.ravel(), Z.ravel()], axis=1)
-    b = magnets.bias(board, ps, pts, np.full(len(pts), p.index), zmap=zm)
+    h, m = mag.at(pts)
     fer = p.ferrite
+    table = dict(x=mids[0], y=mids[1], z=mids[2])
+    for k, v in (('hx', h[:, 0]), ('hy', h[:, 1]), ('hz', h[:, 2]),
+                 ('mx', m[:, 0]), ('my', m[:, 1]), ('mz', m[:, 2])):
+        table[k] = v.reshape(X.shape)
     return CSX.AddFerriteMaterial(
         nm, epsilon=float(p.er),
         kappa=float(2 * np.pi * f0 * EPS0 * p.er * p.tand),
         ms=magnets.ms_si(fer['ms']), alpha=magnets.alpha(fer['dh']),
-        gamma=2 * np.pi * magnets.GAMMA,
-        bias=dict(x=mids[0], y=mids[1], z=mids[2],
-                  hz=b['hz'].reshape(X.shape)))
+        gamma=2 * np.pi * magnets.GAMMA, bias=table, freq=float(f0))
 
 
 def _finished_sheet(CSX, name, sigma, t_mm, fin, share, rkw, face):

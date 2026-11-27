@@ -175,13 +175,17 @@ Two rules keep a drawn can from costing more than the PEC boundary it stands for
 
 A **ferrite** is meshed as a dielectric of its εr (its μ is near 1, or below it, above its resonance, where a
 circulator works). A **magnet** is metal to the RF (rare-earth magnets conduct). Under a drawn magnet the ferrite
-is gfdtd's `FerriteMaterial`, its bias (`core.magnets`: the magnets' field and its own demagnetising field, from
-the charge on their faces, exact for prisms magnetised along z) computed at the mesh's own cell centres over it,
-in the mesh's heights, NaN where it is not saturated (those cells unbiased, the log counts them). With no magnet
-drawn it is a dielectric to every solver; under one, openEMS and Palace refuse it (no gyrotropic medium), as
-mom25d refuses any solid. Left out: the bias's x and y components, magnetic materials other than the magnets and
-the ferrite (no steel pole pieces or return path), a magnet's recoil permeability, temperature, and a partly
-magnetised ferrite (its low-field loss).
+is gfdtd's `FerriteMaterial`, its bias `core.magnets.magnetisation`: the magnets' field (the charge on their faces,
+exact for prisms magnetised along z, all three components) and every drawn ferrite's own, its magnetisation
+self-consistent on a voxel grid over them (an ideal soft ferrite: saturated along its internal field where the
+magnets can, partly magnetised where they cannot), read at the mesh's own cell centres in the mesh's heights: the
+internal field and M/Ms, each cell magnetised along its own direction, partly magnetised cells Green and Sandy's at
+the band centre ([gfdtd](gfdtd/README.md#how-it-works)). The voxels take 0.4 s for `rf_circulator`'s puck (16,384
+voxels, 17 steps), 0.9 s for the stripline circulator's two discs (32,768, 21 steps). With no magnet drawn it is a
+dielectric to every solver; under one, openEMS and Palace refuse it (no gyrotropic medium), as mom25d refuses any
+solid. Left out: magnetic materials other than the magnets and the ferrite (no steel pole pieces or return path), a
+magnet's recoil permeability, anisotropy and hysteresis, temperature, and the partly magnetised ferrite's low-field
+loss.
 
 S21's peak is 4.6255 GHz in each of them, as with the PEC boundary, on gfdtd and on openEMS (EMerge's converged
 3D FEM: 4.621 GHz). A dielectric cover over the board, 0.2 mm of εr 2.2, gives 4.4774 GHz drawn as a solid and as a
