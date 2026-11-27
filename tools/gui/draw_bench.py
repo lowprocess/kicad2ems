@@ -7,6 +7,8 @@ in the plan (zoomed on the fence) and in 3D, with the memory.
 
     python tools/gui/draw_bench.py                  # sma_launch, 300 vias
     python tools/gui/draw_bench.py --board B.kicad_pcb --n 600 --repeat 30
+    python tools/gui/draw_bench.py --circulator     # and a ferrite puck under
+                                                    # a magnet
 
     # the same against an older page (its src, at a commit of it)
     git archive 8a5de172 src | tar -x -C /tmp/old
@@ -29,6 +31,8 @@ the median of --repeat tries, in ms:
     3D first draw the 3D view's items of every shape made (all new)
     3D redraw     the 3D view drawn again, nothing changed (the page of
                   2026-11-20 made every item again: its first draw)
+    3D paint      the 3D view painted (grab): nothing offscreen; under a
+                  compositor (docs/testing.md) the GL, on llvmpipe the CPU's
     3D pick       the shape under a pixel (DrawTab.pick3d)
     3D drag       one mouse move of a drag of a via in 3D
     3D drag all   one mouse move of a drag of the whole fence in 3D
@@ -36,6 +40,16 @@ the median of --repeat tries, in ms:
                   over the board's (MB)
     peak memory   the process's peak resident memory over the board's, in the
                   steps the page of 2026-11-20 has too (the rest after)
+
+With --circulator a ferrite puck (r 3 mm, 0.5 mm thick, on the board) under a
+magnet (r 5 mm, 4 mm tall, 1 mm over the puck) are drawn after the fence (on
+a page without those materials, as a dielectric and a metal), and:
+
+    plan redraw, puck selected
+                  the plan redrawn with the puck selected (its form; the bias
+                  readout put off)
+    bias readout  the puck's bias worked out and written (DrawTab.bias_text:
+                  core.magnets.summary), and again with nothing changed (kept)
 
 (The page of 2026-11-20 had no box, selection of several or array: those
 lines are left out for it.)
@@ -71,6 +85,21 @@ def fence(n, layout):
     return out
 
 
+def circulator(layout, materials=('ferrite', 'magnet')):
+    """A ferrite puck (r 3 mm, 0.5 mm thick) on the board's middle and a
+    magnet (r 5 mm, 4 mm tall) 1 mm over it, as Shapes (materials: theirs)."""
+    from shapely.geometry import shape as geo
+    from kicad2ems.core.shapes import Shape
+    x0, y0, x1, y1 = geo(layout['outline']).bounds
+    top = max(l['z1'] for l in layout['stack']['layers'])
+    c = [(x0 + x1) / 2, (y0 + y1) / 2]
+    fer, mag = materials
+    return [Shape('circle', [c], radius=3.0, material=fer, z0=top,
+                  z1=top + 0.5, er=15.0, tand=2e-4, name='puck'),
+            Shape('circle', [c], radius=5.0, material=mag, z0=top + 1.5,
+                  z1=top + 5.5, name='magnet')]
+
+
 def ms(f, repeat):
     t = []
     for _ in range(repeat):
@@ -103,6 +132,8 @@ def main():
                                                     'sma_launch.kicad_pcb'))
     ap.add_argument('--n', type=int, default=300)
     ap.add_argument('--repeat', type=int, default=15)
+    ap.add_argument('--circulator', action='store_true',
+                    help='a ferrite puck under a magnet as well')
     a = ap.parse_args()
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     from PySide6.QtCore import Qt, QPointF, QEvent
@@ -136,6 +167,11 @@ def main():
     tab.vb.setRange(xRange=(min(xs) - 1, max(xs) + 1),
                     yRange=(yc - 4, yc + 4), padding=0)
     app.processEvents()
+    from kicad2ems.gui import drawtab
+    mats = (('ferrite', 'magnet') if 'ferrite' in drawtab.COLOURS else
+            ('dielectric', 'metal'))  # (an older page)
+    if a.circulator:
+        shapes += circulator(layout, mats)
     t = time.perf_counter()
     tab.drawing = Drawing(shapes)
     tab._refresh()
@@ -150,6 +186,16 @@ def main():
     out['plan paint'] = ms(lambda: tab.plot.grab(), a.repeat)
     v = shapes[a.n // 2]
     vx, vy = v.points[0]
+    if a.circulator:
+        tab.select(a.n)  # the puck
+        out['plan redraw, puck selected'] = ms(tab._refresh, a.repeat)
+        if hasattr(tab, 'bias_text'):
+            def fresh():
+                tab._bias_cache = None
+                tab.bias_text()
+            out['bias readout'] = ms(fresh, a.repeat)
+            out['bias readout (kept)'] = ms(tab.bias_text, a.repeat)
+        tab.select(None)
     out['plan pick (a via)'] = ms(lambda: tab.hit(vx, vy), a.repeat)
     out['plan pick (nothing)'] = ms(lambda: tab.hit(vx, vy - 0.6), a.repeat)
     assert tab.hit(vx, vy) is not None and tab.hit(vx, vy - 0.6) is None
@@ -201,6 +247,8 @@ def main():
     view = tab.view3d
     if tab.gl is not None:
         out['3D redraw'] = ms(tab._redraw_3d, a.repeat)
+        tab.view3d.grab()  # (the items' buffers made)
+        out['3D paint'] = ms(lambda: tab.view3d.grab(), a.repeat)
         view.setCameraPosition(distance=40, elevation=50, azimuth=-90)
         view.opts['center'] = pg.Vector(vx, vy, 0.7)
         z1 = v.z1
@@ -271,17 +319,19 @@ def main():
         out['array'] = statistics.median(array() for _ in range(5))
         app.processEvents()
     print(f"board {os.path.basename(a.board)} (read in {load:.2f} s), "
-          f"{a.n} vias, median of {a.repeat}; first drawn in "
+          f"{a.n} vias" + (f" and a circulator ({', '.join(mats)})" if
+                           a.circulator else '') +
+          f", median of {a.repeat}; first drawn in "
           f"{first * 1e3:.0f} ms; dragged: plan {moved} shape(s)"
           + (f" ({moved_all} all)" if many else '') +
           f", 3D {moved3}; box: {n_box}")
     for k, v_ in out.items():
-        print(f"  {k:22s} {v_:9.2f} ms")
-    print(f"  {'memory held':22s} {held:9.1f} MB (the fence drawn in both "
+        print(f"  {k:28s} {v_:9.2f} ms")
+    print(f"  {'memory held':28s} {held:9.1f} MB (the fence drawn in both "
           "views, over the board's)")
-    print(f"  {'peak memory':22s} {max(peak, 0):9.1f} MB over the board's "
+    print(f"  {'peak memory':28s} {max(peak, 0):9.1f} MB over the board's "
           "(the steps both pages have)")
-    print(f"  {'peak, all steps':22s} {rss_mb() - max(base, base_peak):9.1f} "
+    print(f"  {'peak, all steps':28s} {rss_mb() - max(base, base_peak):9.1f} "
           f"MB ({rss_mb():.0f} MB in all)")
     tab.close()
 
