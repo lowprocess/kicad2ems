@@ -123,13 +123,16 @@ thermal analyses, the Elmer and Palace tools).
 An analysis is a subclass of `Analysis`, listed by its module and class in
 `kicad2ems.core.analyses.ANALYSES` (imported on the first `registry()` call),
 the [crosstalk between traces](si.md), [a board's coupling](si.md#coupling), [a channel in
-time](timedomain.md) and [the line parameters](rlgc.md) among them:
+time](timedomain.md), [the line parameters](rlgc.md) and [the radiated EMC questions](emc.md) among
+them:
 
 ```python
 ANALYSES = ('kicad2ems.core.si:Crosstalk',
             'kicad2ems.core.coupling:Coupling',
             'kicad2ems.core.timedomain:TimeDomain',
             'kicad2ems.core.rlgc:LineParameters',
+            'kicad2ems.core.emission:Emission',
+            'kicad2ems.core.susceptibility:Susceptibility',
             'kicad2ems.pcbqs.analyses:PowerIntegrity', ...)
 ```
 
@@ -209,6 +212,8 @@ engines may answer one question, and one engine several questions from one run.
 | Power | `capacitance` | the capacitance between nets | |
 | Thermal | `thermal` | the board's steady temperature | |
 | EMC | `conducted` | a switching circuit's conducted emission through a LISN in each supply line, against CISPR 32 or CISPR 25 | pcbqs's `conducted` |
+| EMC | `emission` | the board's ports driven by a clock or data: the field at a test site's antenna against CISPR 32 | `emission` (mom25d) |
+| EMC | `susceptibility` | the voltage a plane wave puts on each port, the worst over direction and polarisation | `susceptibility` (mom25d) |
 
 `study_tree()` is what a front end lists: `[dict(group,
 questions=[dict(question, engines, missing)])]`, every question with the engines

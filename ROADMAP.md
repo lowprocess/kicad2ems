@@ -39,9 +39,8 @@ the code review of 2026-11-25. Last updated 2026-11-27.
    behavioural switches ngspice could not, 2-7× slower).
 3. **New questions:** segment and the plane-pair cavities as study questions (they are command-line tools); a
    return-path check (traces over plane splits and voids, layer changes with no stitching via near); via stubs
-   and backdrill (each via's stub resonance against the data rate); a radiated-emission estimate (mom25d's
-   currents to the far field against CISPR 32); decoupling chosen to a target impedance; matching networks from a
-   solved S11 with real part values (`core.embed`).
+   and backdrill (each via's stub resonance against the data rate); decoupling chosen to a target impedance;
+   matching networks from a solved S11 with real part values (`core.embed`).
 4. **S-parameters compared per engine in the window** (its *Engines compared* table asks the analyses alone), and
    a resonance's or a line's delay as figures.
 5. **One setting for one thing:** pcbqs's rail tool takes `rail`, Elmer's `net`; asked both, the rail is typed
@@ -87,6 +86,34 @@ the code review of 2026-11-25. Last updated 2026-11-27.
      factorisation (45.5 → 43.7 ms); one figure is about one section's solve (0.12 s): drawn for the 12 longest
      sections alone. Each concurrent frequency's LU holds ~37 MB on that bus (threads 1 / 4 / 8: 11.2 / 5.6 /
      3.8 s, 132 / 280 / 432 MB peak on rf_ddr's 20 sections).
+
+## EMC: radiated emission and susceptibility (`core.emission`, `core.susceptibility`)
+
+1. **Cables:** a cable's common-mode current is most often what radiates and what picks up, and it is left out.
+   It needs:
+   - the cable's own model, its RLGC (the multiconductor cross-section);
+   - the field-to-line coupling (Agrawal / Taylor) from the board's own near field, or from the plane wave;
+   - its common-mode source: the board's ground noise across the connector, and its transfer impedance.
+2. **The board edge and its ground:** over mom25d's infinite ground nothing radiates below and no edge radiates
+   (`--mom-stack whole` meshes the planes, in a laterally infinite dielectric). Two fixes:
+   - gfdtd's per-port far fields (an antenna run with every port excited, the array file `--array` reads) at the
+     questions' frequencies;
+   - an enclosure.
+3. **One solve for both questions:** a study asking both solves the board's every port twice, at each one's
+   frequencies. The per-frequency solve (mom25d's fill and LU) is 86-88 % of either run.
+4. **Several independent signals** in one emission run, each with its own spectrum and its own phase.
+5. **The detectors on modulated and noise-like emission:** quasi-peak's weighting of pulsed signals, and data's
+   peak (its RMS in the bandwidth is given).
+6. **A single-port antenna run's array file:** mom25d writes `_array.npz` only with several ports.
+7. **Measured and set aside** (rf_serpentine's emission, 2.8k unknowns; rf_branchline's, 2.9k; against 241
+   frequencies):
+   - refining only above the neighbours' line (peaks) left a peak between two samples: 4.14 dB short on
+     rf_branchline;
+   - refining everywhere spent the 41 samples on notches: 2.92 dB short there;
+   - refining within 20 dB of the top stopped at 28 samples, 1.16 dB short on rf_serpentine;
+   - the far field's phases by cos / sin into the real and imaginary parts instead of a complex exp: 7 % of a
+     block (0.151 s against 0.165);
+   - complex64 phases: no faster.
 
 ## Segment: a board in pieces (`core.segment`)
 

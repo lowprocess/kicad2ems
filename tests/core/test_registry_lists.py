@@ -68,7 +68,7 @@ def test_every_solver_and_analysis_listed_loads(listed):
         'palace_loop',
         'palace_pdn',
         'circuit', 'elmer_mag', 'thermal', 'elmer_thermal', 'palace_cap',
-        'conducted'
+        'conducted', 'emission', 'susceptibility'
     ]
     for rows in (listed['solvers'], listed['analyses']):  # by order, then name
         assert rows == sorted(rows, key=lambda r: (r['order'], r['name']))

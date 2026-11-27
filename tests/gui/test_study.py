@@ -77,7 +77,8 @@ def test_study_dock(window):
                    [
                        'Rail drop', 'Rail impedance', 'Converter near field',
                        'Circuit', 'Coils and ferrite', 'Capacitance'
-                   ], ['Temperature'], ['Conducted emission']])
+                   ], ['Temperature'], ['Conducted emission', 'Radiated emission',
+                                        'Radiated susceptibility']])
     assert (tree.headerItem().text(1) == 'Answered by'
             and tree.headerItem().text(2) == 'Fields')
     by = lambda q: tree.rows[q].text(1).replace('  ▾', '')

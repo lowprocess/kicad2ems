@@ -60,6 +60,7 @@ GROUPS = (
     ('RF structures', 'Printed components', ('rf_idc', 'rf_meander',
                                              'rf_spiral')),
     ('Signal integrity', '', ('si_bus', 'si_ddr')),
+    ('EMC', '', ('emc_serpentine',)),
     ('Lumped-element demos', '', ('demo_lowpass', 'demo_highpass',
                                   'demo_bandpass', 'demo_transition')),
 )

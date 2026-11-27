@@ -10,6 +10,45 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Radiated emission and susceptibility (`kicad2ems.core.emission`, `kicad2ems.core.susceptibility` on
+  `kicad2ems.core.radiated`; docs/emc.md; 2026-11-27).** Two study questions in the EMC group, both from each
+  port's far field on mom25d. Each frequency is one factor with every port's source; with each port on its load
+  (its reference or `--load`), V = (1 + Z Y)^-1 V_s, so each port's terminated currents per volt are one product.
+  An antenna run's array file (`--array`: mom25d's Y form, or an FDTD solver's S form with every port excited)
+  stands in at its own frequencies.
+  - *Susceptibility:* by reciprocity, V_j = 4π / (j k0 η0) z_j E0 (p · F_j). It takes the worst over every
+    direction and linear polarisation, at IEC 61000-4-3's 3 and 10 V/m (80 MHz–6 GHz), with the 80 % AM peak
+    and a pair's differential voltage, and flags ports over `--threshold` mV.
+  - *Emission:* `--drive` ports driven by a clock (trapezoid lines), data (a PRBS's lines, which are exact for an
+    m-sequence, or random data's PSD in the receiver's 120 kHz / 1 MHz), a CW sweep or a spectrum file. The site
+    is 3 or 10 m with the floor's image below 1 GHz (direct only above), heights 1–4 m, the turntable round and
+    the board in six orientations, maximum held. Each line gets a margin against CISPR 32 class A / B
+    (quasi-peak, average, peak).
+  - Both say that cables, the board edge and anything below mom25d's infinite ground are left out.
+  - *Checks:* a short top-loaded element 1 mm over the ground (air between, its effective length 2h) has a far
+    field η k I 2h / 4π to 1e-6, D 3.000 and efficiency 1.0000. It receives E0 2h sin θ z / (z + Zin) to 3e-4.
+    An independent plane-wave solve of the same MoM system (the incident field and its image tested on every RWG
+    and via) agrees to 1e-6. Two of them 3λ apart couple as Friis says from their solved gains (|S21| = √(G1 G2)
+    λ / 8πR along the ground) to 0.014 dB (0.0017 dB at 10λ). Its field at 3 m matches to 1e-6. The site
+    matches a dipole and its image to 1e-12. A clock's and a PRBS's lines match their waveforms' Fourier series
+    (1e-4, 2e-3). An array file gives the solve's result to single precision.
+  - *Found and fixed on the way:* the far field's 3° grid had missed its fall to 0 within a degree of grazing over
+    the grounded dielectric, by 43 % of the largest on 30 mm of microstrip at 4 GHz. The grid now takes 14 steps
+    toward 90° (within 1.1 %).
+  - *On rf_serpentine* (examples/emc_serpentine.toml, 2.8k unknowns): a 25 MHz 3.3 V clock is +5.8 dB under
+    class B at 3 m (225 MHz), in 27 s. 10 V/m puts up to 36 mV on a port at 6 GHz, where the line radiates 8 % of
+    what it carries, in 24 s.
+  - *Speed and memory* (rf_serpentine's emission, 4 threads, machine load 10-15 from other runs):
+    - 35.9 s and 918 MB before, 27.7 s and 814 MB after.
+    - Frequencies: adaptive, 15 in log f then halving where a sample lies 0.5 dB off its neighbours' line, within
+      30 dB of the top. Against 241, the largest shortfall is 0.67 dB with 41 (2.23 dB with 61 equally spaced) on
+      rf_serpentine, and 0.25 dB against 2.26 on rf_branchline: a third fewer solves, and closer.
+    - `mom25d.farfield`'s phases are made in blocks of 1M numbers (8M peaked at 896 MB against 749) on threads
+      (NumPy's exp holds one core): the far field per frequency 0.132 s → 0.062 s, the same to round-off.
+    - `far_field_dirs` takes paired directions; far_field is its grid.
+    - What is left is mom25d's own per-frequency fill and LU, 86-88 % of either run.
+
+  Tests: tests/core/test_radiated.py, tests/mom25d/test_radiated.py.
 - **Line parameters: R, L, G, C per metre over frequency with the skin and proximity effect (`kicad2ems.core.rlgc`,
   `kicad2ems.core.lines.mqs`, docs/rlgc.md, 2026-11-27).**
   - *The solver.* A 2D eddy-current cross-section solve beside xsection's electrostatic one: A_z with the copper

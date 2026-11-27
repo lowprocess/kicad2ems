@@ -43,6 +43,27 @@ import numpy as np
 from kicad2ems.emsdev.numerics.base import C0, MU0, EPS0
 
 ETA0 = np.sqrt(MU0 / EPS0)
+# the far field's phases e^{j k.rho} are directions x a layer's triangles:
+# made this many numbers at a time (complex128: 16 MB), not all at once (2701
+# directions over a 40k-triangle layer had been 1.7 GB). Blocks of 8M (128 MB,
+# with their temporaries ~0.5 GB) had peaked rf_serpentine's emission run at
+# 896 MB against 749 with these, and were slower (its far fields 2.46 s against
+# 1.75: the blocks in cache)
+PHASE_BLOCK = 1_000_000
+
+
+def _threads():
+    """The far field's threads: MOM25D_OMP_THREADS, OMP_NUM_THREADS, else the
+    fast physical cores (the compiled core's)."""
+    import os
+    for v in ('MOM25D_OMP_THREADS', 'OMP_NUM_THREADS'):
+        try:
+            if int(os.environ.get(v, 0)) > 0:
+                return int(os.environ[v])
+        except ValueError:
+            pass
+    from .threads import fast_cores
+    return fast_cores() or 1
 
 
 def _tangential(sim, I, w, o, kr, cphi, sphi):
@@ -60,18 +81,37 @@ def _tangential(sim, I, w, o, kr, cphi, sphi):
     cen, area = sim.rwg.cent[:, :2], sim.rwg.area
     nk = jx.shape[1]
     Eu, Ev = np.zeros((len(kr), nk), complex), np.zeros((len(kr), nk), complex)
+    # e^{j k.rho}, a block of directions at a time (PHASE_BLOCK numbers in
+    # all, over the threads' blocks), the blocks on threads (NumPy's exp holds
+    # one core; it releases the interpreter)
+    work = sum(len(idx) for idx in sim.tri_idx.values()) * len(kr)
+    nt = _threads() if work > 4 * PHASE_BLOCK else 1
+    blocks = []
     for k, idx in sim.tri_idx.items():
         if not len(idx):
             continue
-        # e^{j k.rho}
-        ph_ = np.exp(1j *
-                     (np.outer(kx, cen[idx, 0]) + np.outer(ky, cen[idx, 1])))
-        # one product
-        J = (ph_ @ np.concatenate(
-            [jx[idx] * area[idx][:, None], jy[idx] * area[idx][:, None]], 1))
-        eu, ev = _surface_E_at(st, kr[:, None], w, o, k, J[:, :nk], J[:, nk:],
-                               cphi[:, None], sphi[:, None])
-        Eu, Ev = Eu + eu, Ev + ev
+        Jk = np.concatenate(
+            [jx[idx] * area[idx][:, None], jy[idx] * area[idx][:, None]], 1)
+        step = max(1, int(PHASE_BLOCK // nt // len(idx)))
+        blocks += [(k, idx, Jk, slice(a, a + step))
+                   for a in range(0, len(kr), step)]
+
+    def block(b):
+        k, idx, Jk, s = b
+        ph_ = np.exp(1j * (np.outer(kx[s], cen[idx, 0]) +
+                           np.outer(ky[s], cen[idx, 1])))
+        J = ph_ @ Jk  # one product
+        return s, _surface_E_at(st, kr[s, None], w, o, k, J[:, :nk],
+                                J[:, nk:], cphi[s, None], sphi[s, None])
+    if nt > 1:
+        from concurrent.futures import ThreadPoolExecutor
+        from .threads import _one_blas_thread
+        with _one_blas_thread(), ThreadPoolExecutor(nt) as ex:
+            done = list(ex.map(block, blocks))
+    else:
+        done = map(block, blocks)
+    for s, (eu, ev) in done:  # in the blocks' order: as one thread sums
+        Eu[s], Ev[s] = Eu[s] + eu, Ev[s] + ev
     chains, ne = getattr(sim, 'chains', None) or [], getattr(sim, 'Ne', None)
     if chains and ne is not None:
         Iv = np.asarray(I).reshape(np.shape(I)[0], -1)[ne:ne + len(chains)]
@@ -128,16 +168,28 @@ def far_field(sim, I, f, theta, phi):
     excitations at once:
     (k, nphi, ntheta) each, the phases shared (an array's ports: one pass, not
     one each)."""
+    th, ph = np.asarray(theta, float), np.asarray(phi, float)
+    TH, PH = np.meshgrid(th, ph)  # (nphi, ntheta)
+    Et, Ep = far_field_dirs(sim, I, f, TH.ravel(), PH.ravel())
+    if I is None or np.ndim(I) < 2:
+        return Et.reshape(TH.shape), Ep.reshape(TH.shape)
+    nk = Et.shape[0]
+    return Et.reshape((nk,) + TH.shape), Ep.reshape((nk,) + TH.shape)
+
+
+def far_field_dirs(sim, I, f, theta, phi):
+    """far_field in the directions (theta[i], phi[i]) (degrees, paired: not a
+    grid): r E_theta, r E_phi, each (ndir,) for one excitation column, (k, ndir)
+    for I N x k."""
     st = sim.st.at(f)
     one = I is None or np.ndim(I) < 2
-    th, ph = (np.radians(np.asarray(theta,
-                                    float)), np.radians(np.asarray(phi, float)))
-    TH, PH = np.meshgrid(th, ph)  # (nphi, ntheta)
-    if st.top != 'open' and (TH < np.pi / 2).any():
+    t = np.radians(np.asarray(theta, float).ravel())
+    p = np.radians(np.asarray(phi, float).ravel())
+    if st.top != 'open' and (t < np.pi / 2).any():
         raise ValueError("a PEC cover on the stack: nothing radiates above it")
     w = 2 * np.pi * f
     Et = Ep = None
-    t, cphi, sphi = TH.ravel(), np.cos(PH).ravel(), np.sin(PH).ravel()
+    cphi, sphi = np.cos(p), np.sin(p)
     for up, sel in ((True, t <= np.pi / 2), (False, t > np.pi / 2)):
         if not sel.any() or (not up and st.bottom == 'pec'):
             continue  # below the ground: nothing
@@ -149,17 +201,15 @@ def far_field(sim, I, f, theta, phi):
                              sphi[sel])
         Eu, Ev = np.reshape(Eu, (len(kr), -1)), np.reshape(Ev, (len(kr), -1))
         if Et is None:
-            Et, Ep = (np.zeros((TH.size, Eu.shape[1]), complex),
-                      np.zeros((TH.size, Eu.shape[1]), complex))
+            Et, Ep = (np.zeros((t.size, Eu.shape[1]), complex),
+                      np.zeros((t.size, Eu.shape[1]), complex))
         c = (1 if up else -1) * 1j * k / (2 * np.pi)
         Et[sel], Ep[sel] = c * Eu, c * np.cos(t[sel])[:, None] * Ev
-    if Et is None:  # nothing radiates on this grid
+    if Et is None:  # nothing radiates in these directions
         nk = 1 if one else np.shape(I)[1]
-        Et, Ep = (np.zeros((TH.size, nk),
-                           complex), np.zeros((TH.size, nk), complex))
-    nk = Et.shape[1]
-    Et, Ep = Et.T.reshape((nk,) + TH.shape), Ep.T.reshape((nk,) + TH.shape)
-    return (Et[0], Ep[0]) if one else (Et, Ep)
+        Et, Ep = (np.zeros((t.size, nk),
+                           complex), np.zeros((t.size, nk), complex))
+    return (Et[:, 0], Ep[:, 0]) if one else (Et.T, Ep.T)
 
 
 def radiated(Eth, Eph, theta, phi, eta=ETA0):

@@ -158,6 +158,23 @@ QUESTIONS = {
             figures="margin: the limit less the reading at the worst band and "
             "detector, dB (negative: over); at: where, MHz; margin peak, "
             "margin QP, margin average: each detector's worst, dB"),
+        Question(
+            'emission', 'Radiated emission', 'EMC',
+            "the board's ports driven by a clock or data: the field at a test "
+            "site's antenna (3 or 10 m, the height scanned, the board turned) "
+            "against CISPR 32's limits; the board alone, no cables",
+            order=20, figures=
+            "margin: the least of the limit less the field, dB (negative: "
+            "over); at: its frequency, MHz; peak: the largest field, dBuV/m; "
+            "over the limit: lines above it"),
+        Question(
+            'susceptibility', 'Radiated susceptibility', 'EMC',
+            "the voltage a plane wave puts on each port, the worst over "
+            "direction and polarisation, at IEC 61000-4-3's levels; the board "
+            "alone, no cables", order=30, figures=
+            "worst at <E> V/m: any port's largest over the band, mV RMS; "
+            "<port> at <E> V/m: each port's at the highest level; ports over "
+            "the threshold"),
     )
 }
 

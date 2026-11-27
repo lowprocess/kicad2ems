@@ -1,6 +1,6 @@
 # Line parameters: R, L, G, C over frequency
 
-[← Time domain](timedomain.md) · [Index](index.md) · [Next: Whole-board studies →](segment-studies.md)
+[← Time domain](timedomain.md) · [Index](index.md) · [Next: Radiated EMC →](emc.md)
 
 The line-parameters question gives the per-unit-length matrices of transmission lines: R(f) and L(f) with the
 skin effect, the proximity effect between neighbours and the return current's own crowding in the planes, and

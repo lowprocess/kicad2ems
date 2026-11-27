@@ -1,0 +1,29 @@
+# kicad2ems example: the radiated EMC questions on a 50 ohm serpentine
+# (kicad2ems.core.emission, kicad2ems.core.susceptibility; docs/emc.md)
+#   # make the board first (it is not in the repository)
+#   python examples/make_rf_examples.py serpentine examples/rf_serpentine
+#   kicad2ems study examples/emc_serpentine.toml
+# A 25 MHz clock (3.3 V, 1 ns edges) on P1, P2 its 50 ohm load: CISPR 32 class
+# B at 3 m, worst margin +5.8 dB at 225 MHz (the board alone, over mom25d's
+# infinite ground: no cable, no board edge). A plane wave of 10 V/m puts up to
+# 36 mV on either port (at 6 GHz, where the line radiates 8 % of what it
+# carries).
+board   = "rf_serpentine.kicad_pcb"   # paths are relative to this file
+ground  = "B.Cu"
+out     = "out"
+
+[study]
+run = ["emission", "susceptibility"]
+
+[analysis.emission]
+drive    = "P1"
+signal   = "clock"
+f0       = 25           # MHz
+amp      = 3.3          # V
+rise     = 1.0          # ns, 10 to 90 %
+distance = 3.0          # m
+cispr_class = "B"
+
+[analysis.susceptibility]
+field     = "3,10"      # V/m
+threshold = 10          # mV
