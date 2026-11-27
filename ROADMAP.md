@@ -291,3 +291,20 @@ The window keeps its docks (the user's word, 2026-11-12): nothing below may fix 
 ## dfsynth
 
 R-E18, in order: the tapped hairpin feed; combline; elliptic and cross-coupled designs.
+
+**Free-form (`--topology freeform`, docs/dfsynth/README.md#free-form)**, what its first version leaves:
+
+1. **The match on a field solver.** 12 to 14 dB of return loss in the pixel model is about 10 dB on mom25d (the
+   default band-pass and low-pass), and a search on from a full-wave result gains little (the band-pass's cost
+   11.7 to 11.1 dB², the low-pass's none): two triangles a pixel do not have the couplings a finer mesh has. A
+   last stage on two cells a pixel (four times the unknowns: only the pattern's rim free there, fewer
+   frequencies), or the pattern's own finer mesh as the judge between the stages' patterns.
+2. **Where the search ends depends on where it starts.** Greedy, annealed and tabu searches from random copper
+   all ended at one or two resonators (24 x 24 pixels, 1,500 to 4,000 steps, 5 GHz / 10 %, order 3); the loops
+   start reaches three. Several starts (the loops' gap, line and tap; a meandered loop for a box too low for
+   the arms) and the best kept; moves of more than a pixel (a line end shifted, a gap widened along its length).
+3. **Band-stop and high-pass**: a goal for each (`search.Goal` has none) and a start (stubs on the line).
+4. **Ground vias in the box** (a via chain as an unknown a pixel may have): shorted stubs, quarter-wave rods.
+5. **Size as a number asked for**: the box is the user's now; a run down a list of boxes and the trade drawn.
+6. A free-form board on gfdtd beside mom25d; the Filter page's own rows for the box and the search (they are
+   under More options).

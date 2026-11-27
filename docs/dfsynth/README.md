@@ -49,6 +49,7 @@ its `filter` extra installs dfsynth) does the same from a window, and opens the 
 | bandpass | `interdigital` | quarter-wave rods grounded at alternate ends, tapped feeds; wide gaps for the bandwidth (1.8 mm at 10 % on RO4003C-0.813, against 0.13 mm edge-coupled); tune it with `--validate gfdtd --em-tune 3` |
 | bandpass | `endcoupled` | gap-coupled half-wave resonators; narrow bands only (the end gaps get small fast) |
 | bandpass | `stub` | Matthaei short-circuited stub band-pass, wide bands (30 to 100 %) |
+| lowpass, bandpass | `freeform` | no named shape: a box of square pixels, each copper or not, searched for the pattern that meets the spec ([Free-form filters](#free-form)); smaller than the layouts above, slower to make |
 | bandstop | `stub` | open quarter-wave stubs a quarter wave apart; the connecting lines' impedances are optimised too |
 | bandstop | `radial` | the same with radial stubs: these are low-impedance stubs, so only very wide stop bands (about 100 % and up); narrower ones are refused |
 
@@ -99,6 +100,111 @@ kicad2ems's solvers treat copper as infinitely thin; dfsynth designs for the cop
 narrow lines that is a few percent of frequency, so dfsynth also models the layout with zero thickness
 (`model (t=0)` in the plots and metrics), and the EM tuning corrects only the difference between the full-wave
 result and that model: the board stays designed for real copper.
+
+<a id="free-form"></a>
+## Free-form filters
+
+`--topology freeform` gives up the named shapes. The filter is a box of square pixels between two 50 ohm
+feeds, each pixel copper or not, and dfsynth searches for the pattern whose response meets the spec's
+prototype: the pass band's return loss (`--return-loss`, 15 dB), and in the stop band the prototype's own
+rejection, taken 10 % nearer the band and no deeper than `--stop-floor` (35 dB).
+
+```bash
+python -m kicad2ems.mom25d.core.build              # once: it needs mom25d's compiled core
+dfsynth --type bandpass --topology freeform --f0 5G --bw 500M --order 3 \
+        --substrate RO4003C-0.813 -o out/ff --validate mom --em-tune 2
+```
+
+![A free-form band-pass beside dfsynth's hairpin of the same spec, over its responses](freeform.png)
+
+*The 5 GHz / 500 MHz, order 3 band-pass on RO4003C-0.813 after two `--em-tune` rounds, beside dfsynth's hairpin of
+the same spec to the same scale (drawn with `--allow-fab-violations`: its coupled feeds want 0.1 mm gaps). Below:
+mom25d's result for the board, and the pixel model of its pattern, which the tuning aims low and narrow by what
+the earlier mom25d runs showed; the dotted lines are the spec's -3 dB edges (`python
+tools/dfsynth/freeform_figure.py BASE`).*
+
+**Size against performance** is the box: `--box WxH` (mm). By default a band-pass gets the room its
+resonators need side by side with two pixels to spare, a low-pass 0.17 x 0.13 guided wavelengths. Ask for a
+smaller box and the search does what it can in it; the result says by how much the pixel model misses its
+limits, and `--validate` what a field solver makes of the board. A pixel is the 50 ohm width over a whole
+number, about 80 to a guided wavelength (`--pixel`), and never under `--min-width` / `--min-gap`; two pixels
+never meet at a corner alone (the etch would decide whether they join).
+
+### How the search works
+
+There is no neural network in it. The model below is mom25d's own, exact for the pixel mesh, and cheap enough
+(every single-pixel change of a pattern in 0.03 s) that a learned stand-in for it would have little left to save;
+none was trained to compare.
+
+1. **One matrix for every pattern.** mom25d meshes the whole box as copper, two triangles a pixel, and fills its
+   moment-method matrix once at each sample frequency. A pattern's own matrix is that one without the rows and
+   columns of the edges it lacks, exactly (a Galerkin entry belongs to its two basis functions alone): the
+   pattern's S-parameters from this are those of mom25d run on the pattern's own mesh, to 1e-8
+   (`tests/dfsynth/test_freeform.py`). The ports are lumped, in a via at each feed's end.
+2. **Every single change, without solving again.** The matrix is kept as its principal pivot transform on the
+   pattern's unknowns. Its port block is the pattern's admittance; adding or removing a pixel's few edges is a
+   pivot on them, and the admittance after it needs the transform's entries at those edges and the ports alone.
+   So at each step the exact response after *each* possible pixel change is known for a few small solves, and
+   the step made costs one low-rank update. A pattern with the feeds' symmetry (`--symmetry`, the default
+   where the feeds have one) splits into its even and odd currents, two systems of half the size.
+3. **The search** makes the best change at each step, also where it costs (a tabu search: a change made is not
+   undone for a while), with a price on the copper outline's length (`--outline`), which keeps specks and ragged
+   edges out. The stop band's sample frequencies are drawn again five times on the way: between fixed samples a
+   search learns to hide its spurious resonances. After each of those five stages the pattern is swept densely,
+   and the best by that sweep is the result. `--search-steps` (1500) and `--search-time` bound it.
+4. **Where it starts.** A search by single pixels refines a shape; it does not discover how many resonators a
+   band-pass needs. A low-pass starts from a line between the feeds and grows its own stubs and patches. A
+   band-pass starts from `--order` half-wave loops side by side with tapped feeds, their lengths from dfsynth's
+   line formulas; from random copper the same search ends at one or two resonators.
+5. **`--em-tune`.** Two triangles a pixel is a coarse mesh: a field solver puts the band a few percent higher,
+   makes it wider, and finds a worse match. The first round scales the pixels by the full-wave band's offset from
+   the pixel model's (4 % for the band-pass below): the pattern is untouched, so the response keeps its shape and
+   moves. Later rounds search on from the pattern: the full-wave band edges are mapped onto the model's, and the
+   model is asked for the limits where the full-wave result will have them, tightened by what the full-wave levels
+   showed over the model's (their envelopes compared, up to 10 dB of |S11| and 8 dB of |S21|). A search on can
+   lose in match what it gains in band, so each round's full-wave result is costed against the limits and the
+   best round's board is the one left written (`em_round_kept` in the design's JSON).
+
+`<out>_design.json` holds the pattern (`freeform.pattern`, a string a row); `dfsynth.freeform.synthesise(...,
+start=pattern)` searches on from one. Speed, on four CPU cores: 0.05 to 0.1 s a step for 1,800 unknowns and 25 to
+37 frequencies, the default band-pass's search in 7 minutes, with `--validate mom --em-tune 2` 14 in all; memory 8
+N^2 bytes a frequency (N: the box's unknowns, about three a pixel), refused where that is more than 60 % of what
+is free. No GPU is used.
+
+### What it reaches
+
+mom25d through kicad2ems (`--validate mom --em-tune 2`, its default mesh, 2026-11-27, four CPU cores), every
+option at its default, RO4003C. "Between the feeds" is the copper's extent without the 5 mm feeds; the number in
+brackets is the cost of the full-wave result against the limits (dB², what the rounds are compared by).
+
+| case | free-form, between the feeds | dfsynth's layout | as searched | after two rounds |
+|---|---|---|---|---|
+| band-pass, 5 GHz / 500 MHz, order 3 (0.813 mm) | 10.7 x 11.1 mm | hairpin: 19.3 x 10.8 mm, 0.1 mm gaps | centre +4.0 %, bandwidth +5.0 %, return loss 9.7 dB over its own band, 0.90 dB of loss (cost 50.7 dB²) | pixels x 1.043: -0.6 % / -3.3 %, 10.3 dB over the spec's band, 0.92 dB (11.7); then searched on: +0.1 % / -2.5 %, 9.6 dB, 1.02 dB (11.1, the board kept: 11.1 x 11.6 mm) |
+| low-pass, 2 GHz, order 5 (0.508 mm) | 16.5 x 6.6 mm | stepped: 39.6 x 5.6 mm, 0.13 mm lines | cut-off (-3 dB) 2.84 GHz, return loss 9.6 dB to 2 GHz, 20 dB from 3.27 GHz, 30 dB from 3.5 GHz to the sweep's end at 6 GHz (16.8, the board kept) | pixels x 1.062: cut-off 2.65 GHz, 8.8 dB, and its spurious pass band inside the sweep (13 dB at 5.96 GHz; 27.2); then searched on: 2.77 GHz, 10.1 dB (26.9) |
+
+- **Smaller, with the match short of what was asked.** 62 % of the hairpin's area (the tuned board), 49 % of the
+  stepped low-pass's, on 0.44 and 0.55 mm pixels where those want 0.1 and 0.13 mm features. The pixel model
+  reaches 12 to 14 dB of return loss where 15 was asked, and the finer mesh takes 3 dB more off: about 10 dB
+  (dfsynth's own layouts measure 9 to 16 dB on mom25d, the table below).
+- **The low-pass's skirt is softer than its prototype's** (-3 dB at 2.84 GHz for the order-5 Chebyshev's 2.27 GHz):
+  in that box the search does not find the corner, and ends on a stop band of 30 dB from 1.75 f0.
+- **The pixel model against mom25d's own mesh**: the band 4 to 6 % higher on the finer mesh, the band-pass's 12 %
+  wider.
+- **What the tuning did.** The band-pass: the pixels' scaling alone took the cost from 50.7 to 11.7 dB² and the
+  centre from +4.0 to -0.6 %; the search on from there 11.1. The low-pass: both rounds cost more than the board as
+  searched (the scaled filter's spurious pass band comes down into the sweep), which is the one kept. A search on
+  without the scaling first (how the first version tuned) put the band-pass's edges on the spec and its return
+  loss from 9.3 to 5.0 dB.
+- **The price of the outline matters most** (`--outline`, default 0.05): at 0.02 the patterns are ragged and their
+  cost on a dense sweep 6 to 7 dB² for these two cases (a narrow parasitic resonance in the low-pass's stop band:
+  -9 dB on mom25d), at 0.05 2.3 to 5.2, at 0.1 6.7 (the low-pass). The search's linear algebra is on one thread so
+  that a run repeats (the same moves over 150 steps in two processes; with more threads the same command gave
+  another pattern each time, which is the spread in those numbers), but the search stays a local one: a
+  pixel more or less of box is another run with another end.
+
+Limits: low-pass and band-pass only; lumped ports in the model (a through line reads -30 dB at 5 GHz); no ground
+vias in the box, so no shorted stubs or rods; the copper's thickness is not in the pixel model; and the search
+is a local one from one start, so another `--box` or `--search-steps` can come out better or worse.
 
 ## Known limits
 

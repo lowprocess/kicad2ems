@@ -10,6 +10,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **dfsynth: free-form filters (`--topology freeform`, low-pass and band-pass; `kicad2ems.dfsynth.freeform`,
+  docs/dfsynth/README.md#free-form, 2026-11-27; the user's ask: a neural network or other model that optimises
+  filters for size and performance with shapes of no convention).** The filter is a box of square pixels between
+  two feeds and a search for the pattern that meets the spec's prototype. The model is not a network but mom25d
+  itself: the box meshed once as copper on a structured grid, its matrix filled once a frequency, a pattern's
+  matrix that one without its absent edges' rows and columns (the pattern's own mom25d solution to 1e-8). Kept as
+  its principal pivot transform, the exact response after every single-pixel change is a few small solves and a
+  change made is a low-rank update (`freeform.pivot`; a symmetric pattern as its even and odd halves): all 300
+  mirrored changes of a 24 x 25 pixel box at 25 frequencies in 0.03 s, a step 0.05 s (1,819 unknowns),
+  where a learned stand-in would have little left to save (none was trained to compare). The search is a tabu search with a price on the
+  outline's length, its stop-band samples drawn again five times (between 8 fixed ones a side it hid spurious
+  resonances: 5.4 on the samples, 30.6 on a dense sweep); it starts from a line (low-pass) or from `--order`
+  tapped half-wave loops (band-pass: from random copper greedy, annealed and tabu searches all ended at one or
+  two resonators). `--em-tune` corrects from a full-wave run and keeps the round whose full-wave result
+  costs least: first the pixels scaled by the full-wave band's offset (the pattern and its match kept), then
+  the search gone on with (a search on alone had put a band-pass's edges on the spec and its return loss from
+  9.3 to 5.0 dB). The price of the outline decides most (0.05 a pixel side: at 0.02 ragged patterns, 6 to 7 dB²
+  on a dense sweep where 0.05 has 2.3 to 5.2), and the search's linear algebra is on one BLAS thread (with
+  more, the same spec gave another pattern each time; one is also the faster). Measured, every option
+  at its default (mom25d through kicad2ems, RO4003C): the 5 GHz / 500 MHz order-3 band-pass in 10.7 x 11.1 mm (the
+  hairpin of that spec: 19.3 x 10.8 mm between its feeds, with 0.1 mm gaps, which dfsynth refuses by default):
+  centre +4.0 % / bandwidth +5.0 % as searched, -0.6 % / -3.3 % with the pixels scaled by 1.043 (return loss
+  10.3 dB over the spec's band, 0.92 dB of loss), +0.1 % / -2.5 % and 9.6 dB searched on; the 2 GHz order-5
+  low-pass in 16.5 x 6.6 mm (the stepped one: 39.6 x 5.6 mm): return loss 9.6 dB to 2 GHz, -3 dB at 2.84 GHz
+  (the prototype's: 2.27), 30 dB from 3.5 to 6 GHz, as searched (both its rounds cost more: not kept).
+  Options `--box`, `--pixel`, `--search-steps`,
+  `--search-time`, `--symmetry`, `--outline`, `--return-loss`, `--stop-floor`; the pattern in
+  `<out>_design.json`. With it: mom25d's tensor mesher takes vias on its grid nodes, and `FastOperator.dense(f)`
+  gives the whole matrix. Tests: tests/dfsynth/test_freeform.py (19), tests/mom25d/test_solver.py (2).
 - **Jitter, noise and BER contours in the time-domain question (2026-11-25; docs/timedomain.md#ber).** The
   statistical eye of a lone bit's response at the far end (`timedomain.stat_eye`): every pattern of the other bits
   (each cursor's two-point distribution convolved on a grid, its mass split between neighbouring levels so the
