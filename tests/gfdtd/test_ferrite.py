@@ -183,8 +183,10 @@ def _puck(alpha):
                            gamma=GAMMA, bias=1.0e5).AddCylinder(
                                [0, 0, 0], [0, 0, 0.5], 2.6, priority=2)
     csx.AddMetal('strip').AddBox([-6, -0.2, 0.5], [0, 0.2, 0.5], priority=10)
-    csx.AddMetal('disc').AddCylinder([0, 0, 0.5], [0, 0, 0.5], 2.2,
-                                     priority=10)
+    # (a polygon: a cylinder of no length is no primitive to gfdtd)
+    ph = np.linspace(0, 2 * np.pi, 65)[:-1]
+    csx.AddMetal('disc').AddPolygon([2.2 * np.cos(ph), 2.2 * np.sin(ph)], 'z',
+                                    0.5, priority=10)
     csx.AddExcitation('src', exc_type=0, exc_val=[0, 0, 1]).AddBox(
         [-5, 0, 0], [-5, 0, 0.5])
     return F, csx
