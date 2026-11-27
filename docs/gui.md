@@ -415,9 +415,10 @@ Arbitrary shapes drawn over the board, in plan and in 3D, for a run to add to it
   right-click or Enter ends it, Esc drops it), *Port* (a click), *Measure* (two clicks give the distance, dx, dy and
   the angle; a third the angle between the two legs; Esc clears). A letter picks a tool (S, R, C, P, T, O, M).
 - **Snapping**: a point snaps to the board's pads, vias, track ends and edges and to the shapes' corners, midpoints
-  and centres within 8 pixels (*objects*; a ring, square, triangle or cross marks what it found, and the status bar
-  names it: "snap: pad J1.1 (GND)"), else to the grid (*Snap*). The status bar has the cursor in model and KiCad mm
-  and the size being drawn (a rectangle's width and height, a circle's radius, a trace's leg and length).
+  and centres within 8 pixels (*objects*; a ring, square, diamond, triangle or cross marks what it found, and the
+  status bar names it: "snap: pad J1.1 (GND)"), else to the grid (*Snap*). The status bar has the cursor in model
+  and KiCad mm and the size being drawn (a rectangle's width and height, a circle's radius, a trace's leg and
+  length).
 - **Materials**: *copper* joins its layer's copper (of the net given, else of the copper it overlaps most; a
   different net's copper under it is reported as a short), *cut* takes copper out of its layer, and *metal*,
   *dielectric* and *air* are solids between two heights. Shapes apply in the list's order: a cut takes out what

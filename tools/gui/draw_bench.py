@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """
 The Draw page's speed with many shapes: a via fence of 300 metal posts (an
-array of circles through the board) over a real example board, and the times
-of what a user does with it, in the plan and in 3D, with the peak memory.
+array of circles through the board: four rows across its middle, 27 mm long
+at most) over a real example board, and the times of what a user does with it,
+in the plan (zoomed on the fence) and in 3D, with the memory.
 
     python tools/gui/draw_bench.py                  # sma_launch, 300 vias
     python tools/gui/draw_bench.py --board B.kicad_pcb --n 600 --repeat 30
+
+    # the same against an older page (its src, at a commit of it)
+    git archive 8a5de172 src | tar -x -C /tmp/old
+    PYTHONPATH=/tmp/old/src python tools/gui/draw_bench.py
 
 Runs offscreen (QT_QPA_PLATFORM=offscreen unless set): the plan is painted
 (QWidget.grab) but the 3D view draws nothing there, so its times are what the
@@ -15,11 +20,12 @@ the median of --repeat tries, in ms:
     plan redraw   the plan and the list made again (DrawTab._refresh)
     plan paint    the plan painted (grab)
     plan pick     a click's shape found (DrawTab.hit), on a via and on nothing
-    plan drag     one mouse move of a drag of a via (the event and the redraw)
+    plan drag     one mouse move of a drag of a via (the event and the redraw;
+                  0.2 mm a move, so that every move moves it)
     plan box      a rubber band over the fence
     select all    Ctrl+A: the list, the plan and the 3D view follow
     plan drag all one mouse move of a drag of the whole fence
-    array         the fence made from one via (Array: a row), and undone
+    array         the fence made from one via (Array: a row)
     3D first draw the 3D view's items of every shape made (all new)
     3D redraw     the 3D view drawn again, nothing changed (the page of
                   2026-11-20 made every item again: its first draw)
