@@ -36,6 +36,14 @@ the median of --repeat tries, in ms:
     3D pick       the shape under a pixel (DrawTab.pick3d)
     3D drag       one mouse move of a drag of a via in 3D
     3D drag all   one mouse move of a drag of the whole fence in 3D
+    3D box        the fence selected by a box in 3D (Shift + drag; from the
+                  top, orthographic)
+    3D pick, ortho
+                  the shape under a pixel with the orthographic camera
+    template      a shield can 30 x 8 mm with its post fence placed over the
+                  fence (core.templates: 34 shapes), and undone
+    subtract      a metal plate less the 300 posts (core.shapeops.combined:
+                  one polygon with 300 holes)
     memory held   resident memory once the fence is drawn in both views,
                   over the board's (MB)
     peak memory   the process's peak resident memory over the board's, in the
@@ -51,8 +59,9 @@ a page without those materials, as a dielectric and a metal), and:
     bias readout  the puck's bias worked out and written (DrawTab.bias_text:
                   core.magnets.summary), and again with nothing changed (kept)
 
-(The page of 2026-11-20 had no box, selection of several or array: those
-lines are left out for it.)
+(The page of 2026-11-20 had no box, selection of several or array, and the
+page before 2026-11-28 no templates, booleans, orthographic camera or 3D box:
+those lines are left out for them.)
 """
 import argparse, os, resource, statistics, sys, time
 
@@ -98,6 +107,13 @@ def circulator(layout, materials=('ferrite', 'magnet')):
                   z1=top + 0.5, er=15.0, tand=2e-4, name='puck'),
             Shape('circle', [c], radius=5.0, material=mag, z0=top + 1.5,
                   z1=top + 5.5, name='magnet')]
+
+
+def so_bounds(shapes):
+    """(x0, y0, x1, y1) of shapes together."""
+    b = [s.bounds() for s in shapes]
+    return (min(q[0] for q in b), min(q[1] for q in b), max(q[2] for q in b),
+            max(q[3] for q in b))
 
 
 def ms(f, repeat):
@@ -263,7 +279,7 @@ def main():
         tab.undo()
     # (the steps the page of 2026-11-20 has too: their peak, to compare)
     peak = rss_mb() - max(base, base_peak)
-    n_box = moved_all = None
+    n_box = moved_all = n_box3d = n_tpl = n_holes = None
     many = hasattr(tab, 'select_all')
     if many:
         xs = [s.points[0][0] for s in shapes]
@@ -303,6 +319,58 @@ def main():
                 return (time.perf_counter() - a_) * 1e3
             out['3D first draw'] = statistics.median(
                 first3d() for _ in range(a.repeat))
+            if hasattr(tab, 'box_select3d'):
+                tab.camera('top')
+                tab._redraw_3d()
+                b0 = tab.project3d([min(xs) - 0.5, max(ys) + 0.5, 0.0])
+                b1 = tab.project3d([max(xs) + 0.5, min(ys) - 0.5, 0.0])
+                out['3D box'] = ms(lambda: tab.box_select3d(*b0, *b1),
+                                   a.repeat)
+                n_box3d = len(tab.selected)
+                tab.select(None)
+                px_ = tab.project3d([vx, vy, v.z1])
+                out['3D pick, ortho'] = ms(lambda: tab.pick3d(*px_),
+                                           a.repeat)
+                assert tab.pick3d(*px_)[0] == a.n // 2
+                tab.camera('iso')
+        if hasattr(tab, 'place_template'):
+            from kicad2ems.core.shapes import Shape
+
+            def placed():
+                a_ = time.perf_counter()
+                tab.place_template('can', ((min(xs) + max(xs)) / 2, yc),
+                                   dict(w=30.0, l=8.0, h=3.0, t=0.2,
+                                        fence=True, post=0.3, pitch=2.5))
+                app.processEvents()
+                t_ = (time.perf_counter() - a_) * 1e3
+                n_ = len(tab.drawing.shapes)
+                tab.undo()
+                return t_, n_
+            got = [placed() for _ in range(5)]
+            out['template'] = statistics.median(t_ for t_, _ in got)
+            n_tpl = got[0][1] - len(shapes)
+
+            def subtract():
+                keep = tab.drawing
+                f = fence(a.n, layout)
+                b = so_bounds(f)
+                plate = Shape('rect', [[b[0] - 0.5, b[1] - 0.5],
+                                       [b[2] + 0.5, b[3] + 0.5]],
+                              material='metal', z0=f[0].z0, z1=f[0].z1)
+                tab.drawing = Drawing([plate] + f)
+                tab._refresh()
+                tab.select_all()
+                a_ = time.perf_counter()
+                tab.combine('subtract')
+                app.processEvents()
+                t_ = (time.perf_counter() - a_) * 1e3
+                holes = len(tab.drawing.shapes[0].outline().interiors)
+                tab.drawing = keep
+                tab._refresh()
+                return t_, holes
+            got = [subtract() for _ in range(3)]
+            out['subtract'] = statistics.median(t_ for t_, _ in got)
+            n_holes = got[0][1]
 
         def array():
             keep = tab.drawing
@@ -324,7 +392,10 @@ def main():
           f", median of {a.repeat}; first drawn in "
           f"{first * 1e3:.0f} ms; dragged: plan {moved} shape(s)"
           + (f" ({moved_all} all)" if many else '') +
-          f", 3D {moved3}; box: {n_box}")
+          f", 3D {moved3}; box: {n_box}" +
+          (f", 3D box: {n_box3d}" if n_box3d is not None else '') +
+          (f"; template: {n_tpl} shapes" if n_tpl is not None else '') +
+          (f"; subtract: {n_holes} holes" if n_holes is not None else ''))
     for k, v_ in out.items():
         print(f"  {k:28s} {v_:9.2f} ms")
     print(f"  {'memory held':28s} {held:9.1f} MB (the fence drawn in both "
