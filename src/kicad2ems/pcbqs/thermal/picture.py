@@ -63,8 +63,9 @@ def picture(res, path, dpi=150):
 
 
 def heating_picture(transient, path, most=8):
-    """The heating from cold (grid.heating's): the hottest copper and the `most`
-    hottest parts against time."""
+    """The temperature over time (Grid.transient's): the hottest copper and the
+    `most` hottest parts. The heating from cold of constant losses on a log
+    time axis, profiles (steps, pulses) on a linear one."""
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
@@ -73,11 +74,21 @@ def heating_picture(transient, path, most=8):
     ax.plot(t[1:], transient['hottest_C'][1:], 'k--', lw=1.2,
             label='hottest copper')
     top = (sorted(transient['parts'],
-                  key=lambda k: -transient['parts'][k][-1])[:most])
+                  key=lambda k: -max(transient['parts'][k]))[:most])
     for name in top:
         ax.plot(t[1:], transient['parts'][name][1:], lw=1.2, label=name)
-    ax.set_xscale('log')
-    ax.set(xlabel='time from cold, s', ylabel='C', title='Heating from cold')
+    flat = (not transient.get('profiles')
+            and transient.get('start', 'cold') == 'cold')
+    if flat:
+        ax.set_xscale('log')
+        ax.set(xlabel='time from cold, s', ylabel='C',
+               title='Heating from cold')
+    else:
+        what = ', '.join(f"{k} {v['text']}"
+                         for k, v in transient['profiles'].items())
+        ax.set(xlabel='time, s', ylabel='C',
+               title=(f"From {transient.get('start', 'cold')}"
+                      + (f": {what}" if what else ''))[:90])
     ax.grid(alpha=0.3, which='both')
     ax.legend(fontsize=8, ncol=2)
     fig.savefig(path, dpi=110)

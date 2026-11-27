@@ -158,6 +158,15 @@ QUESTIONS = {
             figures="hottest: the copper's highest temperature, C; <part>: the "
             "board at the part's pads, C"),
         Question(
+            'electrothermal', 'Drop at temperature', 'Thermal',
+            "a rail's DC drop with its copper at the temperature its own loss "
+            "and the parts' make, the board's temperature from both, and both "
+            "over time for a load profile", order=20,
+            figures="drop <load>: the rail's own copper at its temperature, mV "
+            "(as the DC drop's); drop cold <load>: the same at 20 C, mV; "
+            "hottest: the copper's highest temperature, C; loss with return: "
+            "the rail's and its return's copper at their temperature, mW"),
+        Question(
             'conducted', 'Conducted emission', 'EMC',
             "a switching circuit's conducted emission through a LISN in each "
             "supply line, read as a CISPR receiver reads it, against CISPR 32 "

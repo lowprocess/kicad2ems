@@ -702,6 +702,79 @@ class Conducted(Circuit):
         return out
 
 
+class Electrothermal(_Tool):
+    """A rail's DC drop with its copper at its temperature, and the board's
+    temperature from that copper's loss and the parts' (electrothermal.py):
+    an engine of the DC drop too, beside the drop at 20 C."""
+    name, label, tool, module, order = ('electrothermal', 'Electrothermal',
+                                        'kicad2ems.pcbqs.electrothermal',
+                                        'kicad2ems.pcbqs.electrothermal', 57)
+    about = ("a rail's DC drop with its copper at the temperature its own loss "
+             "and the parts' make, the board's temperature, and both over time")
+    engine = 'pcbqs (at temperature)'
+    result = 'electrothermal.json'
+    provides = ('electrothermal', 'dc')
+    several = 'rail'
+    several_keys = ('rail', 'volts', 'source', 'ground_source', 'load')
+    basic = ('rail', 'ground', 'volts', 'load', 'heat', 'ambient')
+
+    def table(self):
+        from .electrothermal import OPTIONS
+        return OPTIONS
+
+    def tag(self, values):
+        return str(values.get('rail') or 'rail').strip()
+
+    def command(self, values, board, out, preview=False, results=None):
+        board = self._board(board)
+        if not str(values.get('rail') or '').strip():
+            raise ValueError('name the rail (its net)')
+        return argv(self.module, self.options(), values, board, out)
+
+    def status(self, line):
+        return (line[len('electrothermal:'):].strip()[:160]
+                if line.startswith('electrothermal:') else None)
+
+    def figures(self, folder):
+        """The DC question's figures at temperature (drop <load>: the rail's
+        own copper, as the drop at 20 C's engine names it), then this tool's:
+        the drop at 20 C, the copper's hottest point and the loss."""
+        r = self._read(folder)
+        loads = {
+            ref: l
+            for ref, l in (r.get('loads') or {}).items()
+            if isinstance(l, dict)
+        }
+        out = [
+            dict(name=f"drop {ref}", value=l['power_drop'] * 1e3, unit='mV')
+            for ref, l in loads.items()
+            if isinstance(l.get('power_drop'), (int, float))
+        ]
+        out += [
+            dict(name=f"drop with return {ref}", value=l['drop'] * 1e3,
+                 unit='mV')
+            for ref, l in loads.items()
+            if isinstance(l.get('drop'), (int, float))
+        ]
+        out += [
+            dict(name=f"drop cold {ref}", value=l['power_drop_cold'] * 1e3,
+                 unit='mV')
+            for ref, l in loads.items()
+            if isinstance(l.get('power_drop_cold'), (int, float))
+        ]
+        cu = r.get('copper') or {}
+        if isinstance(cu.get('hottest_C'), (int, float)):
+            out.append(dict(name='hottest', value=cu['hottest_C'], unit='C'))
+        if isinstance(r.get('loss_W'), (int, float)):
+            out.append(dict(name='loss with return', value=r['loss_W'] * 1e3,
+                            unit='mW'))
+        tr = r.get('transient') or {}
+        if isinstance(tr.get('hottest_C'), (int, float)):
+            out.append(dict(name='hottest in time', value=tr['hottest_C'],
+                            unit='C'))
+        return out
+
+
 # ---- a solver: S-parameters at low frequency, from the copper's quasi-static
 # currents (sparams.py) -------------------------------------------------------
 from kicad2ems.core.solvers import Deviation, Result, Solver  # noqa: E402

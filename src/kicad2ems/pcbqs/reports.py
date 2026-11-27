@@ -20,7 +20,8 @@ import json
 import os
 
 RESULTS = dict(pdn='pdn.json', mqs='mqs.json', thermal='thermal.json',
-               circuit='circuit.json', conducted='conducted.json')
+               circuit='circuit.json', conducted='conducted.json',
+               electrothermal='electrothermal.json')
 PREVIEWS = dict(mqs='mqs-preview.json')
 
 
@@ -601,12 +602,148 @@ def thermal_report(res, folder=''):
                  text=("Parts within "
                        f"{max(abs(v) for v in d['parts_K'].values()):.2f} K, "
                        f"the maps within {d['largest_K']:.2f} K.")))
+    tr = first.get('transient') or res.get('transient')
+    if tr:
+        out['sections'].append(transient_section(tr))
     out['notes'] = list(dict.fromkeys(first.get('notes') or []))
     out['footer'] = ('; '.join(
         f"{n}: {ms[n]['unknowns']:,} unknowns at {ms[n]['size_mm']:g} mm"
         for n in names) + '; ' + ', '.join(
             f"{k} {v:g} s" for k, v in (first.get('seconds') or {}).items()))
     return out
+
+
+def transient_section(tr):
+    """The report's section of a transient's summary (thermal.json's or
+    electrothermal.json's 'transient'): each part's peak, the board's time
+    constants."""
+    prof = tr.get('profiles') or {}
+    what = (', '.join(f"{k}: {v['text']}" for k, v in prof.items())
+            or 'every loss constant')
+    text = (f"Over {tr['seconds']:g} s from {tr.get('start', 'cold')} "
+            f"({what}). ")
+    if tr.get('hottest_C') is not None:
+        text += f"Hottest copper {tr['hottest_C']:.1f} °C"
+        text += (f" at {tr['at_s']:.3g} s. " if tr.get('at_s') is not None
+                 else '. ')
+    if tr.get('tau_s'):
+        text += ("The board's longest time constants: "
+                 + ', '.join(f"{t:.3g}" for t in tr['tau_s'][:3]) + ' s.')
+    rows = [[ref, v['C'], v['at_s'], v['final_C'],
+             (tr.get('to_63_s') or {}).get(ref, '')]
+            for ref, v in sorted((tr.get('peak') or {}).items(),
+                                 key=lambda kv: -kv[1]['C'])]
+    return dict(title='Over time', text=text, table=_table(
+        ['part', 'peak °C', 'at (s)', 'at the end °C', '63 % from cold (s)'],
+        rows, [None, '.1f', '.3g', '.1f', '.3g']))
+
+
+def _transient_curves(folder, name, info):
+    """The temperature over time of a transient's JSON in the folder, as a
+    curve set, or []."""
+    tr = _load(folder, name)
+    if not tr or not tr.get('times_s'):
+        return []
+    t = [float(x) for x in tr['times_s']]
+    cs = dict(title='Temperature over time', xlabel='time (s)',
+              ylabel='temperature (°C)', logx=False, logy=False, info=info,
+              curves=[dict(name='hottest copper', x=t, y=tr['hottest_C'],
+                           role='reference', unit='°C')])
+    for ref, c in sorted((tr.get('parts') or {}).items(),
+                         key=lambda kv: -max(kv[1]))[:8]:
+        cs['curves'].append(dict(name=ref, x=t, y=c, role='data', unit='°C'))
+    return [cs]
+
+
+def thermal_curves(res, folder=''):
+    first = next(iter(_methods(res).values()), None)
+    tr = (first or {}).get('transient') or res.get('transient')
+    if not tr:
+        return []
+    return _transient_curves(folder, tr.get('file', 'thermal-transient.json'),
+                             thermal_report(res, folder)['summary'])
+
+
+# ---- the drop at temperature -----------------------------------------------
+def electrothermal_report(res, folder=''):
+    loads = res.get('loads') or {}
+    worst = max(loads.items(), key=lambda kv: kv[1]['drop'], default=None)
+    cu = res.get('copper') or {}
+    out = dict(title=f"{res['rail']}: {res['volts']:g} V at temperature",
+               sections=[], notes=list(res.get('notes') or []), images=[],
+               show=dict(field='T'))
+    out['summary'] = (
+        f"Electrothermal, rail {res['rail']}" +
+        (f": worst DC drop {worst[1]['drop'] * 1e3:.2f} mV at temperature "
+         f"({worst[1]['drop_cold'] * 1e3:.2f} at 20 °C, at {worst[0]})"
+         if worst else '') +
+        (f"; hottest copper {cu['hottest_C']:.1f} °C"
+         if cu.get('hottest_C') is not None else '') +
+        ('' if res.get('settled', True) else '; NOT SETTLED'))
+    passes = res.get('passes') or []
+    text = (
+        f"Rail tree: {', '.join(res['nets'])}. The copper's resistivity at "
+        f"its temperature, ρ(T) = ρ20 (1 + {res['alpha']:g} (T − 20 °C)): "
+        f"{res['loss_W'] * 1e3:.3g} mW in the copper at temperature, "
+        f"{res['loss_cold_W'] * 1e3:.3g} mW at 20 °C"
+        + (f", {res['series_loss_W'] * 1e3:.3g} mW in the series parts"
+           if res.get('series_loss_W') else '') +
+        f"; air {res['ambient_C']:g} °C. "
+        + (f"Settled in {len(passes)} passes" if res.get('settled') else
+           f"Not settled in {len(passes)} passes")
+        + (f" (the last moved by {passes[-1]['largest_change_K']:.3g} K)."
+           if passes and passes[-1].get('largest_change_K') is not None
+           else '.'))
+    where = cu.get('where') or {}
+    if where:
+        text += (f" Hottest copper {cu['hottest_C']:.1f} °C on "
+                 f"{where['layer']} at ({where['x']:.1f}, {where['y']:.1f}) "
+                 "mm.")
+    if res.get('assumed_loads'):
+        text += (" The loads' currents are assumed (shared by pad count), not "
+                 "known.")
+    out['sections'].append(dict(title='', text=text))
+    rows = [[
+        r, l['I'], l['drop'] * 1e3, l['drop_cold'] * 1e3,
+        (l['drop'] / l['drop_cold'] - 1) * 100 if l['drop_cold'] else '',
+        l['power_drop'] * 1e3, l['ground_rise'] * 1e3
+    ] for r, l in sorted(loads.items(), key=lambda kv: -kv[1]['drop'])]
+    out['sections'].append(dict(title='Loads at DC', table=_table(
+        ['load', 'I (A)', 'drop (mV)', 'at 20 °C (mV)', 'more (%)',
+         'supply side (mV)', 'ground rise (mV)'],
+        rows, [None, '.3g', '.3f', '.3f', '.2f', '.3f', '.3f'])))
+    th = res.get('thermal') or {}
+    if th.get('parts'):
+        rows = [[ref, p['power_W'], p['board_C'], p['part_C'],
+                 p.get('tmax_C', ''), p.get('margin_K', '')]
+                for ref, p in sorted(th['parts'].items(),
+                                     key=lambda kv: -kv[1]['part_C'])]
+        out['sections'].append(dict(title='Parts', table=_table(
+            ['part', 'loss (W)', 'board °C', 'part °C', 'limit °C',
+             'margin (K)'], rows, [None, '.3g', '.1f', '.1f', '.0f', '.1f'])))
+    if passes:
+        out['sections'].append(dict(title='Passes', table=_table(
+            ['pass', 'hottest °C', 'copper loss (mW)', 'worst drop (mV)',
+             'largest move (K)'],
+            [[k + 1, q['hottest_C'], q['loss_W'] * 1e3,
+              q['worst_drop_V'] * 1e3,
+              '' if q.get('largest_change_K') is None
+              else q['largest_change_K']] for k, q in enumerate(passes)],
+            [None, '.2f', '.4g', '.4g', '.3g'])))
+    if res.get('transient'):
+        out['sections'].append(transient_section(res['transient']))
+    s = res.get('seconds') or {}
+    out['footer'] = ', '.join(f"{k} {v:g} s" for k, v in s.items())
+    return out
+
+
+def electrothermal_curves(res, folder=''):
+    tr = res.get('transient')
+    if not tr:
+        return []
+    return _transient_curves(folder, tr.get('file',
+                                            'electrothermal-transient.json'),
+                             electrothermal_report(res, folder)['summary'])
 
 
 # ---- circuits ---------------------------------------------------------------
@@ -881,9 +1018,10 @@ def conducted_curves(res, folder=''):
 
 
 BUILDERS = dict(pdn=(pdn_report, pdn_curves), mqs=(mqs_report, mqs_curves),
-                thermal=(thermal_report, None),
+                thermal=(thermal_report, thermal_curves),
                 circuit=(circuit_report, circuit_curves),
-                conducted=(conducted_report, conducted_curves))
+                conducted=(conducted_report, conducted_curves),
+                electrothermal=(electrothermal_report, electrothermal_curves))
 
 
 def result(kind, folder):

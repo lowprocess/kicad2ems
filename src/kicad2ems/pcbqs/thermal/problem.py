@@ -94,6 +94,19 @@ class Source:
 
 
 @dataclass
+class Spot:
+    """Heat at points (a copper's loss map: electrothermal.py), each into the
+    grid's cell it lies in. slope: dW/dK at each point, the loss's growth with
+    the temperature (its copper's resistance), or None."""
+    name: str
+    layer: int              # index into Problem.layers
+    x: np.ndarray           # mm
+    y: np.ndarray
+    W: np.ndarray           # at the ambient
+    slope: np.ndarray = None
+
+
+@dataclass
 class Held:
     name: str               # the footprint
     layer: int
@@ -117,6 +130,8 @@ class Problem:
     air: dict = field(default_factory=dict)
     # [Held]: pads tied to a temperature (Problem.hold)
     held: list = field(default_factory=list)
+    # [Spot]: heat at points (Problem.heat_points)
+    spots: list = field(default_factory=list)
     film: tuple = (FILM, FILM)  # W/m2/K: bottom face, top face
     edge_film: float = FILM     # W/m2/K: the board's edges (0: insulated)
     ambient: float = AMBIENT
@@ -230,6 +245,22 @@ class Problem:
         for i, g in pads:
             self.sources.append(Source(name, i, g, watts * g.area / total))
         self.powers[name] = self.powers.get(name, 0.0) + watts
+
+    def heat_points(self, name, layer, x, y, W, slope=None):
+        """Heat W (watts, at the ambient) at the points x, y (mm) of a layer (its
+        name), each into the cell it lies in; slope: dW/dK at each, its growth
+        with the temperature (the copper's resistance: electrothermal.py)."""
+        if layer not in [l.name for l in self.layers]:
+            self.notes.append(
+                f'{name}: heat on {layer}, not a copper layer; left out')
+            return
+        x, y, W = (np.asarray(a, float).ravel() for a in (x, y, W))
+        if not len(W):
+            return
+        self.spots.append(
+            Spot(name, self.index(layer), x, y, W,
+                 None if slope is None else np.broadcast_to(
+                     np.asarray(slope, float), W.shape).copy()))
 
     def dissipate(self, board, losses):
         """Each footprint's loss {reference: W} over its pads."""
@@ -347,7 +378,9 @@ class Problem:
 
     @property
     def watts(self):
-        return float(sum(s.watts for s in self.sources))
+        """W into the board at the ambient: the parts' and the spots'."""
+        return float(sum(s.watts for s in self.sources) +
+                     sum(float(s.W.sum()) for s in self.spots))
 
 
 def factor_spd(A):
@@ -447,7 +480,9 @@ class Result:
     # Problem.extend's read: the parts' own paths to the air, the held
     # footprints
     extra: dict = None
-    transient: dict = None          # grid.py's heating from cold, when asked
+    transient: dict = None          # grid.py's transient, when asked
+    # W in: the parts' and spots' with the spots' self-heating (None: watts)
+    in_W: float = None
 
     @property
     def hottest(self):
@@ -487,7 +522,8 @@ class Result:
             seconds={k: round(v, 4)
                      for k, v in self.seconds.items()}, ambient_C=p.ambient,
             film_W_m2K=list(p.film), edge_film_W_m2K=p.edge_film,
-            heat_in_W=p.watts, heat_out_W=self.out_W,
+            heat_in_W=p.watts if self.in_W is None else self.in_W,
+            heat_out_W=self.out_W,
             heat_out_edges_W=self.edge_W,
             **({} if not self.extra else dict(
                 heat_out_parts_air_W=float(sum(self.extra['air_W'].values())),

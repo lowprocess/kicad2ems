@@ -37,16 +37,17 @@ def cells(rep):
 
 
 # ---- the analyses -----------------------------------------------------------
-def test_the_five_register_with_kicad2ems():
+def test_the_six_register_with_kicad2ems():
     """Declared as kicad2ems expects (a name, a result file, options of its
     kinds), in the Study's order."""
     from kicad2ems.core.analyses import Analysis, KINDS
     made = [
         cls() for cls in (A.PowerIntegrity, A.NearField, A.Circuit, A.Thermal,
-                          A.Conducted)
+                          A.Electrothermal, A.Conducted)
     ]
-    assert ([a.name for a in made] == ['pdn', 'mqs', 'circuit', 'thermal',
-                                       'conducted'] ==
+    assert ([a.name for a in made]
+            == ['pdn', 'mqs', 'circuit', 'thermal', 'electrothermal',
+                'conducted'] ==
             [a.name for a in sorted(made, key=lambda a: a.order)])
     for a in made:
         assert isinstance(a, Analysis)
@@ -67,7 +68,11 @@ def test_the_five_register_with_kicad2ems():
                                   stop='parts'))
     assert (pick(made[1]) == dict(converter='part', inductor='part', vin='net',
                                   ground='net', capacitors='parts'))
-    assert pick(made[2]) == {} == pick(made[3]) == pick(made[4])
+    assert pick(made[2]) == {} == pick(made[3]) == pick(made[5])
+    # (the rail's options are pdn's own)
+    from kicad2ems.pcbqs.electrothermal import RAIL_KEYS
+    assert pick(made[4]) == {k: v for k, v in pick(made[0]).items()
+                             if k in RAIL_KEYS}
     from kicad2ems.core.analyses import ANALYSES
     # (fem's beside)
     assert ([s for s in ANALYSES if s.startswith('kicad2ems.pcbqs.')] == [

@@ -184,6 +184,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   search's 256 samples a period, its 5-30 MHz lines 26 dB low), `analysis.ignore` counting a named part's stored
   energy out of the settling test too, and a circuit that stores nothing no longer fails on an empty sum. Test:
   tests/pcbqs/test_conducted.py.
+- **The DC drop at temperature, and the board's temperature over time (`kicad2ems.pcbqs.electrothermal`,
+  `pcbqs.thermal.transient`, docs/pcbqs/electrothermal.md, 2026-11-27).** A rail's DC drop (pdn's: the tree and its
+  return, the vias' barrels) puts its loss, each triangle's at its edge midpoints and each barrel's at its via, into
+  the thermal grid beside the parts' (`--heat REF=W`, `--loads-heat`: each load's V x I; the series parts' I^2 R on
+  their pads), and the temperature sets each triangle's and barrel's resistivity, rho_20 (1 + 0.00393 (T - 20 C)),
+  for the next DC solve, until no triangle moves by more than 0.05 K (the thermal system factored once). It
+  answers a new study question (*Drop at temperature*, Thermal) and is a second engine of *Rail drop* (`pcbqs (at
+  temperature)`), so a study sets the drop hot and at 20 C side by side; figures drop / drop with return / drop
+  cold per load, hottest, loss with return. `--transient S` with `--current-profile SHAPE` (the copper's and the
+  series parts' loss by its square) and `--profile REF=SHAPE`: the temperature over time, the copper's loss
+  following each point's temperature about the hot current pattern (linear in T: A - alpha diag(W') in the
+  stepping matrix). The thermal tool's transient is now TR-BDF2 (second order, L-stable) with each part's loss by
+  a profile (`step[:A,B][@T]`, `off@T`, `pulse:ON,OFF[,LOW,HIGH][@T]`, a file of t, W), from cold or from the
+  steady state before t = 0 (`--start steady`), the board's longest time constants (C v = tau A v), each part's
+  peak; no step crosses a profile's break, step lengths on a 4x ladder so a pulse train reuses its factors.
+  Checked: a 60 x 20 mm sheet heated evenly by its own 25 A (the coupled closed form T - Ta = P0 (1 + a (Ta - 20))
+  / (H A - a P0)): 70.326 C against 70.329, the drop within 5e-5, five passes each 0.15 of the last (the loop's
+  gain); a 1 mm trace at 2.4 A across a 60 mm plane-less board against the two-region fin: 8.80 K against 8.81
+  (IPC-2221's external-trace fit 10.1 K, a sanity bound); `--alpha 0` the DC tool's drop bit for bit and the
+  thermal tool's map to 1e-9 K; the transient's frozen pattern ends 2-30 mK from the passes'; a lumped RC within
+  5e-4 of its closed form (a self-heating one 1e-3), a plate's single mode through a pulse train, a cooling and a
+  load step within 1 %, its time constant to 1e-6 and its 63 % time to 1e-3 (backward Euler's: 2 % late). On the
+  synchronous buck's board (05_buck_synchronous, `out` at 5 A, Q1, Q2, L1 at 0.25, 0.2, 0.3 W): copper at
+  80.0 C, the drop at J2 6.65 mV against 5.52 at 20 C (+20.5 %), the copper's loss 33.3 mW against 27.6; three
+  passes, 0.3 s. Also: `pdn.dc.rail_networks` / `solve_networks` (solve_rail in two), `Network.conductivity`
+  (a factor per triangle and barrel) and each triangle's loss (`Sheet.P`); `pdn.cli.parse_loads` / `read_rail`
+  (the rail setup the two tools share); the thermal grid built once for any heats (`thermal.grid.build`,
+  `Grid.place` for heat at points, `Problem.heat_points`). Tests: tests/pcbqs/test_electrothermal.py,
+  tests/pcbqs/test_thermal_transient.py.
 - **Jitter, noise and BER contours in the time-domain question (2026-11-25; docs/timedomain.md#ber).** The
   statistical eye of a lone bit's response at the far end (`timedomain.stat_eye`): every pattern of the other bits
   (each cursor's two-point distribution convolved on a grid, its mass split between neighbouring levels so the

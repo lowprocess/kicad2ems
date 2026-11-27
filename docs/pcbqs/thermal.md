@@ -60,11 +60,7 @@ sparse solve.
 - **Moving air**, `--air-speed m/s` (and `--air-length mm` along the flow, the outline's longer side unless
   given): both faces' coefficient from a laminar flat plate's convection, 3.84 √(v/L) W/m²/K, joined to the still
   air's convection as assisting flows join ((h_n³ + h_f³)^⅓), with radiation (6 W/m²/K of the 10) on top.
-- **The heating from cold**, `--transient s` (the grid's): the board's own heat capacity (FR-4 2.0 MJ/m³/K,
-  copper 3.45) by backward Euler, 40 steps a decade from a thousandth of the time asked, to
-  `thermal-transient.json` (each part's temperature and the hottest copper against time, and `to_63_s`: when
-  each part is 63 % of the way there) and `thermal-transient.png`. The parts' bodies hold no heat here, so a
-  part's first seconds read quick. A single sheet's time constant comes out 2 % late.
+- **Over time**, `--transient s`, with each part's loss by a profile: [below](#over-time).
 
 In code: `p.air = {'Q1': 15.0}`, `p.hold(board, {'H1': 40.0})`, `forced_film(1.5, 80.0)`, and
 `solve(p, 0.5, transient=1800)` (its `r.transient`).
@@ -94,6 +90,42 @@ r.sample('F.Cu', x, y)                              # at points (mm)
 ```
 
 `sample` interpolates between cell centres (NaN off the board, and in its holes).
+
+## Over time
+
+`--transient SECONDS`: the temperature over that long, from the board's own heat capacity (FR-4 2.0 MJ/m³/K, copper
+3.45; the parts' bodies hold none, so a part's first seconds read quick), each part's loss by a profile:
+
+    python -m kicad2ems.pcbqs.thermal board.kicad_pcb --loss Q1=2 --transient 1800           # the heating from cold
+    python -m kicad2ems.pcbqs.thermal board.kicad_pcb --loss Q1=2 --loss U1=0.5 --transient 600 \
+        --profile Q1=pulse:20,40@10 --profile U1=step:0.3,1@60 --start steady  # bursts; a load step from 30 %
+    python -m kicad2ems.pcbqs.thermal board.kicad_pcb --profile Q1=q1_watts.csv --transient 3600   # t_s, W rows
+
+A profile (`--profile REF=SHAPE`, repeat; `all=SHAPE` for every part without its own) scales a part's loss:
+`step[:A,B][@T]` (A before T, B from it; 0 and 1 unless given), `off@T` (on until T: a cooling),
+`pulse:ON,OFF[,LOW,HIGH][@T]` (HIGH for ON seconds, LOW for OFF, repeating from T), or a file of `t_s, W` (the
+part's loss in watts, linear between the rows; its `--loss` need not be given). `--start cold` runs from the
+ambient, `--start steady` from the steady temperature of the profiles' values before t = 0.
+
+The stepping (`thermal/transient.py`) is TR-BDF2: a trapezoidal stage then BDF2, second order and L-stable, so a step
+far longer than the copper's own time constants damps them instead of ringing, and both stages take one matrix,
+factored once for each step length. No step crosses a profile's break; within each interval the steps grow from a
+ten-thousandth of it, each at most a fifth of the time since the break, on a ladder of lengths 4× apart, so the
+factors are few and every pulse of a train reuses them. The board's longest time constants come from the
+generalized eigenproblem C v = τ A v (ARPACK on A's factor).
+
+It writes `thermal-transient.json` (the times, each part's temperature and the hottest copper against time, each
+part's peak and when, the time constants, `to_63_s` for the heating from cold: when each part is 63 % of the way
+there) and `thermal-transient.png`; the report's *Over time* section and a curve set of the parts against time.
+
+Checks (`tests/pcbqs/test_thermal_transient.py`): a lumped RC within 5e-4 of its closed form, and with a self-heating
+loss (the electrothermal one) within 1e-3; a plate heated all over (one mode) through a pulse train, a cooling and a
+load step within 1 % of its exact response; its time constant C / G to 1e-6 and its 63 % time to 1e-3 (backward
+Euler's, before 2026-11-27: 2 % late); after many time constants every part at its steady temperature (2 mK), and a
+run from the steady state staying there.
+
+The copper's own loss from the DC drop, with its resistance at its temperature, and both over time for a load
+profile: [Drop at temperature](electrothermal.md).
 
 ## The solver
 
@@ -194,11 +226,9 @@ Two things the comparison found:
 - **The film is one number** a face (or moving air's). Natural convection and radiation both grow with the
   temperature rise, and the air warmed by one part reaches the next. A film that depends on the temperature is a
   few repeats of the same solve.
-- **The copper's own loss** is not put in as a map. From the DC drop it is a loss per triangle; on the demo
-  boards it is milliwatts.
 - **Resistance against temperature** feeds back into the circuit's losses with `kicad2ems.pcbqs.circuit --warm`
-  ([circuit.md](circuit.md#parts-at-their-temperatures)); the DC drop's copper is still at 25 °C.
-- **A transient of changing losses** (a load step): the heating is from cold, at the losses given.
+  ([circuit.md](circuit.md#parts-at-their-temperatures)) and into the DC drop's copper with
+  [the drop at temperature](electrothermal.md); a circuit's copper (`--fields`) is at its run's temperature.
 - **The laminate between the sheets.** Its in-plane conduction sits on the sheets (above); one more sheet per
   dielectric, at mid-thickness, would follow the 3D board more closely near hot parts, for 2L-1 unknowns per
   cell instead of L.

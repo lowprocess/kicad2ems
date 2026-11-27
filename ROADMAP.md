@@ -299,8 +299,11 @@ the code review of 2026-11-25. Last updated 2026-11-27.
    - a complete PEEC model to ~λ/10 (proximity currents, via skin loss, mutuals between parts and copper);
    - pcbqs's Palace validations again on Palace 0.19 (made on 0.18.1).
 9. **Losses and thermal:** a convection film that grows with the rise and radiation, air one part warms reaching
-   the next; the heating from cold, a load step's transient; the iGSE's DC-bias and relaxation terms; the DC
-   drop's copper at its temperature.
+   the next; the iGSE's DC-bias and relaxation terms; the parts' bodies' heat capacity (a part's first seconds
+   read quick). The drop at temperature (`pcbqs.electrothermal`), the rest: its transient keeps the hot steady
+   state's current pattern (the pattern's shift as the copper warms is the passes' alone); a series part's and a
+   load's own resistance against temperature; a circuit run's losses (`--circuit`, as the thermal tool takes
+   them) and its copper's AC loss; several rails at once (their copper heats one board).
 10. **Conducted emission, the rest** (`pcbqs.conducted`, docs/pcbqs/conducted.md):
    - radiated emission from a converter: its switch node's loop and its input cable, driven by the conducted
      run's currents (the radiated question's far field);

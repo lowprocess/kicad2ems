@@ -69,9 +69,19 @@ OPTIONS = table([
      "a cold plate or a chassis; the heat that leaves through it is "
      "reported", 'Parts'),
     ('transient', 'float', 0.0,
-     "s: also the heating from cold over this long (the grid's; the board's "
-     "heat capacity, not the parts' bodies'): thermal-transient.json and .png",
-     'Solver'),
+     "s: also the temperature over this long, from cold unless --start "
+     "steady (the grid's; the board's heat capacity, not the parts' "
+     "bodies'): thermal-transient.json and .png", 'Transient'),
+    ('profile', 'list', [],
+     "a part's loss over time, REF=SHAPE (repeat; all=SHAPE: every part "
+     "without its own): step[:A,B][@T] (a share of its loss, A before T and "
+     "B after), off@T, pulse:ON,OFF[,LOW,HIGH][@T] (seconds), or a file of "
+     "t_s, W (its loss in watts over time; its --loss then need not be "
+     "given)", 'Transient'),
+    ('start', 'str', 'cold',
+     "the transient from cold (the ambient), or from the steady temperature "
+     "of the profiles' values before t = 0 (a load step from a base load, a "
+     "cooling)", 'Transient', ('cold', 'steady')),
     ('size', 'float', None, 'mm: the grid pitch (0.5)', 'Solver'),
 ])
 
@@ -188,6 +198,21 @@ def main(argv=None):
         print(f"losses of case {case_name}")
     if not board_file:
         ap.error('a board, or --circuit with a model that names one')
+    from . import transient as TR
+    profiles = {}
+    for item in a.profile:
+        ref, _, text = str(item).partition('=')
+        try:
+            if not ref.strip() or not text.strip():
+                raise ValueError(f"--profile {item!r}: REF=SHAPE")
+            profiles[ref.strip()] = TR.profile(text.strip(), watts=True)
+        except ValueError as e:
+            ap.error(str(e))
+    for ref, pr in profiles.items():  # a file's W: a share of the part's loss
+        if pr.kind == 'file' and ref != 'all':
+            peak = float(abs(pr.values).max()) or 1.0
+            losses.setdefault(ref, peak)
+            pr.values = pr.values / losses[ref]
     if not losses:
         ap.error('no loss: --loss REF=W or --circuit FOLDER')
     try:
@@ -232,8 +257,15 @@ def main(argv=None):
     from .picture import picture
     if a.transient < 0:
         ap.error('--transient: seconds, positive')
-    first = solve(p, a.size,
-                  **(dict(transient=a.transient) if a.transient else {}))
+    if (profiles or a.start != 'cold') and not a.transient:
+        ap.error('--profile and --start are the transient\'s: give '
+                 '--transient SECONDS')
+    try:
+        first = solve(p, a.size, **(dict(
+            transient=a.transient, profiles=profiles, start=a.start)
+            if a.transient else {}))
+    except ValueError as e:
+        ap.error(str(e))
     summary = dict(first.summary(), board=str(Path(board_file).resolve()),
                    circuit=str(a.circuit or ''), case=case_name,
                    figure='thermal.png')
@@ -268,11 +300,22 @@ def main(argv=None):
         from .picture import heating_picture
         heating_picture(tr, out / 'thermal-transient.png')
         slow = sorted(tr['to_63_s'].items(), key=lambda kv: -kv[1])[:3]
-        print("heating from cold: "
-              + ', '.join(f"{k} 63 % in {v:.0f} s" for k, v in slow)
-              + " (thermal-transient.json)")
-        summary['transient'] = dict(file='thermal-transient.json',
-                                    seconds=a.transient, to_63_s=tr['to_63_s'])
+        if slow:
+            print("heating from cold: "
+                  + ', '.join(f"{k} 63 % in {v:.0f} s" for k, v in slow)
+                  + " (thermal-transient.json)")
+        hot = sorted(tr['peak'].items(), key=lambda kv: -kv[1]['C'])[:3]
+        print(f"transient over {a.transient:g} s from {a.start}: "
+              + ', '.join(f"{k} peaks at {v['C']:.1f} C at {v['at_s']:.3g} s"
+                          for k, v in hot)
+              + (f"; the board's time constants "
+                 + ', '.join(f"{t:.3g}" for t in tr['tau_s'][:3]) + " s"
+                 if tr['tau_s'] else ''))
+        summary['transient'] = dict(
+            file='thermal-transient.json', seconds=a.transient,
+            to_63_s=tr['to_63_s'], start=a.start, peak=tr['peak'],
+            tau_s=tr['tau_s'], hottest_C=float(max(tr['hottest_C'])),
+            steps=tr['steps'], profiles=tr['profiles'])
     for n in p.notes:
         print('note:', n)
     np.savez_compressed(out / 'thermal.npz',

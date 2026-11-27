@@ -45,6 +45,13 @@ from .mesh import net_sheets, stiffness, gradient, stack_z, SIGMA_CU
 TIE_G = 1e6
 
 
+def _areas(nodes, tris):
+    """Each triangle's area, mm2."""
+    P = nodes[tris]
+    d1, d2 = P[:, 1] - P[:, 0], P[:, 2] - P[:, 0]
+    return 0.5 * np.abs(d1[:, 0] * d2[:, 1] - d1[:, 1] * d2[:, 0])
+
+
 def _barrel_g(r_mm, dz_mm, plating_mm, sigma):
     """A via barrel's conductance, S: sigma x its plating's cross-section / its
     length."""
@@ -110,14 +117,14 @@ class Network:
             cols.append(np.r_[a, b, b, a])
             vals.append(np.r_[g, g, -g, -g])
         self._link = link
-        blocks = []
         for sh in self.sheets.values():
-            K = stiffness(sh.nodes, sh.tris, sigma * sh.t * 1e-3).tocoo()
-            blocks.append((K.row + sh.off, K.col + sh.off, K.data))
-        self.blocks = blocks
+            sh.scale = None     # the conductivity per triangle / sigma (None: 1)
+        self._sheet_blocks()
         j = off
         # per via: [(layer_a, layer_b, junction_a, junction_b, g)]
         self.via_segs = []
+        # each barrel's link: (via, segment, its entry in the links, g at sigma)
+        self._barrels = []
         for k, v in enumerate(self.vias):
             on = sorted([
                 (sh.z, lay)
@@ -134,6 +141,7 @@ class Network:
             segs = []
             for (ja, la, za), (jb, lb, zb) in zip(js, js[1:]):
                 g = _barrel_g(v['r'], zb - za, plating, sigma)
+                self._barrels.append((k, len(segs), len(vals), g))
                 link(ja, jb, g)
                 segs.append((la, lb, ja, jb, g))
             self.via_segs.append(segs)
@@ -166,6 +174,33 @@ class Network:
             f"{sum(1 for s in self.via_segs if s)} vias, {len(self.tj)} "
             "terminals"
             )
+
+    def _sheet_blocks(self):
+        """Each sheet's conductance matrix, its triangles at sigma times their
+        scale."""
+        self.blocks = []
+        for sh in self.sheets.values():
+            g = self.sigma * sh.t * 1e-3
+            K = stiffness(sh.nodes, sh.tris,
+                          g if sh.scale is None else g * sh.scale).tocoo()
+            self.blocks.append((K.row + sh.off, K.col + sh.off, K.data))
+
+    def conductivity(self, sheets=None, vias=None):
+        """The copper's conductivity scaled from sigma (the copper at another
+        temperature: electrothermal.py): sheets {layer: (M,) factor per
+        triangle}, vias [a factor per via, one for all its barrels]; a layer or
+        a via not given goes back to sigma. The next solve() takes it."""
+        sheets = sheets or {}
+        for lay, sh in self.sheets.items():
+            f = sheets.get(lay)
+            sh.scale = (None if f is None else np.broadcast_to(
+                np.asarray(f, float), (len(sh.tris),)).copy())
+        self._sheet_blocks()
+        for k, i, at, g in self._barrels:
+            f = 1.0 if vias is None else float(vias[k])
+            self._vals[at] = np.r_[g, g, -g, -g] * f
+            la, lb, ja, jb, _ = self.via_segs[k][i]
+            self.via_segs[k][i] = (la, lb, ja, jb, g * f)
 
     def series(self, name, a, b, R):
         """A series part (resistance R, ohms) between terminals a and b."""
@@ -232,14 +267,22 @@ class Network:
         for lay, sh in self.sheets.items():
             sh.V = V[sh.off:sh.off + len(sh.nodes)]
             gv = gradient(sh.nodes, sh.tris, np.nan_to_num(sh.V))      # V/mm
+            # S per square, each triangle's
+            g = self.sigma * sh.t * 1e-3 * (1.0 if sh.scale is None else
+                                            sh.scale)
             # A per mm of width
-            sh.J = self.sigma * sh.t * 1e-3 * np.hypot(gv[:, 0], gv[:, 1])
+            sh.J = g * np.hypot(gv[:, 0], gv[:, 1])
+            # W in each triangle: g |grad V|^2 over its area (electrothermal.py)
+            sh.P = g * np.einsum('ma,ma->m', gv, gv) * _areas(sh.nodes, sh.tris)
         for v, segs in zip(self.vias, self.via_segs):
             ss = [(la, lb, float(g * (Vz[ja] - Vz[jb])))
                   for la, lb, ja, jb, g in segs]
             out.vias.append(
                 dict(x=v['x'], y=v['y'], r=v['r'], segments=ss,
-                     I=max([abs(s[2]) for s in ss], default=0.0)))
+                     I=max([abs(s[2]) for s in ss], default=0.0),
+                     # W in its barrels, each (layer_a, layer_b, W)
+                     W=[(la, lb, float(g * (Vz[ja] - Vz[jb])**2))
+                        for la, lb, ja, jb, g in segs]))
         out.terminals = {t: float(V[j]) for t, j in self.tj.items()}
         # along its current
         out.series = {
@@ -303,13 +346,12 @@ def solve(board, net, source, loads, dmax=1.0, sigma=SIGMA_CU, plating=0.025,
     return r
 
 
-def solve_rail(rail, volts, dmax=1.0, sigma=SIGMA_CU, plating=0.025, log=print,
-               fine=True):
-    """A rail (rail.Rail) and its return at DC: the source's pads held at
-    `volts`, each load drawing rail.loads[ref] amps over its pads on the tree
-    and returning it over its ground pads. {'loads': {ref: dict(V, drop,
-    power_drop, ground_rise, I)}, 'series': {ref: dict(I, drop, loss_W)}, 'power':
-    DCResult, 'ground': DCResult, 'notes'}."""
+def rail_networks(rail, dmax=1.0, sigma=SIGMA_CU, plating=0.025, log=print,
+                  fine=True):
+    """A rail's two networks (rail.Rail): (power, ground, no_return) — the
+    tree's copper with its source, series parts and loads as terminals, the
+    ground's with the ground source and the loads' ground pads, and the loads
+    with no ground pad. solve_networks solves them; solve_rail is both."""
     from .rail import terminal
     layers = list(stack_z(rail.board))
     g = set(rail.ground)
@@ -324,7 +366,6 @@ def solve_rail(rail, volts, dmax=1.0, sigma=SIGMA_CU, plating=0.025, log=print,
     pw = Network(rail.board, rail.nets, pt, **kw)
     for s in rail.series:
         pw.series(s.part.ref, f'{s.part.ref}:a', f'{s.part.ref}:b', s.R)
-    rp = pw.solve({'source': volts}, {ref: -i for ref, i in rail.loads.items()})
     gt = {'source': terminal(rail.ground_source_pads, layers)}
     # (a --load @RETURN)
     gt.update({
@@ -335,10 +376,17 @@ def solve_rail(rail, volts, dmax=1.0, sigma=SIGMA_CU, plating=0.025, log=print,
     for ref in no_gnd:
         gt.pop(ref)
     gn = Network(rail.board, g, gt, **kw)
+    return pw, gn, no_gnd
+
+
+def solve_networks(rail, volts, pw, gn, no_gnd, log=print):
+    """solve_rail's answer from rail_networks' networks (as they are: at
+    another conductivity, Network.conductivity)."""
+    rp = pw.solve({'source': volts}, {ref: -i for ref, i in rail.loads.items()})
     rg = gn.solve({'source': 0.0},
                   {ref: i
                    for ref, i in rail.loads.items()
-                   if ref in gt})
+                   if ref in gn.terms})
     loads = {}
     for ref, i in rail.loads.items():
         vp, vg = rp.terminals.get(ref, np.nan), rg.terminals.get(ref, 0.0)
@@ -356,3 +404,14 @@ def solve_rail(rail, volts, dmax=1.0, sigma=SIGMA_CU, plating=0.025, log=print,
             f"{max(l['drop'] for l in loads.values()) * 1e3:.2f} mV")
     return dict(loads=loads, series=rp.series, power=rp, ground=rg, notes=notes,
                 no_return=no_gnd)
+
+
+def solve_rail(rail, volts, dmax=1.0, sigma=SIGMA_CU, plating=0.025, log=print,
+               fine=True):
+    """A rail (rail.Rail) and its return at DC: the source's pads held at
+    `volts`, each load drawing rail.loads[ref] amps over its pads on the tree
+    and returning it over its ground pads. {'loads': {ref: dict(V, drop,
+    power_drop, ground_rise, I)}, 'series': {ref: dict(I, drop, loss_W)}, 'power':
+    DCResult, 'ground': DCResult, 'notes'}."""
+    pw, gn, no_gnd = rail_networks(rail, dmax, sigma, plating, log, fine)
+    return solve_networks(rail, volts, pw, gn, no_gnd, log)

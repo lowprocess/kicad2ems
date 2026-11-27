@@ -221,8 +221,80 @@ def bands(f, z, target):
             for a, b in zip(edges[::2], edges[1::2])]
 
 
+def parse_loads(a):
+    """(loads {REF: A}, returns {REF: the part it returns through}, dcr {REF:
+    ohms}) of the rail options --load REF=AMPS[@RETURN] and --dcr
+    REF=OHMS."""
+    returns, plain = {}, []
+    for item in a.load:                                 # REF=AMPS[@RETURN]
+        head, at, back = item.partition('@')
+        if at:
+            if not back.strip():
+                raise SystemExit(
+                    f'pdn: error: --load {item!r}: expected REF=AMPS@RETURN')
+            returns[head.partition('=')[0].strip()] = back.strip()
+        plain.append(head)
+    loads = {
+        r: v[0]
+        for r, v in ref_values(plain, '--load', 'REF=AMPS[@RETURN]').items()
+    }
+    dcr = {r: v[0] for r, v in ref_values(a.dcr, '--dcr', 'REF=OHMS').items()}
+    return loads, returns, dcr
+
+
+def read_rail(a, ground, loads, returns, dcr, log=say):
+    """The board (its rail tree's and ground's copper) and the rail (rail.Rail)
+    of the rail options: the loads given, else the parts' own fields, else
+    --spread-load's share. (board, rail, dict(assumed, fielded, field_notes));
+    the electrothermal tool's too."""
+    from .rail import Rail, field_loads, LOAD_FIELD
+    log(f'reading {os.path.basename(a.board)}')
+    board = load_board(a.board, {a.rail, *ground})
+    kw = dict(ground=ground, source=a.source or None,
+              ground_source=a.ground_source or None, max_ohms=a.max_ohms,
+              through=tuple(x for x in a.through.split(',') if x),
+              stop=tuple(x for x in a.stop.split(',') if x), dcr=dcr)
+    # the rail's nets, before its loads are known
+    tree = Rail(board, a.rail, **kw)
+    # the tree's other nets: read with it
+    if not a.board.endswith('.json') and not tree.nets <= {a.rail}:
+        log(f'rail tree: {len(tree.nets)} nets; reading their copper')
+        board = load_board(a.board, set(tree.nets) | set(ground))
+    assumed, fielded, field_notes = False, {}, []
+    if not a.no_part_loads:  # the parts' own fields; --load overrides one
+        found, back, field_notes = field_loads(board, tree.nets)
+        fielded = {r: v for r, v in found.items() if r not in loads}
+        returns = {**{r: b for r, b in back.items() if r in fielded}, **returns}
+        loads = {**fielded, **loads}
+        if fielded:
+            log(f"loads from the parts' {LOAD_FIELD} fields: "
+                + ', '.join(f"{r} {v:g} A" for r, v in sorted(fielded.items())))
+    # shared by +rail pad count over every part but R, C, L
+    if not loads and a.spread_load > 0:
+        users = {
+            f['ref']: sum(p.get('net') == a.rail
+                          for p in f['pads'])
+            for f in board['prims']['footprints']
+            if not f.get('dnp') and any(
+                p.get('net') == a.rail for p in f['pads'])
+            and not f['ref'].upper().startswith(('C', 'R', 'L', 'FB'))
+        }
+        tot = sum(users.values())
+        loads, assumed = (
+            {r: a.spread_load * n / tot
+             for r, n in users.items()} if tot else {}), True
+    if not loads:
+        raise SystemExit(
+            f"pdn: no loads: --load REF=AMPS, a {LOAD_FIELD} field on the "
+            "parts, or --spread-load AMPS"
+        )
+    rail = Rail(board, a.rail, loads=loads, returns=returns, **kw)
+    return board, rail, dict(assumed=assumed, fielded=fielded,
+                             field_notes=field_notes)
+
+
 def run(a):
-    from .rail import Rail, field_loads, LOAD_FIELD, part_value
+    from .rail import part_value
     from .dc import solve_rail
     t0 = time.time()
     os.makedirs(a.out, exist_ok=True)
@@ -251,20 +323,7 @@ def run(a):
                         "library")
     except (OSError, ValueError) as e:
         raise SystemExit(f'pdn: error: {e}')
-    returns, plain = {}, []
-    for item in a.load:                                 # REF=AMPS[@RETURN]
-        head, at, back = item.partition('@')
-        if at:
-            if not back.strip():
-                raise SystemExit(
-                    f'pdn: error: --load {item!r}: expected REF=AMPS@RETURN')
-            returns[head.partition('=')[0].strip()] = back.strip()
-        plain.append(head)
-    loads = {
-        r: v[0]
-        for r, v in ref_values(plain, '--load', 'REF=AMPS[@RETURN]').items()
-    }
-    dcr = {r: v[0] for r, v in ref_values(a.dcr, '--dcr', 'REF=OHMS').items()}
+    loads, returns, dcr = parse_loads(a)
     load_targets = {
         r: v[0]
         for r, v in ref_values(a.load_target, '--load-target',
@@ -317,52 +376,14 @@ def run(a):
             spectra[ref.strip()] = (file.strip(), *read_spectrum(file.strip()))
         except (OSError, ValueError) as e:
             raise SystemExit(f'pdn: error: --load-spectrum {ref.strip()}: {e}')
-    say(f'reading {os.path.basename(a.board)}')
-    board = load_board(a.board, {a.rail, *ground})
-    kw = dict(ground=ground, source=a.source or None,
-              ground_source=a.ground_source or None, max_ohms=a.max_ohms,
-              through=tuple(x for x in a.through.split(',') if x),
-              stop=tuple(x for x in a.stop.split(',') if x), dcr=dcr)
-    # the rail's nets, before its loads are known
-    tree = Rail(board, a.rail, **kw)
-    # the tree's other nets: read with it
-    if not a.board.endswith('.json') and not tree.nets <= {a.rail}:
-        say(f'rail tree: {len(tree.nets)} nets; reading their copper')
-        board = load_board(a.board, set(tree.nets) | set(ground))
-    assumed, fielded, field_notes = False, {}, []
-    if not a.no_part_loads:  # the parts' own fields; --load overrides one
-        found, back, field_notes = field_loads(board, tree.nets)
-        fielded = {r: v for r, v in found.items() if r not in loads}
-        returns = {**{r: b for r, b in back.items() if r in fielded}, **returns}
-        loads = {**fielded, **loads}
-        if fielded:
-            say(f"loads from the parts' {LOAD_FIELD} fields: "
-                + ', '.join(f"{r} {v:g} A" for r, v in sorted(fielded.items())))
-    # shared by +rail pad count over every part but R, C, L
-    if not loads and a.spread_load > 0:
-        users = {
-            f['ref']: sum(p.get('net') == a.rail
-                          for p in f['pads'])
-            for f in board['prims']['footprints']
-            if not f.get('dnp') and any(
-                p.get('net') == a.rail for p in f['pads'])
-            and not f['ref'].upper().startswith(('C', 'R', 'L', 'FB'))
-        }
-        tot = sum(users.values())
-        loads, assumed = (
-            {r: a.spread_load * n / tot
-             for r, n in users.items()} if tot else {}), True
-    if not loads:
-        raise SystemExit(
-            f"pdn: no loads: --load REF=AMPS, a {LOAD_FIELD} field on the "
-            "parts, or --spread-load AMPS"
-        )
+    board, rail, found = read_rail(a, ground, loads, returns, dcr)
+    loads, assumed = rail.loads, found['assumed']
+    fielded, field_notes = found['fielded'], found['field_notes']
     unknown = sorted(set(spectra) - set(loads))
     if unknown:
         raise SystemExit(
             f"pdn: error: --load-spectrum for {', '.join(unknown)}: not a load "
             "(give its DC current too, --load REF=AMPS)")
-    rail = Rail(board, a.rail, loads=loads, returns=returns, **kw)
     for line in rail.describe():
         say(line.strip())
     say('DC: meshing and solving')

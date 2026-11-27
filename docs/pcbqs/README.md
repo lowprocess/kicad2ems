@@ -61,6 +61,8 @@ remain supported. Another static-fill backend is registered with
   by a CISPR 16-1-1 receiver (peak, quasi-peak, average) against CISPR 32's or CISPR 25's limits; the
   differential and common modes, the board's capacitance to the reference plane
 - [Temperature](thermal.md): a trial of a lightweight thermal solver on a grid
+- [Drop at temperature](electrothermal.md): a rail's DC drop with its copper at its temperature, the board's
+  temperature from both, and both over time for a load profile
 - [Validation and limits](quasistatic-validation.md)
 - [Migration](migration.md)
 - [Copied-code provenance](PROVENANCE.json)

@@ -90,7 +90,8 @@ def test_the_tree_lists_every_question_with_its_engines(fakes):
         'sparams', 'antenna', 'lines', 'crosstalk', 'coupling', 'timedomain',
         'rlgc',
         'dc', 'pdn', 'decoupling', 'nearfield', 'circuit', 'coils',
-        'capacitance', 'thermal', 'conducted', 'emission', 'susceptibility'
+        'capacitance', 'thermal', 'electrothermal', 'conducted', 'emission',
+        'susceptibility'
     ])
     # kicad2ems's own (analyses.BUILTIN): not these fakes'
     assert (rows['crosstalk']['engines'] == [] == rows['coupling']['engines']
