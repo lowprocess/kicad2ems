@@ -64,7 +64,8 @@ were done on 2026-11-27: CHANGELOG)
 
 1. **The page itself:** the shape list with icons and each material's colour, the form in groups, a toolbar that
    names each tool's key; the drawn shapes in the main Viewer, and the run's mesh of them (the solids as the
-   solver sees them).
+   solver sees them). The side panel's last buttons are cut off at a 1500 × 950 window (*Use in runs* half shown,
+   *Region from shape* and *Ports to settings* below it, 2026-11-27): the panel scrolled, or its buttons in a menu.
 2. **The 3D view, on a screen:** its outline, gizmo, grid, clip and Show menu were built and tested offscreen (the
    camera, rays, picking and drags against pyqtgraph's own matrices), but no display was there to see them drawn:
    look at them on one, and make docs/img/gui/draw.png again (its 3D half needs a display). Then the gizmo's
