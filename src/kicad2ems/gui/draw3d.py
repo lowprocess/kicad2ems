@@ -1,0 +1,762 @@
+"""
+The Draw page's 3D view (gui.drawtab's DrawTab takes it as a mixin): the
+board and the shapes extruded, picked and dragged with the mouse, the camera's
+presets, a clip plane, what is shown, the selection's outline and its gizmo,
+and the working level's grid. The numbers (the camera's matrices, rays, the
+axis drag, the clip, the outlines, the grid) are kicad2ems.core.view3d's.
+
+    tab.camera('top' | 'front' | 'side' | 'iso')   # fitted to the drawing
+    tab.frame_3d()                  # the selection (else all) filling it
+    tab.set_clip(axis, value, keep) # axis 0 / 1 / 2 or None (off)
+    tab.set_shown(key, on)          # 'substrate', 'cu:<layer>', a material,
+                                    # 'port'
+    tab.ray3d(px, py); tab.project3d(p); tab.pick3d(px, py)
+"""
+import numpy as np
+import pyqtgraph as pg
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QToolButton,
+                               QLabel, QComboBox, QCheckBox, QMenu)
+from kicad2ems.core import shapes as sh
+from kicad2ems.core import view3d as v3
+from . import theme
+
+__all__ = ['Draw3D', 'SHOWN_MATERIALS']
+
+# what the Show menu turns on and off besides the board's layers
+SHOWN_MATERIALS = sh.MATERIALS + ('port',)
+AXIS_RGBA = {0: (0.95, 0.25, 0.25, 1.0), 1: (0.25, 0.85, 0.30, 1.0),
+             2: (0.30, 0.55, 1.00, 1.0)}
+GIZMO_PX = 9  # how near an arrow a press takes it, pixels
+
+
+class Draw3D:
+    """The 3D half of DrawTab (its methods read the tab's drawing, selection,
+    stack, snap and status)."""
+
+    # ---- the widgets ----
+    def _make_3d(self):
+        """The 3D view with its toolbar (self.view3d: the view), or a note
+        saying why there is none (self.gl None)."""
+        from .volumetab import gl_problem, _view_class
+        self.shown3d = {k: True for k in ('substrate',) + SHOWN_MATERIALS}
+        self.clip = None  # (axis, value, keep)
+        self._gl_items, self._board3d, self._board3d_at = [], None, None
+        self._meshes3d, self._shape_gl = {}, {}
+        self._press3d_at, self._drag3d = None, None
+        self._outline_gl = self._gizmo_gl = self._grid_gl = None
+        self._gizmo = None  # (base, length, axes) as drawn
+        try:
+            import pyqtgraph.opengl as gl
+        except Exception as e:  # noqa: BLE001 (no PyOpenGL)
+            self.gl, why = None, f"needs PyOpenGL ({type(e).__name__})"
+        else:
+            self.gl, why = gl, gl_problem()
+        if self.gl is None or why:
+            self.gl = None
+            self.view3d = QLabel(f"The 3D preview is off: {why}",
+                                 wordWrap=True, alignment=Qt.AlignCenter,
+                                 styleSheet='color: gray')
+            return self.view3d
+        view = _pick_view(_view_class(self.gl), self)()
+        view.setBackgroundColor(theme.colors()['bg'])
+        view.setCameraPosition(distance=60, elevation=30, azimuth=-60)
+        self.view3d = view
+        box = QWidget()
+        v = QVBoxLayout(box)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(2)
+        v.addLayout(self._toolbar_3d())
+        v.addWidget(view, 1)
+        return box
+
+    def _toolbar_3d(self):
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        for name, key, tip in (('Top', '7', 'from above'),
+                               ('Front', '1', 'from the front (along +y)'),
+                               ('Side', '3', 'from the right (along -x)'),
+                               ('Iso', '5', 'from a corner')):
+            row.addWidget(QToolButton(
+                text=name, autoRaise=True, toolTip=f"{tip} ({key})",
+                clicked=lambda _=False, n=name.lower(): self.camera(n)))
+        row.addWidget(QToolButton(
+            text='Fit', autoRaise=True, clicked=self.frame_3d,
+            toolTip='the selection (else everything) filling the view (F)'))
+        row.addWidget(QLabel(' Clip'))
+        self.clip_axis = QComboBox(toolTip=(
+            'a plane through the board: what is past it is not drawn or '
+            'picked (a section)'))
+        self.clip_axis.addItems(['off', 'x', 'y', 'z'])
+        self.clip_axis.activated.connect(lambda _: self._clip_changed(True))
+        from .drawtab import _spin, _narrow
+        self.clip_at = _narrow(_spin(0.0, -1000, 1000, ' mm',
+                                     'where the plane is'), 70)
+        self.clip_at.valueChanged.connect(lambda _: self._clip_changed())
+        self.clip_flip = QCheckBox('flip', toolTip='keep what is past it '
+                                   'instead')
+        self.clip_flip.toggled.connect(lambda _: self._clip_changed())
+        for w in (self.clip_axis, self.clip_at, self.clip_flip):
+            row.addWidget(w)
+        self.show_btn = QToolButton(text='Show', autoRaise=True,
+                                    popupMode=QToolButton.InstantPopup,
+                                    toolTip='layers and materials drawn in '
+                                    '3D, the grid, see-through solids')
+        self.show_menu = QMenu(self.show_btn)
+        self.show_btn.setMenu(self.show_menu)
+        row.addWidget(self.show_btn)
+        self.grid_on = QAction('the grid at the working level', self,
+                               checkable=True, checked=True, toolTip=(
+                                   'the snap grid at the working level: the '
+                                   'layer drawn on, or a new solid\'s '
+                                   'bottom'))
+        self.grid_on.toggled.connect(lambda _: self._update_grid_3d())
+        self.see_through = QAction(
+            'see-through metal', self, checkable=True, checked=True,
+            toolTip='metal solids drawn translucent, so what they cover shows')
+        self.see_through.toggled.connect(lambda _: self._3d_timer.start())
+        row.addStretch(1)
+        self._fill_show_menu()
+        return row
+
+    def _fill_show_menu(self):
+        if self.gl is None:
+            return
+        self.show_menu.clear()
+        self.show_acts = {}
+        layers = sorted(self.stack['cu_z'], key=lambda l: -self.stack['cu_z'][l])
+        entries = [('substrate', "the board's substrate")] + [
+            (f"cu:{l}", f"the board's {l}") for l in layers] + [None] + [
+            (m, f"drawn {m}" if m != 'port' else 'drawn ports')
+            for m in SHOWN_MATERIALS]
+        for e in entries:
+            if e is None:
+                self.show_menu.addSeparator()
+                continue
+            key, text = e
+            a = self.show_menu.addAction(text)
+            a.setCheckable(True)
+            a.setChecked(self.shown3d.setdefault(key, True))
+            a.toggled.connect(lambda on, k=key: self.set_shown(k, on))
+            self.show_acts[key] = a
+        self.show_menu.addSeparator()
+        self.show_menu.addAction(self.grid_on)
+        self.show_menu.addAction(self.see_through)
+
+    # ---- what is shown ----
+    def set_shown(self, key, on):
+        """A layer ('substrate', 'cu:<layer>') or a material (a drawn one, or
+        'port') drawn in 3D or not (and picked or not)."""
+        self.shown3d[key] = bool(on)
+        a = getattr(self, 'show_acts', {}).get(key)
+        if a is not None and a.isChecked() != bool(on):
+            a.setChecked(bool(on))
+        self._3d_timer.start()
+
+    def _shown3d(self, s):
+        return (not s.hidden and self.shown3d.get(
+            'port' if s.kind == 'port' else s.material, True))
+
+    def set_clip(self, axis=None, value=0.0, keep='below'):
+        """The clip plane: model axis 0, 1 or 2 at `value` mm, the side kept
+        'below' or 'above'; axis None: none."""
+        from PySide6.QtCore import QSignalBlocker
+        if self.gl is not None:
+            with QSignalBlocker(self.clip_axis), QSignalBlocker(
+                    self.clip_at), QSignalBlocker(self.clip_flip):
+                self.clip_axis.setCurrentIndex(0 if axis is None else axis + 1)
+                self.clip_at.setValue(value)
+                self.clip_flip.setChecked(keep == 'above')
+        self.clip = None if axis is None else (int(axis), float(value), keep)
+        self._3d_timer.start()
+
+    def _clip_changed(self, axis_changed=False):
+        k = self.clip_axis.currentIndex() - 1
+        if k < 0:
+            return self.set_clip(None)
+        if axis_changed:  # through the middle of what is drawn
+            b = self._bounds3d()
+            if b is not None:
+                return self.set_clip(k, round((b[k] + b[k + 3]) / 2, 3),
+                                     'above' if self.clip_flip.isChecked()
+                                     else 'below')
+        self.set_clip(k, self.clip_at.value(),
+                      'above' if self.clip_flip.isChecked() else 'below')
+
+    # ---- the camera ----
+    def _cam(self):
+        o = self.view3d.opts
+        c = o['center']
+        return dict(center=(c.x(), c.y(), c.z()), distance=o['distance'],
+                    elevation=o['elevation'], azimuth=o['azimuth'],
+                    fov=o['fov'])
+
+    def _set_cam(self, **kw):
+        if 'center' in kw:
+            kw['center'] = pg.Vector(*kw['center'])
+        self.view3d.setCameraParams(**kw)
+        self.view3d.update()
+        self._update_gizmo_3d()
+
+    def _aspect(self):
+        return max(self.view3d.width(), 1) / max(self.view3d.height(), 1)
+
+    def camera(self, name):
+        """The camera from the top, front, side or a corner (iso), fitted to
+        the board and the drawing."""
+        if self.gl is None:
+            return
+        b = self._bounds3d() or (-5, -20, 0, 25, 5, 1.6)
+        self._set_cam(**v3.preset(name, b, self.view3d.opts['fov'],
+                                  self._aspect()))
+
+    def frame_3d(self):
+        """The selection (else everything) filling the 3D view, seen from
+        where the camera is."""
+        if self.gl is None:
+            return
+        b = self._bounds3d(self.selected or None) or self._bounds3d()
+        if b is not None:
+            self._set_cam(**v3.frame(b, self._cam(), self._aspect()))
+
+    def _bounds3d(self, which=None):
+        """(x0, y0, z0, x1, y1, z1) of the shapes of index `which` (None: the
+        board and every shown shape), or None."""
+        boxes = []
+        idx = range(len(self.drawing.shapes)) if which is None else which
+        for i in idx:
+            s = self.drawing.shapes[i]
+            if s.hidden and which is None:
+                continue
+            m = self._meshes3d.get(i) or _mesh_of(s, self.stack)
+            if m is not None and len(m[0]):
+                boxes.append([*m[0].min(0), *m[0].max(0)])
+        if which is None and self.layout_ and self.layout_.get('outline'):
+            from .drawtab import shape_bounds
+            x0, y0, x1, y1 = shape_bounds(self.layout_)
+            zs = [l['z0'] for l in self.stack['layers']] + [
+                l['z1'] for l in self.stack['layers']] or [0.0]
+            boxes.append([x0, y0, min(zs), x1, y1, max(zs)])
+        if not boxes:
+            return None
+        b = np.asarray(boxes, float)
+        return (*b[:, :3].min(0), *b[:, 3:].max(0))
+
+    # ---- drawing it ----
+    def _redraw_3d(self):
+        if self.gl is None:
+            return
+        view = self.view3d
+        for it in self._gl_items:
+            view.removeItem(it)
+        self._gl_items = []
+        self._outline_gl = self._gizmo_gl = self._grid_gl = None
+        if self.board_on.isChecked():
+            for key, v, f, rgba, opaque in self._board_clipped():
+                if self.shown3d.get(key, True):
+                    self._mesh(v, f, rgba, opaque)
+        self._meshes3d, self._shape_gl = {}, {}
+        for i, s in enumerate(self.drawing.shapes):
+            if not self._shown3d(s):
+                continue
+            m = self._meshes3d[i] = self._shape_mesh3d(s)
+            if m is not None and len(m[0]):
+                self._shape_gl[i] = self._mesh(*m, *self._look(i, s))
+        self._update_grid_3d()
+        self._update_outline_3d()
+
+    def _look(self, i, s):
+        """(rgba, opaque) of shape i in 3D: its material's colour, lighter
+        when selected (the selection is outlined too)."""
+        from .drawtab import COLOURS, PORT_COLOUR
+        rgb = np.asarray(PORT_COLOUR if s.kind == 'port' else
+                         COLOURS[s.material], float)
+        if i in self.selected:
+            rgb = 0.55 * rgb + 0.45 * np.array([120, 190, 255.0])
+        a = (0.45 if s.material in ('dielectric', 'air') else 0.55
+             if s.material == 'metal' and self.see_through.isChecked() else 1.0)
+        return (*(rgb / 255), a), a == 1.0
+
+    def _mesh(self, v, f, rgba, opaque):
+        from .volumetab import copper_shader
+        md = self.gl.MeshData(vertexes=v.astype(np.float32),
+                              faces=f.astype(np.uint32))
+        it = self.gl.GLMeshItem(
+            meshdata=md, color=rgba, smooth=False, shader=copper_shader(),
+            glOptions='opaque' if opaque else 'translucent')
+        it.setDepthValue(0 if opaque else 5)
+        self.view3d.addItem(it)
+        self._gl_items.append(it)
+        return it
+
+    def _shape_mesh3d(self, s):
+        """Shape s's triangles as drawn: through the clip plane, a solid cut
+        and capped (its outline clipped, extruded again)."""
+        m = _mesh_of(s, self.stack)
+        if m is None or self.clip is None:
+            return m
+        axis, value, keep = self.clip
+        g = s.outline()
+        z0, z1 = float(m[0][:, 2].min()), float(m[0][:, 2].max())
+        if g is None:  # a port's post
+            v, f = v3.clip_mesh(*m, axis, value, keep)
+            return (v, f) if len(f) else None
+        if axis == 2:
+            r = v3.clip_range(z0, z1, value, keep)
+            return None if r is None else _prisms(g, *r)
+        g = v3.clip_outline(g, axis, value, keep)
+        return None if g is None else _prisms(g, z0, z1)
+
+    def _board_clipped(self):
+        """The board's meshes [(key, v, f, rgba, opaque)], made once a board
+        (and once a clip)."""
+        if self._board3d is None:
+            self._board3d, self._board3d_at = self._board_meshes(), None
+        if self.clip is None:
+            return self._board3d
+        if self._board3d_at is not None and self._board3d_at[0] == self.clip:
+            return self._board3d_at[1]
+        axis, value, keep = self.clip
+        out = []
+        for key, v, f, rgba, opaque in self._board3d:
+            if key == 'substrate' and axis != 2:
+                from shapely.geometry import shape as geo
+                g = v3.clip_outline(geo(self.layout_['outline']), axis, value,
+                                    keep)
+                m = None if g is None else _prisms(g, v[:, 2].min(),
+                                                   v[:, 2].max())
+            else:
+                m = v3.clip_mesh(v, f, axis, value, keep)
+            if m is not None and len(m[1]):
+                out.append((key, *m, rgba, opaque))
+        self._board3d_at = (self.clip, out)
+        return out
+
+    def _board_meshes(self):
+        """The board's substrate and copper as (key, vertices, faces, rgba,
+        opaque): key 'substrate' or 'cu:<layer>'."""
+        d = self.layout_
+        if not d:
+            return []
+        from shapely.geometry import shape as geo
+        from . import volume3d as vol
+        out = []
+        layers = self.stack['layers']
+        if d.get('outline') and layers:
+            z0 = min(l['z0'] for l in layers)
+            z1 = max(l['z1'] for l in layers)
+            try:
+                v, f = sh.prism(geo(d['outline']), z0, z1)
+                out.append(('substrate', v, f, (0.30, 0.62, 0.36, 0.25),
+                            False))
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            geom = vol.geometry_from_board(d)
+            for lay, _, v, f in vol.copper_solids(geom, 0.05):
+                out.append((f"cu:{lay}", v, f, (0.84, 0.55, 0.25, 1.0), True))
+        except Exception:  # noqa: BLE001 (a board without copper)
+            pass
+        return out
+
+    def _level(self):
+        """The working level's height: the layer drawn on, or a new solid's
+        bottom."""
+        if self.material.currentText() in sh.SOLID:
+            return self.z0.value()
+        return self.stack['cu_z'].get(self.layer.currentText(), 0.0)
+
+    def _selection_3d(self, was):
+        """The shapes selected or no longer (`was`: the selection before)
+        coloured again, and the outline and the gizmo moved to the
+        selection; the rest stays drawn."""
+        if self.gl is None or self._3d_timer.isActive():
+            return  # (drawn whole soon)
+        ss = self.drawing.shapes
+        for i in set(was) ^ set(self.selected):
+            it = self._shape_gl.get(i)
+            if it is not None and i < len(ss):
+                it.setColor(self._look(i, ss[i])[0])
+        self._update_outline_3d()
+
+    def _update_grid_3d(self):
+        """The snap grid (made coarser to stay readable) at the working
+        level, over the board (else the drawing, else a default area)."""
+        if self.gl is None:
+            return
+        if self._grid_gl is not None:
+            self.view3d.removeItem(self._grid_gl)
+            self._gl_items.remove(self._grid_gl)
+            self._grid_gl = None
+        if not self.grid_on.isChecked():
+            return
+        b = self._bounds3d()
+        b2 = (b[0], b[1], b[3], b[4]) if b is not None else (-5, -20, 25, 5)
+        g = v3.grid_spec(b2, self.snap.value() or 1.0)
+        grid = self.gl.GLGridItem(color=(140, 140, 160, 90))
+        grid.setSize(*g['size'])
+        grid.setSpacing(g['spacing'], g['spacing'])
+        grid.translate(g['center'][0], g['center'][1], self._level())
+        self.view3d.addItem(grid)
+        self._gl_items.append(grid)
+        self._grid_gl = grid
+        self.grid_spacing3d = g['spacing']
+
+    def _update_outline_3d(self):
+        """The selected shapes outlined (their solids' edges, drawn over
+        everything), and the gizmo at them."""
+        if self.gl is None:
+            return
+        if self._outline_gl is not None:
+            self.view3d.removeItem(self._outline_gl)
+            self._gl_items.remove(self._outline_gl)
+            self._outline_gl = None
+        segs = []
+        for i in self.selected:
+            if i >= len(self.drawing.shapes):
+                continue
+            s = self.drawing.shapes[i]
+            m = self._meshes3d.get(i)
+            if m is None or not len(m[0]):
+                continue
+            g = s.outline() if s.kind != 'port' else None
+            if g is not None and self.clip is not None and self.clip[0] != 2:
+                g = v3.clip_outline(g, *self.clip)
+            if g is None:  # a port: its post's box
+                from shapely.geometry import box
+                x0, y0 = m[0][:, :2].min(0)
+                x1, y1 = m[0][:, :2].max(0)
+                g = box(x0, y0, x1, y1)
+            segs.append(v3.prism_edges(g, m[0][:, 2].min(), m[0][:, 2].max()))
+        if segs:
+            from .drawtab import SELECTED
+            c = SELECTED
+            it = self.gl.GLLinePlotItem(
+                pos=np.concatenate(segs).astype(np.float32), mode='lines',
+                width=2.0, antialias=True,
+                color=(c.redF(), c.greenF(), c.blueF(), 1.0))
+            self.view3d.addItem(it)
+            self._gl_items.append(it)
+            self._outline_gl = it
+        self._update_gizmo_3d()
+
+    # ---- the gizmo ----
+    def _gizmo_frame(self):
+        """(base, length, axes) of the gizmo at the movable selection (its
+        centre on top), or None: x and y always, z when they are solids."""
+        movable = self._movable()
+        if not movable:
+            return None
+        boxes = [np.r_[m[0].min(0), m[0].max(0)] for m in
+                 (self._meshes3d.get(i) for i in movable)
+                 if m is not None and len(m[0])]
+        if not boxes:
+            return None
+        b = np.asarray(boxes)
+        lo, hi = b[:, :3].min(0), b[:, 3:].max(0)
+        base = np.array([(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, hi[2]])
+        px = float(self.view3d.pixelSize(pg.Vector(*base)))
+        length = max(70 * px, 1e-3)
+        axes = (0, 1) + ((2,) if all(self.drawing.shapes[i].solid
+                                     for i in movable) else ())
+        return base, length, axes
+
+    def _update_gizmo_3d(self):
+        if self.gl is None:
+            return
+        if self._gizmo_gl is not None:
+            self.view3d.removeItem(self._gizmo_gl)
+            self._gl_items.remove(self._gizmo_gl)
+            self._gizmo_gl = None
+        self._gizmo = fr = self._gizmo_frame()
+        if fr is None:
+            return
+        base, length, axes = fr
+        pos, col = [], []
+        for k in axes:
+            tip = base.copy()
+            tip[k] += length
+            pos += [base, tip]
+            col += [AXIS_RGBA[k]] * 2
+        it = self.gl.GLLinePlotItem(pos=np.asarray(pos, np.float32),
+                                    color=np.asarray(col, np.float32),
+                                    mode='lines', width=4.0, antialias=True)
+        self.view3d.addItem(it)
+        self._gl_items.append(it)
+        self._gizmo_gl = it
+
+    def _gizmo_hit(self, x, y):
+        """The gizmo's axis (0, 1, 2) whose arrow pixel (x, y) is on, or
+        None."""
+        fr = self._gizmo
+        if fr is None:
+            return None
+        base, length, axes = fr
+        m, w, h = self._mvp(), self.view3d.width(), self.view3d.height()
+        best = None
+        for k in axes:
+            tip = base.copy()
+            tip[k] += length
+            d, t = v3.pixel_to_segment(m, w, h, base, tip, x, y)
+            if d <= GIZMO_PX and t > 0.15 and (best is None or d < best[0]):
+                best = (d, k)
+        return None if best is None else best[1]
+
+    # ---- picking and editing in 3D ----
+    def _mvp(self):
+        v = self.view3d
+        return v3.mvp(self._cam(), max(v.width(), 1), max(v.height(), 1))
+
+    def ray3d(self, x, y):
+        """(origin, unit direction) of the ray under pixel (x, y) of the 3D
+        view, model mm."""
+        v = self.view3d
+        return v3.ray(self._mvp(), max(v.width(), 1), max(v.height(), 1), x,
+                      y)
+
+    def project3d(self, p):
+        """The 3D view's pixel (x, y) of model point p."""
+        v = self.view3d
+        return v3.project(self._mvp(), max(v.width(), 1), max(v.height(), 1),
+                          p)
+
+    def pick3d(self, x, y):
+        """(shape index, model point) under pixel (x, y) of the 3D view, or
+        (None, None). Only drawn shapes are picked (not the board; not a
+        hidden shape, a material not shown, or what the clip took off)."""
+        o, d = self.ray3d(x, y)
+        i, t = sh.pick(self._meshes3d, o, d)
+        return (None, None) if i is None else (i, o + t * d)
+
+    def _ensure_3d(self):
+        if self._3d_timer.isActive():  # what is drawn, before it is picked
+            self._3d_timer.stop()
+            self._redraw_3d()
+
+    def _press3d(self, ev):
+        """A left press in 3D. On the gizmo: a drag along its axis. On a
+        shape: it is selected (Shift: a click toggles it, a drag on a solid
+        stretches or lifts it) and a drag moves the selection (True: the
+        view does not orbit). On nothing, or with Ctrl, the view orbits or
+        pans; a click there (no move) selects none (Ctrl: toggles)."""
+        pos = ev.position()
+        x, y = pos.x(), pos.y()
+        self._press3d_at, self._drag3d = (x, y), None
+        self._axis = None
+        mods = ev.modifiers()
+        if ev.button() != Qt.LeftButton or mods & Qt.ControlModifier:
+            return False
+        self._ensure_3d()
+        ax = self._gizmo_hit(x, y)
+        if ax is not None:
+            o, d = self.ray3d(x, y)
+            base = self._gizmo[0]
+            s0 = v3.along_axis(o, d, base, ax)
+            if s0 is not None:
+                self._drag3d = self._drag_start(kind='axis', axis=ax, at=base,
+                                                s0=s0)
+                self.status.setText(
+                    f"3D: along {'xyz'[ax]} (the gizmo's arrow)")
+                return True
+        i, at = self.pick3d(x, y)
+        if i is None:
+            return False
+        s = self.drawing.shapes[i]
+        if mods & Qt.ShiftModifier:
+            face = None
+            if s.solid:
+                lo, hi = sorted((s.z0, s.z1))
+                tol = 0.02 * max(hi - lo, 1e-3)
+                face = ('top' if abs(at[2] - hi) < tol else
+                        'bottom' if abs(at[2] - lo) < tol else 'side')
+            self._drag3d = self._drag_start(
+                kind='face' if face else 'none', i=i, at=at, face=face,
+                toggle=True, normal=self._upright(x, y))
+            return True
+        if i not in self.selected:
+            self.select(i)
+        if s.locked:
+            self._drag3d = self._drag_start(kind='none', i=i, at=at)
+            self.status.setText(f"3D: {s.label()} is locked (not moved)")
+            return True
+        self._drag3d = self._drag_start(kind='move', i=i, at=at, s0=0.0)
+        self.view3d.setCursor(Qt.ClosedHandCursor)
+        self.status.setText(
+            f"3D: {len(self._movable())} shape(s) - drag to move them on their "
+            "level (X / Y / Z: along that axis only)" + (
+                '; Shift+drag a solid\'s top or bottom face to stretch it, '
+                'its side to lift it' if s.solid else ''))
+        return True
+
+    def _upright(self, x, y):
+        """The normal of the upright plane facing the camera (a lift's), or
+        None looking straight down."""
+        _, d = self.ray3d(x, y)
+        n = np.array([d[0], d[1], 0.0])
+        return n / np.linalg.norm(n) if np.linalg.norm(n) > 1e-6 else None
+
+    def _drag_start(self, **st):
+        st.update(before=self.drawing.to_dict(), moved=False,
+                  orig={j: self.drawing.shapes[j] for j in self._movable()})
+        return st
+
+    def _move3d(self, ev):
+        """A drag of what was pressed on (True), else a hover (the cursor
+        says what a press would do) or the view's own orbit (False)."""
+        pos = ev.position()
+        st = self._drag3d
+        if st is None:
+            if ev.buttons() == Qt.NoButton:
+                hit = (self._gizmo_hit(pos.x(), pos.y()) is not None
+                       or self.pick3d(pos.x(), pos.y())[0] is not None)
+                self.view3d.setCursor(Qt.OpenHandCursor if hit else
+                                      Qt.ArrowCursor)
+            return False
+        if st['kind'] == 'none':
+            return True
+        if st.get('toggle') and not st['moved']:  # a Shift drag starts
+            if st['i'] not in self.selected:
+                self.select(st['i'])
+            st['orig'] = {j: self.drawing.shapes[j] for j in self._movable()}
+        o, d = self.ray3d(pos.x(), pos.y())
+        at, g = st['at'], self.snap.value()
+        rnd = (lambda v: round(round(v / g) * g, 6)) if g > 0 else (
+            lambda v: v)
+        axis = st['axis'] if st['kind'] == 'axis' else (
+            'xyz'.index(self._axis) if self._axis else None)
+        new = {}
+        if axis is not None:
+            s = v3.along_axis(o, d, at, axis)
+            if s is None:
+                return True
+            delta = rnd(s - st.get('s0', 0.0))
+            for j, s0 in st['orig'].items():
+                new[j] = (s0.lifted(delta) if axis == 2 and s0.solid else
+                          s0 if axis == 2 else
+                          s0.moved(delta, 0) if axis == 0 else
+                          s0.moved(0, delta))
+        elif st['kind'] == 'face':
+            n = st['normal']
+            if n is None:  # looking straight down: the mouse's rows
+                dz = -(pos.y() - self._press3d_at[1]) * self.view3d.pixelSize(
+                    pg.Vector(*at))
+            else:
+                den = d @ n
+                if abs(den) < 1e-9:
+                    return True
+                dz = (o + ((at - o) @ n / den) * d)[2] - at[2]
+            face = None if st['face'] == 'side' else st['face']
+            for j, s0 in st['orig'].items():
+                new[j] = s0.lifted(rnd(dz), face) if s0.solid else s0
+        else:  # moved on its level
+            if abs(d[2]) < 1e-9:
+                return True
+            p = o + ((at[2] - o[2]) / d[2]) * d
+            dx, dy = rnd(p[0] - at[0]), rnd(p[1] - at[1])
+            for j, s0 in st['orig'].items():
+                new[j] = s0.moved(dx, dy)
+        changed = [j for j, s in new.items()
+                   if s.to_dict() != self.drawing.shapes[j].to_dict()]
+        for j in changed:
+            self.drawing.shapes[j] = new[j]
+            self._update_shape_3d(j)
+        if changed:
+            st['moved'] = True
+            self._refresh(listing=False, quick=True)
+            self._update_outline_3d()
+        return True
+
+    def _cancel_drag3d(self):
+        """Esc while dragging in 3D: the shapes back where they were (the
+        rest of the drag moves nothing)."""
+        st = self._drag3d
+        if st['moved']:
+            from kicad2ems.core.shapes import Drawing
+            self.drawing = Drawing.from_dict(st['before'])
+            self._refresh(listing=False)
+        st.update(kind='none', moved=False, toggle=False)
+        self.status.setText('the drag undone (Esc)')
+
+    def _release3d(self, ev):
+        st, at = self._drag3d, self._press3d_at
+        self._drag3d = self._press3d_at = None
+        self._axis = None
+        if st is not None:
+            self.view3d.setCursor(Qt.OpenHandCursor)
+            if st['moved']:
+                self._commit(st['before'])
+            elif st.get('toggle'):
+                self.select(st['i'], 'toggle')
+            return
+        pos = ev.position()
+        if (at is None or ev.button() != Qt.LeftButton
+                or abs(pos.x() - at[0]) + abs(pos.y() - at[1]) >= 4):
+            return  # an orbit or a pan
+        if ev.modifiers() & (Qt.ControlModifier | Qt.ShiftModifier):
+            i, _ = self.pick3d(pos.x(), pos.y())
+            if i is not None:
+                self.select(i, 'toggle')
+            return
+        if self.selected:  # a click on nothing (not an orbit): none
+            self.select(None)
+
+    def _update_shape_3d(self, i):
+        """Shape i's 3D mesh, again (while it is dragged: the rest stays)."""
+        s = self.drawing.shapes[i]
+        m = self._meshes3d[i] = self._shape_mesh3d(s)
+        it = self._shape_gl.get(i)
+        if it is None or m is None:
+            return
+        it.setMeshData(meshdata=self.gl.MeshData(
+            vertexes=m[0].astype(np.float32), faces=m[1].astype(np.uint32)))
+
+
+def _pick_view(base, tab):
+    """The 3D view class whose left button the page's 3D editing has first
+    (Draw3D._press3d / _move3d / _release3d): what they leave orbits and pans
+    as before. Its keys are the page's (Delete, Esc, a tool's letter, undo,
+    the camera's digits, X / Y / Z while dragging)."""
+    class PickView(base):
+        def mousePressEvent(self, ev):
+            super().mousePressEvent(ev)  # (where an orbit starts from)
+            tab._press3d(ev)
+
+        def mouseMoveEvent(self, ev):
+            if not tab._move3d(ev):
+                super().mouseMoveEvent(ev)
+            else:
+                self.mousePos = ev.position()
+
+        def mouseReleaseEvent(self, ev):
+            tab._release3d(ev)
+            super().mouseReleaseEvent(ev)
+
+        def wheelEvent(self, ev):
+            super().wheelEvent(ev)
+            tab._update_gizmo_3d()
+
+        def keyPressEvent(self, ev):
+            if ev.key() in (Qt.Key_Left, Qt.Key_Right, Qt.Key_Up,
+                            Qt.Key_Down, Qt.Key_PageUp, Qt.Key_PageDown):
+                super().keyPressEvent(ev)  # the camera's keys
+            else:
+                tab.keyPressEvent(ev)
+    return PickView
+
+
+def _mesh_of(s, stack):
+    try:
+        return sh.shape_mesh(s, stack)
+    except Exception:  # noqa: BLE001 (a shape shapely cannot fill)
+        return None
+
+
+def _prisms(g, z0, z1):
+    """sh.prism of a polygon or of each part of a multipolygon, together."""
+    parts = list(getattr(g, 'geoms', [g]))
+    ms = [sh.prism(p, z0, z1) for p in parts if p.area > 1e-12]
+    if not ms:
+        return None
+    v = np.concatenate([m[0] for m in ms])
+    return v, np.arange(len(v)).reshape(-1, 3)

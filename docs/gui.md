@@ -411,18 +411,59 @@ Arbitrary shapes drawn over the board, in plan and in 3D, for a run to add to it
 
 ![The Draw page: a trace, a pad, a keep-out cut, a dielectric puck and a shield lid over the hairpin filter](img/gui/draw.png)
 
-- **Tools**: *Select* (click a shape; drag it to move it, drag a handle to reshape it; *Delete*), *Rectangle* and
-  *Circle* (two clicks), *Polygon* and *Trace* (a click per point; double-click, right-click or Enter ends it, Esc
-  drops it), *Port* (a click). Points snap to the grid (*Snap*); a letter picks a tool (S, R, C, P, T, O).
+- **Tools**: *Select*, *Rectangle* and *Circle* (two clicks), *Polygon* and *Trace* (a click per point; double-click,
+  right-click or Enter ends it, Esc drops it), *Port* (a click), *Measure* (two clicks give the distance, dx, dy and
+  the angle; a third the angle between the two legs; Esc clears). A letter picks a tool (S, R, C, P, T, O, M).
+- **Snapping**: a point snaps to the board's pads, vias, track ends and edges and to the shapes' corners, midpoints
+  and centres within 8 pixels (*objects*; a ring, square, triangle or cross marks what it found, and the status bar
+  names it: "snap: pad J1.1 (GND)"), else to the grid (*Snap*). The status bar has the cursor in model and KiCad mm
+  and the size being drawn (a rectangle's width and height, a circle's radius, a trace's leg and length).
 - **Materials**: *copper* joins its layer's copper (of the net given, else of the copper it overlaps most; a
   different net's copper under it is reported as a short), *cut* takes copper out of its layer, and *metal*,
   *dielectric* and *air* are solids between two heights. Shapes apply in the list's order: a cut takes out what
   is drawn before it.
-- **3D** shows the shapes extruded over the board's substrate and copper (*see-through solids* to look under a
-  lid), and edits them too: a click selects a shape (the plan, the list and the form follow; a click on nothing
-  selects none), a drag moves it on its level, and Shift + drag on a solid stretches it by its top or bottom face,
-  or lifts it whole by a side. A drag on nothing orbits the view, Ctrl + drag pans it, as before. Only drawn
-  shapes are picked, not the board.
+
+**Selecting.** A click picks a shape; Shift or Ctrl + click adds one or takes it off. A drag on nothing draws a box:
+left to right selects what is wholly inside it, right to left what it touches (Shift: added to the selection). A
+drag from a selected shape moves the whole selection, snapped (X or Y while dragging: along that axis only, again:
+free; Esc puts it back); a drag of the handles reshapes the one selected. Ctrl + drag, or the middle button, pans;
+the wheel and the right button zoom. Ctrl+A selects all.
+
+- **The list** has each shape's *Shown* and *Locked* ticks: a hidden shape is not drawn or picked (a run still
+  applies it), a locked one is not moved, turned or deleted (aligned to, it stays as an anchor). *Lock* and *Hide*
+  set them for the whole selection. Both are saved with the drawing.
+- *Duplicate* (Ctrl+D), *Delete*, *Copy* (Ctrl+C), *Cut* (Ctrl+X) and *Paste* (Ctrl+V) work on the whole selection,
+  each one undo step. Copy puts the shapes on the clipboard as `kicad2ems-shapes` text, so they paste into another
+  drawing or another session (or a text editor); pasted onto the same spot they come one grid step along.
+- **Shape** (the form) shows the last shape picked; with several selected, a change to its material, layer, net,
+  width, radius, heights, εr or tan δ applies to them all.
+- **Arrange**: *Move by* dx, dy (and dz: solids lifted); *Rotate* by any angle about the selection's centre, each
+  shape's own, or a point (typed, or *Pick*ed with a click; a rectangle turned off a right angle becomes a polygon);
+  *Mirror* x or y about the selection's centre; *Align* left, centre, right, top, middle or bottom; *Distribute*
+  the centres evenly along x or y.
+- **Array**: copies of the selection in a *row* (count, step), a *grid* (count, rows, steps) or round a *circle*
+  (count, centre typed or picked, angle from the first to the last: 360 spaces them all the way round; each copy
+  turned or only carried round): a via fence, stitching, a ring of vias. Named shapes' copies are numbered (via_2,
+  via_3...).
+
+**The 3D view** shows the shapes extruded over the board's substrate and copper, and edits them too:
+
+- a click selects a shape (Shift or Ctrl + click adds or takes off; a click on nothing selects none), and the
+  selection is outlined;
+- a drag moves the selection on its level; X, Y or Z while dragging holds it to that axis (Z lifts solids); the
+  gizmo's arrows (red x, green y, blue z) at the selection drag it along one axis; Shift + drag on a solid stretches
+  it by its top or bottom face, or lifts it whole by a side; Esc puts it back;
+- a drag on nothing orbits the view, Ctrl + drag or the middle button pans it, the wheel zooms;
+- *Top*, *Front*, *Side*, *Iso* (keys 7, 1, 3, 5) set the camera, fitted to the board and the drawing; *Fit* (F)
+  fills the view with the selection (and the plan too);
+- *Clip* cuts the view with a plane across x, y or z at a height (*flip*: keep the other side): solids are cut and
+  capped, and what is cut off is not picked;
+- *Show* turns the board's substrate, each copper layer, each drawn material and the ports on or off, the grid at
+  the working level (the layer drawn on, or a new solid's bottom; the snap grid, coarser where it would be dense),
+  and see-through metal (to look under a lid).
+
+Only drawn shapes are picked, not the board.
+
 - *Use in runs* saves the drawing (`kicad2ems-shapes` JSON, model mm, y up) and names it in the settings
   (`shapes = "drawing.json"` in a config); *Region from shape* and *Ports to settings* write those settings in
   KiCad's coordinates. Ctrl+Z / Ctrl+Y undo and redo the drawing while the page has the focus.

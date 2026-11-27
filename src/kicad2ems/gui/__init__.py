@@ -16,7 +16,8 @@ steering, and dfsynth's filter synthesis (the Filter page).
     volume3d  the 3D view's arrays (no Qt): copper, parts, field volumes,
               far-field surfaces
     drawtab   the Draw page: shapes over the board in plan and 3D
-              (kicad2ems.core.shapes)
+              (kicad2ems.core.shapes, shapeops, view3d); draw3d, its 3D
+              view
     splot, traces, fieldtab, antennatab, steering, filtertab, systempanel,
     statusbar, meters, panels, runfolders
 """
