@@ -209,7 +209,7 @@ V   = vv * V + vi * (loop sum of I around the dual face)  from C = eps A' / l, G
     to u = (1, 2, 2)/3, and Green and Sandy's at r 0.6 and 0, to O((ω dt)²); the backends agree within 1e-4 of
     the peak, tilted and partly magnetised.
   - Lossless it rings, radiating slowly: no growth in 200,000 steps on the GPU (biased along z, tilted, partly
-    magnetised: the energy's largest in each quarter after the pulse 4.4, 3.0, 2.4, 2.1 % of its peak along z);
+    magnetised: the energy's largest in each quarter after the pulse 12.5, 3.8, 3.2, 2.9 % of its peak along z);
     damped (α from a 30 Oe linewidth) it settles as a dielectric does. The end criterion watches the field's
     energy, not the magnetisation's: on `rf_circulator` −60 dB instead of −40 moved S by 0.2 dB at most from 6.5
     to 14 GHz (1.6 dB at a −40 dB null).
