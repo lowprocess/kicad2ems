@@ -23,12 +23,15 @@ class Goal:
     band (a skirt that much easier) and no deeper than `floor` dB, from
     where that is `start` dB.
 
-    f (Hz), pas / stop (bool), att (dB, the stop limit)."""
+    f (Hz), pas / stop (bool), att (dB, the stop limit). offset: (f Hz,
+    d11 dB, d21 dB), added to the model's |S11| and |S21| at f before the
+    limits are applied: what a full-wave result showed over the model
+    (freeform.retune), so the model is asked for that much more."""
 
     def __init__(self, spec, rl=15.0, il=3.0, floor=35.0, guard=0.1,
-                 n_pass=9, n_stop=8, span=None, start=3.0):
+                 n_pass=9, n_stop=8, span=None, start=3.0, offset=None):
         self.spec, self.rl, self.il, self.floor = spec, rl, il, floor
-        self.guard, self.start = guard, start
+        self.guard, self.start, self.offset = guard, start, offset
         self.n_pass, self.n_stop, self.span = n_pass, n_stop, span
         kind, f0, fbw = band(spec)
         if kind not in ('lowpass', 'bandpass'):
@@ -73,6 +76,13 @@ class Goal:
                          np.zeros(len(fs), bool)][order]
         self.stop = ~self.pas
         self.att = np.array([self._att(self.omega(x)) for x in self.f])
+        self.o11, self.o21 = self._offsets(self.f)
+
+    def _offsets(self, f):
+        if self.offset is None:
+            return np.zeros(len(f)), np.zeros(len(f))
+        fo, d11, d21 = self.offset
+        return np.interp(f, fo, d11), np.interp(f, fo, d21)
 
     def omega(self, f):
         """The prototype's normalised frequency at f."""
@@ -99,24 +109,31 @@ class Goal:
                    -lowpass_s21_db(s.response, s.order, s.ripple, o))
 
     def limits(self, f):
-        """(pass, stop, att) of this goal at other frequencies f (those
-        between its bands: neither)."""
+        """(pass, stop, att, o11, o21) of this goal at other frequencies f
+        (those between its bands: neither pass nor stop)."""
         f = np.atleast_1d(f)
         om = np.array([abs(self.omega(x)) for x in f])
         att = np.array([self._att(o) for o in om])
         pas = om <= 1.0
         if self.kind == 'lowpass':
             pas = f <= self.f0
-        return pas, (att >= self.start) & ~pas, att
+        return (pas, (att >= self.start) & ~pas, att) + self._offsets(f)
+
+    def levels(self, S, at=None):
+        """(|S11| or |S22|, the larger, and |S21|, dB, with the offsets):
+        what the limits are applied to."""
+        o11, o21 = (at or (0, 0, 0, self.o11, self.o21))[3:]
+        sh = (-1,) + (1,) * (S.ndim - 3)
+        return (np.maximum(db(S[..., 0, 0]), db(S[..., 1, 1]))
+                + o11.reshape(sh), db(S[..., 1, 0]) + o21.reshape(sh))
 
     def loss(self, S, at=None):
         """The mean squared excess (dB) over the limits, pass and stop band
-        each its own mean; S: (nf, ..., 2, 2) on self.f (or with at = (pass,
-        stop, att) on other frequencies). 0: every limit met."""
-        pas, stop, att = at or (self.pas, self.stop, self.att)
+        each its own mean; S: (nf, ..., 2, 2) on self.f (or with at =
+        limits(f) on other frequencies). 0: every limit met."""
+        pas, stop, att = (at or (self.pas, self.stop, self.att))[:3]
         sh = (-1,) + (1,) * (S.ndim - 3)
-        s11 = np.maximum(db(S[..., 0, 0]), db(S[..., 1, 1]))
-        s21 = db(S[..., 1, 0])
+        s11, s21 = self.levels(S, at)
         ex = (np.maximum(s11 + self.rl, 0) ** 2
               + np.maximum(-self.il - s21, 0) ** 2)
         out = (ex * pas.reshape(sh)).sum(0) / max(pas.sum(), 1)

@@ -323,6 +323,73 @@ def test_frequency_map_from_band_edges():
         (0.0, 4 / 4.4), rel=2e-3)
 
 
+def test_rescale_keeps_the_pattern_and_moves_the_band(grid):
+    """The first tuning round: pixels 5 % larger, the same pattern, the
+    response 5 % lower in frequency (near enough: the substrate's height
+    stays)."""
+    spec = Spec('lowpass', 'freeform', 4e9, order=3)
+    m = seeds.through(grid)
+    m[3:7, 1:7] = True                      # a patch: a low-pass of a kind
+    d = design(spec, grid, m, ['a', 'b'])
+    d.freeform = dict(loss=1.0, fmap=(0.0, 1.0))
+    r = ff.rescale(d, 1.05)
+    assert r.grid.pitch == pytest.approx(1.05 * grid.pitch)
+    assert np.array_equal(r.mask, m) and r.grid.shape == grid.shape
+    assert r.geometry.W - 10.0 == pytest.approx(1.05 * (d.geometry.W - 10.0))
+    assert 'scaled by 1.0500' in r.notes[-1]
+    # the scaled board's |S21| at f / s is the first's at f for s = 1.05,
+    # of the factors tried
+    f = np.linspace(2e9, 12e9, 201)
+    a0 = np.abs(response(grid, m, f)[:, 1, 0])
+    a1 = np.abs(response(r.grid, m, f)[:, 1, 0])
+    sel = f < 11e9
+    miss = {k: np.abs(np.interp(f[sel] / k, f, a1) - a0[sel]).max()
+            for k in (1.0, 1.025, 1.05, 1.075, 1.1)}
+    assert min(miss, key=miss.get) == 1.05 and a0.min() < 0.9
+    assert ff.rescale(d, 0.1) is None       # under the fabrication minimum
+    # where a band is: a low-pass's cut-off, a band-pass's edges' mean
+    cut = 1 / np.sqrt(1 + (f / 5e9) ** 6)
+    assert ff.centre(spec, f, cut) == pytest.approx(5e9, rel=5e-3)
+    bp = Spec('bandpass', 'freeform', 6e9, 600e6, order=3)
+    band = 1 / np.sqrt(1 + ((f / 6e9 - 6e9 / f) / 0.1) ** 6)
+    assert ff.centre(bp, f, band) == pytest.approx(6e9, rel=5e-3)
+    assert ff.centre(bp, f, np.full(len(f), 1e-3)) is None
+
+
+def test_level_offsets_and_the_full_wave_cost():
+    """What a full-wave result shows over the pixel model is asked of the
+    model on top of its limits: the envelopes' difference, never negative,
+    capped; and a goal with offsets counts a response that much worse."""
+    spec = Spec('bandpass', 'freeform', 5e9, 500e6, order=3)
+    f = np.linspace(3.5e9, 6.5e9, 601)
+    s21 = 1 / np.sqrt(1 + ((f / 5e9 - 5e9 / f) / 0.1) ** 6)
+    good = np.sqrt(np.maximum(1 - s21 ** 2, 0)) * 0.1 + 1e-3
+    # the full-wave match 6 dB worse in the band's upper half
+    bad = good * np.where((f > 5e9) & (f < 5.25e9), 2.0, 1.0)
+    fo, d11, d21 = ff.level_offsets(spec, f, (s21, bad), (s21, good),
+                                    (0.0, 1.0))
+    assert d11.min() == 0.0 and d21.max() < 1e-9
+    assert d11[np.abs(f - 5.12e9).argmin()] == pytest.approx(6.02, abs=0.3)
+    assert d11[np.abs(f - 4.8e9).argmin()] == 0.0
+    huge = ff.level_offsets(spec, f, (s21, good * 100), (s21, good),
+                            (0.0, 1.0))
+    assert huge[1].max() == ff.OFFSET_MAX[0]
+    g0, g1 = Goal(spec), Goal(spec, offset=(fo, d11, d21))
+    S = np.zeros((len(g0.f), 2, 2), complex)
+    S[:, 0, 0] = S[:, 1, 1] = 10 ** (-16 / 20)      # 16 dB: 15 is asked
+    S[:, 1, 0] = S[:, 0, 1] = np.where(g0.pas, 0.97, 1e-3)
+    assert g0.loss(S) == 0.0 and g1.loss(S) > 1.0
+    assert len(g1.limits(f)) == 5
+
+    class D:                                        # (a design's goal)
+        pass
+    D.spec, D.freeform = spec, dict(goal=g0)
+    ideal = np.sqrt(np.maximum(1 - s21 ** 2, 1e-12))
+    c_good = ff.fullwave_cost(D, f, s21, ideal)
+    c_bad = ff.fullwave_cost(D, f, s21, np.maximum(ideal, 0.5))
+    assert c_bad > c_good + 10
+
+
 def test_cli_freeform(tmp_path, capsys):
     """--topology freeform end to end, a short search in a small box: the
     board, the model's Touchstone, the pattern in the design's JSON."""

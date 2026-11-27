@@ -16,13 +16,19 @@ not, and a search for the pattern whose response meets the spec's prototype:
 
     design = synthesise(Spec('bandpass', 'freeform', 5e9, 500e6, order=3),
                         Substrate.preset('RO4003C-0.813'))
-    design = retune(design, f, s21)     # from a full-wave result of it
+    design = rescale(design, 1.04)      # from a full-wave result of it
+    design = retune(design, f, full, model)
 
 The pixel model is coarse (two triangles a pixel), so a full-wave run of the
-board differs from it by a few percent of frequency and more in bandwidth:
-retune maps the full-wave response's band edges onto the model's and searches
-on, the model asked for the spec where the full-wave result will have it
-(dfsynth's --em-tune).
+board differs from it: a few percent of frequency, more in bandwidth, some dB
+of match. dfsynth's --em-tune corrects from such a run. First rescale: the
+pixels made larger by the frequency error, the pattern and so its response's
+shape kept. Then retune: the full-wave band edges mapped onto the model's and
+the search gone on with, the model asked for the spec where the full-wave
+result will have it and for as much more as the full-wave levels lay above
+its own. A search on can lose in match what it gains in band (it did, twice
+in three band-pass runs), so the round whose full-wave result costs least
+is the one kept.
 """
 import math
 import time
@@ -168,16 +174,6 @@ def _search(grid, goal, mask, fmap, steps, seconds, smooth, symmetry, log,
     return best, best_cost, made
 
 
-def _excess(goal, S, lim):
-    """dB over the limits at each frequency of S (lim: goal.limits there)."""
-    pas, stop, att = lim
-    s11 = np.maximum(db(S[:, 0, 0]), db(S[:, 1, 1]))
-    s21 = db(S[:, 1, 0])
-    return np.where(pas, np.maximum(np.maximum(s11 + goal.rl, 0),
-                                    np.maximum(-goal.il - s21, 0)),
-                    np.where(stop, np.maximum(s21 + att, 0), 0.0))
-
-
 def _notes(grid, mask, loss):
     i, j = np.nonzero(mask)
     p = grid.pitch
@@ -247,23 +243,105 @@ def frequency_map(spec, f, s21_full, s21_model):
     return em['f1'] - b * ef['f1'], b
 
 
-def retune(design, f, s21_full, s21_model, steps=None, log=None):
-    """The design searched on from a full-wave result of it (f Hz, its S21,
-    and the pixel model's on the same frequencies): the model is asked for
-    the limits at the frequencies the full-wave result has them
-    (frequency_map). None where the full-wave response has no band edges
-    to map."""
+def centre(spec, f, s21):
+    """Where a response's band is, Hz: a band-pass's edges' geometric mean, a
+    low-pass's cut-off (3 dB under its peak); None without them."""
+    e = edges(spec, f, db(s21), relative=True)
+    if 'fc' in e:
+        return e['fc'] or None
+    return math.sqrt(e['f1'] * e['f2']) if e['f1'] and e['f2'] else None
+
+
+def rescale(design, ratio, log=None):
+    """The design with its pixels `ratio` times the size (the pattern
+    untouched): its band 1 / ratio as high, near enough (the substrate's
+    height stays), its shape kept. The first correction from a full-wave
+    result: ratio = that result's centre over the pixel model's, which the
+    spec was searched on. None where the pixels would fall under the
+    fabrication minimums."""
+    g, sub = design.grid, design.grid.sub
+    p = g.pitch * ratio
+    if p < max(sub.min_width, sub.min_gap) or not 0.5 < ratio < 2.0:
+        return None
+    if log:
+        log(f"  the full-wave band lies {100 * (ratio - 1):+.1f} % from the "
+            f"pixel model's: the pixels scaled to {p:.3f} mm (from "
+            f"{g.pitch:.3f}), the pattern kept")
+    grid = PixelGrid(sub, g.nx, g.ny, p, g.feed_w, g.feed_l, g.rows, g.cells)
+    notes = _notes(grid, design.mask, design.freeform['loss'])[:1] + [
+        f"pixels scaled by {ratio:.4f} from a full-wave result"]
+    d = as_design(design.spec, grid, design.mask, notes)
+    d.freeform = dict(design.freeform)
+    return d
+
+
+# level_offsets: no more than this is asked of the model on top of a limit
+# (pass band's |S11|, any |S21|), dB
+OFFSET_MAX = (10.0, 8.0)
+
+
+def level_offsets(spec, f, full, model, ab):
+    """(f, d11, d21): how far the full-wave |S11| and |S21| (full = (s21,
+    s11) on f) lie above the pixel model's at the mapped frequencies (ab:
+    frequency_map's), dB, each curve first replaced by its largest value
+    within a sixth of the band about each frequency (the reflection zeros
+    and the transmission zeros of the two do not coincide: their
+    envelopes are compared); never negative (the model is not let off
+    where the full-wave result happens to be better), and capped."""
+    a, b = ab
+    f = np.asarray(f, float)
+    fm = np.clip(a + b * f, f[0], f[-1])
+    kind, f0, fbw = band(spec)
+    w = (f0 * fbw if kind == 'bandpass' else f0) / 6.0
+    n = max(1, int(round(w / (f[1] - f[0]))))
+
+    def envelope(y):
+        pad = np.pad(y, n, mode='edge')
+        return np.max(np.lib.stride_tricks.sliding_window_view(
+            pad, 2 * n + 1), axis=1)
+
+    out = [f]
+    for k, cap in ((1, OFFSET_MAX[0]), (0, OFFSET_MAX[1])):
+        fw = envelope(db(full[k]))
+        mo = envelope(np.interp(fm, f, db(model[k])))
+        out.append(np.clip(fw - mo, 0.0, cap))
+    return tuple(out)
+
+
+def fullwave_cost(design, f, s21, s11):
+    """The goal's cost of a full-wave response of the design (f Hz, within
+    the goal's sweep): what its rounds of tuning are compared by."""
+    ff = design.freeform
+    goal = Goal(design.spec, rl=ff['goal'].rl, floor=ff['goal'].floor,
+                n_stop=N_STOP)
+    f = np.asarray(f, float)
+    sel = (f >= goal.f.min()) & (f <= goal.f.max())
+    S = np.empty((int(sel.sum()), 2, 2), complex)
+    S[:, 0, 0] = S[:, 1, 1] = np.asarray(s11)[sel]
+    S[:, 0, 1] = S[:, 1, 0] = np.asarray(s21)[sel]
+    return float(goal.loss(S, goal.limits(f[sel])))
+
+
+def retune(design, f, full, model, steps=None, log=None):
+    """The design searched on from a full-wave result of it: full = (s21,
+    s11) on f (Hz), model = the pixel model's on the same frequencies. The
+    model is asked for the limits at the frequencies the full-wave result
+    has them (frequency_map), and for as much more as the full-wave
+    result's levels lie above its own there (level_offsets). None where
+    the full-wave response has no band edges to map."""
     ff, spec, grid = design.freeform, design.spec, design.grid
-    ab = frequency_map(spec, f, s21_full, s21_model)
+    ab = frequency_map(spec, f, full[0], model[0])
     if ab is None or not 0.5 < ab[1] < 2.0:
         return None
     a, b = ab
+    off = level_offsets(spec, f, full, model, ab)
     if log:
         log(f"  the full-wave response at f is the pixel model's at "
-            f"{a / 1e9:+.3f} GHz + {b:.3f} f: searching on with the limits "
-            "there")
+            f"{a / 1e9:+.3f} GHz + {b:.3f} f, up to {off[1].max():.1f} dB "
+            f"more of |S11| and {off[2].max():.1f} dB of |S21|: searching "
+            "on with the limits there, less those")
     goal = Goal(spec, rl=ff['goal'].rl, floor=ff['goal'].floor,
-                n_stop=N_STOP)
+                n_stop=N_STOP, offset=off)
     steps = steps or max(200, ff['steps'] // 2)
     mask, loss, made = _search(grid, goal, design.mask,
                                lambda x: np.maximum(a + b * np.asarray(x),

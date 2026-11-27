@@ -398,7 +398,7 @@ def main(argv=None):
     if a.validate:
         from kicad2ems.core.solvers import registry
         extra = a.k2e_args.split() if a.k2e_args else []
-        rounds = []
+        rounds, kept = [], None
         for r in range(a.em_tune + 1):
             tag = '' if r == 0 else f'_tune{r}'
             print(
@@ -436,6 +436,15 @@ def main(argv=None):
                     f"{_pct(pred[0])}  bw {_pct(pred[1])}")
             rounds.append({'kf': design.kf, 'kb': design.kb, 'metrics': mets,
                            'predicted_real_copper_pct': pred})
+            if spec.topology == 'freeform' and fw:
+                # each round's board by the goal's cost of its full-wave
+                # result: the best is the one left written
+                from . import freeform
+                c = freeform.fullwave_cost(design, *results[fw])
+                rounds[-1]['fullwave_cost_dB2'] = c
+                print(f"  {fw}: cost {c:.1f} dB^2 against the limits")
+                if kept is None or c < kept[0]:
+                    kept = (c, r, design)
             if r == a.em_tune or fw is None:
                 break
             new, kf, kb = spec, design.kf, design.kb
@@ -443,10 +452,22 @@ def main(argv=None):
                 # the pattern searched on, the pixel model asked for the
                 # spec where the full-wave result has it
                 from . import freeform
-                fe, s21e, _ = results[fw]
-                tuned = freeform.retune(
-                    design, fe, s21e, results['model (dfsynth)'][1],
-                    log=print)
+                fe, s21e, s11e = results[fw]
+                model = results['model (dfsynth)'][1:]
+                if r == 0:
+                    # the first round: the pixels scaled by the frequency
+                    # error against the model the spec was searched on
+                    # (the pattern, and its match, kept)
+                    cf, cm = (freeform.centre(spec, fe, s21e),
+                              freeform.centre(spec, fe, model[0]))
+                    tuned = (freeform.rescale(design, cf / cm, log=print)
+                             if cf and cm else None)
+                else:
+                    # then the search gone on with, the model asked for the
+                    # limits where and by how much the full-wave result
+                    # missed them
+                    tuned = freeform.retune(design, fe, (s21e, s11e), model,
+                                            log=print)
                 if tuned is None:
                     print(f"  no band edges in the {fw} result to tune "
                           "from: stopping the tuning")
@@ -503,6 +524,17 @@ def main(argv=None):
                 )
                 break
             kicad.write(design, base, title)
+        if kept is not None and kept[2] is not design:
+            # (a round of tuning can cost more than it gains: the pixel
+            # model's coarse mesh is not the field solver's)
+            print(f"  round {kept[1]}'s board is the one kept (cost "
+                  f"{kept[0]:.1f} dB^2; the last round's: "
+                  f"{rounds[-1]['fullwave_cost_dB2']:.1f})")
+            design = kept[2]
+            kicad.write(design, base, title)
+            write_model_s2p(design, base + '_model.s2p', f)
+        if kept is not None:
+            summary['em_round_kept'] = kept[1]
         summary['em'] = rounds
         print(f"wrote {base}_validation*.png")
     sp, geo = design.spec, design.geometry
