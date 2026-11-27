@@ -71,6 +71,7 @@ import pyqtgraph as pg
 from PySide6.QtCore import Qt, Signal, QEvent, QTimer, QSignalBlocker
 from PySide6.QtGui import QColor, QPen, QBrush, QKeySequence, QPainterPath
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QToolButton,
+                               QToolBar,
                                QButtonGroup, QLabel, QComboBox, QDoubleSpinBox,
                                QSplitter, QFormLayout, QLineEdit, QSpinBox,
                                QPlainTextEdit, QPushButton, QFileDialog,
@@ -179,7 +180,7 @@ class DrawTab(QWidget, Draw3D):
         self.setFocusPolicy(Qt.StrongFocus)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(4, 4, 4, 4)
-        lay.addLayout(self._toolbar())
+        lay.addWidget(self._toolbar())
         # the plan and the 3D view one over the other, the shapes beside
         self.plot = pg.PlotWidget(viewBox=_Canvas(self))
         self.plot.setBackground(theme.colors()['bg'])
@@ -252,7 +253,13 @@ class DrawTab(QWidget, Draw3D):
 
     # ---- the widgets ----
     def _toolbar(self):
-        row = QHBoxLayout()
+        """The tools and a new shape's settings: a tool bar, so that what does
+        not fit goes into its » menu (a row of widgets had made the page 1,255
+        px wide at its least, 2,155 with Qt's fallback font, and the window
+        wider than the screen: CI's docks went side by side)."""
+        row = QToolBar(movable=False, floatable=False)
+        row.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        row.setStyleSheet('QToolBar { border: 0px; spacing: 3px; }')
         self.tools = QButtonGroup(self, exclusive=True)
         self.tool_btns = {}
         for key, (text, letter, tip) in TOOLS.items():
@@ -262,7 +269,7 @@ class DrawTab(QWidget, Draw3D):
             self.tools.addButton(b)
             self.tool_btns[key] = b
             row.addWidget(b)
-        row.addWidget(_vline())
+        row.addSeparator()
         self.layer = QComboBox(toolTip='the copper layer drawn on (copper, '
                                'cuts and ports), and shown in the plan')
         self.layer.currentTextChanged.connect(lambda _: self._layer_changed())
@@ -289,10 +296,15 @@ class DrawTab(QWidget, Draw3D):
         for text, w in (('Layer', self.layer), ('Material', self.material),
                         ('Width', self.width), ('z', self.z0), ('to', self.z1),
                         ('Snap', self.snap)):
-            row.addWidget(QLabel(text))
-            row.addWidget(w)
+            # a label and its box one item: the » menu keeps them together
+            pair = QWidget()
+            h = QHBoxLayout(pair)
+            h.setContentsMargins(4, 0, 0, 0)
+            h.setSpacing(3)
+            h.addWidget(QLabel(text))
+            h.addWidget(w)
+            row.addWidget(pair)
         row.addWidget(self.osnap)
-        row.addStretch(1)
         return row
 
     def _side(self):

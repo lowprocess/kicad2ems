@@ -16,7 +16,8 @@ window's layout.
 """
 import os
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (QToolBar, QWidget, QHBoxLayout, QVBoxLayout,
                                QLabel, QFrame)
 
@@ -102,6 +103,25 @@ def steps_of(win):
     return out
 
 
+class _Elided(QLabel):
+    """A one-line label that gives up width to the window: drawn elided
+    (…) when narrower than its text, its least width a few characters (the
+    steps' texts had set the bar's, and with CI's font the window's past its
+    screen)."""
+
+    def minimumSizeHint(self):
+        return QSize(self.fontMetrics().horizontalAdvance('Mmmm…'),
+                     super().minimumSizeHint().height())
+
+    def paintEvent(self, ev):
+        p = QPainter(self)
+        p.setPen(self.palette().color(self.foregroundRole()))
+        r = self.contentsRect()
+        p.drawText(r, Qt.AlignLeft | Qt.AlignVCenter,
+                   self.fontMetrics().elidedText(self.text(), Qt.ElideRight,
+                                                 r.width()))
+
+
 class _Step(QFrame):
     clicked = Signal(str)
 
@@ -114,7 +134,7 @@ class _Step(QFrame):
         v.setContentsMargins(12, 2, 12, 2)
         v.setSpacing(0)
         self.head, self.text = (QLabel(),
-                                QLabel(
+                                _Elided(
                                     styleSheet='color: gray; font-size: 11px;'))
         v.addWidget(self.head)
         v.addWidget(self.text)

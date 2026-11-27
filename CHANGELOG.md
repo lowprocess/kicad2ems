@@ -866,6 +866,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **CI's window tests failed since the Draw page's tools (6c11bfd5, 2026-11-27): the window was wider than its
+  screen.** With CI's font (DejaVu Sans; Fedora's Noto Sans is narrower) the window's least width was 805 px on
+  the offscreen platform's 800 px screen, so its docks went side by side (`test_the_window_is_docks`; reproduced
+  here with a fontconfig of DejaVu alone). Its widest pieces were rows that could not give up width: the Draw
+  page's tools (1,255 px at their least here, 1,328 with DejaVu; now a tool bar whose overflow goes into its »
+  menu: 605 / 618), the step captions of the Steps bar (now elided, the full text their tooltip), the plot pages'
+  mouse hint and the Viewer's colour key (now wrapped). The window's least width 741 → 663 px here, 805 → 697
+  with DejaVu, 1,348 → 1,084 with Qt's fallback font: a 1366-wide laptop screen holds it with room to spare.
 - **The Draw page's camera presets framed a board from 2-3x too far (2026-11-27; seen once the 3D view was drawn
   under software OpenGL).** `core.view3d.frame` fitted the box's bounding sphere into the narrower field, so a flat
   board in the page's wide 3D view filled little of it: sma_launch's board and drawing (30 × 14 × 4.5 mm) in a 4:1

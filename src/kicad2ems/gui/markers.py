@@ -25,7 +25,9 @@ def plot_buttons(bar, fit, clear, export, save, tips):
         bar.addWidget(QPushButton(text, toolTip=tip,
                                   clicked=lambda _=False, f=slot: f()))
     bar.addStretch(1)
-    bar.addWidget(QLabel(HINT, styleSheet='color: gray'))
+    # (wrapped: one line had set the plot pages' least width, and with CI's
+    # font the window's past its screen)
+    bar.addWidget(QLabel(HINT, styleSheet='color: gray', wordWrap=True), 1)
 
 
 class MarkerTable(QTableWidget):

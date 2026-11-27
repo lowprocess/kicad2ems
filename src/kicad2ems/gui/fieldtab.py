@@ -78,8 +78,10 @@ class FieldsTab(QWidget):
         self._row(
             lay, self.layout_on, QLabel('Layer'), self.layout_layer,
             self.components_on, QLabel('Field opacity'), self.field_opacity,
+            # (wrapped: one line had set the Viewer's least width)
             QLabel(
-                'Cyan: simulated copper · grey: context · gold: selected parts')
+                'Cyan: simulated copper · grey: context · gold: selected parts',
+                wordWrap=True)
         )
 
         self.view = pg.PlotWidget()
