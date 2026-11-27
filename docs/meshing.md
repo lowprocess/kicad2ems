@@ -185,7 +185,8 @@ magnetised ferrite (its low-field loss).
 
 S21's peak is 4.6255 GHz in each of them, as with the PEC boundary, on gfdtd and on openEMS (EMerge's converged
 3D FEM: 4.621 GHz). A dielectric cover over the board, 0.2 mm of εr 2.2, gives 4.4774 GHz drawn as a solid and as a
-stackup layer alike.
+stackup layer alike. With `--thickness on` (the solids' heights mapped as the stack's, a face on a copper level at
+that copper's lower face) the drawn can gives 4.65026 GHz and the PEC boundary 4.65023 GHz.
 
 **Posts.** A fence of 300 posts 0.25 mm across, 0.36 mm apart in four rows through rf_shielded_can's board
 (`tools/gui/draw_bench.py`'s), had lines at every post's extremes: 484 × 132 lines in plan and 1.98 M cells, the
@@ -239,7 +240,14 @@ The probes load it to QL 5,046 (|S21| −9.4 dB at the peak); 2 mm probes a quar
 On rf_shielded_can (`--sigma 5.8e7`) S21's peak falls from −6.02 to −6.59 dB, almost all of it the board's ground on
 the can's floor (PEC before: a sheet in the Mur boundary's cell); the can's walls and lid alone take 0.002 dB, 4 mm
 from the board. It has 85,013 sheet edges (3,779 before, the traces'): the ground's 27,700, the lid's and walls'
-53,600. Finding the faces takes 2 ms, 0.14 s with 300 posts in the can.
+53,600. Finding the faces takes 2 ms, 0.14 s with 300 posts in the can. On the RX 7800 XT gfdtd's step ran at 7,900
+M cells/s lossless, 6,000 with the floor's face alone and 5,800 with them all (the lid's and walls' 4 %), its peak
+memory 548 → 564 MB; the run 39–42 s either way (lossy, it rings down in 524,000 steps, not 694,000).
+
+With `--thickness on` and `--sigma` the drawn can gives S21's peak −6.315 dB at 4.64660 GHz, the PEC boundary
+−6.312 dB at 4.64642 GHz (there the ground's upper face is a cell in from the boundary, lossy; its sheet on the PEC
+bottom without `--thickness` is not). An air pocket the top 0.1 mm of the laminate under the resonator's middle
+third moves the peak 35.0 MHz up without `--thickness`, 35.5 MHz with it.
 
 <a id="drawn-solids-antenna"></a>
 **Antenna mode.** The NF2FF box follows the mesh, which runs past the solids' air margin, so it holds them. Two

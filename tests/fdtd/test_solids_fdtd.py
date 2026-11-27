@@ -410,3 +410,44 @@ def test_small_posts_are_snapped_as_ground_vias(demo_files):
     assert isinstance(q, C.LinPoly)
     assert np.mean(q.points[0]) == pytest.approx(0.5 * (b[0] + b[2]) + dx,
                                                  abs=1e-6)
+
+
+def test_solids_with_copper_thickness(demo_files):
+    """--thickness on: the solids' heights mapped as the stack's (moved up by
+    the copper below them that grows up; a face on a copper level at that
+    copper's lower face), the can still closing round the board, its lossy
+    faces on the mapped lines; a pocket under F.Cu ends at the copper's lower
+    face."""
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.mesh import auto_mesh
+    from kicad2ems.fdtd import thick
+    from kicad2ems.gfdtd import csx as C
+    top = 0.6  # the demo's F.Cu
+    pocket = _solid(box(10, -6, 14, -4), 'air', top - 0.1, top, 'pocket')
+    m = _can(demo_files, pocket)
+    g = auto_mesh(m, 1e9, 4e9, res=8, fine=0.4, air=1.0, nz_min=2,
+                  bc=resolve_bc('MUR', m), thickness=True, log=lambda *a: None)
+    th = g['thick']
+    up = sum(t for lay, t in th['t'].items() if th['up'][lay])
+    assert g['enclosure'] is not None
+    for z in (-0.3, 1.7, 2.0, top - 0.1):
+        assert _on(g['z'], thick.z_map(m, th, z))
+    assert thick.z_map(m, th, 2.0) == pytest.approx(2.0 + up)
+    f_lo = thick.faces(m, th, 'F.Cu')[0]
+    assert f_lo == pytest.approx(thick.z_map(m, th, top))
+    FDTD, CSX, _ = _model_sigma(m, g)
+    props = {p.name: p for p in CSX.GetAllProperties()}
+    zs = sorted(q.elevation for q in props['solid_metal_faces'].primitives
+                if isinstance(q, C.Polygon))
+    assert zs == [0.0, pytest.approx(1.7 + up)]
+    q, = props['solid3_pocket'].primitives
+    assert (q.elevation, q.elevation + q.length) == (
+        pytest.approx(top - 0.1 + up - th['t']['F.Cu']), pytest.approx(f_lo))
+
+
+def _model_sigma(m, mesh):
+    from kicad2ems.fdtd.boundaries import resolve_bc
+    from kicad2ems.fdtd.model import build_fdtd
+    from kicad2ems.fdtd.engines import engine_api
+    return build_fdtd(m, mesh, 1e9, 4e9, 0, bc=resolve_bc('MUR', m),
+                      sigma=5.8e7, api=engine_api('gfdtd:numpy'))
