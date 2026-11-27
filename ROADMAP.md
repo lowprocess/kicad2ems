@@ -52,6 +52,31 @@ the code review of 2026-11-25. Last updated 2026-11-27.
 8. **Solvers side by side** (R-D20): `--solver-jobs N` runs them as threads, but gfdtd's GPU stepping holds the
    interpreter lock; processes of their own would let them overlap.
 9. **The KiCad plugin starts `kicad2ems study`** for a board whose config has one.
+10. **Candidate solvers and questions** (talked over with the user on 2026-11-27, not started; most useful first):
+    - a 2D full-wave port-mode solver (a cross-section's modes, Zc and dispersion, higher modes, CPW at mmWave):
+      true wave ports for every engine, which closes item 6; from `core.lines.xsection`'s mesh;
+    - a layout rule check, no solver (item 3's return-path check with the rest: fast nets near the board edge,
+      decaps far from their pins, unreferenced traces);
+    - high-voltage field stress (peak E at sharp copper, Palace or Elmer electrostatics) and IEC 60664 / 62368
+      creepage and clearance;
+    - a passive layout's noise figure (its noise from its S-parameters) and an amplifier's K and μ: no new solve;
+    - cable common-mode radiation (`core.rlgc` and field-to-line coupling: the EMC section's first item);
+    - a power tree: source → regulators (LDOs are not found today) → rails → loads, a budget with efficiencies,
+      each rail's drop and impedance from it, every loss in one thermal map;
+    - tolerance and yield: Monte Carlo over part tolerances through `core.embed` (no new solve), geometry and εr
+      by the line model, sensitivities or polynomial chaos; a spec mask and the yield;
+    - optimisation: part values first (item 3's matching networks, E-series values), then dfsynth's designs with
+      EM in the loop (the line model as the coarse model);
+    - channel compliance (COM, the PCIe, USB and DDR masks) once the time domain has equalization (Signal
+      integrity 1); PDN-induced jitter (the rail's impedance in the channel);
+    - ESD, surge and EFT (IEC 61000-4-2, -4-5, -4-4) through the protection parts on the macromodel or ngspice;
+    - reliability from the thermal map: plated-hole fatigue (IPC-TR-579), solder-joint fatigue (Engelmaier),
+      warpage from the copper balance;
+    - airflow film coefficients from correlations (no CFD); planar magnetics' winding and core loss (Elmer, R-E21);
+    - lower: characteristic modes (mom25d's Z is complex-symmetric; the substrate's surface waves land in R),
+      periodic eigenmodes (Palace with Floquet boundaries; F88's rf_ebg reference), a 3D surface MoM for
+      connectors and cans, DGTD, a board's vibration modes. Not planned: full-wave PEEC (in a layered stack it is
+      mom25d), hybrid MoM-cavity enclosures (an enclosure in Palace's or the FDTD's model instead).
 
 ## Signal integrity
 
