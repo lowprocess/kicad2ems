@@ -1727,14 +1727,15 @@ def test_examples_menu_opens_a_prepared_example(tmp_path, monkeypatch):
     QApplication.instance() or QApplication([])
     w = MainWindow()
     assert ([a.text() for a in w.examples_menu.actions()] == [
-        'Antennas', 'RF structures', 'Signal integrity', 'Lumped-element demos'
+        'Antennas', 'RF structures', 'Signal integrity', 'EMC',
+        'Lumped-element demos'
     ])
     assert (set(w.example_menus) >= {
         '/Antennas', '/Antennas/Patches and arrays', '/RF structures/Filters'
     })
     assert (w.example_sources == {
         '/Antennas': {'kicad2ems'}, '/RF structures': {'kicad2ems'},
-        '/Signal integrity': {'kicad2ems'},
+        '/Signal integrity': {'kicad2ems'}, '/EMC': {'kicad2ems'},
         '/Lumped-element demos': {'kicad2ems'}
     })
     lines = w.example_menus['/RF structures/Lines and transitions']
