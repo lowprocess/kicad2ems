@@ -32,7 +32,8 @@ SLAB = 6
 
 NAMES = ('update_h', 'update_e', 'energy', 'step_h', 'step_e', 'step_post',
          'pml_e', 'pml_h', 'mur_pre', 'mur_post', 'excite', 'assign', 'par_l',
-         'series_rlc', 'probe', 'dump', 'copy_words')
+         'series_rlc', 'probe', 'dump', 'copy_words', 'ferrite_m',
+         'ferrite_h')
 
 # the struct the kernels read the model through: pointers first (8 bytes each),
 # then 32-bit values, so the layout is the same in every Vulkan layout rule (and
@@ -45,9 +46,12 @@ MODEL = (
                'ex_amp', 'pl_vi', 'pl_idx', 'pl_k', 'pl_I', 'pl_L', 'se_vi',
                'se_idx', 'se_a', 'se_b', 'se_c', 'se_I', 'se_q', 'se_L',
                'se_Cinv', 'm0', 'm1', 'mk', 'o0', 'o1', 'part', 'buf', 'pv_idx',
-               'pv_w', 'pv_pid', 'pi_idx', 'pi_w', 'pi_pid')]
+               'pv_w', 'pv_pid', 'pi_idx', 'pi_w', 'pi_pid', 'fc_e', 'fc_k',
+               'fc_s', 'fc_d', 'fe_i', 'fe_l', 'fe_li', 'fe_c', 'fe_w',
+               'fe_m')]
     + [(n, 'i') for n in ('nx', 'ny', 'nz', 'P', 'ns', 'n_ex', 'n_pl', 'n_se',
-                          'n_mu', 'n_pv', 'n_pi', 'np_', 'pml_M', 'pad')]
+                          'n_mu', 'n_pv', 'n_pi', 'np_', 'pml_M', 'n_fc',
+                          'n_fe', 'pad')]
     + [(n, 'f') for n in ('kh', 'ke', 'dt', 'dtf')])
 
 _TYPES = {
@@ -56,7 +60,8 @@ _TYPES = {
     'boxE': 'int', 'ex_idx': 'idx_t', 'pl_idx': 'idx_t', 'se_idx': 'idx_t',
     'm0': 'idx_t', 'm1': 'idx_t', 'part': 'double', 'pl_L': 'double',
     'se_L': 'double', 'se_Cinv': 'double', 'pv_idx': 'idx_t', 'pv_pid': 'idx_t',
-    'pi_idx': 'idx_t', 'pi_pid': 'idx_t'
+    'pi_idx': 'idx_t', 'pi_pid': 'idx_t', 'fc_e': 'int', 'fe_i': 'idx_t',
+    'fe_c': 'int'
 }
 MODEL_STRUCT = ("struct Model {\n" + "".join(
     f"    {_TYPES.get(n, 'float')}* {n};\n" if k == 'p'
@@ -306,6 +311,46 @@ void series_rlc(uint3 tid: SV_DispatchThreadID)
         const float qq = M->se_q[t] + M->dtf * i;
         M->se_q[t] = qq;
         M->se_I[t] = M->se_a[t] * i + M->se_b[t] * v - M->se_c[t] * qq;
+    }
+}
+
+// the ferrite (gfdtd.operator._ferrite): each cell's magnetisation from b (h +
+// the cells' m on its four edges), the trapezoidal rule m+ = P m- + Q (b+ +
+// b-), its change into fc_d (component rows of n_fc + 1, the last a zero
+// dummy); then each edge's h less its cells' change
+[shader("compute")] [numthreads(GF_BLOCK, 1, 1)]
+void ferrite_m(uint3 tid: SV_DispatchThreadID)
+{
+    GF_LOOP(M->n_fc) {
+        float b[4];
+        for (int q = 0; q < 4; q++) {
+            const int x = M->fc_e[4 * t + q];
+            b[q] = M->I[M->fe_i[x]] * M->fe_li[x] + M->fe_m[x];
+        }
+        const float bx = 0.5f * (b[0] + b[1]), by = 0.5f * (b[2] + b[3]);
+        float* st = M->fc_s + 4 * t;
+        const float* k = M->fc_k + 4 * t;
+        const float mx = st[0], my = st[1];
+        const float sx = bx + st[2], sy = by + st[3];
+        const float nx = k[0] * mx - k[1] * my + k[2] * sx - k[3] * sy;
+        const float ny = k[0] * my + k[1] * mx + k[2] * sy + k[3] * sx;
+        M->fc_d[t] = nx - mx;
+        M->fc_d[(uint)M->n_fc + 1 + t] = ny - my;
+        st[0] = nx;
+        st[1] = ny;
+        st[2] = bx;
+        st[3] = by;
+    }
+}
+
+[shader("compute")] [numthreads(GF_BLOCK, 1, 1)]
+void ferrite_h(uint3 tid: SV_DispatchThreadID)
+{
+    GF_LOOP(M->n_fe) {
+        const float d = M->fe_w[2 * t] * M->fc_d[M->fe_c[2 * t]]
+                        + M->fe_w[2 * t + 1] * M->fc_d[M->fe_c[2 * t + 1]];
+        M->fe_m[t] += d;
+        M->I[M->fe_i[t]] -= d * M->fe_l[t];
     }
 }
 

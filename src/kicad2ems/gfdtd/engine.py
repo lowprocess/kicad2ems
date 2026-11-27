@@ -284,6 +284,20 @@ class NumpyBackend:
                         k: xp.asarray(sl[k], dt)
                         for k in ('bE', 'cE', 'bH', 'cH')
                     }))
+        fe = getattr(op, 'ferrite', None)
+        self.n_fc = fe.nc if fe is not None else 0
+        self.n_fe = fe.ne if fe is not None else 0
+        if fe is not None:
+            f32 = lambda a: np.ascontiguousarray(a, np.float32).ravel()
+            self.fc_e = np.ascontiguousarray(fe.e, np.int32).ravel()
+            self.fc_k = f32(fe.k)
+            self.fc_s = np.zeros(4 * fe.nc, np.float32)
+            self.fc_d = np.zeros(2 * (fe.nc + 1), np.float32)
+            self.fe_i = np.asarray(fe.idx, np.int64)
+            self.fe_l, self.fe_li = f32(fe.lh), f32(1.0 / fe.lh)
+            self.fe_c = np.ascontiguousarray(fe.cells, np.int32).ravel()
+            self.fe_w = f32(fe.w)
+            self.fe_m = np.zeros(fe.ne, np.float32)
         if self.dense and op.debye is not None:
             idx, ka, kb, sg = op.debye
             self.db_idx = xp.asarray(idx)
@@ -294,11 +308,12 @@ class NumpyBackend:
 
     # ---- the updates --------------------------------------------------------
     def step(self, sig=None, n=None):
-        """One timestep: H, its PML, the H excitations, E (with the Debye
+        """One timestep: H, its PML, the ferrite, the H excitations, E (with the Debye
         poles), its PML, the excitation (sig: the signal's value, None past its
         end) and the delayed ones (n: the step), the lumped branches and Mur."""
         self.update_H()
         self.pml_h()
+        self.ferrite()
         if self.more and n is not None:
             self.excite_more('I', n)
         self.mur_pre()
@@ -347,6 +362,28 @@ class NumpyBackend:
         Iz[:-1, :-1, :] -= (az[:-1, :-1, :] *
                             (Vy[1:, :-1, :] - Vy[:-1, :-1, :] - Vx[:-1, 1:, :]
                              + Vx[:-1, :-1, :]))
+
+    def ferrite(self):
+        """The ferrite's magnetisation (operator._ferrite): each cell's from
+        the b on its edges, then the edges' h less the change."""
+        if not self.n_fc:
+            return
+        I = self.I.reshape(-1)
+        b = I[self.fe_i] * self.fe_li + self.fe_m
+        e = self.fc_e.reshape(-1, 4)
+        bx, by = 0.5 * (b[e[:, 0]] + b[e[:, 1]]), 0.5 * (b[e[:, 2]] + b[e[:, 3]])
+        st, k = self.fc_s.reshape(-1, 4), self.fc_k.reshape(-1, 4)
+        mx, my = st[:, 0].copy(), st[:, 1].copy()
+        sx, sy = bx + st[:, 2], by + st[:, 3]
+        nx = k[:, 0] * mx - k[:, 1] * my + k[:, 2] * sx - k[:, 3] * sy
+        ny = k[:, 0] * my + k[:, 1] * mx + k[:, 2] * sy + k[:, 3] * sx
+        d = self.fc_d.reshape(2, -1)
+        d[0, :-1], d[1, :-1] = nx - mx, ny - my
+        st[:, 0], st[:, 1], st[:, 2], st[:, 3] = nx, ny, bx, by
+        c, w = self.fe_c.reshape(-1, 2), self.fe_w.reshape(-1, 2)
+        delta = w[:, 0] * self.fc_d[c[:, 0]] + w[:, 1] * self.fc_d[c[:, 1]]
+        self.fe_m += delta
+        I[self.fe_i] -= delta * self.fe_l
 
     def update_E(self):
         """The E update with the poles folded in: V' = vv V + vi (c - sum h i),
@@ -695,7 +732,7 @@ class VulkanBackend(_Compressed, NumpyBackend):
         # names), then the values
         dtypes = dict(
             pl_L=np.float64, se_L=np.float64, se_Cinv=np.float64,
-            **dict.fromkeys(('pl_idx', 'se_idx', 'm0', 'm1'), self.IDX))
+            **dict.fromkeys(('pl_idx', 'se_idx', 'm0', 'm1', 'fe_i'), self.IDX))
         names = [
             'G', 'code', 'tvv', 'ts', 'tpole', 'tkb', 'tka', 'th', 'slot', 'pol'
         ]
@@ -705,6 +742,8 @@ class VulkanBackend(_Compressed, NumpyBackend):
             'se_Cinv'
         ] if op.series else [])
         names += ['m0', 'm1', 'mk', 'o0', 'o1'] if op.mur is not None else []
+        names += (['fc_e', 'fc_k', 'fc_s', 'fc_d', 'fe_i', 'fe_l', 'fe_li',
+                   'fe_c', 'fe_w', 'fe_m'] if self.n_fc else [])
         f = dict(V=self.V, I=self.I,
                  **{n: self.up(getattr(self, n), dtypes.get(n))
                     for n in names})
@@ -730,7 +769,8 @@ class VulkanBackend(_Compressed, NumpyBackend):
                     n_mu=self.n_mu,
                     n_pv=(len(self.pv[0]) if self.pv is not None else 0),
                     n_pi=(len(self.pi[0]) if self.pi is not None else 0),
-                    np_=self.buf.shape[1], pml_M=self.pml_M, pad=0,
+                    np_=self.buf.shape[1], pml_M=self.pml_M, n_fc=self.n_fc,
+                    n_fe=self.n_fe, pad=0,
                     kh=float(self.kh), ke=float(self.ke), dt=float(self.dtf32),
                     dtf=float(getattr(self, 'dtf', 0.0)))
         rec = np.zeros(1, [(n, {'p': '<u8', 'i': '<i4', 'f': '<f4'}[k])
@@ -864,6 +904,7 @@ class VulkanBackend(_Compressed, NumpyBackend):
         self._launch('step_h', self.n + self.n_mu, ns_=ns)
         if split:
             self._pml('H')
+        self.ferrite()
         if self.more and n is not None:
             self.excite_more('I', n)
         self._launch('step_e', self.n, ns_=ns)
@@ -899,6 +940,10 @@ class VulkanBackend(_Compressed, NumpyBackend):
 
     def update_H(self):
         self._launch('update_h', self.n)
+
+    def ferrite(self):
+        self._launch('ferrite_m', self.n_fc)
+        self._launch('ferrite_h', self.n_fe)
 
     def update_E(self):
         self._launch('update_e', self.n)
@@ -991,8 +1036,8 @@ def _post_disjoint(op):
 
 def gpu_bytes(op):
     """About what the GPU holds of operator op (R-D7): the two fields (24 B a
-    node, float32), the node codes and slots, the PML's auxiliary fields, and 64
-    MB for the tables, the kernels and the rest."""
+    node, float32), the node codes and slots, the PML's auxiliary fields, the
+    ferrite's, and 64 MB for the tables, the kernels and the rest."""
     n = int(np.prod(op.shape))
     code = 1 if n < 2 ** 8 else 2  # (its codes' type: a guess before compress)
     sh = tuple(op.shape)
@@ -1002,7 +1047,11 @@ def gpu_bytes(op):
                              for b in range(3)
                              if b != sl['axis']]))
               for sl in (op.pml or []))
-    return 24 * n + code * n + 4 * n + pml + 64e6
+    fe = getattr(op, 'ferrite', None)
+    # the ferrite: 56 B a cell (edges, coefficients, state, change), 28 an
+    # edge
+    fer = 56 * fe.nc + 28 * fe.ne if fe is not None else 0
+    return 24 * n + code * n + 4 * n + pml + fer + 64e6
 
 
 def fits(op, free, where='the GPU'):

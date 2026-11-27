@@ -964,12 +964,14 @@ def _core(csx, fdtd):
     mue = np.full(ncell, float(bg.get('Mue', 1.0)))
     sig = np.full(ncell, float(bg.get('Sigma', 0.0)))
     prio = np.full(ncell, -np.inf)
-    # the Debye material of each cell (index)
+    # the Debye material of each cell (index), the ferrite of each (index)
     owner = np.full(ncell, -1, np.int32)
+    fown = np.full(ncell, -1, np.int32)
     props = [p for p in csx.GetAllProperties() if getattr(p, 'enabled', True)]
     debye = [
         p for p in props if isinstance(p, C.DebyeMaterial) and p.pole_list()
     ]
+    fer = [p for p in props if isinstance(p, C.FerriteMaterial)]
     mats = [(q.priority, p, q) for p in props if isinstance(p, C.Material)
             for q in p.primitives]
     for pr, p, q in sorted(mats, key=lambda t: t[0]):
@@ -980,6 +982,7 @@ def _core(csx, fdtd):
         eps[m], kap[m], prio[m] = p.epsilon, p.kappa, pr
         mue[m], sig[m] = getattr(p, 'mue', 1.0), getattr(p, 'sigma', 0.0)
         owner[m] = debye.index(p) if p in debye else -1
+        fown[m] = next((n for n, f in enumerate(fer) if f is p), -1)
     lE, aE, lH, aH = _geometry(grid)
     with np.errstate(divide='ignore', invalid='ignore'):
         cap, cond, epsE = (np.zeros((3,) + sh) for _ in range(3))
@@ -1259,9 +1262,123 @@ def _core(csx, fdtd):
     op.mur = ((np.concatenate(mur0).astype(np.int64),
                np.concatenate(mur1).astype(np.int64),
                np.concatenate(murk)) if mur0 else None)
+    op.ferrite = _ferrite(fer, fown, grid, sh, dt, op.notes) if fer else None
+    del fown
     return (op,
             dict(grid=grid, sh=sh, vv=vv, vi=vi, iv=iv, lE=lE, lH=lH, aE=aE,
                  kap=kap, dt=dt, ncell=ncell))
+
+
+def _nearest(t, c):
+    """Index of the nearest of the sorted values t to each of c."""
+    t = np.asarray(t, float)
+    if len(t) < 2:
+        return np.zeros(len(c), np.int64)
+    j = np.clip(np.searchsorted(t, c), 1, len(t) - 1)
+    return np.where(c - t[j - 1] <= t[j] - c, j - 1, j)
+
+
+class Ferrite:
+    """A model's magnetised ferrite (_ferrite): its cells' update and the H
+    edges they meet, flat arrays. Per cell c (nc): e[c] its four edges (x
+    lower, x upper, y lower, y upper: positions in the edge list), k[c] (p0,
+    p1, q0, q1), state (mx, my, bx, by: A/m, zero at the start). Per edge
+    (ne): idx (its flat index into I), lh (its dual length, m: I = H lh),
+    cells (its two cells' offsets into the change array dm[2 (nc + 1)]: the
+    component's row, the dummy cell nc where there is none), w (their
+    weights)."""
+
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+def _ferrite(fer, fown, grid, sh, dt, notes):
+    """The ferrite cells' update (gfdtd.csx.FerriteMaterial). The linearised
+    Landau-Lifshitz-Gilbert equation of the small magnetisation m = (mx, my)
+    about a bias along z (sign s, internal field H0, saturation Ms), written in
+    b = B / mu0 = h + m, which the H update advances by Faraday's law alone
+    (the ferrite's H edges are vacuum's: mu0):
+
+        dm/dt = s J (wr m - wm b) + alpha s J dm/dt,  J (x, y) = (-y, x)
+
+    wr = gamma (H0 + Ms), wm = gamma Ms; in the frequency domain the Polder
+    tensor (B = mu0 [mu, j kappa; -j kappa, mu] h for +z). m lives at the cell
+    centres: b there is the mean of its two x (y) edges', and the edges get h
+    = b - the cells' m weighted by half their lengths over the edge's dual one
+    (the transpose of that mean in the cells' and edges' volumes). The
+    trapezoidal rule makes it m+ = P m- + Q (b+ + b-), P = p0 + p1 J, Q = q0 +
+    q1 J: a rotation by 2 atan(wr dt / 2) unbiased by b, at any step."""
+    ncell = tuple(n - 1 for n in sh)
+    H0 = np.full(ncell, np.nan)
+    MS, AL, GA = (np.zeros(ncell) for _ in range(3))
+    for n, p in enumerate(fer):
+        mine = fown == n
+        if not mine.any():
+            continue
+        if isinstance(p.bias, dict):  # the table's nearest point to each centre
+            near = [_nearest(p.bias[a], grid.mid[n][q])
+                    for n, (a, q) in enumerate(zip('xyz', np.nonzero(mine)))]
+            H0[mine] = p.bias['hz'][tuple(near)]
+        else:
+            H0[mine] = float(p.bias)
+        MS[mine], AL[mine], GA[mine] = p.ms, p.alpha, p.gamma
+    live = (fown >= 0) & np.isfinite(H0) & (H0 != 0) & (MS > 0)
+    n_off = int(((fown >= 0) & ~live).sum())
+    if n_off:
+        notes.append(
+            f"ferrite: {n_off} of {int((fown >= 0).sum())} cells not "
+            "saturated (no bias there): left unbiased, a dielectric of mu 1")
+    ci, cj, ck = np.nonzero(live)
+    nc = len(ci)
+    if not nc:
+        return None
+    h0, ms, al, ga = H0[live], MS[live], AL[live], GA[live]
+    sg = np.sign(h0)
+    beta = ga * (np.abs(h0) + ms) * dt / 2
+    gm = ga * ms * dt / 2
+    a, c = al + beta, al - beta
+    den = 1 + a * a
+    k = np.stack([(1 + a * c) / den, sg * 2 * beta / den, gm * a / den,
+                  -sg * gm / den], axis=1)
+    # the cells' edges: x at lines i, i + 1; y at lines j, j + 1
+    flat = lambda ax, i, j, kk: _flat(sh, ax, i, j, kk)
+    eall = np.stack([flat(0, ci, cj, ck), flat(0, ci + 1, cj, ck),
+                     flat(1, ci, cj, ck), flat(1, ci, cj + 1, ck)], axis=1)
+    edges, inv = np.unique(eall.ravel(), return_inverse=True)
+    e_of = inv.reshape(nc, 4).astype(np.int32)
+    # each edge's cells: the ferrite cell index map (-1: none)
+    cmap = np.full(ncell, -1, np.int64)
+    cmap[ci, cj, ck] = np.arange(nc)
+    n_per = int(np.prod(sh))
+    ax = edges // n_per
+    rest = edges % n_per
+    ei, ej, ek = rest // (sh[1] * sh[2]), (rest // sh[2]) % sh[1], rest % sh[2]
+    ne = len(edges)
+    cells = np.full((ne, 2), nc, np.int64)
+    w = np.zeros((ne, 2))
+    lh = np.where(ax == 0, grid.dual[0][ei], grid.dual[1][ej])
+    for side, off in ((0, -1), (1, 0)):  # the cell below the line, above it
+        li = np.where(ax == 0, ei + off, ei)
+        lj = np.where(ax == 1, ej + off, ej)
+        ok = ((li >= 0) & (li < ncell[0]) & (lj >= 0) & (lj < ncell[1])
+              & (ek < ncell[2]))
+        cc = np.full(ne, -1, np.int64)
+        cc[ok] = cmap[li[ok], lj[ok], ek[ok]]
+        has = cc >= 0
+        d = np.where(ax == 0, grid.d[0][np.clip(li, 0, ncell[0] - 1)],
+                     grid.d[1][np.clip(lj, 0, ncell[1] - 1)])
+        cells[has, side] = cc[has]
+        w[has, side] = 0.5 * d[has] / lh[has]
+    # offsets into dm (2, nc + 1): the edge's component's row
+    cells = cells + ax[:, None] * (nc + 1)
+    del cmap
+    notes.append(
+        f"ferrite: {nc} cells magnetised ({ne} H edges), bias "
+        f"{np.abs(h0).min():.4g} to {np.abs(h0).max():.4g} A/m "
+        f"({'+' if (sg > 0).all() else '-' if (sg < 0).all() else '+/-'}z)")
+    return Ferrite(nc=nc, ne=ne, e=e_of, k=k, idx=edges.astype(np.int64),
+                   lh=lh, cells=cells.astype(np.int32), w=w, ijk=(ci, cj, ck),
+                   h0=h0, ms=ms)
 
 
 def _excitations(props, grid, sh, vv, vi, lE, lH, dt, notes):
@@ -1859,6 +1976,8 @@ def describe(op):
         "Debye pole edges\t: "
         f"{0 if op.debye is None else int((op.debye[3] > 0).sum())}",
         f"Conducting sheet edges\t: {getattr(op, 'n_sheet', 0)}",
+        "Ferrite cells\t\t: " + (f"{op.ferrite.nc} ({op.ferrite.ne} H edges)"
+                                  if getattr(op, 'ferrite', None) else '0'),
         f"Probes\t\t\t: {len(op.probes)}", f"Field dumps\t\t: {len(op.dumps)}",
         f"FDTD timestep is: {op.dt:g} s; Nyquist rate: {op.nyquist} timesteps "
         f"@{1 / (2 * op.nyquist * op.dt):g} Hz"

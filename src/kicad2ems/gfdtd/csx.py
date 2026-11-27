@@ -585,6 +585,40 @@ class DebyeMaterial(Material):
                 if d.get('eps_delta', 0.0) > 0 and d.get('eps_relax', 0.0) > 0]
 
 
+class FerriteMaterial(Material):
+    """gfdtd's, beyond openEMS: a microwave ferrite magnetised along z, its
+    permeability the Polder tensor of the linearised Landau-Lifshitz-Gilbert
+    equation (gfdtd.operator._ferrite: the magnetisation at the cell centres,
+    the trapezoidal rule). epsilon and kappa as a Material's; ms the saturation
+    magnetisation (A/m); alpha Gilbert's damping; gamma the gyromagnetic ratio
+    times mu0 (rad/s per A/m: 2.21e5 at g = 2); bias the internal static
+    field along z (A/m; negative: along -z, the magnetisation with it), one
+    value, or a table dict(x, y, z: the lines (drawing units), hz: (len x, len
+    y, len z) A/m) read at each cell's centre (nearest point), NaN where the
+    ferrite is not saturated (those cells left unbiased: a dielectric of mu
+    1)."""
+    kind = 'FerriteMaterial'
+
+    def __init__(self, name, ms=0.0, alpha=0.0, gamma=2.2128e5, bias=0.0,
+                 **kw):
+        super().__init__(name, **kw)
+        self.ms, self.alpha, self.gamma = (_num(ms), _num(alpha), _num(gamma))
+        if isinstance(bias, dict):
+            bias = dict(x=np.asarray(bias['x'], float),
+                        y=np.asarray(bias['y'], float),
+                        z=np.asarray(bias['z'], float),
+                        hz=np.asarray(bias['hz'], float))
+            if bias['hz'].shape != (len(bias['x']), len(bias['y']),
+                                    len(bias['z'])):
+                raise ValueError(
+                    f"ferrite {name}: its bias table is "
+                    f"{bias['hz'].shape}, its lines {len(bias['x'])} x "
+                    f"{len(bias['y'])} x {len(bias['z'])}")
+        else:
+            bias = _num(bias)
+        self.bias = bias
+
+
 class Metal(Property):
     kind = 'Metal'
 
@@ -862,6 +896,10 @@ class ContinuousStructure:
     def AddDump(self, name, **kw):
         return self.AddProperty(DumpBox(name, **kw))
 
+    def AddFerriteMaterial(self, name, **kw):
+        """gfdtd's (openEMS has no gyrotropic medium): FerriteMaterial."""
+        return self.AddProperty(FerriteMaterial(name, **kw))
+
     def GetPropertiesByName(self, name):
         return [p for p in self.properties if p.name == name]
 
@@ -1006,6 +1044,15 @@ def _write_property(parent, p, pid):
                 pa[f"EpsilonRelaxTime_{o + 1}"] = _three(d.get(
                     'eps_relax', 0.0))
         ET.SubElement(el, 'Property', **pa)
+        if isinstance(p, FerriteMaterial):  # gfdtd's own element
+            fa = dict(Ms=_fmt(p.ms), Alpha=_fmt(p.alpha), Gamma=_fmt(p.gamma))
+            if isinstance(p.bias, dict):
+                for k in ('x', 'y', 'z'):
+                    fa[k.upper()] = ','.join(_fmt(v) for v in p.bias[k])
+                fa['HZ'] = ','.join(_fmt(v) for v in p.bias['hz'].ravel())
+            else:
+                fa['Bias'] = _fmt(p.bias)
+            ET.SubElement(el, 'Ferrite', **fa)
     if isinstance(p, Excitation):
         if any(p.weight_origin):
             ET.SubElement(el, 'WeightOrigin', **_xyz(p.weight_origin))
@@ -1072,7 +1119,22 @@ def _point(el):
 
 def _read_property(pe, skipped):
     tag, name = pe.tag, pe.get('Name', '')
-    if tag in ('Material', 'DebyeMaterial', 'LorentzMaterial'):
+    if tag == 'FerriteMaterial':
+        pr, fe = pe.find('Property'), pe.find('Ferrite')
+        g = lambda k, d: _floats(pr.get(k))[0] if pr is not None and pr.get(
+            k) is not None else d
+        f = lambda k, d: float(fe.get(k)) if fe is not None and fe.get(
+            k) is not None else d
+        bias = f('Bias', 0.0)
+        if fe is not None and fe.get('HZ') is not None:
+            ax = {k: _floats(fe.get(k.upper())) for k in 'xyz'}
+            bias = dict(ax, hz=np.asarray(_floats(fe.get('HZ'))).reshape(
+                len(ax['x']), len(ax['y']), len(ax['z'])))
+        p = FerriteMaterial(name, epsilon=g('Epsilon', 1.0),
+                            kappa=g('Kappa', 0.0), ms=f('Ms', 0.0),
+                            alpha=f('Alpha', 0.0),
+                            gamma=f('Gamma', 2.2128e5), bias=bias)
+    elif tag in ('Material', 'DebyeMaterial', 'LorentzMaterial'):
         pr = pe.find('Property')
         g = lambda k, d: _floats(pr.get(k))[0] if pr is not None and pr.get(
             k) is not None else d
