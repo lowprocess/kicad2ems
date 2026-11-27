@@ -48,8 +48,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and 3D: rectangles, circles, polygons, traces and ports, made of copper or cut out of a layer, or as metal,
   dielectric or air solids between two heights. `kicad2ems.core.shapes` holds the drawing (a `kicad2ems-shapes`
   JSON file) and applies it to the board (`shapes` setting): every solver gets the drawn copper and cuts, and
-  `board.json` keeps the solids, though no solver meshes them yet. The page also writes the `region` and `ports`
-  settings from the shapes. Shapes are selected and edited in the 3D view too: a click picks one, a drag moves
+  `board.json` keeps the solids (the FDTD and Palace mesh them: the entry above). The page also writes the
+  `region` and `ports` settings from the shapes. Shapes are selected and edited in the 3D view too: a click picks one, a drag moves
   it on its level, and Shift + drag stretches or lifts a solid (`core.shapes.pick`: a ray against the triangles).
 - **Draw page: selection, exact edits, snapping, measuring, the 3D view's tools, and speed with many shapes
   (2026-11-27).** `gui.drawtab` and its 3D half `gui.draw3d`; the edits, snapping, camera, picking and clip are

@@ -52,7 +52,7 @@ useful first:
    - Palace meshes the air outside a drawn can that closes round the board (125,000 tetrahedra against its PEC
      box's 118,000, 161 s against 145 s); the FDTD leaves it out;
    - mom25d could take a dielectric solid over the whole board as a stack layer (a cover) instead of refusing it;
-   - the run's mesh preview and the Viewer do not draw the solids yet (the page's item 4);
+   - the run's mesh preview and the Viewer do not draw the solids yet (the page's item 1);
    - set aside: a box-shaped closed can as the PEC boundary at its inner faces. The PEC-boundary run is that model:
      0.41 M cells and 33 s against the drawn can's 0.45 M and 35 s (−6 %), under the 10 % a pass must gain.
 2. **Templates:** a shield can with its fence vias, an enclosure with a lid, an edge-launch SMA, a via fence along
