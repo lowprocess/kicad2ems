@@ -84,6 +84,9 @@ class Shape:
     rot: float = None            # port: its direction (KiCad degrees; None:
                                  # along the track under it)
     name: str = ''
+    # the Draw page's: not drawn or picked there (still applied), not moved
+    hidden: bool = False
+    locked: bool = False
 
     def __post_init__(self):
         self.points = [[float(x), float(y)] for x, y in self.points]
@@ -145,11 +148,85 @@ class Shape:
                 f"{self.name or 'port'}: port on {self.layer}")
 
     # ---- editing ----
+    def copy(self):
+        return Shape(**asdict(self))
+
     def moved(self, dx, dy):
         """A copy moved by (dx, dy) mm."""
         s = Shape(**asdict(self))
         s.points = [[x + dx, y + dy] for x, y in self.points]
         return s
+
+    def rotated(self, angle, about=None):
+        """A copy turned `angle` degrees anticlockwise about the point `about`
+        (None: its own centre). A rectangle turned off a right angle becomes
+        a polygon; a port's direction turns with it."""
+        if about is None:
+            x0, y0, x1, y1 = self.bounds()
+            about = ((x0 + x1) / 2, (y0 + y1) / 2)
+        cx, cy = map(float, about)
+        a = math.radians(angle)
+        c, s_ = math.cos(a), math.sin(a)
+        quarter = abs(angle / 90 - round(angle / 90)) < 1e-9
+        if quarter:  # exact: no rounding noise on a right angle
+            c, s_ = round(c), round(s_)
+        turn = lambda x, y: [round(cx + c * (x - cx) - s_ * (y - cy), 9),
+                             round(cy + s_ * (x - cx) + c * (y - cy), 9)]
+        s = Shape(**asdict(self))
+        if self.kind == 'rect' and not quarter:
+            (x0, y0), (x1, y1) = self.points
+            s.kind = 'polygon'
+            s.points = [turn(x, y) for x, y in ((x0, y0), (x1, y0), (x1, y1),
+                                                (x0, y1))]
+        else:
+            s.points = [turn(x, y) for x, y in self.points]
+        if self.kind == 'port' and self.rot is not None:
+            s.rot = round((self.rot + angle) % 360, 9)
+        return s
+
+    def mirrored(self, axis, at=None):
+        """A copy mirrored: axis 'x' reverses x (left-right, about the line x
+        = at), 'y' reverses y (about y = at); at None: its own centre. A
+        port's direction is mirrored too."""
+        if axis not in ('x', 'y'):
+            raise ValueError(f"mirror axis {axis!r}: 'x' or 'y'")
+        k = 0 if axis == 'x' else 1
+        if at is None:
+            b = self.bounds()
+            at = (b[k] + b[k + 2]) / 2
+        s = Shape(**asdict(self))
+        s.points = [[2 * at - p[0], p[1]] if k == 0 else [p[0], 2 * at - p[1]]
+                    for p in self.points]
+        if self.kind == 'port' and self.rot is not None:
+            s.rot = ((180 - self.rot) if k == 0 else -self.rot) % 360
+        return s
+
+    def snap_points(self):
+        """[(x, y, what)]: the points a click snaps to on it, what one of
+        'corner', 'midpoint', 'centre', 'end' (a trace's), 'rim' (a circle's
+        quarter points), 'port'."""
+        p = self.points
+        if self.kind == 'port':
+            return [(p[0][0], p[0][1], 'port')]
+        if self.kind == 'circle':
+            (cx, cy), r = p[0], abs(self.radius)
+            return [(cx, cy, 'centre')] + [
+                (cx + dx * r, cy + dy * r, 'rim')
+                for dx, dy in ((1, 0), (0, 1), (-1, 0), (0, -1))]
+        if self.kind == 'rect':
+            (x0, y0), (x1, y1) = p
+            ring = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+            closed = True
+        else:
+            ring, closed = [tuple(q) for q in p], self.kind == 'polygon'
+        out = [(x, y, 'corner' if closed else 'end' if k in (0, len(ring) - 1)
+                else 'corner') for k, (x, y) in enumerate(ring)]
+        legs = list(zip(ring, ring[1:] + (ring[:1] if closed else [])))
+        out += [((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 'midpoint')
+                for a, b in legs]
+        if self.kind == 'rect':
+            out.append(((x0 + x1) / 2, (y0 + y1) / 2, 'centre'))
+        return out
 
     def handles(self):
         """The points to drag to reshape it: its own points, and a circle's
@@ -200,6 +277,9 @@ class Shape:
             d.pop('net')
         if self.solid:
             d.pop('layer')
+        for k in ('hidden', 'locked'):  # (written only when set)
+            if not d[k]:
+                d.pop(k)
         return d
 
     @classmethod
