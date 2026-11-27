@@ -690,10 +690,11 @@ class CoreBackend(_Compressed, NumpyBackend):
     def ferrite(self):
         if not self.n_fc:
             return
-        f = getattr(self.core, 'ferrite' if self.fc_na == 2 else 'ferrite3',
-                    None)
-        if f is None:  # (a core built before it)
+        # a core built before the faces' scheme (no ferrite3: its ferrite
+        # reads the old state, 4 floats a cell) runs it as NumPy does
+        if not hasattr(self.core, 'ferrite3'):
             return NumpyBackend.ferrite(self)
+        f = getattr(self.core, 'ferrite' if self.fc_na == 2 else 'ferrite3')
         f(self.I, self.fc_e, self.fc_k, self.fc_s, self.fc_d, self.fe_i,
           self.fe_l, self.fe_li, self.fe_c, self.fe_w, self.fe_m)
 
