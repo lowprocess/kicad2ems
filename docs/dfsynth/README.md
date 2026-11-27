@@ -202,6 +202,12 @@ brackets is the cost of the full-wave result against the limits (dB², what the 
   another pattern each time, which is the spread in those numbers), but the search stays a local one: a
   pixel more or less of box is another run with another end.
 
+- **gfdtd does not put the band where mom25d does.** The tuned band-pass board on gfdtd (its CPU core, 1.05 M
+  cells of 0.116 mm at the copper, PML): the band 4.531 to 5.192 GHz where mom25d has 4.677 to 5.354, 3.1 % lower,
+  as wide (661 and 677 MHz), 8.4 dB of return loss over its own band for mom25d's 8.9. Which is nearer the
+  board is not known: the tuning above is to mom25d (`--validate gfdtd` tunes to gfdtd). It took 529 s there for
+  mom25d's 28 s (four CPU cores, no GPU).
+
 Limits: low-pass and band-pass only; lumped ports in the model (a through line reads -30 dB at 5 GHz); no ground
 vias in the box, so no shorted stubs or rods; the copper's thickness is not in the pixel model; and the search
 is a local one from one start, so another `--box` or `--search-steps` can come out better or worse.

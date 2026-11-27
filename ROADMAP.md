@@ -306,5 +306,7 @@ R-E18, in order: the tapped hairpin feed; combline; elliptic and cross-coupled d
 3. **Band-stop and high-pass**: a goal for each (`search.Goal` has none) and a start (stubs on the line).
 4. **Ground vias in the box** (a via chain as an unknown a pixel may have): shorted stubs, quarter-wave rods.
 5. **Size as a number asked for**: the box is the user's now; a run down a list of boxes and the trade drawn.
-6. A free-form board on gfdtd beside mom25d; the Filter page's own rows for the box and the search (they are
-   under More options).
+6. **gfdtd and mom25d 3.1 % apart on a free-form board** (the tuned default band-pass: 4.531 to 5.192 GHz on
+   gfdtd at 0.116 mm cells, 4.677 to 5.354 on mom25d; as wide, the same match): which is right, by each one's
+   mesh refined (the hairpin they agree on to 0.1 % has no one-pixel gaps and steps).
+7. The Filter page's own rows for the box and the search (they are under More options).
