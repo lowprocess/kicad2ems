@@ -421,8 +421,9 @@ Arbitrary shapes drawn over the board, in plan and in 3D, for a run to add to it
   length).
 - **Materials**: *copper* joins its layer's copper (of the net given, else of the copper it overlaps most; a
   different net's copper under it is reported as a short), *cut* takes copper out of its layer, and *metal*,
-  *dielectric* and *air* are solids between two heights. Shapes apply in the list's order: a cut takes out what
-  is drawn before it.
+  *dielectric*, *air*, *ferrite* (a microwave ferrite: a puck or a substrate, magnetised by the drawn magnets) and
+  *magnet* (a permanent magnet, metal to the RF) are solids between two heights. Shapes apply in the list's order:
+  a cut takes out what is drawn before it.
 
 **Selecting.** A click picks a shape; Shift or Ctrl + click adds one or takes it off. A drag on nothing draws a box:
 left to right selects what is wholly inside it, right to left what it touches (Shift: added to the selection). A
@@ -437,7 +438,16 @@ the wheel and the right button zoom. Ctrl+A selects all.
   each one undo step. Copy puts the shapes on the clipboard as `kicad2ems-shapes` text, so they paste into another
   drawing or another session (or a text editor); pasted onto the same spot they come one grid step along.
 - **Shape** (the form) shows the last shape picked; with several selected, a change to its material, layer, net,
-  width, radius, heights, εr or tan δ applies to them all.
+  width, radius, heights, εr, tan δ, 4πMs, ΔH or Br applies to them all. A ferrite has εr and tan δ, *4πMs* (its
+  saturation magnetisation, gauss) and *ΔH* (its FMR linewidth, oersted at 9.4 GHz: the datasheets'); a solid made
+  a ferrite while its εr is still a laminate's 4.3 takes a ferrite's 15. A magnet has *Br* (its remanence, tesla) and
+  *Magnetised* up (+z: N on top) or down; the list shows a magnet's Br and direction and a ferrite's 4πMs.
+- **Bias**, with a ferrite or a magnet selected: the static field the drawn magnets give each ferrite with its own
+  demagnetising field (`kicad2ems.core.magnets`: along z, the ferrite saturated where the field allows), as the
+  internal field's range, how much of the ferrite is saturated, and the gyrotropy's two frequencies f0 = γH0 and
+  fm = γ4πMs; with no magnet drawn the ferrite is unbiased. It is worked out a moment after a change (about 20 ms
+  for a 3 mm puck under a 5 mm magnet, then kept while the solids are the same), never while dragging, so whether
+  the magnet saturates the puck shows as it is drawn.
 - **Arrange**: *Move by* dx, dy (and dz: solids lifted); *Rotate* by any angle about the selection's centre, each
   shape's own, or a point (typed, or *Pick*ed with a click; a rectangle turned off a right angle becomes a polygon);
   *Mirror* x or y about the selection's centre; *Align* left, centre, right, top, middle or bottom; *Distribute*
@@ -447,7 +457,9 @@ the wheel and the right button zoom. Ctrl+A selects all.
   turned or only carried round): a via fence, stitching, a ring of vias. Named shapes' copies are numbered (via_2,
   via_3...).
 
-**The 3D view** shows the shapes extruded over the board's substrate and copper, and edits them too:
+**The 3D view** shows the shapes extruded over the board's substrate and copper (a ferrite charcoal, a magnet in two
+halves coloured by their poles, N red and S blue, so the colour on top says which way it is magnetised), and edits
+them too:
 
 - a click selects a shape (Shift or Ctrl + click adds or takes off; a click on nothing selects none), and the
   selection is outlined;
@@ -461,7 +473,7 @@ the wheel and the right button zoom. Ctrl+A selects all.
   capped, and what is cut off is not picked;
 - *Show* turns the board's substrate, each copper layer, each drawn material and the ports on or off, the grid at
   the working level (the layer drawn on, or a new solid's bottom; the snap grid, coarser where it would be dense),
-  and see-through metal (to look under a lid).
+  and see-through metal (metal and magnets: to look under a lid, or at the puck under a magnet).
 
 Only drawn shapes are picked, not the board.
 

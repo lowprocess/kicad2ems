@@ -20,7 +20,9 @@ core.view3d: the 3D view's numbers).
             Shift: added). Ctrl + drag, or the middle button, pans; the wheel
             and the right button zoom.
     3D      the same shapes extruded: copper and cuts as slabs on their layer,
-            metal, dielectric and air as solids between their two heights,
+            metal, dielectric, air, ferrite (charcoal) and magnets as solids
+            between their two heights (a magnet in two halves, its poles: N
+            red, S blue, so the one on top says which way it is magnetised),
             over the board's substrate and copper. A click picks a shape
             (Shift or Ctrl: adds or takes it off; on nothing: none), a drag
             moves the selection on its level (X / Y / Z while dragging: along
@@ -34,7 +36,13 @@ core.view3d: the 3D view's numbers).
             drawn before it), each shown or hidden (hidden: not drawn or
             picked, still applied) and locked or not (locked: not moved,
             turned or deleted); the selected one's properties (with several
-            selected a change applies to them all); Arrange (move by, rotate
+            selected a change applies to them all: a ferrite's er, tan d,
+            4 pi Ms and FMR linewidth, a magnet's remanence and which way it
+            is magnetised, and for either the bias the drawn magnets give the
+            ferrite (core.magnets: the internal field, how much of it is
+            saturated, f0 and fm; worked out a moment after, never while
+            dragging); a solid made a ferrite with a laminate's er 4.3 takes
+            a ferrite's 15); Arrange (move by, rotate
             by any angle about a point, mirror, align, distribute) and Array
             (a row, a grid, a circle).
 
@@ -52,6 +60,7 @@ the selection in both views, 7 1 3 5 the 3D camera, X / Y / Z while dragging.
     tab = DrawTab(win)          # win: the main window, or None (on its own)
     tab.set_board(layout)       # core.layout.board_layout's dict, or None
     tab.add(Shape(...)); tab.drawing; tab.save(path); tab.load(path)
+    tab.bias_text()             # the selected ferrite's (or magnet's) bias
     tab.select(i, 'only' | 'toggle' | 'add'); tab.selected; tab.sel
     tab.move_by(dx, dy); tab.rotate_by(30, about); tab.mirror('x')
     tab.align('left'); tab.distribute('x'); tab.make_array('row', n=5, dx=1)
@@ -73,6 +82,7 @@ from kicad2ems.core import shapes as sh
 from kicad2ems.core import shapeops as so
 from kicad2ems.core.shapes import Shape, Drawing
 from . import theme
+from . import drawmagnets as dm
 from .planview import _path, _item
 from .volume3d import rings
 from .draw3d import Draw3D
@@ -97,9 +107,11 @@ TOOLS = {
     'measure': ('Measure', 'M', 'click two points for their distance and '
                 'angle, a third for the angle between the legs; Esc clears'),
 }
-# RGB of each material, in plan and 3D
+# RGB of each material, in plan and 3D (a magnet's halves in 3D are its
+# poles': drawmagnets.N_RGB, S_RGB)
 COLOURS = dict(copper=(214, 140, 64), cut=(225, 60, 60), metal=(140, 150, 165),
-               dielectric=(60, 170, 90), air=(110, 165, 235))
+               dielectric=(60, 170, 90), air=(110, 165, 235),
+               ferrite=(88, 88, 100), magnet=(190, 40, 95))
 PORT_COLOUR = (200, 30, 160)
 SELECTED = QColor(0, 120, 215)
 SNAP_COLOUR = QColor(255, 0, 200)
@@ -108,7 +120,10 @@ SNAP_PX = 8  # how near a pad, a corner... a point snaps to it, pixels
 # the form's fields that a change to the shown shape carries to the rest of
 # the selection (not its points or name)
 SHARED = ('material', 'layer', 'net', 'width', 'radius', 'z0', 'z1', 'er',
-          'tand', 'rot')
+          'tand', 'ms', 'dh', 'br', 'rot')
+# a dielectric's permittivity unless set (Shape's): a solid made a ferrite
+# with it takes a ferrite's (drawmagnets.FERRITE_ER)
+DEFAULT_ER = Shape.__dataclass_fields__['er'].default
 
 
 def _qc(rgb, a=255):
@@ -151,6 +166,12 @@ class DrawTab(QWidget, Draw3D):
         self.measure_pts, self._pick_point = [], None
         self._axis = None  # a drag held to one axis: 'x', 'y', 'z'
         self._undo, self._redo = [], []
+        # the bias readout (a ferrite's or a magnet's form): worked out a
+        # moment after the form is filled, never while dragging, and kept
+        # while the drawn solids are the same: (key, summary, solid index)
+        self._bias_cache = None
+        self._bias_timer = QTimer(self, singleShot=True, interval=40,
+                                  timeout=self._show_bias)
         # the plan's items of each shape (index): dict(geo, style, items),
         # kept while its outline is the same
         self._gfx, self._board_items = [], []
@@ -195,6 +216,8 @@ class DrawTab(QWidget, Draw3D):
         self.measure_text = pg.TextItem('', color=MEASURE_COLOUR,
                                         anchor=(0, 1), fill=pg.mkBrush(bg))
         self.measure_text.setZValue(66)
+        # (hidden while empty: its backing painted a small box at the origin)
+        self.measure_text.setVisible(False)
         self.vb.addItem(self.measure_text)
         self._3d_timer = QTimer(self, singleShot=True, interval=120,
                                 timeout=self._redraw_3d)
@@ -246,7 +269,9 @@ class DrawTab(QWidget, Draw3D):
         self.material = QComboBox(toolTip=(
             'what a new shape is made of: copper (joins the layer\'s copper), '
             'cut (taken out of it), or a solid between two heights: metal, '
-            'dielectric, air'))
+            'dielectric, air, ferrite (a gyrotropic puck or substrate, biased '
+            'by the drawn magnets), magnet (a permanent magnet: metal to the '
+            'RF)'))
         self.material.addItems(sh.MATERIALS)
         self.material.currentTextChanged.connect(self._material_state)
         self.width = _spin(0.5, 0.001, 100, ' mm', 'a new trace\'s width')
@@ -327,6 +352,7 @@ class DrawTab(QWidget, Draw3D):
         self.side_tabs.addTab(self._form_page(), 'Shape')
         self.side_tabs.addTab(self._arrange_page(), 'Arrange')
         self.side_tabs.addTab(self._array_page(), 'Array')
+        self.side_tabs.currentChanged.connect(lambda _: self._bias_later())
         v.addWidget(self.side_tabs, 1)
         v.addWidget(_hline())
         files = QGridLayout()
@@ -382,6 +408,28 @@ class DrawTab(QWidget, Draw3D):
         self.p_z1 = _spin(1.0, -100, 100, ' mm')
         self.p_er = _spin(4.3, 1, 100, '', decimals=3)
         self.p_tand = _spin(0.0, 0, 1, '', decimals=4)
+        self.p_ms = _spin(1800.0, 0, 20000, ' G', decimals=1, tip=(
+            "the ferrite's saturation magnetisation, 4πMs in gauss (the "
+            "datasheets'; YIG about 1780)"))
+        self.p_ms.setSingleStep(50)
+        self.p_dh = _spin(30.0, 0, 5000, ' Oe', decimals=2, tip=(
+            "the ferrite's FMR linewidth ΔH, oersted (the datasheets', "
+            "measured at 9.4 GHz): its magnetic loss"))
+        self.p_dh.setSingleStep(1)
+        self.p_br = _spin(1.2, 0, 5, ' T', decimals=3, tip=(
+            "the magnet's remanence, tesla (NdFeB about 1.2-1.4, SmCo "
+            "1.0-1.1, a ceramic magnet 0.4)"))
+        self.p_br.setSingleStep(0.05)
+        self.p_pole = QComboBox(toolTip=(
+            'which way it is magnetised: up, along +z, its N pole on top (red '
+            'in 3D, S blue), or down'))
+        self.p_pole.addItems(['up (+z): N on top', 'down (−z): N below'])
+        self.p_bias = QLabel(wordWrap=True, textInteractionFlags=(
+            Qt.TextSelectableByMouse), toolTip=(
+                "the ferrite's static bias from the drawn magnets and its own "
+                'demagnetising field (core.magnets: along z, the ferrite '
+                'saturated where the field allows): the internal field H0, '
+                'where it is saturated, f0 = γH0 and fm = γ4πMs'))
         self.p_rot = QLineEdit(placeholderText='(along the trace)')
         self.p_points = QPlainTextEdit(
             toolTip='one point a line: x, y (model mm, y up)')
@@ -397,6 +445,11 @@ class DrawTab(QWidget, Draw3D):
                              ('z1', 'Top z', self.p_z1),
                              ('er', 'εr', self.p_er),
                              ('tand', 'tan δ', self.p_tand),
+                             ('ms', '4πMs', self.p_ms),
+                             ('dh', 'ΔH', self.p_dh),
+                             ('br', 'Br', self.p_br),
+                             ('pole', 'Magnetised', self.p_pole),
+                             ('bias', 'Bias', self.p_bias),
                              ('rot', 'Rotation (°)', self.p_rot),
                              ('points', 'Points', self.p_points)):
             self.form.addRow(text, w)
@@ -404,9 +457,9 @@ class DrawTab(QWidget, Draw3D):
         for w in (self.p_name, self.p_net, self.p_rot):
             w.editingFinished.connect(self._edited)
         for w in (self.p_width, self.p_radius, self.p_z0, self.p_z1, self.p_er,
-                  self.p_tand):
+                  self.p_tand, self.p_ms, self.p_dh, self.p_br):
             w.editingFinished.connect(self._edited)
-        for w in (self.p_material, self.p_layer):
+        for w in (self.p_material, self.p_layer, self.p_pole):
             w.activated.connect(lambda _: self._edited())
         v.addLayout(self.form)
         v.addWidget(QPushButton('Apply points', clicked=self._edited,
@@ -616,6 +669,8 @@ class DrawTab(QWidget, Draw3D):
             args['width'] = self.width.value()
         if m in sh.SOLID:
             args.update(z0=self.z0.value(), z1=self.z1.value())
+        if m == 'ferrite':
+            args['er'] = dm.FERRITE_ER
         args.update(kw)
         try:
             return Shape(kind, points, **args)
@@ -774,6 +829,7 @@ class DrawTab(QWidget, Draw3D):
         if len(pts) >= 2:
             text = _measure_text(pts)
             self.measure_text.setText(text)
+            self.measure_text.setVisible(bool(text))
             # (on the side of the last point towards the middle of the view)
             (vx0, vx1), (vy0, vy1) = self.vb.viewRange()
             x, y = pts[-1]
@@ -784,11 +840,13 @@ class DrawTab(QWidget, Draw3D):
                 self.status.setText(f"Measure: {text}")
         else:
             self.measure_text.setText('')
+            self.measure_text.setVisible(False)
 
     def _clear_measure(self):
         self.measure_pts = []
         self.measure_line.setPath(QPainterPath())
         self.measure_text.setText('')
+        self.measure_text.setVisible(False)
 
     # ---- dragging in the plan ----
     def _drag(self, ev):
@@ -1348,7 +1406,7 @@ class DrawTab(QWidget, Draw3D):
             elif n < len(ss):  # (made as they are: not set again below)
                 items = []
                 for s in ss[n:]:
-                    it = QTreeWidgetItem(['', '', s.label()])
+                    it = QTreeWidgetItem(['', '', _label(s)])
                     it.setFlags(flags)
                     it.setCheckState(0, Qt.Unchecked if s.hidden else
                                      Qt.Checked)
@@ -1358,7 +1416,7 @@ class DrawTab(QWidget, Draw3D):
                 lst.addTopLevelItems(items)
             for k, s in enumerate(ss[:n]):
                 it = lst.topLevelItem(k)
-                text = s.label()
+                text = _label(s)
                 if it.text(2) != text:
                     it.setText(2, text)
                 for c, on in ((0, not s.hidden), (1, s.locked)):
@@ -1395,6 +1453,8 @@ class DrawTab(QWidget, Draw3D):
             "change here applies to them all (not the points or the name)")
         self.form_note.setVisible(n >= 2)
         if s is None:
+            self.form.setRowVisible(self.p_bias, False)
+            self._bias_timer.stop()
             return
         blocks = [QSignalBlocker(w) for w in self.rows.values()]
         self.p_name.setText(s.name)
@@ -1407,17 +1467,26 @@ class DrawTab(QWidget, Draw3D):
         self.p_z1.setValue(s.z1)
         self.p_er.setValue(s.er)
         self.p_tand.setValue(s.tand)
+        self.p_ms.setValue(s.ms)
+        self.p_dh.setValue(s.dh)
+        self.p_br.setValue(abs(s.br))
+        self.p_pole.setCurrentIndex(0 if s.br >= 0 else 1)
         self.p_rot.setText('' if s.rot is None else f"{s.rot:g}")
         self.p_points.setPlainText('\n'.join(f"{x:g}, {y:g}"
                                              for x, y in s.points))
         del blocks
+        diel = s.solid and s.material in ('dielectric', 'ferrite')
+        fer = s.solid and s.material == 'ferrite'
+        mag = s.solid and s.material == 'magnet'
         shown = dict(material=s.kind != 'port', net=s.material == 'copper'
                      and s.kind != 'port', layer=not s.solid,
                      width=s.kind == 'path', radius=s.kind == 'circle',
-                     z0=s.solid, z1=s.solid, er=s.material == 'dielectric',
-                     tand=s.material == 'dielectric', rot=s.kind == 'port')
+                     z0=s.solid, z1=s.solid, er=diel, tand=diel, ms=fer,
+                     dh=fer, br=mag, pole=mag, bias=fer or mag,
+                     rot=s.kind == 'port')
         for key, w in self.rows.items():
             self.form.setRowVisible(w, shown.get(key, True))
+        self._bias_later()
 
     def _edited(self):
         """The form's values into the shape it shows; a value changed there
@@ -1437,7 +1506,9 @@ class DrawTab(QWidget, Draw3D):
                         width=self.p_width.value(),
                         radius=self.p_radius.value(), z0=self.p_z0.value(),
                         z1=self.p_z1.value(), er=self.p_er.value(),
-                        tand=self.p_tand.value(),
+                        tand=self.p_tand.value(), ms=self.p_ms.value(),
+                        dh=self.p_dh.value(), br=self.p_br.value() * (
+                            1 if self.p_pole.currentIndex() == 0 else -1),
                         rot=float(rot) if rot else None,
                         name=self.p_name.text().strip(), hidden=s.hidden,
                         locked=s.locked)
@@ -1448,17 +1519,60 @@ class DrawTab(QWidget, Draw3D):
             return
         changed = {k: getattr(new, k) for k in SHARED
                    if getattr(new, k) != getattr(s, k)}
-        self.drawing.shapes[self.sel] = new
+        self.drawing.shapes[self.sel] = _as_ferrite(s, new)
         for j in self.selected[:-1]:
             t = self.drawing.shapes[j]
             c = dict(changed)
             if t.kind == 'port':
                 c.pop('material', None)
             try:
-                self.drawing.shapes[j] = Shape(**{**t.__dict__, **c})
+                self.drawing.shapes[j] = _as_ferrite(
+                    t, Shape(**{**t.__dict__, **c}))
             except ValueError:
                 pass
         self._commit(before)
+
+    # ---- a ferrite's bias ----
+    def _bias_later(self):
+        """The bias readout worked out soon, if the form shows a ferrite or a
+        magnet (not now: the form is filled on every change and selection)."""
+        s = self.drawing.shapes[self.sel] if self.sel is not None else None
+        if s is not None and s.solid and s.material in ('ferrite', 'magnet'):
+            self._bias_timer.start()
+        else:
+            self._bias_timer.stop()
+
+    def _show_bias(self):
+        """The readout written, when it is seen (a drag puts it off)."""
+        if self._drag_state is not None or getattr(
+                self, '_drag3d', None) is not None:
+            self._bias_timer.start()
+            return
+        if self.sel is None or not self.p_bias.isVisible():
+            return  # (the tab, or the page, shown again asks again)
+        self.p_bias.setText(self.bias_text())
+
+    def bias_text(self, i=None):
+        """What the form says of shape i's bias (default: the one it shows):
+        a ferrite's internal field, saturated share, f0 and fm, a magnet's
+        direction and every ferrite's (gui.drawmagnets.readout, from
+        core.magnets.summary of the board with the drawn solids). Worked out
+        once while the drawn solids are the same."""
+        i = self.sel if i is None else i
+        if i is None:
+            return ''
+        ss = self.drawing.shapes
+        key = (self._board_ver, tuple(_solid_key(t) for t in ss if t.solid))
+        if self._bias_cache is None or self._bias_cache[0] != key:
+            from kicad2ems.core import magnets
+            b, at = dm.bias_board(self.layout_, self.stack, ss, _outline)
+            self._bias_cache = (key, magnets.summary(b), at)
+        _, summary, at = self._bias_cache
+        return dm.readout(summary, ss, i, at)
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self._bias_later()
 
     # ---- keys: the page's own while it has the focus ----
     _KEYS = (Qt.Key_Escape, Qt.Key_Return, Qt.Key_Enter, Qt.Key_Delete,
@@ -1647,7 +1761,9 @@ class DrawTab(QWidget, Draw3D):
             items[1].setColor(_qc(rgb))
             return
         # a solid (a lid over the whole board) leaves the copper under it seen
-        fill = _qc(rgb, 60 if s.material == 'cut' else 35 if s.solid else
+        # (a ferrite darker: charcoal, not a metal's grey)
+        fill = _qc(rgb, 60 if s.material == 'cut' else 90
+                   if s.material == 'ferrite' else 35 if s.solid else
                    150 if here else 35)
         items[0].setBrush(QBrush(fill, Qt.BDiagPattern if s.material == 'cut'
                                  else Qt.SolidPattern))
@@ -1769,6 +1885,32 @@ class DrawTab(QWidget, Draw3D):
                                  taken=taken)
         if self._set_setting('ports', '; '.join(have + specs)):
             self.status.setText(f"ports added: {', '.join(specs)}")
+
+
+def _label(s):
+    """A shape's line in the list: its label, and a magnet's remanence and
+    direction or a ferrite's 4 pi Ms."""
+    t = s.label()
+    if s.solid and s.material == 'magnet':
+        t += f", Br {abs(s.br):g} T, N {'up' if s.br >= 0 else 'down'}"
+    elif s.solid and s.material == 'ferrite':
+        t += f", 4πMs {s.ms:g} G"
+    return t
+
+
+def _as_ferrite(old, new):
+    """new (old edited), with a ferrite's permittivity if it was just made a
+    ferrite and its er is still a dielectric's default."""
+    if (new.material == 'ferrite' and old.material != 'ferrite'
+            and new.er == DEFAULT_ER):
+        new.er = dm.FERRITE_ER
+    return new
+
+
+def _solid_key(s):
+    """What a solid's part in the bias depends on (hashable)."""
+    return (_geo_key(s), s.material, s.z0, s.z1, s.er, s.tand, s.ms, s.dh,
+            s.br)
 
 
 def _geo_key(s):

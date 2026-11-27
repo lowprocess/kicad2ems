@@ -655,3 +655,311 @@ def test_the_3d_view_keeps_what_did_not_change(tab, app):
     assert tab.drawing.shapes[0].points == [[2, 1], [4, 2]]
     assert tab.drawing.shapes[5].points == [[10, 9], [11, 10]]
     assert len(tab._undo) == n + 1
+
+
+# ---- ferrites and magnets ----
+def _circulator(tab, gap=1.0, br=1.2):
+    """A ferrite puck (r 3 mm, 0.5 mm thick) on the default board, under a
+    magnet (r 5 mm, 4 mm tall) `gap` over it; their indices."""
+    from kicad2ems.core.shapes import Shape
+    tab.add(Shape('circle', [[0, 0]], radius=3, material='ferrite', z0=1.6,
+                  z1=2.1, er=15, tand=2e-4, name='puck'))
+    tab.add(Shape('circle', [[0, 0]], radius=5, material='magnet',
+                  z0=2.1 + gap, z1=6.1 + gap, br=br, name='magnet'))
+    return 0, 1
+
+
+def _wait(app, tab):
+    """The bias readout's timer run out (it is put off a moment)."""
+    import time
+    end = time.time() + 2
+    while tab._bias_timer.isActive() and time.time() < end:
+        app.processEvents()
+    app.processEvents()
+
+
+def test_ferrite_and_magnet_fields(tab, app, tmp_path):
+    from kicad2ems.core.shapes import Shape, Drawing
+    from kicad2ems.gui.drawmagnets import FERRITE_ER
+    from kicad2ems.gui.drawtab import COLOURS
+    # both offered, in their own colours
+    for box in (tab.material, tab.p_material):
+        items = [box.itemText(k) for k in range(box.count())]
+        assert 'ferrite' in items and 'magnet' in items
+    assert len({COLOURS[m] for m in COLOURS}) == len(COLOURS)
+    # a new ferrite takes a ferrite's er, not a laminate's
+    tab.material.setCurrentText('ferrite')
+    s = tab._new_shape('circle', [[0, 0]], radius=2)
+    assert s.material == 'ferrite' and s.er == FERRITE_ER
+    assert s.ms == 1800 and s.dh == 30
+    tab.material.setCurrentText('copper')
+    f, m = _circulator(tab)
+    vis = lambda key: tab.form.isRowVisible(tab.rows[key])
+    tab.select(f)
+    assert all(vis(k) for k in ('er', 'tand', 'ms', 'dh', 'bias'))
+    assert not vis('br') and not vis('pole') and not vis('layer')
+    assert tab.p_ms.value() == 1800 and tab.p_dh.value() == 30
+    tab.select(m)
+    assert vis('br') and vis('pole') and vis('bias')
+    assert not any(vis(k) for k in ('er', 'tand', 'ms', 'dh'))
+    assert tab.p_br.value() == 1.2 and tab.p_pole.currentIndex() == 0
+    assert 'Br 1.2 T, N up' in tab.list.topLevelItem(m).text(2)
+    # the ferrite's fields into the shape, undone and done again
+    tab.select(f)
+    tab.p_ms.setValue(2200)
+    tab.p_dh.setValue(45.5)
+    tab._edited()
+    assert (tab.drawing.shapes[f].ms, tab.drawing.shapes[f].dh) == (2200,
+                                                                    45.5)
+    assert '4πMs 2200 G' in tab.list.topLevelItem(f).text(2)
+    tab.undo()
+    assert (tab.drawing.shapes[f].ms, tab.drawing.shapes[f].dh) == (1800, 30)
+    tab.redo()
+    assert tab.drawing.shapes[f].ms == 2200
+    # the magnet turned over: its remanence signed, the form as it was
+    tab.select(m)
+    tab.p_br.setValue(1.35)
+    tab.p_pole.setCurrentIndex(1)
+    tab._edited()
+    assert tab.drawing.shapes[m].br == -1.35
+    assert tab.drawing.shapes[m].to_dict()['br'] == -1.35
+    assert 'N down' in tab.list.topLevelItem(m).text(2)
+    tab.select(f)
+    tab.select(m)
+    assert tab.p_br.value() == 1.35 and tab.p_pole.currentIndex() == 1
+    tab.undo()
+    assert tab.drawing.shapes[m].br == 1.2
+    tab.redo()
+    # a dielectric made a ferrite: er 4.3 (unset) becomes 15, a set one stays
+    tab.add(Shape('rect', [[5, 5], [8, 8]], material='dielectric', z0=0,
+                  z1=1))
+    tab.add(Shape('rect', [[9, 5], [12, 8]], material='dielectric', z0=0,
+                  z1=1, er=10.2))
+    tab.select_many([3, 2])
+    tab.p_material.setCurrentText('ferrite')
+    tab._edited()
+    a, b = tab.drawing.shapes[2], tab.drawing.shapes[3]
+    assert (a.material, a.er) == ('ferrite', FERRITE_ER)
+    assert (b.material, b.er) == ('ferrite', 10.2)
+    # a change of the form applies to every selected ferrite
+    tab.p_ms.setValue(5000)
+    tab._edited()
+    assert tab.drawing.shapes[2].ms == 5000
+    assert tab.drawing.shapes[3].ms == 5000
+    # written and read back with them
+    p = tab.save(str(tmp_path / 'circ.json'))
+    d = Drawing.load(p)
+    assert d == tab.drawing
+    assert d.shapes[m].br == -1.35 and d.shapes[f].dh == 45.5
+    # drawn in the plan in their colours (no KeyError, items made)
+    assert all(e is not None for e in tab._gfx)
+
+
+def test_the_bias_readout(tab, app):
+    import time
+    from kicad2ems.core import magnets
+    from kicad2ems.gui import drawmagnets as dm
+    from kicad2ems.core.shapes import Shape
+    tab.add(Shape('circle', [[0, 0]], radius=3, material='ferrite', z0=1.6,
+                  z1=2.1, er=15, name='puck'))
+    tab.select(0)
+    _wait(app, tab)
+    assert 'No magnet drawn: the ferrite is unbiased' in tab.p_bias.text()
+    assert 'fm = γ4πMs 5.04 GHz' in tab.p_bias.text()
+    tab.add(Shape('circle', [[0, 0]], radius=5, material='magnet', z0=3.1,
+                  z1=7.1, br=1.2, name='magnet'))
+    tab.select(0)
+    a = time.perf_counter()
+    text = tab.bias_text()
+    took = time.perf_counter() - a
+    assert took < 1.0, took   # (about 20 ms)
+    # core.magnets' numbers, on the board with the drawing's solids
+    r, = magnets.summary(dm.bias_board(None, tab.stack,
+                                       tab.drawing.shapes)[0])
+    assert r['saturated'] == 1.0 and r['internal_oe'][0] > 0
+    lo, mean, hi = r['internal_oe']
+    assert text.startswith(f"Internal field {lo:.0f} to {hi:.0f} Oe, mean "
+                           f"{mean:.0f}, magnetised up (+z), saturated "
+                           "throughout")
+    assert f"f0 = γH0 {r['f0'] / 1e9:.2f} GHz" in text
+    # kept while the solids are the same; the form shows it soon after
+    kept = tab._bias_cache
+    assert tab.bias_text() == text and tab._bias_cache is kept
+    _wait(app, tab)
+    assert tab.p_bias.text() == text and tab.p_bias.isVisible()
+    # the magnet's: its direction, and the ferrite's line
+    tab.select(1)
+    _wait(app, tab)
+    assert tab.p_bias.text().splitlines() == [
+        'Magnetised up (+z): N on top (red), S below (blue).',
+        f"puck: {text}"]
+    # turned over: the ferrite magnetised down, the same field's size
+    tab.p_pole.setCurrentIndex(1)
+    tab._edited()
+    assert tab._bias_cache is kept  # (not worked out in the edit)
+    assert 'magnetised down (−z)' in tab.bias_text()
+    assert f"{lo:.0f} to {hi:.0f} Oe" in tab.bias_text()
+    # far off, it cannot saturate the puck
+    tab.move_by(0, 0, 40)
+    tab.select(0)
+    assert tab.bias_text().startswith('Not saturated anywhere')
+    # a redraw does not work it out (the timer does, if it is seen)
+    tab._bias_cache = None
+    tab._refresh()
+    assert tab._bias_cache is None
+    tab.side_tabs.setCurrentIndex(1)  # (the form not seen)
+    _wait(app, tab)
+    assert tab._bias_cache is None
+    tab.side_tabs.setCurrentIndex(0)
+    _wait(app, tab)
+    assert tab._bias_cache is not None
+    # anything else has no readout, and the row is hidden
+    tab.add(Shape('rect', [[5, 5], [6, 6]]))
+    assert tab.bias_text() == ''
+    assert not tab.form.isRowVisible(tab.p_bias)
+
+
+def test_the_bias_readouts_words():
+    from kicad2ems.core.shapes import Shape
+    from kicad2ems.gui import drawmagnets as dm
+    row = dict(name='circle', index=0, applied_oe=(900.0, 1000.0, 1100.0),
+               internal_oe=None, saturated=0.0, f0=0.0, fm=5.04e9, sign=1.0)
+    fer = Shape('circle', [[0, 0]], radius=3, material='ferrite', z0=0,
+                z1=0.5)
+    mag = Shape('circle', [[0, 0]], radius=5, material='magnet', z0=1, z1=5,
+                br=0.0)
+    assert dm.readout([row], [fer], 0).startswith('No magnet drawn')
+    assert dm.readout([row], [fer, mag], 0).startswith(
+        'The magnets have no remanence (Br 0)')
+    mag.br = -1.2
+    assert dm.readout([row], [fer, mag], 0).startswith(
+        "Not saturated anywhere: the magnets' Hz over it (900 to 1100 Oe, "
+        'mean 1000)')
+    row.update(internal_oe=(-300.0, -200.0, -100.0), saturated=0.62,
+               f0=0.56e9, sign=-1.0)
+    t = dm.readout([row], [fer, mag], 0)
+    assert t.startswith('Internal field 100 to 300 Oe, mean 200, magnetised '
+                        'down (−z), saturated over 62 % of it')
+    assert 'f0 = γH0 0.56 GHz' in t
+    assert dm.readout([row], [fer, mag], 1).splitlines()[0] == (
+        'Magnetised down (−z): S on top (blue), N below (red).')
+    assert dm.readout([], [mag], 0).splitlines()[1] == (
+        'No ferrite drawn: nothing for it to bias.')
+    assert dm.readout([], [fer, mag], 0).startswith('Nothing of it is left')
+    assert dm.readout([row], [Shape('rect', [[0, 0], [1, 1]])], 0) == ''
+    # (a port is no solid of the board)
+    assert dm.solid_index([fer, Shape('port', [[0, 0]]), mag]) == {0: 0, 2: 1}
+
+
+def test_the_bias_needs_only_the_solids_by_the_ferrite():
+    from kicad2ems.core import magnets
+    from kicad2ems.core import shapes as sh
+    from kicad2ems.core.shapes import Shape
+    from kicad2ems.gui import drawmagnets as dm
+    via = lambda x, y, z1=1.6: Shape('circle', [[x, y]], radius=0.15,
+                                     material='metal', z0=0, z1=z1)
+    early = via(0, 0, 3)                    # before the puck: under it
+    fer = Shape('circle', [[0, 0]], radius=3, material='ferrite', z0=1.6,
+                z1=2.1, er=15)
+    fence = [via(x, -8) for x in range(-10, 11)]
+    through = via(1, 1, 3)                  # after it, through it
+    beside = via(10, 10, 3)                 # after it, off it
+    lid = Shape('rect', [[-6, -6], [6, 6]], material='dielectric', z0=2.1,
+                z1=2.6)                     # after it, only touching
+    mag = Shape('circle', [[0, 0]], radius=5, material='magnet', z0=3.1,
+                z1=7.1, br=1.2)
+    shapes = [early, fer] + fence + [through, beside, lid, mag]
+    keep = dm.bearing(shapes)
+    n = len(shapes)
+    assert keep == [1, n - 4, n - 1]
+    b, at = dm.bias_board(None, sh.stack_of(None), shapes)
+    assert at == {1: 0, n - 4: 1, n - 1: 2}
+    assert [d['material'] for d in b.solids] == ['ferrite', 'metal',
+                                                 'magnet']
+    # the same bias as with every solid (a through via makes a hole)
+    whole = sh.stack_of(None)
+    full = dm._Board(None, whole)
+    sh.apply(full, sh.Drawing(shapes))
+    r0, = magnets.summary(full)
+    r1, = magnets.summary(b)
+    assert r1['saturated'] == r0['saturated'] == 1.0
+    assert r1['applied_oe'] == pytest.approx(r0['applied_oe'], rel=0.02)
+    assert r1['internal_oe'] == pytest.approx(r0['internal_oe'], rel=0.02)
+    assert dm.readout([r1], shapes, 1, at).startswith('Internal field')
+
+
+def test_a_magnets_two_halves():
+    import numpy as np
+    from shapely.geometry import Point, box
+    from kicad2ems.core.view3d import prism_fast
+    from kicad2ems.gui import drawmagnets as dm
+    vol = lambda v, f: np.einsum('ij,ij->i', v[f][:, 0], np.cross(
+        v[f][:, 1], v[f][:, 2])).sum() / 6
+    for g in (Point(0, 0).buffer(5, quad_segs=16), box(0, 0, 2, 1),
+              box(0, 0, 4, 4).difference(box(1, 1, 3, 3))):
+        v, f = dm.magnet_mesh(g, 1.0, 5.0, 3.0)
+        assert vol(v, f) == pytest.approx(g.area * 4, rel=1e-9)
+        zc = v[f][:, :, 2]
+        # each face wholly in one half, none between them
+        assert (((zc >= 3.0 - 1e-12).all(1)) | ((zc <= 3.0 + 1e-12).all(1))
+                ).all()
+        assert not (np.abs(zc - 3.0) < 1e-12).all(1).any()
+        c = dm.pole_colours(v, f, 3.0, (1, 0, 0, 1), (0, 0, 1, 1))
+        up = zc.mean(1) > 3.0
+        assert c.shape == (len(f), 4) and (c[up, 0] == 1).all() and (
+            c[~up, 2] == 1).all() and up.any() and (~up).any()
+        # its middle not inside it (a clip): one prism
+        v1, f1 = dm.magnet_mesh(g, 1.0, 2.0, 3.0)
+        v2, f2 = prism_fast(g, 1.0, 2.0)
+        assert np.array_equal(v1, v2) and np.array_equal(f1, f2)
+    assert dm.poles(1.2) == (dm.N_RGB, dm.S_RGB)
+    assert dm.poles(-0.4) == (dm.S_RGB, dm.N_RGB)
+
+
+def test_the_3d_view_draws_the_magnets_poles(tab, app):
+    import numpy as np
+    from kicad2ems.core.shapes import Shape
+    from kicad2ems.gui import drawmagnets as dm
+    if tab.gl is None:
+        pytest.skip('no 3D view here')
+    f, m = _circulator(tab)
+    tab.select(None)
+    tab._redraw_3d()
+    e, ef = tab._entries3d[m], tab._entries3d[f]
+    item = e['item']
+    col = item.opts['meshdata'].faceColors()
+    v, fc = e['mesh']
+    up = v[fc][:, :, 2].mean(1) > 5.1
+    n, s = (np.asarray(c) / 255 for c in (dm.N_RGB, dm.S_RGB))
+    assert np.allclose(col[up, :3], n) and np.allclose(col[~up, :3], s)
+    # the ferrite: one colour, its own, darker than a metal's
+    assert ef['item'].opts['meshdata'].faceColors() is None
+    metal = Shape('rect', [[0, 0], [1, 1]], material='metal', z0=0, z1=1)
+    assert sum(ef['look'][0][:3]) < 0.7 * sum(tab._look(-1, metal)[0][:3])
+    # selected: tinted as any selected shape is, the same item; turned over:
+    # S on top, the same item
+    tab.select(m)
+    assert tab._entries3d[m]['item'] is item
+    lit = item.opts['meshdata'].faceColors()
+    tint = np.array([120, 190, 255]) / 255
+    assert np.allclose(lit[up, :3], 0.55 * n + 0.45 * tint)
+    assert np.allclose(lit[~up, :3], 0.55 * s + 0.45 * tint)
+    tab.p_pole.setCurrentIndex(1)
+    tab._edited()
+    tab._redraw_3d()
+    assert tab._entries3d[m]['item'] is item
+    col = item.opts['meshdata'].faceColors()
+    assert col[up, 2].mean() > col[up, 0].mean()   # blue (S) on top
+    # stretched in 3D: its halves meet at its new middle
+    tab.drawing.shapes[m] = tab.drawing.shapes[m].lifted(2.0, 'top')
+    tab._update_shape_3d(m)
+    v, fc = tab._entries3d[m]['mesh']
+    t = tab.drawing.shapes[m]
+    col = item.opts['meshdata'].faceColors()
+    up = v[fc][:, :, 2].mean(1) > (t.z0 + t.z1) / 2
+    assert len(col) == len(fc) and (col[up, 2] > col[up, 0]).all()
+    assert (col[~up, 0] > col[~up, 2]).all()
+    # the Show menu has them, and hides them
+    tab.set_shown('magnet', False)
+    tab._redraw_3d()
+    assert m not in tab._entries3d and f in tab._entries3d

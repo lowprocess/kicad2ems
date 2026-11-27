@@ -1,9 +1,11 @@
 """
 The Draw page's 3D view (gui.drawtab's DrawTab takes it as a mixin): the
-board and the shapes extruded, picked and dragged with the mouse, the camera's
+board and the shapes extruded (a magnet in two halves, the pole on top and
+the one below: N red, S blue), picked and dragged with the mouse, the camera's
 presets, a clip plane, what is shown, the selection's outline and its gizmo,
 and the working level's grid. The numbers (the camera's matrices, rays, the
-axis drag, the clip, the outlines, the grid) are kicad2ems.core.view3d's.
+axis drag, the clip, the outlines, the grid) are kicad2ems.core.view3d's, a
+magnet's halves gui.drawmagnets'.
 
     tab.camera('top' | 'front' | 'side' | 'iso')   # fitted to the drawing
     tab.frame_3d()                  # the selection (else all) filling it
@@ -21,6 +23,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QToolButton,
 from kicad2ems.core import shapes as sh
 from kicad2ems.core import view3d as v3
 from . import theme
+from . import drawmagnets as dm
 
 __all__ = ['Draw3D', 'SHOWN_MATERIALS']
 
@@ -120,7 +123,8 @@ class Draw3D:
         self.grid_on.toggled.connect(lambda _: self._update_grid_3d())
         self.see_through = QAction(
             'see-through metal', self, checkable=True, checked=True,
-            toolTip='metal solids drawn translucent, so what they cover shows')
+            toolTip='metal solids and magnets drawn translucent, so what they '
+            'cover shows')
         self.see_through.toggled.connect(lambda _: self._3d_timer.start())
         row.addStretch(1)
         self._fill_show_menu()
@@ -306,7 +310,7 @@ class Draw3D:
             else:
                 e['item'].resetTransform()
                 if e['look'] != look:
-                    _relook(e['item'], look)
+                    _relook(e['item'], look, e['mesh'])
                     e['look'] = look
             entries[i] = e
         for es in pool.values():
@@ -326,23 +330,29 @@ class Draw3D:
 
     def _look(self, i, s):
         """(rgba, opaque) of shape i in 3D: its material's colour, lighter
-        when selected (the selection is outlined too)."""
-        from .drawtab import COLOURS, PORT_COLOUR
-        rgb = np.asarray(PORT_COLOUR if s.kind == 'port' else
-                         COLOURS[s.material], float)
-        if i in self.selected:
-            rgb = 0.55 * rgb + 0.45 * np.array([120, 190, 255.0])
-        a = (0.45 if s.material in ('dielectric', 'air') else 0.55
-             if s.material == 'metal' and self.see_through.isChecked() else 1.0)
-        return (*(rgb / 255), a), a == 1.0
+        when selected (the selection is outlined too); a magnet's (rgba,
+        opaque, (zm, top rgba, bottom rgba)): its halves' poles, meeting at
+        zm. A ferrite is opaque (a dark ceramic, seen through a magnet over
+        it)."""
+        mat = 'port' if s.kind == 'port' else s.material
+        poles = mat == 'magnet' and s.solid
+        key = (mat, i in self.selected, self.see_through.isChecked(),
+               (s.br >= 0, (s.z0 + s.z1) / 2) if poles else None)
+        # (the same for every via of a fence: worked out once, not 300 times
+        # a selection)
+        look = _LOOKS.get(key)
+        if look is None:
+            if len(_LOOKS) > 4096:
+                _LOOKS.clear()
+            look = _LOOKS[key] = _look_of(*key)
+        return look
 
-    def _mesh(self, v, f, rgba, opaque):
+    def _mesh(self, v, f, rgba, opaque, poles=None):
         from .volumetab import copper_shader
-        md = self.gl.MeshData(vertexes=v.astype(np.float32),
-                              faces=f.astype(np.uint32))
+        md = _meshdata(self.gl, v, f, poles)
         it = self.gl.GLMeshItem(
             meshdata=md, color=rgba, smooth=False, shader=copper_shader(),
-            glOptions='opaque' if opaque else 'translucent')
+            glOptions=_gl_options(opaque))
         it.setDepthValue(0 if opaque else 5)
         self.view3d.addItem(it)
         return it
@@ -375,6 +385,7 @@ class Draw3D:
                     sh.SHEET_SHOWN) / 2
             lift = 0.01 if s.material == 'cut' else 0.0
             z0, z1 = z - h - lift, z + h + lift
+        poles = s.solid and s.material == 'magnet'
         if self.clip is not None:
             axis, value, keep = self.clip
             if axis == 2:
@@ -386,6 +397,8 @@ class Draw3D:
                 g = v3.clip_outline(g, axis, value, keep)
                 if g is None:
                     return None
+        if poles:  # (its halves: the faces of each a pole's colour)
+            return dm.magnet_mesh(g, z0, z1, (s.z0 + s.z1) / 2)
         return v3.prism_fast(g, z0, z1)
 
     def _board_clipped(self):
@@ -458,7 +471,7 @@ class Draw3D:
             e = self._entries3d.get(i)
             if e is not None and i < len(ss):
                 e['look'] = self._look(i, ss[i])
-                _relook(e['item'], e['look'])
+                _relook(e['item'], e['look'], e['mesh'])
         self._update_outline_3d()
 
     def _update_grid_3d(self):
@@ -846,8 +859,11 @@ class Draw3D:
             e.update(mesh=m, box=None, edges=None)
         if it is None or m is None:
             return
-        it.setMeshData(meshdata=self.gl.MeshData(
-            vertexes=m[0].astype(np.float32), faces=m[1].astype(np.uint32)))
+        look = self._look(i, s)  # (a magnet's halves meet where it is now)
+        if e is not None:
+            e['look'] = look
+        it.setMeshData(meshdata=_meshdata(self.gl, *m, look[2] if len(
+            look) > 2 else None))
 
 
 def _pick_view(base, tab):
@@ -890,9 +906,67 @@ def _mesh_of(s, stack):
         return None
 
 
-def _relook(it, look):
-    """A shape's GL item recoloured (rgba, opaque)."""
-    rgba, opaque = look
-    it.setColor(rgba)
-    it.setGLOptions('opaque' if opaque else 'translucent')
+_LOOKS = {}
+
+
+def _look_of(mat, sel, see_through, poles):
+    """Draw3D._look's (rgba, opaque[, poles]) of material `mat` ('port': a
+    port), selected or not; poles (N on top, zm): a magnet's."""
+    from .drawtab import COLOURS, PORT_COLOUR
+    tint = np.array([120, 190, 255.0])
+    lit = lambda rgb: tuple(float(c) / 255 for c in (
+        0.55 * np.asarray(rgb, float) + 0.45 * tint if sel else rgb))
+    rgb = lit(PORT_COLOUR if mat == 'port' else COLOURS[mat])
+    a = (0.45 if mat in ('dielectric', 'air') else 0.55
+         if mat in ('metal', 'magnet') and see_through else 1.0)
+    if poles is None:
+        return (*rgb, a), a == 1.0
+    up, zm = poles
+    top, bottom = (lit(p) + (a,) for p in dm.poles(1.0 if up else -1.0))
+    return (*rgb, a), a == 1.0, (zm, top, bottom)
+
+
+def _meshdata(gl, v, f, poles=None):
+    """The GL mesh data of triangles (v, f); poles (zm, top rgba, bottom
+    rgba): a magnet's, each face its half's colour."""
+    if poles is None:
+        return gl.MeshData(vertexes=v.astype(np.float32),
+                           faces=f.astype(np.uint32))
+    return gl.MeshData(vertexes=v.astype(np.float32),
+                       faces=f.astype(np.uint32),
+                       faceColors=dm.pole_colours(v, f, *poles))
+
+
+def _relook(it, look, mesh=None):
+    """A shape's GL item recoloured: look (rgba, opaque), or a magnet's (rgba,
+    opaque, poles): its faces' colours set again (mesh: its triangles)."""
+    rgba, opaque = look[:2]
+    if len(look) > 2 and mesh is not None:
+        md = it.opts['meshdata']
+        md.setFaceColors(dm.pole_colours(*mesh, *look[2]))
+        it.meshDataChanged()
+    else:
+        it.setColor(rgba)
+    it.setGLOptions(_gl_options(opaque))
     it.setDepthValue(0 if opaque else 5)
+
+
+_TRANSLUCENT = None
+
+
+def _gl_options(opaque):
+    """'opaque', or pyqtgraph's 'translucent' with the faces turned away
+    from the camera culled: a closed solid (wound outward) seen through
+    shows its near faces over what is behind it, not its far faces mixed
+    into them in the order its triangles are drawn (streaks on a big
+    see-through magnet's walls)."""
+    global _TRANSLUCENT
+    if opaque:
+        return 'opaque'
+    if _TRANSLUCENT is None:
+        from OpenGL import GL
+        from pyqtgraph.opengl.GLGraphicsItem import GLOptions
+        _TRANSLUCENT = dict(GLOptions['translucent'])
+        _TRANSLUCENT[GL.GL_CULL_FACE] = True
+        _TRANSLUCENT['glCullFace'] = (GL.GL_BACK,)
+    return _TRANSLUCENT
