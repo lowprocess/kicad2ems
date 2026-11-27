@@ -260,7 +260,9 @@ CORE = [
     Option(
         'shapes', None,
         "a drawing (kicad2ems-shapes .json, the window's Draw page): its "
-        "copper added to the board's layers, its cuts taken out of them",
+        "copper added to the board's layers, its cuts taken out of them, its "
+        "solids (metal, dielectric, air) in the FDTD's and Palace's models "
+        "(mom25d refuses them)",
         path=True, gui='Drawn shapes (.json)', group='board'),
     Option('cut_ports', False,
            "a port wherever a signal track crosses the region edge", bool,

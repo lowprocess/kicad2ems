@@ -90,7 +90,11 @@ The board is meshed in tetrahedra by gmsh (`palace/model.py`):
 - lumped R / L / C parts (`pos`, `[parts]`) as sheets across their pads' gap, one per series element, each with
   a terminal onto its pads as wide as the part. Without the terminals a rounded pad feeds the sheet over part
   of its width and the part reads 30% high;
-- edge walls (`edge_walls`) as vertical PEC sheets between the planes, the keepout in from the board's edge.
+- edge walls (`edge_walls`) as vertical PEC sheets between the planes, the keepout in from the board's edge;
+- drawn solids (`shapes`, the window's Draw page; `core.solids` resolves their overlaps as the FDTD's
+  [model](../meshing.md#drawn-solids) does) as volumes: metal a hole whose faces are PEC (a metal sheet of no
+  height a PEC sheet; copper on a metal face goes into it), a dielectric a domain of its own εr and tan δ, no wider
+  than it is thin, air air; the air box is grown round them.
 
 The mesh follows the copper edges (`feature`), the wavelength in the dielectric inside the board and the
 free-space wavelength in the air (`wave`). The ground does not ask for the fine size: a ground plane's own

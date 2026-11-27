@@ -15,6 +15,7 @@ What follows holds for gfdtd too, except that it fits `--rough` over the band ([
 | copper | perfect conductors, or conducting sheets with `--sigma` (`--rough`: roughness); with `--thickness on` solid, with lossy faces |
 | vias | metal cylinders |
 | edge walls | thin metal boxes where the planes end |
+| drawn solids | extruded polygons over the dielectric: metal, materials of their εr and tan δ, air ([meshing](meshing.md#drawn-solids)) |
 | lumped parts | lumped R/L/C elements across their gaps |
 | ports | lumped ports; only the driven port is excited |
 | field dumps | dump boxes |

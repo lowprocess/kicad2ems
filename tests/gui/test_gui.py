@@ -1738,6 +1738,10 @@ def test_examples_menu_opens_a_prepared_example(tmp_path, monkeypatch):
         '/Signal integrity': {'kicad2ems'}, '/EMC': {'kicad2ems'},
         '/Lumped-element demos': {'kicad2ems'}
     })
+    # the drawn can beside the PEC-boundary can
+    filters = [a.text()
+               for a in w.example_menus['/RF structures/Filters'].actions()]
+    assert filters.index('rf_shielded_can') == filters.index('rf_shielded') + 1
     lines = w.example_menus['/RF structures/Lines and transitions']
     names = [a.text() for a in lines.actions()]
     assert ('rf_gcpw' in names and 'sma_launch' in names

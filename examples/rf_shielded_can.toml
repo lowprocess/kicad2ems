@@ -1,0 +1,29 @@
+# kicad2ems example: rf_shielded's resonator filter in a can drawn as solids
+# (the Draw page's shapes, rf_shielded_can_shapes.json), not closed by the
+# solver's PEC boundary: a metal box 0.5 mm thick with an air box drawn inside
+# it, 4 mm round the board and 4 mm above it, in open (MUR) boundaries. The
+# metal closes round the board, so the mesh ends at its outer faces. Board:
+# python examples/make_rf_examples.py shielded.
+#   kicad2ems examples/rf_shielded_can.toml --solvers gfdtd
+# 2026-11-27 (RX 7800 XT): S21 peak 4.6255 GHz on gfdtd (0.45 M cells, 35 s)
+# and on openEMS, as rf_shielded's PEC boundary (4.6255 GHz, 0.41 M cells,
+# 33 s); 4.621 GHz from a converged 3D FEM run (EMerge). mom25d cannot model a
+# solid (laterally infinite layers): it refuses the board; the line model
+# leaves the can out.
+board   = "rf_shielded.kicad_pcb"   # paths are relative to this file
+shapes  = "rf_shielded_can_shapes.json"
+ground  = "B.Cu"
+fmin    = 4.3           # GHz
+fmax    = 4.9
+points  = 401
+out     = "out"
+
+[solver.openems]
+# open boundaries: the drawn can is the shield
+bc      = "MUR"
+air     = 1.0
+res     = 80            # rf_shielded's fine mesh
+fine    = 0.0625
+nz      = 16
+excite  = ["P1"]
+max_steps = 3000000

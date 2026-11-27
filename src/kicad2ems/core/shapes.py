@@ -42,7 +42,11 @@ and what they are made of (`material`):
 Every solver reads board.copper, so drawn copper and cuts reach them all; the
 line model builds its sections from the board's own tracks and does not see
 them. The solids are kept on the board (board.solids, board.json's 'solids')
-and drawn in the 3D view; no solver meshes them yet (apply says so).
+and drawn in the 3D view. The FDTD (openems, gfdtd) and Palace mesh them: a
+later solid over an earlier one, a solid over the board's dielectric unless it
+encloses the whole board (core.solids has the rules). mom25d's layers are
+laterally infinite: it refuses a board with solids. The line model and pcbqs
+leave them out (apply's notes say so).
 """
 import json, math
 from dataclasses import dataclass, field, asdict
@@ -342,8 +346,9 @@ def apply(board, drawing, log=None):
     """The drawing's copper merged into board.copper (and copper_nets), its
     cuts taken out, each clipped to the board outline, in the drawing's order;
     its solids as board.solids (dicts: shape, material, z0, z1, er, tand,
-    polygon as GeoJSON). Returns notes (what was done, and what no solver uses
-    yet). ValueError: a shape on a layer the board has no copper layer of."""
+    polygon as GeoJSON). Returns notes (what was done, and which solvers do
+    not see what). ValueError: a shape on a layer the board has no copper
+    layer of."""
     from shapely.geometry import mapping
     from shapely.geometry.polygon import orient
     from shapely.ops import unary_union
@@ -411,8 +416,9 @@ def apply(board, drawing, log=None):
                  polygon=mapping(g)))
     if board.solids:
         notes.append(
-            f"{len(board.solids)} drawn solid(s) kept on the board and shown in "
-            "3D: no solver meshes solids yet")
+            f"{len(board.solids)} drawn solid(s): the FDTD (openems, gfdtd) "
+            "and palace mesh them; mom25d cannot (laterally infinite layers: "
+            "it refuses the board), the line model and pcbqs leave them out")
     if drawing.ports():
         notes.append(
             f"{len(drawing.ports())} drawn port(s): a run takes them from the "

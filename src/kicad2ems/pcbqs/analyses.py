@@ -816,7 +816,8 @@ class QuasiStatic(Solver):
         roughness='no', finish='no',
         dispersion=('no: constant er and tan d (with the capacitance); none '
                     'without'),
-        radiation='no', cavity='no', antenna='no')
+        radiation='no', cavity='no', antenna='no',
+        solids='ignored: the copper alone')
     options = [
         Option(
             'qs_dmax', None,

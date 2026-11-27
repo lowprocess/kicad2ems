@@ -186,9 +186,11 @@ def _boundaries(mdl, loss, sigma, plating, box, abc=1):
             out['Conductivity'].append(
                 dict(Attributes=[mdl.via_wall], Conductivity=float(sigma),
                      Thickness=float(plating), External=True))
-        # the edge walls stay PEC
-        if getattr(mdl, 'edge_wall', None) is not None:
-            out['PEC'] = dict(Attributes=[mdl.edge_wall])
+        # the edge walls and the drawn metal solids stay PEC
+        keep = [a for a in (getattr(mdl, 'edge_wall', None),
+                            getattr(mdl, 'solid_metal', None)) if a is not None]
+        if keep:
+            out['PEC'] = dict(Attributes=keep)
     if box == 'pec':
         pec = out.setdefault('PEC', dict(Attributes=[]))
         pec['Attributes'] = list(pec['Attributes']) + [mdl.absorb]

@@ -26,6 +26,9 @@ five times faster.
 - A lumped part is one series R-L-C element across its gap.
 - Radiation and surface waves are included. The board edge and an air box aren't: no box resonances, no edge
   effects.
+- Drawn solids (the window's Draw page: metal, dielectric and air between two heights) have no place in
+  laterally infinite layers: mom25d refuses a board with them, and `--solvers auto` leaves it out and says why.
+  The FDTD solvers and Palace model them ([meshing](meshing.md#drawn-solids)).
 - The dielectric is the stackup's εr and tan δ, constant over frequency. With `--diel wideband` (or
   `diel = "wideband"`), it follows the Djordjevic-Sarkar model, as on the FDTD solvers
   ([dielectrics](simulation.md#dielectrics)). mom25d evaluates that model exactly at each frequency it solves, where the FDTD

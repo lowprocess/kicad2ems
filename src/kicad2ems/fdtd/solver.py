@@ -292,7 +292,9 @@ class FDTD(Solver):
         'band centre; else the sheets\' weighted by the strip\'s finished '
         'share',
         dispersion='yes: fitted at mid-band, or wideband Debye',
-        radiation='yes', cavity='yes', antenna='yes')
+        radiation='yes', cavity='yes', antenna='yes',
+        solids='yes: extruded polygons, a later one over an earlier; metal '
+        'as PEC')
     options = MESH + RUN
     # what a run is set up with, of these (Solver.basic)
     basic = ('res',)

@@ -62,6 +62,10 @@ or RO4003C (`make_rf_examples.py all`, or `NAME` for one). The first eleven have
 | `rf_diffvia`: 100 Ω pair through two vias | Sdd21 at 5 / 10 GHz, worst Sdd11 | −0.44 / −0.60, −15.4 dB | −0.43 / −0.59, −15.4 dB | −0.40 / −0.94, −15.4 dB | −0.41 / −1.06, −11.9 dB |
 | `rf_shielded`: resonator filter in a metal can; 4.621 GHz from a converged 3D FEM run (EMerge) | peak | 4.625 GHz (4× mesh; 4.555 by default) | 4.625 GHz | 4.648 GHz (no can) | 4.877 GHz |
 
+`rf_shielded_can` is the same board in a can drawn as solids (a metal box 0.5 mm thick with an air box drawn inside
+it, `rf_shielded_can_shapes.json`), in open boundaries: S21's peak 4.6255 GHz on gfdtd and openEMS, as with the PEC
+boundary, for 6 % more run time ([drawn solids](meshing.md#drawn-solids)). mom25d refuses it.
+
 The figures above sit at single frequencies; a small reflection there mostly says where its ripple falls. Over the whole band, each solver's agreement with openEMS's reference (the rms of the complex difference of the input reflection, dB, and the rms difference of the transmission's |S|):
 
 | Board | gfdtd | mom25d | line model |

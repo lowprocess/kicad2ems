@@ -33,7 +33,8 @@ _CAPS = dict(
     "with --diel wideband: each layer's Djordjevic-Sarkar er and tan d, the "
     "network solved at a few of the materials' frequencies and interpolated "
     "between them; else constant er and tan d",
-    radiation='no', cavity='no', antenna='no')
+    radiation='no', cavity='no', antenna='no',
+    solids='ignored: the sections from the board\'s own tracks')
 
 
 def line_sigma(run):

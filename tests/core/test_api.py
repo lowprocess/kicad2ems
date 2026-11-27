@@ -145,6 +145,17 @@ def test_examples_prepared(tmp_path):
     from kicad2ems.core.config import build_settings
     s = build_settings({}, str(tmp_path / 'rf_gcpw.toml'))
     assert os.path.dirname(s.board) == str(tmp_path)
+    # a config's drawing (the Draw page's shapes): shipped, and copied with it
+    from fnmatch import fnmatch
+    drawn = {n: ex.shapes_of(p) for n, p in names.items() if ex.shapes_of(p)}
+    assert 'rf_shielded_can' in drawn
+    for f in drawn.values():
+        assert (os.path.isfile(os.path.join(ex.HERE, f))
+                and any(fnmatch(f, pat) for pat in shipped))
+    cfg = ex.prepare_example('rf_shielded_can', str(tmp_path))
+    s = build_settings({}, cfg)
+    assert s.shapes == str(tmp_path / 'rf_shielded_can_shapes.json')
+    assert os.path.isfile(s.shapes)
 
 
 def test_example_boards_made_in_a_folder(tmp_path, monkeypatch):

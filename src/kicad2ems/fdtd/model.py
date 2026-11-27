@@ -1,10 +1,11 @@
 """
 The FDTD model: the board and its mesh as CSX geometry (dielectrics, copper
-sheets, via cylinders, parts), lumped ports, the Gaussian excitation and the
-boundaries, built through openEMS's Python interface (ContinuousStructure,
-openEMS) of whichever engine runs it (engines.py). With the mesh's copper
-thickness plan (--thickness on, thick.py) the copper is solid and the stack
-moved to make room for it.
+sheets, via cylinders, parts, drawn solids), lumped ports, the Gaussian
+excitation and the boundaries, built through openEMS's Python interface
+(ContinuousStructure, openEMS) of whichever engine runs it (engines.py). With
+the mesh's copper thickness plan (--thickness on, thick.py) the copper is solid
+and the stack moved to make room for it. Drawn solids (board.solids) are
+core.solids' disjoint pieces as extruded polygons (_solids, SOLID_PRIORITY).
 """
 import math
 import numpy as np
@@ -99,6 +100,12 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR', ) * 6, end_db=-40,
                 [np.asarray(hx[:-1], float),
                  np.asarray(hy[:-1], float)], 'z', float(zb), float(zt - zb),
                 priority=2)
+    # drawn solids (core.solids): disjoint pieces over the dielectric and its
+    # cut-outs, under the copper
+    if getattr(m, 'solids', None):
+        from kicad2ems.core.solids import pieces as solid_pieces
+        _solids(CSX, solid_pieces(m), zm, lines, diel, diel_fref, fmin, fmax,
+                f0, mesh['info']['dt_ps'] * 1e-12)
     ckw = copper_kw or {}
     fin = ckw.get('finish') if sigma else None
     cu_props = {}  # sheet copper's property by layer (line probes)
@@ -218,6 +225,58 @@ def build_fdtd(m, mesh, fmin, fmax, excite, bc=('MUR', ) * 6, end_db=-40,
         from . import lineport
         return FDTD, CSX, ports, lineport.add(FDTD, cu_props, line_plan)
     return FDTD, CSX, ports
+
+
+# the drawn solids' priorities: over the dielectric (1) and its cut-outs (2),
+# under the copper (9, 10), vias and walls (11), parts and ports (12). Their
+# pieces are disjoint; at a face a metal piece shares with another the metal
+# wins (the face is the metal's surface: openEMS takes the edges there by
+# priority, gfdtd takes every metal edge)
+SOLID_PRIORITY = dict(dielectric=3, air=3, metal=4)
+
+
+def _solids(CSX, ps, zm, lines, diel, fref, fmin, fmax, f0, dt):
+    """The solids' pieces (core.solids.pieces) as CSX: a property per solid
+    (solid<n>_<name>: metal, a material of er and tand as the layers', air),
+    each piece an extruded polygon (its holes split), heights through zm (the
+    thick-copper plan). A metal piece with no z line across it (or of no
+    height) is a sheet on its nearest line."""
+    import re
+    props = {}
+    for p in ps:
+        prop = props.get(p.index)
+        if prop is None:
+            nm = f"solid{p.index + 1}_" + re.sub(r'\W+', '_', p.name)
+            if p.material == 'metal':
+                prop = CSX.AddMetal(nm)
+            elif p.material == 'dielectric' and diel == 'wideband' and p.tand:
+                prop = _debye_material(CSX, nm, dict(er=p.er, tand=p.tand),
+                                       fref, fmin, fmax, dt)
+            else:
+                er = p.er if p.material == 'dielectric' else 1.0
+                tand = p.tand if p.material == 'dielectric' else 0.0
+                prop = CSX.AddMaterial(
+                    nm, epsilon=float(er),
+                    kappa=float(2 * np.pi * f0 * EPS0 * er * tand))
+            props[p.index] = prop
+        z0, z1 = zm(p.z0), zm(p.z1)
+        flat = None
+        if p.material == 'metal':
+            zl = lines[2]
+            if z1 - z0 < 1e-9 or not np.any((zl >= z0 - 1e-6)
+                                            & (zl <= z1 + 1e-6)):
+                flat = float(zl[np.argmin(np.abs(zl - 0.5 * (z0 + z1)))])
+        elif z1 - z0 < 1e-9:
+            continue
+        pr = SOLID_PRIORITY[p.material]
+        for q in split_holes(p.polygon):
+            x, y = q.exterior.xy
+            xy = [np.asarray(x[:-1], float), np.asarray(y[:-1], float)]
+            if flat is not None:
+                prop.AddPolygon(xy, 'z', flat, priority=pr)
+            else:
+                prop.AddLinPoly(xy, 'z', float(z0), float(z1 - z0),
+                                priority=pr)
 
 
 def _finished_sheet(CSX, name, sigma, t_mm, fin, share, rkw, face):

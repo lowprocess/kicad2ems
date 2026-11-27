@@ -7,7 +7,8 @@ with its adaptive frequency sweep (config.py), every port excited in turn
 Experimental. What it models: the dielectric slabs inside the board outline,
 lossy by their tand; copper as PEC sheets of zero thickness (or lossy ones,
 --palace-loss); vias as PEC holes; lumped ports; lumped R / L / C parts as
-lumped boundaries across their gaps; edge walls as PEC sheets; an air box with
+lumped boundaries across their gaps; edge walls as PEC sheets; drawn solids as
+volumes (metal ones PEC holes, model.py); an air box with
 an absorbing boundary around the board, or a closed metal can (--palace-box pec,
 --palace-margin its distance from the board). Antenna mode: a second run at a
 few frequencies for the far field of the driven port (antenna.py). Eigenmodes
@@ -92,7 +93,8 @@ class Palace(Solver):
         finish='no', dispersion='no: er, tand at one value',
         radiation='yes: absorbing boundary',
         cavity='yes: --palace-box pec, a metal can',
-        antenna='yes: the finite board in air, one driven port (no --drive)')
+        antenna='yes: the finite board in air, one driven port (no --drive)',
+        solids='yes: volumes, a later one over an earlier; metal as PEC')
     options = [
         Option('palace_order', 2, "Palace's element order (default {default})",
                int, name='order', gui='Palace element order', group=G),
@@ -308,6 +310,7 @@ class Palace(Solver):
                     mesh_s=round(prep['mesh_s'], 1), order=s.palace_order,
                     seconds=round(seconds, 1), parts=len(mdl.parts),
                     edge_walls=mdl.edge_wall is not None,
+                    **({'solids': mdl.solids} if mdl.solids else {}),
                     engine=prun.engine(prep['work']))
         if modes is not None:
             info['modes'] = modes

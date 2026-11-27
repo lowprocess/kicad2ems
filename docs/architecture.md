@@ -117,6 +117,8 @@ src/kicad2ems/
   units.py        part values with SI prefixes ('4k7'); with constants, touchstone and fields/dumps, what pcbqs may
                   import from the core (leaves: they import nothing from kicad2ems)
   edges.py        edge walls
+  shapes.py       drawn shapes (the Draw page): copper and cuts onto the board, solids kept as board.solids
+  solids.py       the drawn solids as disjoint pieces for the FDTD and Palace; a metal enclosure round the board
   geometry.py     coordinate and polygon helpers
   parity.py       a solver's readback against the board, less what it declared
   fields/         field results of any solver: dump specs and readers, frames and animations, far-field analysis

@@ -214,7 +214,8 @@ def saw_table(m, s, names, deviations):
                     and any(v for v in m._finish.values())),
         planes=any(sum(p.area
                        for p in ps) >= half
-                   for ps in m.copper.values()), antenna=s.antenna)
+                   for ps in m.copper.values()), antenna=s.antenna,
+        solids=bool(getattr(m, 'solids', None)))
     rows = [
         dict(
             feature=text, cells=[

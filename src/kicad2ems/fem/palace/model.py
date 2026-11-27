@@ -21,6 +21,13 @@ lumped boundary is a parallel R-L-C). Its terminals are copper as wide as the
 part, reaching a little way onto each pad (part_lands), so the sheet is fed over
 its whole width. An edge wall (board.walls) is a vertical PEC sheet.
 
+Drawn solids (board.solids, resolved into disjoint pieces by core.solids: a
+later one over an earlier, over the dielectric unless it encloses the board)
+are volumes: a metal one a hole whose faces are PEC (SOLID_METAL, as a via's
+barrel; a metal sheet of no thickness a PEC sheet), a dielectric one its own
+attribute (SOLID0 + its place in board.solids) of its er and tan d, an air one
+air. The air box is grown round them too.
+
 Mesh size: `hmin` at the copper edges (a fraction of the smallest feature: the
 gap between copper on a layer, a port's width, a slab's thickness), growing with
 distance to a fraction of the wavelength at fmax: `hmax` in the slabs (the
@@ -50,6 +57,9 @@ WALL, PART0 = 102, 301
 # copper layer i's sheets (board.cu_z order): CU0 + i (its own thickness when
 # lossy)
 CU0 = 110
+# the drawn metal solids' faces (always PEC); a drawn dielectric solid (its
+# place in board.solids, k): SOLID0 + k
+SOLID_METAL, SOLID0 = 103, 401
 
 
 @dataclass
@@ -76,6 +86,10 @@ class Model:
     # [dict(attr, index, direction, rlc={'R'|'L'|'C': value}, ref)]
     parts: list = field(default_factory=list)
     notes: list = field(default_factory=list)
+    # the drawn metal solids' faces' attribute (SOLID_METAL), or None
+    solid_metal: int = None
+    # what the drawn solids became (core.solids.describe), '' for none
+    solids: str = ''
 
 
 def _polys(geom):
@@ -254,6 +268,11 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
     zb = min([l['z0'] for l in board.layers] + list(board.cu_z.values()))
     zt = max([l['z1'] for l in board.layers] + list(board.cu_z.values()))
     margin = margin if margin is not None else max(lam0 / 4, 10 * (zt - zb))
+    from kicad2ems.core.solids import (pieces as solid_pieces, extent,
+                                       describe)
+    sp = solid_pieces(board) if getattr(board, 'solids', None) else []
+    if sp:  # the air box round the solids too
+        x0, y0, zb, x1, y1, zt = extent(board, sp)
 
     gmsh.initialize(interruptible=False)
     try:
@@ -279,6 +298,15 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
                      occ.addBox(x0 - margin, y0 - margin, zb - margin,
                                 x1 - x0 + 2 * margin, y1 - y0 + 2 * margin,
                                 zt - zb + 2 * margin))])
+        # the drawn solids' pieces (disjoint): volumes, a metal sheet of no
+        # thickness a surface
+        for k, p in enumerate(sp):
+            if p.z1 - p.z0 > 1e-9:
+                ext = occ.extrude([(2, _surface(occ, p.polygon, p.z0))], 0, 0,
+                                  p.z1 - p.z0)
+                add(('solid', k), [d for d in ext if d[0] == 3])
+            elif p.material == 'metal':
+                add(('solid', k), [(2, _surface(occ, p.polygon, p.z0))])
         lands = part_lands(board)
         reach = max(4 * hmin, 1.0)
         gnd = getattr(board, 'ground_nets', None) or ()
@@ -351,21 +379,30 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
         role_of = fragment(occ, ents, tags)
         vols = gmsh.model.getEntities(3)
         via_v = {dt for dt in vols if 'via' in role_of.get(dt, ())}
-        diel_v = {}
+
+        def solid_of(dt):  # the drawn piece a volume is part of, or None
+            return next((sp[r[1]] for r in role_of.get(dt, ())
+                         if isinstance(r, tuple) and r[0] == 'solid'), None)
+        # metal solids: holes, as the vias (their faces PEC)
+        metal_v = {dt for dt in vols if dt not in via_v and solid_of(dt)
+                   is not None and solid_of(dt).material == 'metal'}
+        holes = via_v | metal_v
+        diel_v, sdiel_v = {}, {}  # slab i / drawn dielectric k: [volume]
+        air_v = []
         for dt in vols:
-            if dt in via_v:
+            if dt in holes:
                 continue
+            p = solid_of(dt)
             d = [
                 r for r in role_of.get(dt, ())
                 if isinstance(r, tuple) and r[0] == 'diel'
             ]
-            if d:
+            if p is not None and p.material == 'dielectric':
+                sdiel_v.setdefault(p.index, []).append(dt[1])
+            elif p is None and d:
                 diel_v.setdefault(d[0][1], []).append(dt[1])
-        air_v = [
-            dt[1] for dt in vols if dt not in via_v and not any(
-                isinstance(r, tuple) and r[0] == 'diel'
-                for r in role_of.get(dt, ()))
-        ]
+            else:  # an air solid, or none
+                air_v.append(dt[1])
         # the copper: each layer's sheet pieces; the via walls (the faces of the
         # via holes not shared with air)
         cu_l = {
@@ -376,24 +413,36 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
             }
             for lay in board.copper
         }
-        meshed = {dt[1] for dt in vols if dt not in via_v}
+        meshed = {dt[1] for dt in vols if dt not in holes}
 
-        def live(s):  # a face of a meshed volume: not one inside a via hole
+        def live(s):  # a face of a meshed volume: not one inside a hole
             up = gmsh.model.getAdjacencies(2, s)[0]
             if len(up):
                 return bool(meshed.intersection(up))
             # a sheet inside a volume (an edge wall in from the edge) bounds
             # none
             c = occ.getCenterOfMass(2, s)
-            return not any(gmsh.model.isInside(3, v, c) for _, v in via_v)
+            return not any(gmsh.model.isInside(3, v, c) for _, v in holes)
 
         walls = {
             abs(f[1])
             for dt in via_v
             for f in gmsh.model.getBoundary([dt], oriented=False)
         }
+        # the metal solids' faces, and their sheets of no thickness
+        smetal = {
+            abs(f[1])
+            for dt in metal_v
+            for f in gmsh.model.getBoundary([dt], oriented=False)
+        } | {
+            dt[1] for dt in gmsh.model.getEntities(2)
+            if any(isinstance(r, tuple) and r[0] == 'solid'
+                   and sp[r[1]].material == 'metal'
+                   for r in role_of.get(dt, ()))
+        }
+        smetal = {t for t in smetal if live(t)} - walls
         for lay, s in cu_l.items():
-            cu_l[lay] = {t for t in s - walls if live(t)}
+            cu_l[lay] = {t for t in s - walls - smetal if live(t)}
         # a hole through several slabs is several pieces: not the discs between
         walls = {t for t in walls if live(t)}
         outer = box_faces(gmsh, (x0 - margin, y0 - margin, zb - margin,
@@ -433,8 +482,9 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
             dt[1]
             for dt in gmsh.model.getEntities(2)
             if 'wall' in role_of.get(dt, ()) and live(dt[1])
-        } - lumped - walls)
+        } - lumped - walls - smetal)
         walls.difference_update(lumped)
+        smetal.difference_update(lumped)
         for s in cu_l.values():
             s.difference_update(lumped | edge_s)
 
@@ -443,7 +493,14 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
             if i in diel_v:
                 gmsh.model.addPhysicalGroup(3, diel_v[i], DIEL0 + i)
                 diel.append((DIEL0 + i, l['er'], l['tand']))
+        for k, ts in sorted(sdiel_v.items()):  # the drawn dielectrics
+            d = board.solids[k]
+            gmsh.model.addPhysicalGroup(3, ts, SOLID0 + k)
+            diel.append((SOLID0 + k, float(d.get('er', 1.0)),
+                         float(d.get('tand', 0.0))))
         gmsh.model.addPhysicalGroup(3, air_v, AIR)
+        if smetal:
+            gmsh.model.addPhysicalGroup(2, sorted(smetal), SOLID_METAL)
         sheets = []
         order = list(board.cu_z)
         for lay, s in cu_l.items():
@@ -475,6 +532,9 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
                 dict(attr=PART0 + j, index=len(ports) + j + 1,
                      direction='+' + 'XY'[axis], rlc=rlc, ref=ref))
 
+        # the metal solids' insides are not meshed (their faces stay: PEC)
+        if metal_v:
+            gmsh.model.removeEntities(sorted(metal_v), recursive=False)
         # sizes: fine at the copper edges and the ports, graded out to hmax; not
         # at the ground planes' own edges, the ground vias or the edge walls
         # (planes), which the mesh reaches at the size it has grown to
@@ -507,6 +567,20 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
             hs = (min(hmax,
                       flat * (board.layers[i]['z1'] - board.layers[i]['z0']))
                   if flat else hmax)
+            if hs < hair:
+                slab = fd.add('Constant')
+                fd.setNumbers(slab, 'VolumesList', sorted(ts))
+                fd.setNumber(slab, 'VIn', hs)
+                fd.setNumber(slab, 'VOut', hair)
+                fields.append(slab)
+        # a drawn dielectric: its own wavelength, and no wider than it is
+        # thin (its height, or its outline's 2 area / perimeter)
+        for k, ts in sdiel_v.items():
+            ps = [p for p in sp if p.index == k]
+            thin = min(min(p.z1 - p.z0, 2 * p.polygon.area / p.polygon.length)
+                       for p in ps)
+            er = float(board.solids[k].get('er', 1.0))
+            hs = min(lam0 / per_wave / np.sqrt(max(er, 1.0)), max(thin, hmin))
             if hs < hair:
                 slab = fd.add('Constant')
                 fd.setNumbers(slab, 'VolumesList', sorted(ts))
@@ -561,13 +635,15 @@ def build(board, fmax, path, margin=None, hmin=None, hmax=None, per_feature=1.0,
         gmsh.finalize()
     log(f"palace mesh: {tets:,} tetrahedra, {nodes:,} nodes; h "
         f"{hmin:.3g}..{hmax:.3g} mm in the board, to {hair:.3g} mm in the air; "
-        f"air margin {margin:.3g} mm")
+        f"air margin {margin:.3g} mm" + (f"; {describe(sp)}" if sp else ''))
     metal = ([a for a, _ in sheets] + ([PEC] if walls else []) +
-             ([WALL] if edge_s else []))
+             ([WALL] if edge_s else []) + ([SOLID_METAL] if smetal else []))
     return Model(path, diel, AIR, metal, ABSORB, ports, hmin, hmax, margin,
                  nodes=nodes, tets=tets, notes=notes, sheets=sheets,
                  via_wall=PEC if walls else None,
-                 edge_wall=WALL if edge_s else None, parts=parts)
+                 edge_wall=WALL if edge_s else None, parts=parts,
+                 solid_metal=SOLID_METAL if smetal else None,
+                 solids=describe(sp) if sp else '')
 
 
 def _vertical(occ, axis, s, e):

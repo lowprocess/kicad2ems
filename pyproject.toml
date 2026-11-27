@@ -82,7 +82,8 @@ include-package-data = false
 
 [tool.setuptools.package-data]
 # the boards in the repository: the others are made
-"kicad2ems.examples" = ["*.toml", "hairpin.kicad_pcb", "hairpin-top.pos",
+"kicad2ems.examples" = ["*.toml", "*_shapes.json", "hairpin.kicad_pcb",
+                        "hairpin-top.pos",
                         "rf_interdig.kicad_pcb", "rf_interdig.kicad_pro",
                         "rf_interdig-all.pos", "sma_launch.kicad_pcb",
                         "sma_launch.kicad_pro", "sma_launch-all.pos"]

@@ -12,9 +12,10 @@ make_demo_board.py), and the three boards that are:
                                 [dict(name, config, group, title, source)],
                                 group a path ('RF structures/Filters')
     prepare_example(name, dest) the example in a folder of the user's (default:
-                                user_folder()): its config, and its board,
-                                copied or generated there; returns the config's
-                                path there
+                                user_folder()): its config, the drawing it
+                                names (shapes), and its board, copied or
+                                generated there; returns the config's path
+                                there
     make_boards(folder)         every generated example board made in folder
                                 (default: this one; install.py runs it, through
                                 make_boards.py, so a checkout's configs run as
@@ -49,7 +50,7 @@ GROUPS = (
     ('RF structures', 'Filters',
      ('rf_steplpf', 'rf_stubnotch', 'rf_radialstub', 'rf_pcoupled',
       'rf_combline', 'rf_openloop', 'rf_interdig', 'hairpin', 'rf_shielded',
-      'rf_dgs', 'rf_ebg')),
+      'rf_shielded_can', 'rf_dgs', 'rf_ebg')),
     ('RF structures', 'Couplers, dividers and baluns',
      ('rf_branchline', 'rf_ratrace', 'rf_wilkinson', 'rf_coupler',
       'rf_marchand')),
@@ -167,6 +168,13 @@ def board_of(config, needed=True):
     return m.group(1)
 
 
+def shapes_of(config):
+    """The drawing a config names (`shapes`, relative to it), or None."""
+    m = re.search(r'^shapes\s*=\s*"([^"]+)"',
+                  open(config, encoding='utf-8').read(), re.M)
+    return m.group(1) if m else None
+
+
 def generator(stem):
     """(script, args before the output path, args after it) that makes board
     <stem>, or None for a board that is in the folder itself (BOARDS). A board
@@ -208,6 +216,11 @@ def prepare_example(name, dest=None, log=None):
             shutil.copyfile(os.path.join(here, board),
                             os.path.join(dest, board))
         return cfg
+    # the drawing it names (the Draw page's shapes), beside it
+    drawn = shapes_of(src)
+    if drawn and os.path.isfile(os.path.join(HERE, drawn)):
+        shutil.copyfile(os.path.join(HERE, drawn),
+                        os.path.join(dest, os.path.basename(drawn)))
     board = board_of(src)
     if os.path.exists(os.path.join(dest, board)):
         return cfg

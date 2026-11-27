@@ -470,8 +470,18 @@ Only drawn shapes are picked, not the board.
   KiCad's coordinates. Ctrl+Z / Ctrl+Y undo and redo the drawing while the page has the focus.
 
 Every solver reads the board's copper, so drawn copper and cuts reach them all; the line model builds its sections
-from the board's own tracks and does not see them. Solids are kept on the board (`solids` in `board.json`) and
-drawn, but no solver meshes them yet: the run's notes say so.
+from the board's own tracks and does not see them. **Solids** (`solids` in `board.json`) are meshed by the FDTD
+solvers, openEMS and gfdtd ([meshing](meshing.md#drawn-solids)), and by Palace ([Palace](fem/README.md#palace-s-parameters)):
+- a later solid wins where it overlaps an earlier one (the list's order), so an air box drawn inside a metal box
+  hollows it into a can;
+- a solid takes the place of the board's dielectric where it meets it (a slot or a pocket of air, a metal post, an
+  insert of another laminate), unless it encloses the whole board (its outline and its stack, and more): then
+  the board stays as it is inside it (a can, the air inside one, a potting);
+- metal is a perfect conductor; the board's copper, vias, ports and parts stay over every solid.
+
+mom25d's layers are laterally infinite: it refuses a board with solids (`auto` leaves it out and says why). The
+line model and pcbqs leave them out; the run's notes say so. The example `rf_shielded_can` is `rf_shielded` in a
+can drawn as solids, in open boundaries.
 
 ## Tools > Impedance calculator
 

@@ -138,6 +138,41 @@ A wall spans the layers that have ground copper at the edge. It stops `--edge-ke
 signal copper, so a launch pad or a trace running off the edge stays open. The preview draws the walls
 in green.
 
+<a id="drawn-solids"></a>
+## Drawn solids
+
+The Draw page's solids ([the window](gui.md#the-draw-page-prototype), `shapes`) are resolved into disjoint pieces
+(`core.solids`: a later solid over an earlier one, over the board's dielectric unless it encloses the whole board),
+each an extruded polygon in the CSX model: metal a perfect conductor, a dielectric its εr and tan δ (as a stackup
+layer's, `--diel` included), air εr 1. They sit over the board's dielectric and its cut-outs and under its copper,
+vias, walls, parts and ports; where a metal piece meets another piece the metal wins, so its face is its surface on
+openEMS and gfdtd alike.
+
+The mesh:
+- x and y lines at each piece's Manhattan edges, and at a curved one's ends and extremes. A metal face wins a merge
+  against the copper's thirds-rule lines (a wall thinner than the cell keeps a line on it); a dielectric's or air's
+  gives way to them.
+- z lines at each piece's heights. Inside a dielectric layer the line shares the layer's cells between its two sides:
+  a pocket 0.1 mm deep in rf_shielded's 0.508 mm takes 13 + 4 cells, where a layer of its own would take `--nz` (16)
+  and cut the time step to a quarter. Outside the stack a height has its line unless within fine / 2 of another.
+- Over a dielectric piece, its own largest cell (λ / √εr / `res`); the air margin (`--air`) past the solids as well
+  as past the board.
+- Metal with no line across it would be left out: the log says so. A metal piece of no height, or with no z line
+  through it, is a sheet on its nearest line.
+
+Two rules keep a drawn can from costing more than the PEC boundary it stands for (`rf_shielded_can.toml` against
+`rf_shielded.toml`, gfdtd on an RX 7800 XT, 2026-11-27):
+- When the drawn metal closes round the board (no way from its ports to the domain's faces but through metal:
+  `core.solids.enclosure`), the mesh ends at the metal's outer faces: outside a closed shell there is no field, so the
+  air margin is left out. 0.83 M cells to 0.58 M, 68 s to 43 s.
+- Where metal fills the whole domain across an axis (the can's floor, lid and walls, once the mesh ends at them),
+  there are no lines inside it and no grading beside it. 0.58 M cells to 0.45 M, 43 s to 35 s; the PEC boundary
+  takes 0.41 M and 33 s.
+
+S21's peak is 4.6255 GHz in each of them, as with the PEC boundary, on gfdtd and on openEMS (EMerge's converged
+3D FEM: 4.621 GHz). A dielectric cover over the board, 0.2 mm of εr 2.2, gives 4.4774 GHz drawn as a solid and as a
+stackup layer alike.
+
 ## Time step
 
 The time step is limited by the smallest cell. kicad2ems estimates it from the mesh. openEMS's own value

@@ -25,7 +25,8 @@ coordinates: y up, the negative of KiCad's y).
   walls       [(axis, coord, t0, t1, z0, z1)] edge walls where the ground planes
               end (edges.py)
   solids      drawn 3D shapes (core.shapes.apply): dict(shape, material, z0,
-              z1, er, tand, polygon); no solver meshes them yet
+              z1, er, tand, polygon); the FDTD and Palace mesh them
+              (core.solids)
   prims       the primitives behind the copper, for the line model: items,
               shapes, tracks, footprints, vias
   ground, ground_nets, signal_nets, sel (the nets kept; None: all), region,

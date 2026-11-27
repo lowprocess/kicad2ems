@@ -461,7 +461,9 @@ class MoM25D(Solver):
         radiation='yes', cavity='no',
         antenna=('approximated: over an infinite ground plane (patches, '
                  'arrays; not an antenna that uses the board edge or a finite '
-                 'ground)'))
+                 'ground)'),
+        solids='no: laterally infinite layers (a board with drawn solids is '
+        'refused)')
     options = [
         Option(
             'mom_dmax', 0.3,
@@ -658,6 +660,17 @@ class MoM25D(Solver):
 
     def assess(self, run):
         m, out = run.m, []
+        # drawn solids (core.shapes): its layers are laterally infinite, so a
+        # can, a block or a slot has no place in its model; refused, not left
+        # out unsaid
+        sol = getattr(m, 'solids', None) or []
+        if sol:
+            names = sorted({str(d.get('shape') or d['material']) for d in sol})
+            out.append(
+                f"{len(sol)} drawn solid(s) ({', '.join(names[:4])}"
+                f"{', ...' if len(names) > 4 else ''}): its layers are "
+                "laterally infinite, it cannot model a solid; run openems, "
+                "gfdtd or palace, or leave the solids out of the drawing")
         # (a part's port: a delta gap)
         gaps = [p.name for p in m.ports if p.kind == 'gap' and not p.internal]
         if gaps:

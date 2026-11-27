@@ -10,6 +10,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Drawn solids in the FDTD and Palace (`kicad2ems.core.solids`, docs/meshing.md#drawn-solids, 2026-11-27).**
+  The Draw page's metal, dielectric and air solids (`board.solids`) are meshed: openEMS and gfdtd take them as
+  extruded polygons in the CSX model, Palace as volumes. `core.solids.pieces` resolves them into disjoint pieces: a
+  later solid over an earlier one (an air box inside a metal box makes a can), a solid over the board's dielectric
+  (a slot, a pocket, a post, an insert) unless it encloses the whole board, which then stays as it is inside it (a
+  can, the air in one, a potting). The board's copper, vias, walls, parts and ports stay over every solid.
+  - **The FDTD:** metal PEC, a dielectric of its εr and tan δ (`--diel wideband` too), air; priorities over the
+    dielectric (1) and cut-outs (2), under the copper; metal over a neighbour at a shared face, so its face is its
+    surface on openEMS and gfdtd alike. Mesh lines at the pieces' faces (a metal face wins a merge against the
+    copper's thirds-rule lines); a face inside a dielectric layer shares the layer's cells (a 0.1 mm pocket in
+    0.508 mm: 13 + 4 cells, not 16 more); a dielectric piece's own largest cell; the air margin past the solids.
+    Metal with no line across it is said; one of no height, or none through it, is a sheet on its nearest line.
+  - **Palace:** a metal solid is a hole whose faces are PEC (`SOLID_METAL`, PEC with `loss` too), a dielectric a
+    domain of its own (`SOLID0` + its index) no wider than it is thin, air air; the air box grown round them.
+  - **mom25d refuses** a board with solids (laterally infinite layers): named, the run stops and says why;
+    `auto` leaves it out. The line model and pcbqs leave them out; a `solids` row in the capabilities table
+    (`--check`, the report's *What each solver saw*), and apply's notes say which solvers see them.
+  - **Checks** (rf_shielded, gfdtd on the RX 7800 XT): its can drawn as a metal box with an air box inside, in
+    MUR boundaries, S21's peak 4.6255 GHz, as its PEC boundary's (4.6255 GHz; 4.626 on openEMS, 4.621 EMerge);
+    openEMS on the drawn can 4.6255 GHz; drawn as six metal slabs 4.6255 GHz too (both 4.6253 before the passes
+    below).
+    Palace: the drawn can in an absorbing box 4.6576 GHz, its own PEC box 4.6582 GHz. A dielectric cover over the
+    board (0.2 mm, εr 2.2): 4.4774 GHz drawn and as a stackup layer alike (the quasi-static εeff ratio: 4.497;
+    the drawn one's run 33 s, the layer's 114 s with `--nz` cells through it). An air pocket, the top 0.1 mm of
+    the substrate: 5.7457 GHz drawn, 5.7472 GHz as a layer of air (5.731 by εeff; 45 s against 334 s). Air slots
+    through the substrate under the resonator's open ends: 4.6262 to 5.3061 GHz, the same S21 to every digit
+    as the same slots cut out of the board outline on the same mesh.
+  - **Profiled** (the drawn can against the PEC boundary, gfdtd; the PEC run: 0.41 M cells, 33 s, 542 MB peak):
+    first 0.83 M cells, 68 s, 589 MB. Metal that closes round the board (`core.solids.enclosure`: no way from the
+    ports to the domain's faces but through metal) ends the mesh at its outer faces, no air outside it: 0.58 M,
+    43 s, 559 MB. Metal across the whole domain (the floor, lid and walls) takes no lines and sets no grading
+    (`smooth_lines`' `dead`): 0.45 M, 35 s, 545 MB, 6 % over the PEC boundary. The Python side: 26 ms to mesh the
+    can (38 ms the PEC run); with 300 metal posts inside it the mesh had taken 72.6 s, 71.8 s of it buffering the
+    same metal for each interval tested, now buffered and prepared once: 1.05 s.
 - **Draw page, a prototype (2026-11-20).** The window's *Draw* page puts arbitrary shapes over the board, in plan
   and 3D: rectangles, circles, polygons, traces and ports, made of copper or cut out of a layer, or as metal,
   dielectric or air solids between two heights. `kicad2ems.core.shapes` holds the drawing (a `kicad2ems-shapes`

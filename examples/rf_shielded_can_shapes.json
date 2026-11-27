@@ -1,0 +1,42 @@
+{
+ "format": "kicad2ems-shapes",
+ "version": 1,
+ "units": "mm",
+ "coordinates": "model (y up)",
+ "shapes": [
+  {
+   "kind": "rect",
+   "points": [
+    [
+     -4.5,
+     -17.911
+    ],
+    [
+     41.44,
+     4.5
+    ]
+   ],
+   "material": "metal",
+   "z0": -0.5,
+   "z1": 5.008,
+   "name": "can"
+  },
+  {
+   "kind": "rect",
+   "points": [
+    [
+     -4.0,
+     -17.411
+    ],
+    [
+     40.94,
+     4.0
+    ]
+   ],
+   "material": "air",
+   "z0": 0.0,
+   "z1": 4.508,
+   "name": "inside"
+  }
+ ]
+}

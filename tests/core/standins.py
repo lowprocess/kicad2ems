@@ -118,7 +118,7 @@ class FDTD(Solver):
                         roughness='approximated: at the band centre',
                         finish='approximated: at the band centre',
                         dispersion='yes', radiation='yes', cavity='yes',
-                        antenna='yes')
+                        antenna='yes', solids='yes')
     options = MESH + RUN
 
     def estimate(self, run):
@@ -237,7 +237,8 @@ class MoM25D(Solver):
         edge_walls='approximated: via rows', thickness='ignored: sheets',
         conductor_loss='yes', roughness='yes', finish='approximated: weighted',
         dispersion='no: constant tan d', radiation='yes', cavity='no',
-        antenna='approximated: over an infinite ground plane')
+        antenna='approximated: over an infinite ground plane',
+        solids='no: laterally infinite layers')
     options = [
         Option('mom_dmax', 0.3,
                "largest MoM cell along the copper, mm (stand-in)", float,
@@ -259,8 +260,12 @@ class MoM25D(Solver):
         return status()
 
     def assess(self, run):
-        """mom25d's rules: no gap ports, and a solid ground plane."""
+        """mom25d's rules: no drawn solids, no gap ports, and a solid ground
+        plane."""
         m, out = run.m, []
+        if getattr(m, 'solids', None):
+            out.append(f"{len(m.solids)} drawn solid(s): it cannot model a "
+                       "solid")
         gaps = [p.name for p in m.ports if p.kind == 'gap']
         if gaps:
             out.append(f"gap port(s) {', '.join(gaps)}: no planar equivalent")

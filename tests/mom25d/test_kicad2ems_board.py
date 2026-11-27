@@ -93,3 +93,23 @@ def test_stack_auto():
     assert (ports_below(m, s('auto')) == ['P2']
             and _stack(s('auto'), m) == 'whole')
     assert _stack(s('whole'), Board.from_dict(json.loads(demo))) == 'whole'
+
+
+def test_drawn_solids_are_refused():
+    """mom25d's layers are laterally infinite: a board with drawn solids (a
+    can, a block) is refused with why, not run without them; its capability
+    says so."""
+    from types import SimpleNamespace as NS
+    from shapely.geometry import box, mapping
+    from kicad2ems.mom25d.solvers.mom import MoM25D
+    with open(os.path.join(BOARDS, 'demo.json'), encoding='utf-8') as fh:
+        data = json.load(fh)
+    s = NS(mom_stack='auto', mom_planes='pec', mom_stitching_pads='drop')
+    sv = MoM25D()
+    assert sv.assess(NS(m=Board.from_dict(data), s=s)) == []
+    data['solids'] = [dict(shape='lid', material='metal', z0=1.0, z1=1.5,
+                           er=1.0, tand=0.0, polygon=mapping(box(0, -5, 4, 0)))]
+    why = sv.assess(NS(m=Board.from_dict(data), s=s))
+    assert len(why) == 1 and 'drawn solid(s) (lid)' in why[0]
+    assert 'laterally infinite' in why[0]
+    assert sv.capabilities['solids'].startswith('no')

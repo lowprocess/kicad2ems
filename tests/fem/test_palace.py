@@ -579,3 +579,38 @@ def test_the_refinement_cap_follows_the_memory_available(monkeypatch):
     assert Palace()._amr(r)['amr_max'] == 123456
     r.s.palace_amr = 0
     assert Palace()._amr(r) == dict(amr=0)
+
+
+def test_drawn_solids_are_volumes(tmp_path):
+    """A can drawn as a metal box with air inside it, round the board; a
+    dielectric puck on the strip; an air slot through the substrate. The
+    metal is a hole whose faces are PEC (the ground under the board is the
+    can's floor: its sheet goes into the can's faces), the puck a domain of its
+    own er and tan d, the slot air; the air box round the can."""
+    from shapely.geometry import mapping
+
+    def s(g, mat, z0, z1, name, er=1.0, tand=0.0):
+        return dict(shape=name, material=mat, z0=z0, z1=z1, er=er, tand=tand,
+                    polygon=mapping(g))
+    b = microstrip()
+    b.solids = [s(box(-1.5, -4.5, 11.5, 4.5), 'metal', -0.5, 2.5, 'can'),
+                s(box(-1, -4, 11, 4), 'air', 0.0, 2.0, 'inside'),
+                s(box(2, -1, 4, 1), 'dielectric', 0.5, 1.0, 'puck', er=9.8,
+                  tand=1e-4),
+                s(box(6, -2.5, 7, -1.5), 'air', 0.0, 0.5, 'slot')]
+    p = str(tmp_path / 'm.msh')
+    mdl = model.build(b, 10e9, p, margin=1.0, log=lambda *a: None)
+    g = groups(p)
+    assert {(3, model.DIEL0), (3, model.AIR), (3, model.SOLID0 + 2),
+            (2, model.SOLID_METAL), (2, model.CU0 + 1),
+            (2, model.ABSORB)} <= set(g)
+    assert (2, model.CU0) not in g  # B.Cu: on the can's floor
+    assert all(n > 0 for n in g.values())
+    assert (model.SOLID0 + 2, 9.8, 1e-4) in mdl.diel
+    assert mdl.solid_metal == model.SOLID_METAL and model.SOLID_METAL in mdl.pec
+    assert mdl.solids.startswith('4 drawn solids as ')
+    # lossy copper: the can stays PEC
+    cfg = config.config(mdl, np.linspace(1e9, 10e9, 11), loss=True)
+    assert model.SOLID_METAL in cfg['Boundaries']['PEC']['Attributes']
+    mats = {m['Attributes'][0]: m for m in cfg['Domains']['Materials']}
+    assert mats[model.SOLID0 + 2]['Permittivity'] == 9.8

@@ -102,7 +102,8 @@ FEATURES = dict(
     conductor_loss='conductor loss (sigma)',
     roughness='copper roughness (rough)', finish='surface finish (finish)',
     dispersion='dielectric dispersion', radiation='radiation, surface waves',
-    cavity='box and cavity effects', antenna='antenna mode, far field')
+    cavity='box and cavity effects', antenna='antenna mode, far field',
+    solids='drawn solids (metal, dielectric, air)')
 
 
 @dataclass

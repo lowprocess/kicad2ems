@@ -111,7 +111,7 @@ def _graded(a, b, ea, eb, m, ratio):
 
 
 def smooth_lines(fixed, maxres, ratio=1.4, fine=None, whole=(),
-                 rounds=30):
+                 rounds=30, dead=()):
     """Insert lines between fixed lines so that every cell is <= maxres(x) and
     neighbouring cells differ by at most `ratio`, across the fixed lines too.
     maxres: float or callable(x) (taken at each fixed interval's middle).
@@ -130,14 +130,19 @@ def smooth_lines(fixed, maxres, ratio=1.4, fine=None, whole=(),
     ratio times the smaller and the intervals graded again. Each interval had
     been graded from its neighbouring fixed gaps alone: a gap split into
     0.031 mm cells beside one started at 0.21 mm (6.8x), and 8.9x on rf_ratrace's
-    mesh (the review, F42)."""
+    mesh (the review, F42). dead: [(a, b)] spans of metal across the whole
+    domain (dead_spans): a fixed interval inside one is not split and sets
+    nothing beside it (no field there to grade)."""
     M = maxres if callable(maxres) else (lambda x, m=maxres: m)
     fx = np.unique(np.asarray(fixed, float))
     if len(fx) < 2:
         return fx
     g = np.diff(fx)
     m = np.array([M(0.5 * (a + b)) for a, b in zip(fx[:-1], fx[1:])])
-    cap = ratio * np.minimum(g, m)
+    gone = np.zeros(len(g), bool)
+    for a, b in dead:
+        gone |= (fx[:-1] >= a - 1e-9) & (fx[1:] <= b + 1e-9)
+    cap = np.where(gone, np.inf, ratio * np.minimum(g, m))
     e = np.full(len(fx), np.inf)
     e[:-1] = np.minimum(e[:-1], cap)
     e[1:] = np.minimum(e[1:], cap)
@@ -163,10 +168,12 @@ def smooth_lines(fixed, maxres, ratio=1.4, fine=None, whole=(),
     q = ratio - 1
     for _ in range(rounds):
         for j in range(1, len(fx)):
-            e[j] = min(e[j], e[j - 1] + q * g[j - 1])
+            if not gone[j - 1]:
+                e[j] = min(e[j], e[j - 1] + q * g[j - 1])
         for j in range(len(fx) - 2, -1, -1):
-            e[j] = min(e[j], e[j + 1] + q * g[j])
-        inner = [[] if feat[i] else
+            if not gone[j]:
+                e[j] = min(e[j], e[j + 1] + q * g[j])
+        inner = [[] if feat[i] or gone[i] else
                  _graded(fx[i], fx[i + 1], e[i], e[i + 1], m[i], ratio)
                  for i in range(len(g))]
         first = np.array([(ln[0] if ln else fx[i + 1]) - fx[i]
@@ -178,7 +185,8 @@ def smooth_lines(fixed, maxres, ratio=1.4, fine=None, whole=(),
         # (a jump is mended where the larger cell's interval can be split)
         big = np.where(last[:-1] >= first[1:], np.arange(len(g) - 1),
                        np.arange(1, len(g)))
-        bad = np.flatnonzero((hi > ratio * lo * 1.0001) & ~feat[big]) + 1
+        bad = np.flatnonzero((hi > ratio * lo * 1.0001) & ~feat[big]
+                             & ~gone[:-1] & ~gone[1:]) + 1
         if not len(bad):
             break
         e[bad] = np.minimum(e[bad], ratio * lo[bad - 1])
@@ -431,8 +439,124 @@ def signal_sheets(m, plane=0.85):
     return sorted(out)
 
 
+def solid_lines(ps, fine, curves='extremes'):
+    """Mesh-line candidates of drawn solids' pieces (core.solids.pieces):
+    {0: [(x, metal)], 1: [(y, metal)], 2: [(z, metal)]}. x / y: each Manhattan
+    edge's own coordinate (manhattan), a curved run's ends and extremes
+    (curve_lines); z: each piece's two heights. metal: a metal piece's face
+    (it wins a merge against the copper's thirds-rule lines: a wall thinner
+    than the cell keeps a line on it)."""
+    out = {0: [], 1: [], 2: []}
+    for p in ps:
+        mt = p.material == 'metal'
+        out[2] += [(p.z0, mt), (p.z1, mt)]
+        for ring in [p.polygon.exterior, *p.polygon.interiors]:
+            xy = np.asarray(ring.coords, float)
+            d = np.diff(xy, axis=0)
+            man = manhattan(d, np.hypot(d[:, 0], d[:, 1]), fine)
+            for (a, b), (dx, dy), ok in zip(xy[:-1], d, man):
+                if ok:
+                    out[0 if abs(dx) <= abs(dy) else 1].append(
+                        (float(a if abs(dx) <= abs(dy) else b), mt))
+            cx, cy = curve_lines(xy, fine, curves)
+            out[0] += [(float(v), mt) for v in cx]
+            out[1] += [(float(v), mt) for v in cy]
+    return out
+
+
+# the merge priority of a solid's face line (_merge): a metal face over the
+# copper's thirds-rule lines (1, 2), a dielectric's or air's under them
+SOLID_PRIO = {True: 3.0, False: 0.5}
+
+
+def _solid_spans(ps, lam0, res, axis):
+    """[(lo, hi, cell)]: the largest cell (lambda / sqrt(er) / res) over each
+    dielectric piece along an axis (0, 1: its outline's extent; 2: its
+    heights)."""
+    out = []
+    for p in ps:
+        if p.material != 'dielectric' or p.er <= 1.0:
+            continue
+        lo, hi = ((p.polygon.bounds[axis], p.polygon.bounds[axis + 2])
+                  if axis < 2 else (p.z0, p.z1))
+        out.append((lo, hi, lam0 / np.sqrt(p.er) / res))
+    return out
+
+
+def dead_spans(ps, axis, box6):
+    """[(a, b)] along an axis where drawn metal (core.solids pieces) fills the
+    whole of the domain box6 (x0, y0, z0, x1, y1, z1) across it: a can's floor,
+    lid and walls once the mesh ends at its outer faces. No field there: no
+    lines inside, nothing to grade beside them (smooth_lines' dead)."""
+    from shapely.geometry import box as sbox
+    from shapely.ops import unary_union
+    metal = [p for p in ps if p.material == 'metal' and p.z1 > p.z0 + 1e-9]
+    lo, hi = box6[axis], box6[axis + 3]
+    # (a quick no: metal must reach both ends of the domain across the axis)
+    ends = [(b, box6[b], box6[b + 3]) for b in range(3) if b != axis]
+    span = lambda p, b: ((p.z0, p.z1) if b == 2 else
+                         (p.polygon.bounds[b], p.polygon.bounds[b + 2]))
+    for b, a0, a1 in ends:
+        if not (any(span(p, b)[0] <= a0 + 1e-9 for p in metal)
+                and any(span(p, b)[1] >= a1 - 1e-9 for p in metal)):
+            return []
+    from shapely.prepared import prep
+    rect = sbox(box6[0], box6[1], box6[3], box6[4])
+    zs = sorted({box6[2], box6[5]} | {z for p in metal for z in (p.z0, p.z1)
+                                       if box6[2] < z < box6[5]})
+    # each slab's metal, grown a hair and prepared once: every interval
+    # below is tested against it (buffering it for each had taken 71 s on a
+    # can with 300 posts inside, the covers 0.2 s)
+    slabs = [prep(unary_union([p.polygon for p in metal
+                               if p.z0 <= za + 1e-9
+                               and p.z1 >= zb - 1e-9]).buffer(1e-7))
+             for za, zb in zip(zs[:-1], zs[1:])]
+    if axis == 2:
+        out = [(za, zb) for (za, zb), u in zip(zip(zs[:-1], zs[1:]), slabs)
+               if u.covers(rect)]
+    else:
+        cs = sorted({lo, hi} | {float(v) for p in metal
+                                for r in (p.polygon.exterior,
+                                          *p.polygon.interiors)
+                                for v in np.asarray(r.coords)[:, axis]
+                                if lo < v < hi})
+        out = []
+        for a, b in zip(cs[:-1], cs[1:]):
+            strip = (sbox(a, box6[1], b, box6[4]) if axis == 0 else
+                     sbox(box6[0], a, box6[3], b))
+            if all(u.covers(strip) for u in slabs):
+                out.append((a, b))
+    merged = []  # touching spans as one
+    for a, b in out:
+        if merged and a <= merged[-1][1] + 1e-9:
+            merged[-1] = (merged[-1][0], b)
+        else:
+            merged.append((a, b))
+    return merged
+
+
+def _check_solids(ps, mesh, log):
+    """A metal piece with no mesh line across it on some axis is not in the
+    model (the FDTD takes the edges inside a metal): said. build_fdtd puts one
+    of no height on its nearest z line."""
+    thin = []
+    for p in ps:
+        if p.material != 'metal':
+            continue
+        b = p.polygon.bounds
+        for k, (lo, hi) in enumerate(((b[0], b[2]), (b[1], b[3]))):
+            ln = mesh[k]
+            if not np.any((ln >= lo - 1e-6) & (ln <= hi + 1e-6)):
+                thin.append(f"{p.name} ({'xy'[k]} {lo:.3f}..{hi:.3f} mm)")
+    if thin:
+        log("WARNING: drawn metal with no mesh line across it, left out of the "
+            f"model: {', '.join(thin)} - make it wider or the cell smaller "
+            "(--fine)")
+    return thin
+
+
 def _z_lines(m, ext, M_die, M_air, nz_min, ratio, dz_sheet=None, th=None,
-             nz_mask=None):
+             nz_mask=None, solids=None):
     """z lines: every interface, >= nz_min cells per dielectric (nz_mask, if
     given, through solder mask: a thin layer's cells set the time step), copper
     sheets exactly on lines, graded air (ext[4] below - none on a PEC bottom
@@ -441,7 +565,13 @@ def _z_lines(m, ext, M_die, M_air, nz_min, ratio, dz_sheet=None, th=None,
     copper thickness (thick.plan): the stack moved as thick.py says, lines at
     both faces of each copper layer and one cell (more only past the
     dielectric's cell) through each copper slab; dz_sheet then on the outer side
-    of the faces."""
+    of the faces. solids: dict(z=[(z, metal)], spans=[(z0, z1, cell)], tol,
+    dead=[(z0, z1)]): drawn solids' heights (board z, mapped here as the stack
+    is), each a line: inside a dielectric layer one that shares the layer's
+    cells between its two sides (none within half a cell of another), outside
+    the stack one unless within tol of another; the air's extent past them;
+    the dielectric pieces' largest cell; the spans of metal across the whole
+    domain (smooth_lines' dead)."""
     from . import thick
     zt = ((lambda z: z) if th is None else
           (lambda z: round(thick.z_map(m, th, z), 9)))
@@ -461,6 +591,9 @@ def _z_lines(m, ext, M_die, M_air, nz_min, ratio, dz_sheet=None, th=None,
         z for zc in (signal_sheets(m) if dz_sheet else [])
         for z in cu[thick.layer_at(m, zc)]
     ]
+    # drawn solids' faces inside the stack (a pocket's floor, an insert's top)
+    inner = sorted({round(zt(z), 9) for z, _ in (solids or {}).get('z', ())
+                    if 1e-9 < zt(z) < top - 1e-9})
     zl, extra = [], []
     for z0, z1 in zip(zs[:-1], zs[1:]):
         if (z0, z1) in slabs:  # a copper slab: one cell, or the dielectric's
@@ -474,32 +607,62 @@ def _z_lines(m, ext, M_die, M_air, nz_min, ratio, dz_sheet=None, th=None,
         n_min = (nz_mask if nz_mask and lay and lay.get('kind') == 'mask'
                  else nz_min)
         n = max(n_min, int(np.ceil((z1 - z0) / Mz)))
-        h = (z1 - z0) / n
-        near = [
-            zc for zc in (z0, z1)
-            if lay and any(abs(zc - sz) < 1e-9 for sz in sheets)
-        ]
-        # uniform also when the graded line(s) would leave a sliver (a one-cell
-        # layer barely thicker than dz_sheet: a 0.25 um cell at a 92 um mask's
-        # top, graded out from, made 411 z lines instead of 25)
-        if not near or dz_sheet >= h or (z1 - z0) < 1.5 * dz_sheet * len(near):
-            zl += list(np.linspace(z0, z1, n + 1))
-            continue
-        # graded from dz_sheet at the sheet(s) up to the uniform cell h
-        fixed = (
-            [z0, z1]
-            + [z0 + dz_sheet if zc == z0 else z1 - dz_sheet for zc in near])
-        extra += list(smooth_lines(fixed, h, ratio))
+        # a solid's face inside the layer: a line on it, the layer's cells
+        # shared between its two sides (not --nz cells each, as a layer's
+        # own interface would have); one within half a cell of another line
+        # is left to it
+        guard = 0.5 * (z1 - z0) / n
+        cuts = [z0]
+        for zc in inner:
+            if zc - cuts[-1] > guard and z1 - zc > guard:
+                cuts.append(zc)
+        cuts.append(z1)
+        for a, b in zip(cuts[:-1], cuts[1:]):
+            k = max(1, int(np.ceil(n * (b - a) / (z1 - z0) - 1e-9)))
+            h = (b - a) / k
+            near = [
+                zc for zc in (a, b)
+                if lay and any(abs(zc - sz) < 1e-9 for sz in sheets)
+            ]
+            # uniform also when the graded line(s) would leave a sliver (a
+            # one-cell layer barely thicker than dz_sheet: a 0.25 um cell at
+            # a 92 um mask's top, graded out from, made 411 z lines instead of
+            # 25)
+            if (not near or dz_sheet >= h
+                    or (b - a) < 1.5 * dz_sheet * len(near)):
+                zl += list(np.linspace(a, b, k + 1))
+                continue
+            # graded from dz_sheet at the sheet(s) up to the uniform cell h
+            fixed = (
+                [a, b]
+                + [a + dz_sheet if zc == a else b - dz_sheet for zc in near])
+            extra += list(smooth_lines(fixed, h, ratio))
     zl = _merge(np.concatenate([np.round(zl, 9), np.round(extra, 9), zs]), 1e-7)
     for zc in faces:  # snap: sheets must lie exactly on a line
         i = np.argmin(np.abs(zl - zc))
         assert (abs(zl[i] - zc)
                 < 1e-6), f"copper at z={zc} is not on a z mesh line"
         zl[i] = zc
-    zfix = np.concatenate([[zl[0] - ext[4]] if ext[4] > 0 else [], zl,
-                           [zl[-1] + ext[5]]])
-    return smooth_lines(zfix, lambda z: M_die if 0 <= z <= top else M_air,
-                        ratio)
+    spans, dead, lo, hi = [], [], zl[0], zl[-1]
+    if solids:
+        # a metal face first: a thin lid keeps its own line over a
+        # dielectric's beside it
+        for z, _ in sorted(solids['z'], key=lambda t: not t[1]):
+            z = zt(z)
+            if np.min(np.abs(zl - z)) > solids['tol']:
+                zl = np.sort(np.r_[zl, z])
+        spans = [(zt(a), zt(b), c) for a, b, c in solids['spans']]
+        dead = [(zt(a), zt(b)) for a, b in solids.get('dead', ())]
+        # the air margin past the solids' faces, a merged one's too
+        heights = [zt(z) for z, _ in solids['z']]
+        lo, hi = min(zl[0], min(heights)), max(zl[-1], max(heights))
+    zfix = np.concatenate([[lo - ext[4]] if ext[4] > 0 else [], zl,
+                           [hi + ext[5] if ext[5] > 0 else zl[-1]]])
+
+    def M(z):
+        v = M_die if 0 <= z <= top else M_air
+        return min([v] + [c for a, b, c in spans if a - 1e-9 <= z <= b + 1e-9])
+    return smooth_lines(zfix, M, ratio, dead=dead)
 
 
 def _check(m, mesh, info, log):
@@ -588,9 +751,17 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
              antipads and pads are left to the graded mesh. A number: the
              zone's reach (mm)
     thickness: copper with its stackup thickness, the stack moved to make
-             room (thick.py); False: sheets"""
+             room (thick.py); False: sheets
+
+    Drawn solids (board.solids, as core.solids.pieces resolves them): lines at
+    their pieces' faces (solid_lines; a metal face wins a merge, a
+    dielectric's or air's gives way to the copper's), the dielectric ones'
+    own largest cell, and the air margin past them as well as past the
+    board."""
     from . import thick
+    from kicad2ems.core.solids import pieces as solid_pieces, describe
     th = thick.plan(m) if thickness else None
+    sp = solid_pieces(m) if getattr(m, 'solids', None) else []
     er_max = max([l['er'] for l in m.layers] + [1.0])
     lam0 = C0 / fmax * 1e3                                          # mm
     M_air, M_die = lam0 / res, lam0 / np.sqrt(er_max) / res
@@ -614,6 +785,34 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
     if bottom_pec:
         ext[4] = 0.0  # PEC wall = the bottom plane itself
     ob = m.outline.bounds
+    # the domain: the board and its solids, the air margin past both
+    dom = list(ob)
+    for p in sp:
+        b = p.polygon.bounds
+        dom = [min(dom[0], b[0]), min(dom[1], b[1]), max(dom[2], b[2]),
+               max(dom[3], b[3])]
+    shut = None
+    if sp:  # drawn metal closed round the board: no air outside it
+        from kicad2ems.core.solids import enclosure, extent
+        e = extent(m, sp)
+        shut = enclosure(m, sp, (dom[0] - sides[0], dom[1] - sides[2],
+                                 e[2] - sides[4], dom[2] + sides[1],
+                                 dom[3] + sides[3], e[5] + sides[5]))
+        if shut is not None:
+            dom = [shut[0], shut[1], shut[3], shut[4]]
+            ext = [npml[i] * M_air for i in range(6)]
+    sl = solid_lines(sp, fine, curves) if sp else {0: [], 1: [], 2: []}
+    if shut is not None:  # (what is drawn outside the metal: not meshed)
+        sl = {k: [(v, mt) for v, mt in sl[k]
+                  if shut[k] - 1e-9 <= v <= shut[k + 3] + 1e-9]
+              for k in range(3)}
+    dead = {0: [], 1: [], 2: []}  # metal across the whole domain
+    if any(p.material == 'metal' for p in sp):
+        e = shut if shut is not None else extent(m, sp)
+        dead = {k: dead_spans(sp, k, (dom[0] - ext[0], dom[1] - ext[2],
+                                      e[2] - ext[4], dom[2] + ext[1],
+                                      dom[3] + ext[3], e[5] + ext[5]))
+                for k in range(3)}
     boxes = []
     zg = (signal_zone(m, None if zone is True else float(zone))
           if zone is not False and zone is not None else None)
@@ -642,21 +841,26 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
     def xy_lines(extra):
         out = {}
         for k in (0, 1):
+            sv = [v for v, _ in sl[k]]
             pts = _merge(
                 np.concatenate([fixed[k], extra[k], third[k],
-                                third_in[k]]), fine / 2, keep=keep[k],
+                                third_in[k], sv]), fine / 2, keep=keep[k],
                 prio=np.r_[np.zeros(len(fixed[k]) + len(extra[k])),
                            np.ones(len(third[k])),
-                           np.full(len(third_in[k]), 2.0)])
+                           np.full(len(third_in[k]), 2.0),
+                           [SOLID_PRIO[mt] for _, mt in sl[k]]])
             lo, hi = ob[k], ob[2 + k]
-            pts = np.concatenate([[lo - ext[2 * k]], pts,
-                                  [hi + ext[2 * k + 1]]])
+            pts = np.concatenate([[dom[k] - ext[2 * k]], pts,
+                                  [dom[2 + k] + ext[2 * k + 1]]])
             spans = [(b[k], b[2 + k]) for b in boxes] if curve_res > 1 else []
-            Mf = (lambda x, lo=lo, hi=hi, sp=spans:
-                  M_air if not lo - 1e-9 <= x <= hi + 1e-9 else
-                  M_die / curve_res if any(a <= x <= b for a, b in sp) else
-                  M_die)
-            out[k] = smooth_lines(pts, Mf, ratio, fine, whole=edges[k])
+            ds = _solid_spans(sp, lam0, res, k)
+            Mf = (lambda x, lo=lo, hi=hi, sp=spans, ds=ds: min(
+                [M_air if not lo - 1e-9 <= x <= hi + 1e-9 else
+                 M_die / curve_res if any(a <= x <= b for a, b in sp) else
+                 M_die]
+                + [c for a, b, c in ds if a - 1e-9 <= x <= b + 1e-9]))
+            out[k] = smooth_lines(pts, Mf, ratio, fine, whole=edges[k],
+                                  dead=dead[k])
         return out
 
     mesh = xy_lines({0: [], 1: []})
@@ -673,7 +877,10 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
     nsnap = sum(1 for md in mode if md == 'snap')
     mesh[2] = _z_lines(m, ext, M_die, M_air, nz_min, ratio,
                        dz_sheet=(z_sheet * fine if z_sheet else None), th=th,
-                       nz_mask=nz_mask)
+                       nz_mask=nz_mask,
+                       solids=(dict(z=sl[2], spans=_solid_spans(
+                           sp, lam0, res, 2), tol=fine / 2, dead=dead[2])
+                               if sp else None))
     nx, ny, nz = (len(mesh[k]) for k in range(3))
     dmin = [np.diff(mesh[k]).min() * 1e-3 for k in range(3)]
     dt = 1 / (C0 * np.sqrt(sum(1 / d ** 2 for d in dmin)))
@@ -684,6 +891,9 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
                 via_max_move_mm=float(max(moved, default=0.0)), dt_ps=dt * 1e12,
                 min_cell_mm=[d * 1e3 for d in dmin],
                 mem_gb=nx * ny * nz * 150e-9, thickness='on' if th else 'off')
+    if sp:
+        info['solids'] = describe(sp)
+        info['enclosed'] = shut is not None
     log(f"mesh: {nx} x {ny} x {nz} = {nx * ny * nz / 1e6:.2f} M cells (fine "
         f"{fine:.3f} mm, max {M_die:.2f} mm in dielectric / {M_air:.2f} mm in "
         f"air, air margin {air_text(air)}), boundaries "
@@ -693,6 +903,11 @@ def auto_mesh(m, fmin, fmax, res=20, fine=None, air=5.0, ratio=1.4,
         + (", copper with its thickness (the stack moved up by it)"
            if th else ""))
     _check(m, mesh, info, log)
+    if sp:
+        log(f"{info['solids']}, lines at their faces"
+            + ("; the metal closes round the board: the mesh ends at its "
+               "outer faces (no air outside it)" if shut is not None else ""))
+        _check_solids(sp, mesh, log)
     if nsnap:
         log(f"vias: {nsnap} snapped onto existing lines (moved <= "
             f"{info['via_max_move_mm']:.3f} mm), {len(m.vias) - nsnap} with "

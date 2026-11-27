@@ -41,13 +41,20 @@ useful first:
 
 **What the drawing does**
 
-1. **Solids in the solvers:** `board.solids` are drawn and kept, but no solver meshes them.
-   - The FDTD model (`fdtd.model.build_fdtd`'s CSX, which openEMS and gfdtd both read) takes metal, dielectric and
-     air as extruded polygons, a later shape over an earlier one, with mesh lines at their edges and heights.
-   - Palace's gmsh model takes them as volumes; mom25d (laterally infinite layers) refuses a solid it cannot take
-     and says so.
-   - Checks: rf_shielded's can drawn as a metal shell inside an open boundary against its PEC boundary (4.62 GHz;
-     EMerge 4.621), and a dielectric block's resonance against its closed form.
+1. **Solids in the solvers, the rest** (the FDTD's model and mesh, Palace's volumes and mom25d's refusal are done,
+   2026-11-27: docs/meshing.md#drawn-solids):
+   - metal solids are PEC: `--sigma` and Palace's `loss` leave a can lossless, its own loss missing from a Q;
+   - a fence of small metal posts puts lines at every post's extremes: 300 posts 0.1 mm across at 0.147 mm pitch
+     inside rf_shielded's can made 1,102 x lines (4.13 M cells, the time step 0.047 ps from 0.083); snapped as
+     ground vias are (`--vias snap`) they would keep the board's mesh;
+   - not yet checked: solids with `--thickness on` (their heights go through the thick-copper plan), in antenna
+     mode (a radome; the NF2FF box follows the mesh), and metal thinner than its cell in plan (said, left out);
+   - Palace meshes the air outside a drawn can that closes round the board (125,000 tetrahedra against its PEC
+     box's 118,000, 161 s against 145 s); the FDTD leaves it out;
+   - mom25d could take a dielectric solid over the whole board as a stack layer (a cover) instead of refusing it;
+   - the run's mesh preview and the Viewer do not draw the solids yet (the page's item 4);
+   - set aside: a box-shaped closed can as the PEC boundary at its inner faces. The PEC-boundary run is that model:
+     0.41 M cells and 33 s against the drawn can's 0.45 M and 35 s (−6 %), under the 10 % a pass must gain.
 2. **Templates:** a shield can with its fence vias, an enclosure with a lid, an edge-launch SMA, a via fence along
    a trace, a coax or probe feed, an absorber sheet; each placed with a click, then edited as shapes.
 3. **Dimensions as variables:** a shape's numbers as named variables (w, gap, h) in the drawing, which the study's
