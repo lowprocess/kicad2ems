@@ -21,7 +21,10 @@ How they combine, with each other and with the board:
     takes its place (a slot or a pocket of air, a metal post, an insert of
     another laminate);
   - the board's copper, vias, edge walls, ports and parts stay over every solid
-    (a cut takes copper out: the 'cut' material, on a copper layer).
+    (a cut takes copper out: the 'cut' material, on a copper layer);
+  - a magnet is a metal piece to the RF (Piece.magnet: its remanence) and a
+    ferrite a dielectric one that a solver must also magnetise
+    (Piece.ferrite); core.magnets has their static field.
 
 Pieces are in the board's own heights (the FDTD maps them with its thick-copper
 plan). Nothing is snapped to a mesh here.
@@ -41,9 +44,11 @@ AREA_MIN = 1e-6
 class Piece:
     """One disjoint piece of a solid: `polygon` (shapely, holes allowed, model
     mm) from z0 to z1 (mm, z0 <= z1; equal: a sheet, metal only), of `material`
-    (metal, dielectric, air; er and tand for a dielectric). index: the solid's
-    place in board.solids (the drawing's order); name: its shape's;
-    around: it encloses the board (the board's dielectric left out of it)."""
+    (metal, dielectric, air, ferrite; er and tand for a dielectric or a
+    ferrite). index: the solid's place in board.solids (the drawing's order);
+    name: its shape's; around: it encloses the board (the board's dielectric
+    left out of it). ferrite: dict(ms=4 pi Ms G, dh=Oe) of a ferrite; magnet:
+    the remanence (T, + along +z) of a magnet, whose material is metal."""
     material: str
     er: float
     tand: float
@@ -53,6 +58,8 @@ class Piece:
     index: int
     name: str
     around: bool = False
+    ferrite: dict = None
+    magnet: float = None
 
     @property
     def thickness(self):
@@ -111,7 +118,7 @@ def pieces(board):
     around = [encloses(board, d, vol) for d in sol]
     keep = [i for i, (g, z0, z1) in enumerate(geo)
             if not g.is_empty and g.area > AREA_MIN
-            and (z1 - z0 > ZTOL or sol[i]['material'] == 'metal')]
+            and (z1 - z0 > ZTOL or sol[i]['material'] in ('metal', 'magnet'))]
     # the heights where what is there can change: every solid's two faces,
     # and the board's where a solid encloses it
     zs = sorted({z for i in keep for z in geo[i][1:]}
@@ -167,13 +174,19 @@ def pieces(board):
         for g, za, zc in runs:
             for p in polygons(g):
                 if p.area > AREA_MIN:
+                    mat = d['material']
                     res.append(Piece(
-                        material=d['material'],
+                        material='metal' if mat == 'magnet' else mat,
                         er=float(d.get('er', 1.0) or 1.0),
                         tand=float(d.get('tand', 0.0) or 0.0), polygon=p,
                         z0=za, z1=zc, index=i,
                         name=str(d.get('shape') or f'solid{i + 1}'),
-                        around=around[i]))
+                        around=around[i],
+                        ferrite=(dict(ms=float(d.get('ms', 1800.0)),
+                                      dh=float(d.get('dh', 30.0)))
+                                 if mat == 'ferrite' else None),
+                        magnet=(float(d.get('br', 0.0))
+                                if mat == 'magnet' else None)))
     return res
 
 
@@ -282,11 +295,13 @@ def describe(ps):
     for p in ps:
         by.setdefault(p.material, []).append(p)
     parts = []
-    for mat in ('metal', 'dielectric', 'air'):
+    for mat in ('metal', 'dielectric', 'ferrite', 'air'):
         if mat in by:
             ers = sorted({round(p.er, 3) for p in by[mat]})
+            mag = sum(p.magnet is not None for p in by[mat])
             parts.append(f"{mat} {len(by[mat])}" + (
                 f" (er {', '.join(f'{e:g}' for e in ers)})"
-                if mat == 'dielectric' else ''))
+                if mat in ('dielectric', 'ferrite') else
+                f" ({mag} magnet{'s' if mag != 1 else ''})" if mag else ''))
     return (f"{n} drawn solid{'s' if n != 1 else ''} as {len(ps)} "
             f"piece{'s' if len(ps) != 1 else ''}: {', '.join(parts)}")

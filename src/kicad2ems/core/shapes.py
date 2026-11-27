@@ -38,6 +38,14 @@ and what they are made of (`material`):
     metal       a solid from z0 to z1 (mm): a shield, a block, a post
     dielectric  a solid of permittivity er and loss tangent tand
     air         a solid of air (a cavity, a slot through the substrate)
+    ferrite     a microwave ferrite (er, tand; saturation magnetisation `ms`,
+                4 pi Ms in gauss; FMR linewidth `dh`, oersted at 9.4 GHz, the
+                datasheets'): magnetised by the drawn magnets, gyrotropic
+                (core.magnets has the bias, gfdtd the ferrite)
+    magnet      a permanent magnet of remanence `br` (tesla; + magnetised up,
+                along +z, - down): a rigid magnetisation for the bias, and to
+                the RF a metal (rare-earth magnets conduct; a ceramic magnet's
+                RF is a dielectric drawn after it)
 
 Every solver reads board.copper, so drawn copper and cuts reach them all; the
 line model builds its sections from the board's own tracks and does not see
@@ -46,7 +54,8 @@ and drawn in the 3D view. The FDTD (openems, gfdtd) and Palace mesh them: a
 later solid over an earlier one, a solid over the board's dielectric unless it
 encloses the whole board (core.solids has the rules). mom25d's layers are
 laterally infinite: it refuses a board with solids. The line model and pcbqs
-leave them out (apply's notes say so).
+leave them out (apply's notes say so). A ferrite needs gfdtd: openEMS and
+Palace refuse it (neither has a gyrotropic medium).
 """
 import json, math
 from dataclasses import dataclass, field, asdict
@@ -59,7 +68,8 @@ __all__ = ['Shape', 'Drawing', 'apply', 'prism', 'shape_mesh', 'stack_of',
 FORMAT, VERSION = 'kicad2ems-shapes', 1
 KINDS = ('rect', 'circle', 'polygon', 'path', 'port')
 # on a copper layer / solids between two heights
-SHEET, SOLID = ('copper', 'cut'), ('metal', 'dielectric', 'air')
+SHEET, SOLID = ('copper', 'cut'), ('metal', 'dielectric', 'air', 'ferrite',
+                                   'magnet')
 MATERIALS = SHEET + SOLID
 # the least number of points of each kind
 LEAST = dict(rect=2, circle=1, polygon=3, path=2, port=1)
@@ -83,8 +93,11 @@ class Shape:
     radius: float = 1.0          # circle: mm
     z0: float = 0.0              # solids: from, to (mm)
     z1: float = 1.0
-    er: float = 4.3              # dielectric
+    er: float = 4.3              # dielectric, ferrite
     tand: float = 0.0
+    ms: float = 1800.0           # ferrite: 4 pi Ms, gauss
+    dh: float = 30.0             # ferrite: FMR linewidth, Oe (at 9.4 GHz)
+    br: float = 1.2              # magnet: remanence, T (+ along +z)
     rot: float = None            # port: its direction (KiCad degrees; None:
                                  # along the track under it)
     name: str = ''
@@ -272,9 +285,14 @@ class Shape:
         if not self.solid:
             for k in ('z0', 'z1'):
                 d.pop(k)
-        if self.material != 'dielectric':
+        if self.material not in ('dielectric', 'ferrite'):
             for k in ('er', 'tand'):
                 d.pop(k)
+        if self.material != 'ferrite':
+            for k in ('ms', 'dh'):
+                d.pop(k)
+        if self.material != 'magnet':
+            d.pop('br')
         if self.kind != 'port':
             d.pop('rot')
         if self.material != 'copper':
@@ -346,7 +364,7 @@ def apply(board, drawing, log=None):
     """The drawing's copper merged into board.copper (and copper_nets), its
     cuts taken out, each clipped to the board outline, in the drawing's order;
     its solids as board.solids (dicts: shape, material, z0, z1, er, tand,
-    polygon as GeoJSON). Returns notes (what was done, and which solvers do
+    polygon as GeoJSON; a ferrite's ms and dh, a magnet's br). Returns notes (what was done, and which solvers do
     not see what). ValueError: a shape on a layer the board has no copper
     layer of."""
     from shapely.geometry import mapping
@@ -408,17 +426,25 @@ def apply(board, drawing, log=None):
         g = s.outline()
         if g is None:
             continue
-        board.solids.append(
-            dict(shape=s.name or s.kind, material=s.material,
+        diel = s.material in ('dielectric', 'ferrite')
+        d = dict(shape=s.name or s.kind, material=s.material,
                  z0=float(min(s.z0, s.z1)), z1=float(max(s.z0, s.z1)),
-                 er=float(s.er if s.material == 'dielectric' else 1.0),
-                 tand=float(s.tand if s.material == 'dielectric' else 0.0),
-                 polygon=mapping(g)))
+                 er=float(s.er if diel else 1.0),
+                 tand=float(s.tand if diel else 0.0), polygon=mapping(g))
+        if s.material == 'ferrite':
+            d.update(ms=float(s.ms), dh=float(s.dh))
+        elif s.material == 'magnet':
+            d.update(br=float(s.br))
+        board.solids.append(d)
     if board.solids:
         notes.append(
             f"{len(board.solids)} drawn solid(s): the FDTD (openems, gfdtd) "
             "and palace mesh them; mom25d cannot (laterally infinite layers: "
             "it refuses the board), the line model and pcbqs leave them out")
+        if any(d['material'] == 'ferrite' for d in board.solids):
+            notes.append(
+                "a drawn ferrite: gyrotropic on gfdtd only (openems and palace "
+                "refuse it), biased by the drawn magnets (core.magnets)")
     if drawing.ports():
         notes.append(
             f"{len(drawing.ports())} drawn port(s): a run takes them from the "

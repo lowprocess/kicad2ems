@@ -463,3 +463,34 @@ def test_outlines_and_the_grid():
     assert g['size'][0] / g['spacing'] <= 120
     x0 = g['center'][0] - g['size'][0] / 2
     assert x0 / g['spacing'] == pytest.approx(round(x0 / g['spacing']))
+
+
+def test_a_ferrite_and_a_magnet(tmp_path):
+    from kicad2ems.core.solids import pieces, describe
+    b0 = _board()
+    x0, y0, x1, y1 = b0.outline.bounds
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    d = Drawing([
+        Shape('circle', [[cx, cy]], radius=2.0, material='ferrite', z0=0.0,
+              z1=0.8, er=15.0, tand=2e-4, ms=1200.0, dh=45.0, name='puck'),
+        Shape('circle', [[cx, cy]], radius=3.0, material='magnet', z0=2.0,
+              z1=4.0, br=-1.1, name='magnet'),
+    ])
+    p = d.save(tmp_path / 'd.json')
+    assert Drawing.load(p) == d
+    fer, mag = d.to_dict()['shapes']
+    # each keeps what it uses
+    assert (fer['ms'], fer['dh'], fer['er']) == (1200.0, 45.0, 15.0)
+    assert 'br' not in fer and 'ms' not in mag and 'er' not in mag
+    assert mag['br'] == -1.1
+    b = _board(shapes=p)
+    assert [s['material'] for s in b.solids] == ['ferrite', 'magnet']
+    assert b.solids[0]['ms'] == 1200.0 and b.solids[1]['br'] == -1.1
+    assert any('gyrotropic on gfdtd only' in n for n in b.notes)
+    ps = pieces(b)
+    # the magnet is metal to the RF, the ferrite a dielectric of its own
+    assert [p.material for p in ps] == ['ferrite', 'metal']
+    assert ps[0].ferrite == dict(ms=1200.0, dh=45.0) and ps[0].er == 15.0
+    assert ps[1].magnet == -1.1 and ps[1].ferrite is None
+    assert describe(ps) == ("2 drawn solids as 2 pieces: metal 1 (1 magnet), "
+                            "ferrite 1 (er 15)")
