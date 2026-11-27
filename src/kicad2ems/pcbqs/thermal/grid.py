@@ -20,7 +20,7 @@ import numpy as np
 from scipy.sparse import coo_matrix, diags
 from shapely.geometry.polygon import orient
 
-from .problem import Result, part_temperatures, solve_spd
+from .problem import Result, part_temperatures
 
 DETAIL = 0.0625     # mm: the fine raster's cell unless asked otherwise
 RASTER = 4e7        # the most fine cells a layer's raster may have

@@ -308,7 +308,7 @@ def main(argv=None):
         print(f"transient over {a.transient:g} s from {a.start}: "
               + ', '.join(f"{k} peaks at {v['C']:.1f} C at {v['at_s']:.3g} s"
                           for k, v in hot)
-              + (f"; the board's time constants "
+              + ("; the board's time constants "
                  + ', '.join(f"{t:.3g}" for t in tr['tau_s'][:3]) + " s"
                  if tr['tau_s'] else ''))
         summary['transient'] = dict(
