@@ -154,7 +154,7 @@ def coax_pin(zc, d, er):
     return d * 1.0787 / 1.1803 * math.exp(-zc * math.sqrt(er) / 60.0)
 
 
-# ---- the templates' shapes ----------------------------------------------------
+# ---- the templates' shapes ---------------------------------------------------
 def _shape(*a, **kw):
     from .shapes import Shape
     return Shape(*a, **kw)

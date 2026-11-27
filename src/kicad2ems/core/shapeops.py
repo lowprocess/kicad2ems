@@ -337,7 +337,7 @@ def measure(points):
     return out
 
 
-# ---- booleans, rounded corners, alike -------------------------------------------
+# ---- booleans, rounded corners, alike --------------------------------------
 # what combined() does: the first shape's outline with the others' ...
 BOOLEANS = dict(union='joined to', subtract='taken out of',
                 intersect='kept where it meets')

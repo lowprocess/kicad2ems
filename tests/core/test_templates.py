@@ -1,6 +1,6 @@
 """The Draw page's templates (kicad2ems.core.templates): parametric groups of
 shapes, sized to the board's stack, that are then ordinary shapes."""
-import json, math, os
+import math, os
 import numpy as np
 import pytest
 from kicad2ems.core import templates as T
