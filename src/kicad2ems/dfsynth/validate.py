@@ -210,9 +210,10 @@ def validate(design, base, solvers='mom,lines', extra=(), log=print, tag=''):
         raise RuntimeError(f"kicad2ems wrote no S-parameters in {outdir}")
     s11, s21 = model_response(design, f_em)
     model = {'model (dfsynth)': (f_em, s21, s11)}
-    if design.sub.t > 0:
+    if design.sub.t > 0 and design.spec.topology != 'freeform':
         # kicad2ems's solvers treat the copper as infinitely thin: this is the
-        # model of what they solve
+        # model of what they solve (a free-form design's own model is that
+        # already)
         s11, s21 = model_response(design, f_em, sub=design.sub.with_(t=0.0))
         model[MODEL0] = (f_em, s21, s11)
     results = {**model, **results}

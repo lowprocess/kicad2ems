@@ -99,6 +99,37 @@ def parser():
         "of the strip width and twice the largest coupling gap)")
     g.add_argument('--feed', type=float, default=0.0,
                    help='mm of 50 ohm feed line at each port')
+    x = p.add_argument_group(
+        'free-form (--topology freeform: a pattern of square pixels searched '
+        'for with a moment-method model; needs mom25d\'s compiled core)')
+    x.add_argument(
+        '--box', metavar='WxH', help=
+        'the box the pattern is searched in, mm (default: a band-pass\'s '
+        'resonators side by side with two pixels to spare; a low-pass: 0.17 '
+        'x 0.13 guided wavelengths). The size / performance trade is made '
+        'here: a smaller box, then what the search reaches in it')
+    x.add_argument(
+        '--pixel', type=float, default=0.0, help=
+        'pixel side, mm (default: the 50 ohm width over a whole number, '
+        'about 80 pixels a guided wavelength)')
+    x.add_argument('--search-steps', type=int, default=1500,
+                   help='pixel changes the search makes (default 1500)')
+    x.add_argument('--search-time', type=float, default=0.0, metavar='S',
+                   help='time limit of the search, seconds (default: none)')
+    x.add_argument(
+        '--outline', type=float, metavar='W', help=
+        'the price of a pixel side of copper outline in the search\'s cost '
+        '(default 0.05): more for plainer shapes, less for finer detail '
+        '(and the narrow parasitic resonances that come with it)')
+    x.add_argument(
+        '--symmetry', choices=('mirror', 'rotate', 'none'), help=
+        'the pattern\'s symmetry between the ports (default: the feeds\')')
+    x.add_argument('--return-loss', type=float, default=15.0, metavar='DB',
+                   help='pass-band return loss asked for, dB (default 15)')
+    x.add_argument(
+        '--stop-floor', type=float, default=35.0, metavar='DB', help=
+        'the stop band is asked for the prototype\'s rejection, no deeper '
+        'than this, dB (default 35)')
     s = p.add_argument_group('substrate')
     s.add_argument('--substrate', default='RO4003C-0.508',
                    help='preset (see --list); default RO4003C-0.508')
@@ -207,8 +238,9 @@ def describe(design, log=print):
     log(f"substrate {sub.name}: h {sub.h} mm, er {sub.er}, tan d {sub.tand}, "
         f"copper {sub.t * 1e3:.0f} um"
         )
-    log("g = " + ', '.join(f'{x:.4f}' for x in design.g))
-    log(f"calibration: kf {design.kf:.4f}, kb {design.kb:.4f}")
+    if sp.topology != 'freeform':   # (searched for: no prototype values)
+        log("g = " + ', '.join(f'{x:.4f}' for x in design.g))
+        log(f"calibration: kf {design.kf:.4f}, kb {design.kb:.4f}")
     log(f"\n  {'element':28s} {'Z (ohm)':>12s} {'width':>8s} {'length':>8s} "
         f"{'gap':>8s}   (mm)"
         )
@@ -233,6 +265,47 @@ def write_model_s2p(design, path, f):
                 f"{fi / 1e9:.6f} {a.real:.6e} {a.imag:.6e} {b.real:.6e} "
                 f"{b.imag:.6e} {b.real:.6e} {b.imag:.6e} {a.real:.6e} "
                 f"{a.imag:.6e}\n")
+
+
+def freeform_design(a, spec, sub):
+    """--topology freeform: the pattern searched for (dfsynth.freeform)."""
+    try:
+        from kicad2ems.mom25d import _core  # noqa: F401
+    except ImportError:
+        raise RuntimeError(
+            "--topology freeform needs mom25d's compiled core: python -m "
+            "kicad2ems.mom25d.core.build (a C++17 compiler and pybind11)")
+    from . import freeform
+    box = None
+    if a.box:
+        m = re.fullmatch(r'\s*([0-9.]+)\s*[xX]\s*([0-9.]+)\s*', a.box)
+        if not m:
+            raise ValueError(f"--box is WxH in mm (e.g. 10x8), not {a.box!r}")
+        box = float(m.group(1)), float(m.group(2))
+    print(f"free-form {spec.kind}: searching (some minutes: a few steps a "
+          "second)")
+    return freeform.synthesise(
+        spec, sub, box=box, pitch=a.pixel or None, steps=a.search_steps,
+        seconds=a.search_time, symmetry=a.symmetry, rl=a.return_loss,
+        floor=a.stop_floor, log=print,
+        **({} if a.outline is None else {'smooth': a.outline}))
+
+
+def freeform_record(design):
+    """A free-form design's part of <out>_design.json: the grid and the
+    pattern, a string a row ('#': copper), the first row the top."""
+    ff = getattr(design, 'freeform', None)
+    if ff is None:
+        return {}
+    g, m = design.grid, design.mask
+    return {'freeform': {
+        'pixel_mm': g.pitch, 'pixels': [g.nx, g.ny],
+        'feed_pixels': g.feed_w, 'feed_rows': list(g.rows),
+        'symmetry': ff['symmetry'], 'model_cost_dB2': ff['loss'],
+        'model_frequency_map': list(ff['fmap']),
+        'sample_GHz': [float(x) / 1e9 for x in np.sort(ff['goal'].f)],
+        'pattern': [''.join('#' if m[i, j] else '.' for i in range(g.nx))
+                    for j in range(g.ny)]}}
 
 
 def main(argv=None):
@@ -273,13 +346,15 @@ def main(argv=None):
         if a.atten and a.order is None:
             spec.order = order_from_atten(spec, a.atten)
             print(f"order {spec.order} meets {a.atten}")
-        if a.no_calibrate:
+        if topo == 'freeform':
+            design = freeform_design(a, spec, sub)
+        elif a.no_calibrate:
             notes = prepare(spec)
             design = build(spec, sub)
             design.notes = notes + design.notes
         else:
             design = calibrate(spec, sub, log=print, refine_time=a.refine_time)
-    except ValueError as e:
+    except (ValueError, RuntimeError) as e:
         print(f"dfsynth: {e}", file=sys.stderr)
         return 2
     describe(design)
@@ -353,7 +428,8 @@ def main(argv=None):
                 (k for k in mets if k in reg and reg[k].consumes == 'board'),
                 None)
             pred = val.predicted(mets, fw) if fw else None
-            if pred:
+            # (a free-form design's model has no copper thickness to add)
+            if pred and spec.topology != 'freeform':
                 print(
                     f"  {fw} with {design.sub.t * 1e3:.0f} um copper (its "
                     "error over the t=0 model, applied to the model): centre "
@@ -363,6 +439,24 @@ def main(argv=None):
             if r == a.em_tune or fw is None:
                 break
             new, kf, kb = spec, design.kf, design.kb
+            if spec.topology == 'freeform':
+                # the pattern searched on, the pixel model asked for the
+                # spec where the full-wave result has it
+                from . import freeform
+                fe, s21e, _ = results[fw]
+                tuned = freeform.retune(
+                    design, fe, s21e, results['model (dfsynth)'][1],
+                    log=print)
+                if tuned is None:
+                    print(f"  no band edges in the {fw} result to tune "
+                          "from: stopping the tuning")
+                    break
+                design = tuned
+                describe(design)
+                kicad.write(design, base, title)
+                # (the pattern is another: its model's file with it)
+                write_model_s2p(design, base + '_model.s2p', f)
+                continue
             if spec.topology == 'interdigital':
                 # each resonator's frequency, each coupling and the taps can be
                 # off on their own: a centre / bandwidth correction cannot move
@@ -432,6 +526,7 @@ def main(argv=None):
                     'polys': geo.polys, 'vias': geo.vias, 'ports': geo.ports,
                     'via_mm': [VIA_DRILL, VIA_SIZE]
                 },
+                **freeform_record(design),
                 **summary
             },
             fh,

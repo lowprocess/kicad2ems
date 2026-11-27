@@ -32,11 +32,14 @@ from .circuit import (Ideal, MLine, MStub, MCoupled, MGap, MRadial,
 from . import mtl
 
 KINDS = {
-    'lowpass': ('stepped', 'stub', 'radial'),
+    'lowpass': ('stepped', 'stub', 'radial', 'freeform'),
     'highpass': ('stub',),
-    'bandpass': ('coupled', 'hairpin', 'interdigital', 'endcoupled', 'stub'),
+    'bandpass': ('coupled', 'hairpin', 'interdigital', 'endcoupled', 'stub',
+                 'freeform'),
     'bandstop': ('stub', 'radial'),
 }
+# (freeform: no design equations, a search over pixel patterns:
+# dfsynth.freeform makes its Design, not build())
 
 VIA_DRILL, VIA_SIZE = 0.3, 0.6
 
@@ -1303,4 +1306,7 @@ def prepare(spec):
 
 def build(spec, sub, kf=1.0, kb=1.0):
     spec.check()
+    if spec.topology == 'freeform':
+        raise ValueError("a free-form filter is searched for, not built from "
+                         "a spec and two factors: dfsynth.freeform.synthesise")
     return BUILDERS[(spec.kind, spec.topology)](spec, sub, kf, kb)

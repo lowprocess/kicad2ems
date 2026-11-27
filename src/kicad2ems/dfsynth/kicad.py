@@ -184,7 +184,9 @@ def toml_text(design, board_name, points=401):
         f'fmax    = {fmax:.4f}',
         f'points  = {points}',
         'out     = "out"',
-        'fast    = "auto"',
+        # (a free-form pattern is no set of lines: the line model has nothing
+        # to say of it)
+        *([] if s.topology == 'freeform' else ['fast    = "auto"']),
         'bc      = "PML_8"   # FDTD boundaries: the default Mur, 5 mm from a '
         'resonant filter, absorbs its near field',
         '',
