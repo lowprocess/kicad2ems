@@ -230,11 +230,7 @@ def search(state, goal, steps=2000, smooth=0.0, tabu=0, rng=None, log=None,
         c = goal.loss(y_to_s(state.trial()))
         if smooth:
             c = c + smooth * (perimeter(grid, state.mask) + outline_change())
-        # (to 1e-6: the matrix's last digits differ from run to run, its
-        # fill's threads summing in another order, and the best of two
-        # moves that close would be another: the same spec had given
-        # another pattern each time, 2.7 and 5.2 dB^2 on the low-pass)
-        c = np.where(np.isfinite(c), np.round(c, 6), np.inf)
+        c = np.where(np.isfinite(c), c, np.inf)
         if tabu:
             c = np.where((until > step) & (c >= best - 1e-9), np.inf, c)
         corners, chosen = corner_contacts(grid, state.mask), None

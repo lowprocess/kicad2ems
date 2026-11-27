@@ -18,8 +18,30 @@ a pattern is evaluated, exactly, for a few small solves each. A search then
 pays N^2 per change it makes, and next to nothing per change it considers.
 (Pivoted: the changes' low-rank factors kept beside P and applied together.)
 """
+import functools
+
 import numpy as np
 from scipy.linalg import blas, inv
+
+_CONTROL = []
+
+
+def one_thread(fn):
+    """fn with BLAS on one thread. A search makes the best of many moves at
+    each step, and where two are as good to nine digits the last digits
+    decide: with BLAS's threads those differ from run to run (the trial
+    costs of one pattern by 2e-9 between two processes), and the same spec
+    gave another pattern each time (2.4 and 4.5 dB^2 for the default
+    band-pass). On one thread a run repeats: the costs to 1e-12 (the
+    matrix's fill keeps its threads), the moves made the same."""
+    @functools.wraps(fn)
+    def run(*args, **kw):
+        if not _CONTROL:
+            from threadpoolctl import ThreadpoolController
+            _CONTROL.append(ThreadpoolController())
+        with _CONTROL[0].limit(limits=1, user_api='blas'):
+            return fn(*args, **kw)
+    return run
 
 
 def transform(Z, act):
@@ -172,12 +194,14 @@ class State:
         return [Pivoted(transform(s.reduce(Z), a))
                 for s, a in zip(self.systems, act)]
 
+    @one_thread
     def set(self, mask):
         self.mask = np.array(mask, bool)
         act = [s.active(self.mask) for s in self.systems]
         self.P = [self._matrices(f, act) for f in self.freqs]
         self.count = 0
 
+    @one_thread
     def add_frequency(self, f):
         self.freqs.append(float(f))
         self.P.append(self._matrices(
@@ -191,6 +215,7 @@ class State:
                       * s.sign[None, :] for P in self.P])
             for k, s in enumerate(self.systems)])
 
+    @one_thread
     def trial(self):
         """(nf, n, 2, 2): the port admittance after each move, each
         alone."""
@@ -217,6 +242,7 @@ class State:
             ys.append(out)
         return self.combine(ys)
 
+    @one_thread
     def apply(self, m):
         """Makes move m: the mask toggled, every matrix pivoted. From time to
         time the matrices are made afresh (a pivot's rounding adds up)."""

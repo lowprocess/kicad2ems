@@ -127,9 +127,9 @@ STAGES = 5
 # on the default low-pass (2 GHz, order 5, RO4003C-0.508) and band-pass (5
 # GHz / 500 MHz, order 3, RO4003C-0.813), the cost on a dense sweep after
 # 1500 steps: 0.02: 7.2 and 6.4-7.0 (ragged patterns, a narrow parasitic
-# resonance in the low-pass's stop band); 0.05: 2.7, 5.2 and 2.6; 0.1: 6.7
-# (the low-pass). The runs were not yet repeatable (search: costs rounded
-# since): the low-pass's two at 0.05 are the spread to read the rest by
+# resonance in the low-pass's stop band); 0.05: 2.7, 5.2 and 2.4, 2.5, 4.5;
+# 0.1: 6.7 (the low-pass). The runs did not repeat then (pivot.one_thread
+# since): those at 0.05 are the spread to read the rest by
 SMOOTH = 0.05
 # stop-band samples on each side of a band (a low-pass: twice this above it)
 N_STOP = 14

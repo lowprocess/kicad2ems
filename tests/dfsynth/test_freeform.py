@@ -237,6 +237,10 @@ def test_search_lowers_the_cost_and_joins_no_corners(grid):
     st.set(m)
     b2, c2 = search(st, goal, steps=500)
     assert c2 < c0 and st.count < 500
+    # and a search repeats (its linear algebra on one thread)
+    st.set(m)
+    b3, c3 = search(st, goal, steps=25, tabu=5)
+    assert np.array_equal(b3, best) and c3 == pytest.approx(c, abs=1e-9)
 
 
 def test_rectangles_cover_the_pattern_once(grid):
