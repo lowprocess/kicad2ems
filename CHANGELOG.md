@@ -10,6 +10,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Drawn metal's own loss (`--sigma` on openEMS and gfdtd, Palace's `loss`; `fdtd/faces.py`,
+  docs/meshing.md#drawn-metal-loss, 2026-11-27).** The faces the field reaches are conducting sheets: one side of a
+  conductor 30 skin depths thick (its surface impedance; the fit's resistance within 0.5 % from a tenth of the fit
+  frequency up), at each height the metal not under or over more metal and each slab's straight sides, none
+  against more metal or on an enclosure's outer faces; a wall one cell thick one two-sided sheet of its thickness,
+  a foil a sheet of its own; a magnet's faces NdFeB's 6.7 × 10⁵ S/m; curved sides stay PEC, as vias do. The faces
+  lie over the board's copper (copper on a metal face is its surface: openEMS's two-sided sheet had given a can's
+  floor half its loss, the cavity's Q 14 % high). Palace: the metal holes' faces its conductivity boundary, one-
+  sided. A copper cavity's TE101 (`tools/fdtd/can_q.py`; Pozar: 7.2639 GHz, Q0 7,619): gfdtd 7.2596 GHz and 7,624
+  (0.02 M cells, 166 s), openEMS 7.2596 and 7,628 (1,246 s), Palace's eigenmode 7.2617 and 7,580 (14 k
+  tetrahedra, 317 s). rf_shielded_can's S21 peak with `--sigma` −6.02 → −6.59 dB (the walls and lid 0.002 dB of
+  it, the rest the ground plane that had been lossless); 85,013 sheet edges, a gfdtd step 7,900 → 5,800 M cells/s,
+  peak 548 → 564 MB.
+- **Small drawn posts meshed as ground vias (`fdtd.mesh`, 2026-11-27).** A metal piece up to 1 mm across has no x /
+  y lines of its own with `--vias auto` (the default) or `snap`, its centre moved onto the nearest line crossing
+  within `--via-snap` (a line every 0.4 mm along a row where none is near); `--vias exact` keeps its faces' lines.
+  draw_bench's 300-post fence in rf_shielded_can 1.98 → 0.45 M cells, the step 0.069 → 0.083 ps, 36 → 14 s, 1.93 →
+  0.56 GB; 300 posts along its long edges 2.85 → 0.46 M cells, 345 → 95 s; rf_siw's via rows drawn as posts: the
+  TE10 cut-off 6.195 → 6.204 GHz, |S21| within 0.03 dB and 0.8° over 7–12 GHz.
+- **Antenna mode with drawn solids (2026-11-27):** `antenna_dra`, a cylindrical dielectric resonator (εr 10, 12 mm
+  across, 6 mm tall) fed through a slot drawn in the ground by a microstrip: 6.51 GHz, S11 −24.7 dB, −10 dB from
+  6.29 to 6.77 GHz, gain 6.0 dBi (directivity 6.1, 98 %), weakly coupled its HEM11δ at 6.63 GHz against Mongia and
+  Bhartia's 6.61; gfdtd (0.78 M cells, 2 s) and openEMS (22 s) within 0.1 dB and 0.01 GHz. `antenna_patch_radome`,
+  the patch under a 2 mm plate of εr 3 3 mm over it: 2.4275 GHz on both engines (bare 2.4375), gain 3.10 / 3.07
+  dBi (bare 2.89 / 2.92); laid on the copper −3.2 % drawn and as a stackup layer alike (mom25d −3.4 %). The NF2FF
+  box already enclosed the solids. `--thickness on` with solids checked: rf_shielded_can 4.65026 GHz against its PEC
+  boundary's 4.65023.
 - **The Draw page as a modelling front end (2026-11-27).**
   - **Templates** (`core.templates`, *Templates* menu): a dialog of the template's numbers, then its shapes follow
     the mouse until a click places them, selected, one undo step. A shield can (a metal box, air inside, posts
@@ -889,6 +916,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **`prepare_example` into a relative folder** wrote nothing where asked: a generated board's generator runs inside
+  the folder, which then read the relative path from there. The folder is made absolute first.
+- **A closed drawn can's ground plane was lossless with `--sigma`:** the mesh ends at the can's outer faces, and
+  openEMS and gfdtd keep sheets in a Mur boundary's cell PEC; a closed can's sides are now PEC with `--sigma`.
 - **CI's window tests failed since the Draw page's tools (6c11bfd5, 2026-11-27): the window was wider than its
   screen.** With CI's font (DejaVu Sans; Fedora's Noto Sans is narrower) the window's least width was 805 px on
   the offscreen platform's 800 px screen, so its docks went side by side (`test_the_window_is_docks`; reproduced

@@ -200,7 +200,9 @@ def prepare_example(name, dest=None, log=None):
     src = examples().get(name)
     if src is None:
         raise KeyError(f"no example {name!r}")
-    dest = dest or user_folder()
+    # (absolute: a generator runs inside it, and a relative one would be read
+    # from there)
+    dest = os.path.abspath(dest or user_folder())
     os.makedirs(dest, exist_ok=True)
     cfg = os.path.join(dest, name + '.toml')
     shutil.copyfile(src, cfg)  # the installed version's config, always

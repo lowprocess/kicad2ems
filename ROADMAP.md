@@ -41,17 +41,21 @@ magnets too (2026-11-27), so a circulator is built and run from it. What it lack
 
 **What the drawing does**
 
-1. **Solids in the solvers, the rest** (the FDTD's model and mesh, Palace's volumes and mom25d's refusal are done,
-   2026-11-27: docs/meshing.md#drawn-solids):
-   - metal solids are PEC: `--sigma` and Palace's `loss` leave a can lossless, its own loss missing from a Q;
-   - a fence of small metal posts puts lines at every post's extremes: 300 posts 0.1 mm across at 0.147 mm pitch
-     inside rf_shielded's can made 1,102 x lines (4.13 M cells, the time step 0.047 ps from 0.083); snapped as
-     ground vias are (`--vias snap`) they would keep the board's mesh;
-   - not yet checked: solids with `--thickness on` (their heights go through the thick-copper plan), in antenna
-     mode (a radome; the NF2FF box follows the mesh), and metal thinner than its cell in plan (said, left out);
+1. **Solids in the solvers, the rest** (the FDTD's model and mesh, Palace's volumes and mom25d's refusal; drawn
+   metal's own loss, small posts meshed as vias, antenna mode and `--thickness on` with solids: done 2026-11-27,
+   docs/meshing.md#drawn-solids):
+   - curved and oblique metal sides stay PEC with `--sigma` (their staircase edges as sheets would give them loss);
+   - a drawn metal's own σ and steel's μr (copper's now; a magnet NdFeB's);
+   - the faces cost what they cover: rf_shielded_can's lid and walls are 54 k of its 85 k sheet edges, 4 % a step,
+     for 0.002 dB; a solid marked lossless would save that;
+   - metal thinner than its cell in plan is said and left out;
    - Palace meshes the air outside a drawn can that closes round the board (125,000 tetrahedra against its PEC
-     box's 118,000, 161 s against 145 s); the FDTD leaves it out;
+     box's 118,000, 161 s against 145 s); the FDTD leaves it out; Palace has not run the DRA;
    - mom25d could take a dielectric solid over the whole board as a stack layer (a cover) instead of refusing it;
+   - a port on a solid's face and a coax port: `board.Port` as a box between two metal faces (`kind='box'`: a
+     lumped port in the FDTD, a rectangle in Palace, lines at its faces); a coax template's end face with its TEM
+     mode, E ∝ 1/r, as a weighted excitation and a mode-matched probe (the machinery of `lineport.py`), Z0 =
+     60/√εr ln(b/a); checked on a drawn 50 Ω coax line (S11 under −30 dB) and the probe-fed cp_patch;
    - set aside: a box-shaped closed can as the PEC boundary at its inner faces. The PEC-boundary run is that model:
      0.41 M cells and 33 s against the drawn can's 0.45 M and 35 s (−6 %), under the 10 % a pass must gain.
 2. **Ferrites and magnets, the rest** (done 2026-11-27: the `ferrite` and `magnet` materials, `core.magnets`'s bias,
@@ -349,6 +353,14 @@ mesh preview, an orthographic camera, arrowheads, a 3D box selection, select ali
    triangle into pcbqs, with pcbqs's compiled static, compressed and layered kernels.
 
 ## FDTD (gfdtd and openEMS)
+
+- **Ground-plane loss (found 2026-11-27, drawn metal's loss):** a zero-thickness ground plane is openEMS's
+  two-sided sheet and gets half its loss (`--thickness on` gets it right); one on a PEC bottom boundary or in a Mur
+  cell is lossless with `--sigma` (`rf_shielded.toml` among them). rf_shielded's res-80 mesh is not converged in x:
+  dense x lines move its peak 37 MHz up, to 4.6625 GHz (EMerge 4.621).
+- **Weakly coupled high-Q runs** stop when the probes' signals have decayed while the cavity still rings: they need
+  `end_on = "energy"` (tools/fdtd/can_q.py does); the end criterion could watch the energy when the ports' coupling
+  is weak.
 
 1. **rf_ebg is not converged at the default resolution** (F88): its stopbands at 3.2 and 7.2 GHz at `--res 60`,
    at 3.2-3.8 and 4.4-4.9 GHz at res 20 and 40, with any fine cell; res 60 is not settled either (0.057 between
