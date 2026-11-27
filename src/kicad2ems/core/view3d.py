@@ -112,15 +112,27 @@ def project(m, width, height, p):
 
 def frame(bounds, cam, aspect, margin=1.1):
     """dict(center, distance) that fit box `bounds` (x0, y0, z0, x1, y1, z1)
-    in the view from where `cam` looks (its fov, and the view's width /
-    height `aspect`): its bounding sphere inside the narrower field."""
+    in the view from where `cam` looks (its elevation, azimuth and fov, and
+    the view's width / height `aspect`): the box's eight corners, seen from
+    its centre, inside each axis's own field (`margin` to spare). A bounding
+    sphere in the narrower field put a flat board in a wide view 2-3x too far
+    (sma_launch from the top: 38 % of the height and 20 % of the width)."""
     b = np.asarray(bounds, float)
     c = (b[:3] + b[3:]) / 2
-    r = max(float(np.linalg.norm(b[3:] - b[:3])) / 2, 1e-3)
-    hx = math.radians(cam.get('fov', 60)) / 2
-    hy = math.atan(math.tan(hx) / max(aspect, 1e-6))
+    tx = math.tan(math.radians(cam.get('fov', 60)) / 2)
+    ty = tx / max(aspect, 1e-6)
+    # the corners about the centre in the camera's axes (x right, y up, z
+    # toward the camera); a corner's depth from a camera d away is d - z
+    rot = view_matrix(c, 0.0, cam.get('elevation', 30),
+                      cam.get('azimuth', 45))
+    q = np.array([[x, y, z, 1.0] for x in (b[0], b[3]) for y in (b[1], b[4])
+                  for z in (b[2], b[5])]) @ rot.T
+    need = np.maximum(margin * np.abs(q[:, 0]) / tx,
+                      margin * np.abs(q[:, 1]) / ty) + q[:, 2]
+    near = float(q[:, 2].max()) + 1e-3 * max(float(np.ptp(b[:3] - b[3:])),
+                                              1.0)
     return dict(center=tuple(float(v) for v in c),
-                distance=margin * r / math.sin(min(hx, hy)))
+                distance=max(float(need.max()), near, 1e-3))
 
 
 def preset(name, bounds, fov=60.0, aspect=1.0):

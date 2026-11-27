@@ -52,6 +52,25 @@ an animated GIF in `build/gui-flows/`, beside `flows.md`: each flow's steps, its
 exception in a slot, a Qt warning, a run that failed or timed out, a Run-page log not following its run).
 Run it after a change to the window, and look at the GIFs: a page that is empty raises no error.
 
+## The 3D view without a display
+
+The window's 3D views (the Draw page, the Viewer's 3D) use OpenGL, which Qt's `offscreen` platform does not
+give: offscreen they draw nothing, and their tests check the numbers (cameras, rays, picking) alone. To see them
+drawn on a machine with no display, run a private Wayland compositor on a virtual framebuffer and the window in it
+on Mesa's software OpenGL (llvmpipe). KWin has the virtual backend; its own D-Bus session keeps it apart from a
+desktop running beside it:
+
+```sh
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+LIBGL_ALWAYS_SOFTWARE=1 KWIN_COMPOSE=Q dbus-run-session -- \
+    kwin_wayland --virtual --width 1700 --height 1100 --socket k2e-gl --no-lockscreen &
+WAYLAND_DISPLAY=k2e-gl QT_QPA_PLATFORM=wayland LIBGL_ALWAYS_SOFTWARE=1 python your_script.py
+```
+
+In it `widget.grab()` includes the GL views (`llvmpipe ... 4.6 (Compatibility Profile)` on Fedora 44's Mesa
+26.2). Stop the compositor by its own PID when done. Any Wayland compositor with a headless backend will do
+(`weston --backend=headless`, `sway` with `WLR_BACKENDS=headless`), as will `xvfb-run` where Xvfb is installed.
+
 ## The GPUs, before a release
 
 CI has no GPU: its runners have Mesa's CPU Vulkan (lavapipe), on which mom25d's Vulkan LU and gfdtd's GPU tests run

@@ -409,7 +409,7 @@ Arbitrary shapes drawn over the board, in plan and in 3D, for a run to add to it
 *File > Draw shapes*). The board under them is the one chosen in the settings, as drawn; with none, a two-layer
 1.6 mm stack to draw on.
 
-![The Draw page: a trace, a pad, a keep-out cut, a dielectric puck and a shield lid over the hairpin filter](img/gui/draw.png)
+![The Draw page over sma_launch: a fence of metal posts (four selected, with the gizmo), a can (metal with air inside), a dielectric puck, a keep-out cut and a port, in plan and 3D](img/gui/draw.png)
 
 - **Tools**: *Select*, *Rectangle* and *Circle* (two clicks), *Polygon* and *Trace* (a click per point; double-click,
   right-click or Enter ends it, Esc drops it), *Port* (a click), *Measure* (two clicks give the distance, dx, dy and

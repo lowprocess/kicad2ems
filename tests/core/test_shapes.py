@@ -325,6 +325,21 @@ def test_the_camera_as_matrices():
     for q in ((0, 0, 0), (10, 4, 1), (10, 0, 0), (0, 4, 1)):
         px, py = v3.project(mt, 800, 400, q)
         assert 0 < px < 800 and 0 < py < 400
+    # and filling it: a flat board in a wide view from each preset, its
+    # corners out to the margin on one axis (a bounding sphere in the
+    # narrower field had left sma_launch at 20 % of the width, 38 % of the
+    # height from the top)
+    board = (0, -14, 0, 30, 0, 1.5)
+    for name in ('top', 'front', 'side', 'iso'):
+        cam = dict(v3.preset(name, board, 60, 4.0), fov=60)
+        m = v3.mvp(cam, 1200, 300)
+        pts = np.array([v3.project(m, 1200, 300, (x, y, z))
+                        for x in (0, 30) for y in (-14, 0) for z in (0, 1.5)])
+        assert (pts > 0).all() and (pts[:, 0] < 1200).all() and (
+            pts[:, 1] < 300).all(), name
+        fill = max(np.ptp(pts[:, 0]) / 1200, np.ptp(pts[:, 1]) / 300)
+        # (iso: perspective spreads the near corners, the centre fixed)
+        assert fill > (0.75 if name == 'iso' else 0.85), (name, fill)
     front = dict(v3.preset('front', (0, 0, 0, 10, 4, 1)), fov=60)
     mf = v3.mvp(front, 800, 400)
     (_, za), (_, zb) = (v3.project(mf, 800, 400, q) for q in ([5, 2, 0],

@@ -822,6 +822,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the machine's cores or its GPU already.
 
 ### Fixed
+- **The Draw page's camera presets framed a board from 2-3x too far (2026-11-27; seen once the 3D view was drawn
+  under software OpenGL).** `core.view3d.frame` fitted the box's bounding sphere into the narrower field, so a flat
+  board in the page's wide 3D view filled little of it: sma_launch's board and drawing (30 × 14 × 4.5 mm) in a 4:1
+  view filled 38 % from the top, 21 % from the front, 14 % from the side and 59 % iso. It now fits the box's eight
+  corners as the camera sees them, each axis in its own field: 91 %, 91 %, 91 % and 81 % (iso: perspective spreads
+  the near corners about the fixed centre). The outline, gizmo, grid, clip and Show menu, built and tested
+  offscreen, were looked at drawn for the first time and are as meant; docs/img/gui/draw.png is made again from
+  the real view.
 - **The window's EMC plots and the decoupling summary** (seen in screenshots of the five new tools, 2026-11-27):
   - radiated emission's and susceptibility's curves (dBµV/m, dBµV) were drawn on a log y axis, the window's
     default for a curve set that does not say: `logy=False` in both, as conducted emission had;

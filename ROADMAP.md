@@ -73,11 +73,12 @@ were done on 2026-11-27: CHANGELOG)
    names each tool's key; the drawn shapes in the main Viewer, and the run's mesh of them (the solids as the
    solver sees them). The side panel's last buttons are cut off at a 1500 × 950 window (*Use in runs* half shown,
    *Region from shape* and *Ports to settings* below it, 2026-11-27): the panel scrolled, or its buttons in a menu.
-2. **The 3D view, on a screen:** its outline, gizmo, grid, clip and Show menu were built and tested offscreen (the
-   camera, rays, picking and drags against pyqtgraph's own matrices), but no display was there to see them drawn:
-   look at them on one, and make docs/img/gui/draw.png again (its 3D half needs a display). Then the gizmo's
-   arrowheads (lines alone now), a box selection in 3D, an orthographic camera for Top / Front / Side (pyqtgraph's
-   is perspective), and the board's copper capped at the clip (its thin slabs are cut open; solids are capped).
+2. **The 3D view, the rest:** seen drawn on 2026-11-27 under software OpenGL (docs/testing.md, *The 3D view
+   without a display*): the outline, gizmo, working grid, clip (the solids cut and capped) and Show menu draw as
+   meant; the presets' fit was too far and is fixed. Left: an orthographic camera for Top / Front / Side
+   (pyqtgraph's is perspective: framed tight at its 60° field, a board's near edge is drawn well wider than its
+   far one from the front and the side), the gizmo's arrowheads (lines alone now), a box selection in 3D, and the
+   board's copper capped at the clip (its thin slabs are cut open).
 3. **Selecting and editing, the rest:** select alike (a net, a material, a layer); arrow keys to nudge; a point
    typed while drawing (a corner at x, y); snapping to a pad's corners and edges and along a track's centre line
    (pads' centres and tracks' ends and corners now) and to intersections; snapping while dragging in 3D (the
