@@ -140,17 +140,21 @@ def copper_heat(result):
         nd = sh.nodes[sh.tris]                                  # (M, 3, 2)
         mid = 0.5 * (nd + np.roll(nd, -1, axis=1))              # edge midpoints
         tri = np.repeat(np.arange(len(sh.tris)), 3)
-        out[lay] = [mid[..., 0].ravel(), mid[..., 1].ravel(), np.repeat(P, 3),
-                    tri]
+        out[lay] = [[mid[..., 0].ravel()], [mid[..., 1].ravel()],
+                    [np.repeat(P, 3)], [tri]]
+    # the barrels', gathered and joined once (appended one by one, the
+    # Jetson's 1456 ground vias had copied its 6.6 M points each time: 154 s)
+    bar = {}
     for v in result.vias:
         for la, lb, w in v.get('W', ()):
             for lay in (la, lb):
-                xs, ys, ws, ts = out.setdefault(
-                    lay, [np.zeros(0), np.zeros(0), np.zeros(0),
-                          np.zeros(0, int)])
-                out[lay] = [np.r_[xs, v['x']], np.r_[ys, v['y']],
-                            np.r_[ws, 0.5 * w], np.r_[ts, -1]]
-    return {k: tuple(v) for k, v in out.items()}
+                bar.setdefault(lay, []).append((v['x'], v['y'], 0.5 * w))
+    for lay, rows in bar.items():
+        x, y, w = np.array(rows, float).T
+        got = out.setdefault(lay, [[], [], [], []])
+        for k, a in enumerate((x, y, w, np.full(len(w), -1))):
+            got[k].append(a)
+    return {k: tuple(np.concatenate(a) for a in v) for k, v in out.items()}
 
 
 def _centroids(sh):
@@ -174,13 +178,25 @@ def resistivity(res, nets, alpha, t_sigma=T_SIGMA):
             t = np.where(np.isfinite(t), t, res.problem.ambient)
             T[lay] = t
             sheets[lay] = 1.0 / (1.0 + alpha * (t - t_sigma))
-        vias = []
-        for v, segs in zip(nw.vias, nw.via_segs):
-            ts = [res.sample(l, [v['x']], [v['y']])[0]
-                  for la, lb, *_ in segs for l in (la, lb) if l in layers]
-            ts = [t for t in ts if np.isfinite(t)]
-            t = float(np.mean(ts)) if ts else res.problem.ambient
-            vias.append(1.0 / (1.0 + alpha * (t - t_sigma)))
+        # each via's temperature: the mean over its barrels' ends (sampled a
+        # layer at a time: one at a time, the Jetson's 1456 took 6 s)
+        nv = len(nw.vias)
+        tot, cnt = np.zeros(nv), np.zeros(nv)
+        on = {}
+        for k, segs in enumerate(nw.via_segs):
+            for la, lb, *_ in segs:
+                for lay in (la, lb):
+                    if lay in layers:
+                        on.setdefault(lay, []).append(k)
+        for lay, ks in on.items():
+            ks = np.asarray(ks)
+            t = res.sample(lay, [nw.vias[k]['x'] for k in ks],
+                           [nw.vias[k]['y'] for k in ks])
+            ok = np.isfinite(t)
+            np.add.at(tot, ks[ok], t[ok])
+            np.add.at(cnt, ks[ok], 1.0)
+        t = np.where(cnt > 0, tot / np.maximum(cnt, 1), res.problem.ambient)
+        vias = list(1.0 / (1.0 + alpha * (t - t_sigma)))
         out.append((sheets, vias))
         temps[id(nw)] = T
     return out, temps
