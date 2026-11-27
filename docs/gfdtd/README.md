@@ -66,6 +66,7 @@ among them) work on gfdtd unchanged.
 | Grid | rectilinear, Cartesian; CSXCAD's helpers: `SmoothMeshLines` (CSXCAD's own function: the lines openEMS gets), `GetLine`, `Snap2LineNumber`, `GetSimArea`, `IsValid`, `Clear`; `openEMS.AddEdges2Grid` (box edges, `metal_edge_res`) |
 | Materials | isotropic epsilon and conductivity (kappa), averaged over the four cells around each edge; mue and magnetic loss (sigma) along each dual edge (such a model runs on the NumPy backend: the compiled kernels' H update is geometry alone) |
 | Dispersion | Debye materials (`DebyeMaterial`, any number of poles): `--diel wideband` |
+| Ferrite | gfdtd's own, beyond openEMS: `FerriteMaterial` (`CSX.AddFerriteMaterial`; in the XML as `<FerriteMaterial>`), a microwave ferrite magnetised along z, its permeability the Polder tensor ([How it works](#how-it-works)): εr and κ, saturation magnetisation `ms` (A/m), Gilbert damping `alpha`, `gamma` (γμ0, rad/s per A/m), and the internal bias `bias` (A/m, its sign the direction) as one value or a table read at each cell's centre (NaN: not saturated, the cell left unbiased) |
 | Metal | `Metal` as PEC; `ConductingSheet` (conductivity, thickness: kicad2ems's `--sigma`) with openEMS's conductor-loss model on flat primitives, PEC on others and next to the boundaries, as openEMS's; with `roughness` (m RMS, gfdtd's own) rough copper |
 | Primitives | Box, Polygon, LinPoly, Cylinder, CylindricalShell, Sphere, SphericalShell, Curve (a wire along the mesh edges nearest to it, as openEMS's) |
 | Lumped elements | R, L, C: parallel, or series RLC (`LEtype=1`), with metal caps |
@@ -169,6 +170,31 @@ V   = vv * V + vi * (loop sum of I around the dual face)  from C = eps A' / l, G
   impedance up to f0 + fc (openEMS's table), scaled per square to the edge and halved on the sheet's border. The
   branches are poles driven by the voltage, L di/dt + R i = V, integrated and folded into the E update like the
   Debye ones (openEMS updates them explicitly).
+- **Magnetised ferrite** (`FerriteMaterial`): the linearised Landau–Lifshitz–Gilbert equation of the small
+  magnetisation m = (mx, my) about a static bias along z, written in b = B/μ0 = h + m, which the H update advances by
+  Faraday's law alone (the ferrite's H edges are vacuum's):
+  dm/dt = s J (ωr m − ωm b) + α s J dm/dt, J (x, y) = (−y, x), ωr = γ(H0 + Ms), ωm = γMs, s the bias's sign. In the
+  frequency domain that is Polder's tensor, B = μ0 [μ, jκ; −jκ, μ] h for +z. m lives at the cell centres: b there
+  is the mean of its two x (y) edges', and each edge's h is b less its cells' m weighted by their half lengths over
+  its dual length (the transpose of the mean in the cells' and edges' volumes). The trapezoidal rule makes the
+  update m+ = P m− + Q (b+ + b−), with P and Q two numbers each times I and J: unbiased by b it is an exact rotation
+  by 2 atan(ωr dt / 2), stable at any step, and the time step is vacuum's. Two kernels run after the H update (the
+  cells, then their edges), `fdtd_core.h`'s `gf_ferrite_cell` and `gf_ferrite_edge` on the GPU and in the CPU
+  core.
+  - A 10 × 10 × 1 mm PEC box full of ferrite (f0 = γH0 = 3 GHz, fm = γMs = 5 GHz, εr 15): its TM_mn0 modes are
+    where (ω/c)² εr μ_eff(ω) = kc², μ_eff = (μ² − κ²)/μ, twice each, below the pole √(f0 (f0 + fm)) and above
+    f0 + fm. At 0.25 mm cells TM110 at 2.903 and 9.250 GHz (analytic 2.899, 9.250), TM210 3.811 and 11.148
+    (3.800, 11.156), TM220 4.169 and 12.887 (4.155, 12.906); at 0.5 mm within 1 %
+    (`tests/gfdtd/test_ferrite.py`). The update in steady state is the Polder tensor to O((ω dt)²) with either
+    bias.
+  - Between that pole and f0 + fm, where nothing propagates (μ_eff < 0), the grid has magnetostatic modes of its
+    own (short ones, whose coupling the centre-to-edge mean blurs): small peaks, 1–10 % of the main ones, that
+    stay as the cells shrink. A circulator works above f0 + fm (below resonance), clear of them.
+  - Lossless it rings in those modes, radiating slowly: no growth in 200,000 steps; damped (α from a 30 Oe
+    linewidth) it settles as a dielectric does. The end criterion watches the field's energy, not the
+    magnetisation's: on the circulator −60 dB moved its S by 0.6 dB at most against −40.
+  - Cost: 1.7–2.8 % a step on an RX 7800 XT (0.5–1.2 M nodes, 13–52 k ferrite cells); in the CPU core 63 µs a step
+    for 13 k cells (NumPy's 332 µs), beside 320 µs for H and E over 0.5 M nodes. 56 B a cell and 28 an edge.
 - **Rough copper** (`ConductingSheet(..., roughness=)`, m RMS; gfdtd's, written to the XML as `Roughness`, which
   openEMS reads past): the resistance per square times Hammerstad and Jensen's factor
   1 + 2/pi atan(1.4 (rms / delta)^2), fitted from f_max / 10^4 to 2 f_max as a passive R-L impedance (7–9

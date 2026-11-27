@@ -36,8 +36,8 @@ The next focus for extension and the window's UI (the user's word, 2026-11-27). 
 since 2026-11-27) draws rectangles, circles, polygons, traces and ports as copper or cuts on a layer, and metal,
 dielectric and air solids between two heights. It has plan and 3D views, selection of several shapes, the
 clipboard, locking and hiding, exact edits and arrays, snapping, measuring, camera presets, a clip plane and a
-gizmo in 3D, a properties form, undo, and writes the `shapes`, `region` and `ports` settings. What it lacks, most
-useful first:
+gizmo in 3D, a properties form, undo, and writes the `shapes`, `region` and `ports` settings; ferrites and
+magnets too (2026-11-27), so a circulator is built and run from it. What it lacks, most useful first:
 
 **What the drawing does**
 
@@ -55,15 +55,37 @@ useful first:
    - the run's mesh preview and the Viewer do not draw the solids yet (the page's item 1);
    - set aside: a box-shaped closed can as the PEC boundary at its inner faces. The PEC-boundary run is that model:
      0.41 M cells and 33 s against the drawn can's 0.45 M and 35 s (−6 %), under the 10 % a pass must gain.
-2. **Templates:** a shield can with its fence vias, an enclosure with a lid, an edge-launch SMA, a via fence along
+2. **Ferrites and magnets, the rest** (done 2026-11-27: the `ferrite` and `magnet` materials, `core.magnets`'s bias,
+   gfdtd's `FerriteMaterial`, the `rf_circulator` example: docs/gfdtd/README.md#how-it-works,
+   docs/examples.md):
+   - steel: pole pieces, a return path, a steel case shape the bias as much as the magnet does; a magnetostatic
+     solve with B-H curves (Elmer's `WhitneyAVSolver`, which the coils study already drives) would give the bias
+     where the face-charge sum cannot;
+   - the bias's x and y components (near a puck's rim, under an off-centre magnet): the magnetisation as three
+     components about the local field, the Polder tensor turned to it;
+   - a partly magnetised ferrite (where the magnet does not saturate it: now unbiased, μ 1): Schlömann's
+     demagnetised μ and its low-field loss;
+   - the grid's own magnetostatic modes between √(f0 (f0 + fm)) and f0 + fm (1–10 % peaks in the ferrite
+     cavity, staying as the cells shrink): harmless above f0 + fm, where circulators work below resonance, but
+     an above-resonance device (an isolator, a phase shifter) works there;
+   - the end criterion counts the field's energy, not the magnetisation's (−40 dB was enough on the circulator:
+     0.6 dB from −60);
+   - the linewidth as Gilbert damping, ΔH ∝ f (from the datasheet's at 9.4 GHz); temperature (4πMs and Br at
+     25 °C);
+   - Palace: its μ is a real symmetric tensor; a ferrite's is Hermitian (its operator code, not ours);
+   - a circulator template (the item below) and study question: isolation, insertion loss and the 20 dB band,
+     the magnet's height and the disc's radius optimised.
+   - the page: a map of Hz over a ferrite in plan (or a slice through it), the magnet's field lines in 3D; the
+     *Bias* readout's 20 ms is three quarters `core.magnets._omega_up` (numpy over every face triangle).
+3. **Templates:** a shield can with its fence vias, an enclosure with a lid, an edge-launch SMA, a via fence along
    a trace, a coax or probe feed, an absorber sheet; each placed with a click, then edited as shapes.
-3. **Dimensions as variables:** a shape's numbers as named variables (w, gap, h) in the drawing, which the study's
+4. **Dimensions as variables:** a shape's numbers as named variables (w, gap, h) in the drawing, which the study's
    *Vary* sweeps, and later an optimiser (the study 10's optimisation).
-4. **Ports, the rest:** a port's kind (lumped, wave), impedance and direction in the form; a port on a solid's face
+5. **Ports, the rest:** a port's kind (lumped, wave), impedance and direction in the form; a port on a solid's face
    for the FDTD; lumped R, L and C between two points.
-5. **Import:** DXF outlines as polygons; STEP or STL of an enclosure or a connector as a solid (its triangles, for
+6. **Import:** DXF outlines as polygons; STEP or STL of an enclosure or a connector as a solid (its triangles, for
    the FDTD and Palace).
-6. **Booleans and curves:** union, subtraction and intersection of polygons (shapely); arcs and fillets in
+7. **Booleans and curves:** union, subtraction and intersection of polygons (shapely); arcs and fillets in
    polygons and traces; chamfers.
 
 **The page (UI)** (selection, exact edits, snapping, measuring, the 3D view's tools and the speed with 300 shapes

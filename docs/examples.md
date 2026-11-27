@@ -66,6 +66,29 @@ or RO4003C (`make_rf_examples.py all`, or `NAME` for one). The first eleven have
 it, `rf_shielded_can_shapes.json`), in open boundaries: S21's peak 4.6255 GHz on gfdtd and openEMS, as with the PEC
 boundary, for 6 % more run time ([drawn solids](meshing.md#drawn-solids)). mom25d refuses it.
 
+`rf_circulator` is a microstrip Y-junction circulator built on the Draw page (`rf_circulator_shapes.json`; `python
+examples/make_rf_examples.py circulator` writes it and the board): a bare 0.508 mm RO4003C board with its ground,
+and drawn on it a garnet puck (4πMs 1200 G, ΔH 30 Oe, εr 15, 6.4 mm across) set into the laminate, a copper
+junction disc (r 2.45 mm), three 50 Ω arms 120° apart with 30 Ω quarter-wave transformers, three ports, and a
+NdFeB magnet (Br 1.2 T, 8 mm across, 3 mm tall) 2 mm over the copper. The magnet saturates the puck (`core.magnets`:
+300–840 Oe inside it, its rim the highest: less demagnetised there) and gfdtd runs the magnetised ferrite
+([gfdtd](gfdtd/README.md#how-it-works)); openEMS and Palace refuse it. 0.90 M cells, 1.3 s for P1 on an RX 7800 XT.
+
+![rf_circulator: S11, S21 and S31 with the magnet and without it, and the isolation as the magnet is raised](img/rf_circulator.png)
+
+| | P1 → P2 (S21) | P1 → P3 (S31) | S11 | isolation and match > 20 dB |
+|---|---|---|---|---|
+| the magnet 2 mm over the copper, at 9.22 GHz | −0.21 dB | −29.5 dB | −29.1 dB | 8.78–9.72 GHz |
+| no magnet (the puck unbiased: reciprocal), at 9.22 GHz | −3.8 dB | −3.9 dB | −8.7 dB | — |
+| the magnet reversed (Br −1.2 T), at 9.22 GHz | −26.7 dB | −0.21 dB | −29.2 dB | (P1 → P3) |
+| the magnet 1.0 / 1.5 / 2.5 / 3.0 / 4.0 mm over | | best −20.1 / −27.1 / −24.5 / −16.7 / — dB | | — / 8.85–10.03 / 8.78–9.45 / — / — GHz |
+
+All three ports driven, the matrix turns with the ports (S21 = S32 = S13, S31 = S12 = S23, S11 = S22 = S33 within
+0.02); reversing the magnet swaps P2 and P3 within 0.025 (the board is its own mirror image); −60 dB instead of
+−40 dB to stop moves S by 0.6 dB at most, and a 0.07 mm mesh instead of 0.1 mm moves the band 0.9 % up. The
+magnet is the circuit's tuning: too far and the puck's rim, then all of it, is no longer saturated (4 mm: no
+circulation); too close and its metal loads the junction while the bias rises.
+
 The figures above sit at single frequencies; a small reflection there mostly says where its ripple falls. Over the whole band, each solver's agreement with openEMS's reference (the rms of the complex difference of the input reflection, dB, and the rms difference of the transmission's |S|):
 
 | Board | gfdtd | mom25d | line model |

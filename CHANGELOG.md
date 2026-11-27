@@ -10,6 +10,50 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Ferrites and magnets on the Draw page, and a circulator simulated (`core.magnets`, gfdtd's `FerriteMaterial`,
+  `rf_circulator`, 2026-11-27).** Two solid materials: `ferrite` (εr, tan δ, 4πMs in gauss, the FMR linewidth ΔH in
+  Oe at 9.4 GHz) and `magnet` (Br in tesla, its sign up or down; metal to the RF, rare-earth magnets conduct).
+  - **The bias** (`core.magnets`): a prism magnetised along z has its magnetic charge on its top and bottom faces
+    alone, so the magnets' Hz and the saturated ferrite's own demagnetising field are sums over the faces'
+    triangles of their solid angles (Van Oosterom and Strackee): exact for the Draw page's shapes. Against the
+    closed forms: a slab's −M to 1e-3, a disc's solid angle on its axis to 1e-5, a cylinder magnet's field on its
+    axis to 1e-6. The ferrite is taken saturated the way the magnets' field points; where its internal field
+    does not have that sign it is not saturated and is left unbiased (said). `summary()` gives each ferrite's
+    applied and internal field, its saturated share and its γH0, γ4πMs.
+  - **gfdtd's magnetised ferrite** (`FerriteMaterial`, `AddFerriteMaterial`, in its XML both ways): the linearised
+    Landau–Lifshitz–Gilbert equation at the cell centres in b = h + m, so the H update stays Faraday's alone; the
+    trapezoidal rule (an exact rotation when unforced, any time step); the edges' h less the cells' m by their
+    half lengths. A uniform bias or a table read at each cell's centre. In `fdtd_core.h`, run by two Vulkan
+    kernels after the H update and in the CPU core. A PEC box full of ferrite resonates where the Polder tensor
+    puts it: TM110 / TM210 at 2.903, 9.250 / 3.811, 11.148 GHz against 2.899, 9.250 / 3.800, 11.156 (0.25 mm
+    cells, both branches of μ_eff > 0); numpy, the core and Vulkan within 4e-5; no growth in 200,000 steps
+    lossless. Cost: +1.7–2.8 % a step on the RX 7800 XT; on the CPU 63 µs a step for 13 k ferrite cells (numpy's
+    332 µs) beside 320 µs for H and E over 0.5 M nodes.
+  - **The FDTD model:** under a drawn magnet a ferrite is a `FerriteMaterial`, its bias computed at the mesh's
+    own cell centres over it; meshed by its εr. With no magnet it is a dielectric to every solver. openEMS and
+    Palace refuse a magnetised one (no gyrotropic medium: Palace's μ is a real symmetric tensor), named in their
+    assess step; mom25d refuses any solid.
+  - **The Draw page** (docs/gui.md): ferrite and magnet in the material choosers; a ferrite's εr, tan δ, 4πMs and
+    ΔH, a magnet's Br and which way it is magnetised (N on top or below), undone and redone and carried to the
+    rest of the selection as εr is; a solid made a ferrite with a laminate's εr 4.3 takes 15. With either
+    selected, *Bias* reads `core.magnets.summary` on the solids the bias depends on: each ferrite's internal field
+    range, its saturated share, f0 and fm, or that it is unbiased. Worked out 40 ms after the form fills, only
+    when seen, never while dragging, kept while the solids are the same: 20 ms for a 3 mm puck under a 5 mm
+    magnet (with a 300-via fence beside it, 48 ms before it took only the solids that matter), 0.1 ms kept. In
+    plan a ferrite is charcoal and a magnet crimson; in 3D a ferrite opaque charcoal and a magnet two halves, N
+    red and S blue. Translucent solids cull the faces turned away (a large see-through magnet had streaked), and
+    the 3D looks are worked out once a material and state: a 300-via fence's 3D redraw 2.26 → 1.35 ms, its
+    paint under llvmpipe 20.3 → 18.6 ms. `tools/gui/draw_bench.py --circulator` and its *3D paint*. The empty
+    measuring label no longer paints a box at the origin.
+  - **`rf_circulator`** (examples/make_rf_examples.py circulator writes the board and its drawing): a bare
+    0.508 mm RO4003C board, on it drawn a garnet puck (1200 G) under a copper junction disc, three 50 Ω arms
+    with 30 Ω quarter-wave transformers, three ports, and a 1.2 T magnet 8 mm across 2 mm over the copper. On
+    gfdtd (0.90 M cells, 1.3 s a port): at 9.22 GHz S21 −0.21 dB, S31 −29.5 dB, S11 −29.1 dB, both better than
+    20 dB from 8.78 to 9.72 GHz; with no magnet S21 −3.8, S31 −3.9 dB (reciprocal); the magnet reversed,
+    P1 → P3 (S21 −26.7, S31 −0.21 dB). The magnet's height is its tuning: 1.5 mm over gives 8.85–10.03 GHz,
+    1.0 mm 20 dB at best (its metal loads the junction), 3.0 mm 17 dB, 4.0 mm none (the puck unsaturated). The
+    full matrix turns with the ports within 0.02; −60 dB to stop changed S by 0.6 dB at most, a 0.07 mm mesh moved
+    the band 0.9 %. docs/examples.md, docs/img/rf_circulator.png.
 - **Drawn solids in the FDTD and Palace (`kicad2ems.core.solids`, docs/meshing.md#drawn-solids, 2026-11-27).**
   The Draw page's metal, dielectric and air solids (`board.solids`) are meshed: openEMS and gfdtd take them as
   extruded polygons in the CSX model, Palace as volumes. `core.solids.pieces` resolves them into disjoint pieces: a

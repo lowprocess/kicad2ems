@@ -53,6 +53,11 @@ d 0.02), B.Cu ground:
   idc         an interdigital capacitor in series with a 50 ohm line
   meander     a meander inductor in series with a 50 ohm line
   spiral      4-layer: a square spiral inductor with an underpass
+  circulator  a microstrip Y-junction circulator, 10 GHz, drawn on a bare
+              RO4003C board (its ground alone): a garnet puck set into the
+              laminate under the junction disc, a NdFeB magnet above it; the
+              drawing (rf_circulator_shapes.json, the Draw page's) written
+              beside the board
 
     python examples/make_rf_examples.py all
         # every board, examples/rf_<name>.kicad_pcb
@@ -1106,6 +1111,62 @@ def spiral(path, turns=3, ws=0.25, ss=0.25, dout=5.0, feed=8.0):
     return w
 
 
+def circulator(path, f0=9.6e9, r_disc=2.45, r_puck=3.2, r_mag=4.0,
+               gap=2.0, mag_len=3.0, br=1.2, ms=1200.0, dh=30.0, er_f=15.0,
+               tand_f=2e-4, arm=12.0, magnet=True, zt=30.0, lt=None):
+    """A microstrip Y-junction circulator on 0.508 mm RO4003C: a junction disc
+    (r_disc) on a garnet puck (r_puck, the laminate's thickness, er_f, 4 pi Ms
+    ms G, linewidth dh Oe) set into the board, three 50 ohm arms 120 deg apart
+    to the board's edges (P1 from the left, P2 up to the right, P3 down to the
+    right: arm mm each), and a NdFeB magnet (r_mag, mag_len tall, br T, up)
+    `gap` mm over the copper. zt: each arm a quarter-wave transformer of zt
+    ohm from the puck's rim (lt mm long; None: a quarter of its guided
+    wavelength at f0) to its 50 ohm line. The board has its ground alone: the
+    rest is the drawing written beside it (<path>_shapes.json, model
+    coordinates). Returns (w50, the ports setting)."""
+    from kicad2ems.core.shapes import Drawing, Shape
+    h, er, tand = RO4003[:3]
+    w = round(solve(lambda x: microstrip(x, h, er)[0], 50.0, 0.05, 5.0), 3)
+    W = 2 * arm
+    H = round(2 * arm * math.sin(math.radians(60)), 3)
+    bd = Board()
+    bd.write(path, W, H, sub=RO4003)
+    cx, cy = arm, -H / 2           # model coordinates (y up)
+    top = h + 0.035                # the copper's top face
+    shapes = [Shape('circle', [[cx, cy]], radius=r_puck, material='ferrite',
+                    z0=0.0, z1=h, er=er_f, tand=tand_f, ms=ms, dh=dh,
+                    name='puck'),
+              Shape('circle', [[cx, cy]], radius=r_disc, layer='F.Cu',
+                    net='RF', name='junction')]
+    ports = []
+    for n, ang in ((1, 180.0), (2, 60.0), (3, 300.0)):
+        a = math.radians(ang)
+        end = [cx + arm * 1.02 * math.cos(a), cy + arm * 1.02 * math.sin(a)]
+        shapes.append(Shape('path', [[cx, cy], end], width=w, layer='F.Cu',
+                            net='RF', name=f'arm{n}'))
+        if zt:
+            wt = round(solve(lambda x: microstrip(x, h, er)[0], zt, 0.05,
+                             10.0), 3)
+            ln = lt or C0 / (f0 * math.sqrt(microstrip(wt, h, er)[1])) / 4e-3
+            r0, r1 = r_puck, r_puck + ln
+            shapes.append(Shape(
+                'path', [[cx + r0 * math.cos(a), cy + r0 * math.sin(a)],
+                         [cx + r1 * math.cos(a), cy + r1 * math.sin(a)]],
+                width=wt, layer='F.Cu', net='RF', name=f'transformer{n}'))
+        # 0.6 mm in from the edge along the arm, facing the junction
+        pr = arm - 0.6 / max(abs(math.cos(a)), abs(math.sin(a)) * W / (2 * arm
+                                                                       ) or 1)
+        px, py = cx + pr * math.cos(a), cy + pr * math.sin(a)
+        ports.append(f"P{n}@{px:.4f},{-py:.4f},F.Cu,{(ang + 180) % 360:g}")
+    if magnet:
+        shapes.append(Shape('circle', [[cx, cy]], radius=r_mag,
+                            material='magnet', z0=round(top + gap, 4),
+                            z1=round(top + gap + mag_len, 4), br=br,
+                            name='magnet'))
+    Drawing(shapes).save(os.path.splitext(path)[0] + '_shapes.json')
+    return w, ports
+
+
 KINDS = dict(branchline=branchline, wilkinson=wilkinson, steplpf=steplpf,
              stubnotch=stubnotch, gcpw=gcpw, coupler=coupler, ratrace=ratrace,
              radialstub=radialstub, stripline=stripline, diffvia=diffvia,
@@ -1114,7 +1175,7 @@ KINDS = dict(branchline=branchline, wilkinson=wilkinson, steplpf=steplpf,
              serpentine=serpentine, crosstalk=crosstalk,
              crosstalk_guard=crosstalk_guard, bus=si_bus, ddr=ddr, pcoupled=pcoupled,
              combline=combline, openloop=openloop, dgs=dgs, ebg=ebg, idc=idc,
-             meander=meander, spiral=spiral)
+             meander=meander, spiral=spiral, circulator=circulator)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2 or sys.argv[1] not in list(KINDS) + ['all']:

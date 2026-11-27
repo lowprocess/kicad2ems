@@ -70,6 +70,8 @@ WAYLAND_DISPLAY=k2e-gl QT_QPA_PLATFORM=wayland LIBGL_ALWAYS_SOFTWARE=1 python yo
 In it `widget.grab()` includes the GL views (`llvmpipe ... 4.6 (Compatibility Profile)` on Fedora 44's Mesa
 26.2). Stop the compositor by its own PID when done. Any Wayland compositor with a headless backend will do
 (`weston --backend=headless`, `sway` with `WLR_BACKENDS=headless`), as will `xvfb-run` where Xvfb is installed.
+A script that makes more than one GL view (two Draw pages, say) sets `Qt.AA_ShareOpenGLContexts` before its
+`QApplication`, as the window does (`kicad2ems.gui`): without it the second fails in `glUseProgram` (`GLError`).
 
 ## The GPUs, before a release
 

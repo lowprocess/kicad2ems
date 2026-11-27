@@ -169,6 +169,16 @@ Two rules keep a drawn can from costing more than the PEC boundary it stands for
   there are no lines inside it and no grading beside it. 0.58 M cells to 0.45 M, 43 s to 35 s; the PEC boundary
   takes 0.41 M and 33 s.
 
+A **ferrite** is meshed as a dielectric of its εr (its μ is near 1, or below it, above its resonance, where a
+circulator works). A **magnet** is metal to the RF (rare-earth magnets conduct). Under a drawn magnet the ferrite
+is gfdtd's `FerriteMaterial`, its bias (`core.magnets`: the magnets' field and its own demagnetising field, from
+the charge on their faces, exact for prisms magnetised along z) computed at the mesh's own cell centres over it,
+in the mesh's heights, NaN where it is not saturated (those cells unbiased, the log counts them). With no magnet
+drawn it is a dielectric to every solver; under one, openEMS and Palace refuse it (no gyrotropic medium), as
+mom25d refuses any solid. Left out: the bias's x and y components, magnetic materials other than the magnets and
+the ferrite (no steel pole pieces or return path), a magnet's recoil permeability, temperature, and a partly
+magnetised ferrite (its low-field loss).
+
 S21's peak is 4.6255 GHz in each of them, as with the PEC boundary, on gfdtd and on openEMS (EMerge's converged
 3D FEM: 4.621 GHz). A dielectric cover over the board, 0.2 mm of εr 2.2, gives 4.4774 GHz drawn as a solid and as a
 stackup layer alike.

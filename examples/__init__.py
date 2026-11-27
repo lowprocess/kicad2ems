@@ -60,6 +60,7 @@ GROUPS = (
       'rf_crosstalk_guard', 'sma_launch')),
     ('RF structures', 'Printed components', ('rf_idc', 'rf_meander',
                                              'rf_spiral')),
+    ('RF structures', 'Ferrite devices', ('rf_circulator',)),
     ('Signal integrity', '', ('si_bus', 'si_ddr')),
     ('EMC', '', ('emc_serpentine',)),
     ('Lumped-element demos', '', ('demo_lowpass', 'demo_highpass',
