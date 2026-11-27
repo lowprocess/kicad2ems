@@ -1,0 +1,27 @@
+{
+ "format": "kicad2ems-shapes",
+ "version": 1,
+ "units": "mm",
+ "coordinates": "model (y up)",
+ "shapes": [
+  {
+   "kind": "rect",
+   "points": [
+    [
+     15.0,
+     -11.0
+    ],
+    [
+     45.0,
+     -1.0
+    ]
+   ],
+   "material": "dielectric",
+   "z0": 0.0,
+   "z1": 0.8,
+   "er": 3.66,
+   "tand": 0.0037,
+   "name": "insert"
+  }
+ ]
+}

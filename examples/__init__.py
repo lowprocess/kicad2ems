@@ -59,7 +59,7 @@ GROUPS = (
     ('RF structures', 'Lines and transitions',
      ('rf_gcpw', 'rf_stripline', 'rf_siw', 'rf_slotline', 'rf_ms2cpw',
       'rf_msvia', 'rf_diffvia', 'rf_bends', 'rf_serpentine', 'rf_crosstalk',
-      'rf_crosstalk_guard', 'sma_launch')),
+      'rf_crosstalk_guard', 'rf_insert', 'sma_launch')),
     ('RF structures', 'Shield cans', ('rf_can_mode', 'rf_can_absorber')),
     ('RF structures', 'Printed components', ('rf_idc', 'rf_meander',
                                              'rf_spiral')),

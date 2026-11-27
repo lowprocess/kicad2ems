@@ -66,6 +66,7 @@ and boards whose solids are drawn beside them (rf_<name>_shapes.json):
               dr_bandstop: the puck beside one line
   can_mode    two 50 ohm lines on FR-4 under a can, coupled at its first
               resonance; can_absorber: a lossy sheet under its lid
+  insert      a 50 ohm line on FR-4 across an insert of a low-loss laminate
 
     python examples/make_rf_examples.py all
         # every board, examples/rf_<name>.kicad_pcb
@@ -1281,6 +1282,33 @@ def can_absorber(path, **kw):
     return can_mode(path, absorber=True, **kw)
 
 
+def insert(path, L=60.0, li=30.0, wi=10.0, er_i=3.66, tand_i=0.0037,
+           drawn=True, H=12.0):
+    """A 50 ohm line L mm long on 0.8 mm FR-4 crossing an insert of a
+    low-loss laminate (er_i, tand_i: a hydrocarbon-ceramic one) li mm long and
+    wi mm wide set into the board through its whole thickness: a dielectric
+    solid in the drawing, taking the FR-4's place there, the line over it
+    widened to 50 ohm on it. drawn=False: the same line on FR-4 alone, no
+    drawing. Returns the widths (FR-4, insert)."""
+    from kicad2ems.core.shapes import Drawing, Shape
+    w = width(50.0)
+    wi_ = w_on(50.0, H_SUB, er_i) if drawn else w
+    x0, x1, y = (L - li) / 2, (L + li) / 2, H / 2
+    bd = Board()
+    bd.track([(0, y), (x0, y)], w)
+    bd.track([(x0, y), (x1, y)], wi_)
+    bd.track([(x1, y), (L, y)], w)
+    bd.port(1, 0.5, y, 0)
+    bd.port(2, L - 0.5, y, 180)
+    bd.write(path, L, H)
+    if drawn:
+        Drawing([Shape('rect', [[x0, -y - wi / 2], [x1, -y + wi / 2]],
+                       material='dielectric', z0=0.0, z1=H_SUB, er=er_i,
+                       tand=tand_i, name='insert')]).save(
+                           os.path.splitext(path)[0] + '_shapes.json')
+    return w, wi_
+
+
 KINDS = dict(branchline=branchline, wilkinson=wilkinson, steplpf=steplpf,
              stubnotch=stubnotch, gcpw=gcpw, coupler=coupler, ratrace=ratrace,
              radialstub=radialstub, stripline=stripline, diffvia=diffvia,
@@ -1292,7 +1320,7 @@ KINDS = dict(branchline=branchline, wilkinson=wilkinson, steplpf=steplpf,
              meander=meander, spiral=spiral, circulator=circulator)
 # drawn solids in a can
 KINDS.update(dr_bandpass=dr_bandpass, dr_bandstop=dr_bandstop,
-             can_mode=can_mode, can_absorber=can_absorber)
+             can_mode=can_mode, can_absorber=can_absorber, insert=insert)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2 or sys.argv[1] not in list(KINDS) + ['all']:

@@ -35,7 +35,7 @@ def _made(gen, kind, tmp_path):
 
 
 @pytest.mark.parametrize('kind', ['dr_bandpass', 'dr_bandstop', 'can_mode',
-                                  'can_absorber'])
+                                  'can_absorber', 'insert'])
 def test_the_kept_drawing_is_the_generators(gen, kind, tmp_path):
     """examples/rf_<kind>_shapes.json (in the repository, shipped) is what the
     generator writes: a changed generator needs its drawing written again."""
@@ -74,3 +74,15 @@ def test_a_can_closes_round_the_board(gen, kind, ports, tmp_path):
     else:
         assert ('absorber' in names) == (kind == 'can_absorber')
 
+
+def test_the_insert_takes_the_fr4s_place(gen, tmp_path):
+    """The insert: a dielectric through the board's thickness, in it (not
+    round it), the line over it widened to 50 ohm on it."""
+    from kicad2ems.core.solids import pieces
+    b, d = _made(gen, 'insert', tmp_path)
+    (p,) = pieces(b)
+    assert (p.material, p.er, p.tand, p.around) == ('dielectric', 3.66,
+                                                     0.0037, False)
+    assert (p.z0, p.z1) == (0.0, 0.8) and p.polygon.area == pytest.approx(300)
+    w, wi = gen.insert(str(tmp_path / 'again.kicad_pcb'))
+    assert wi > w and len(b.ports) == 2

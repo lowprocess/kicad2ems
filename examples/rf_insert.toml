@@ -1,0 +1,24 @@
+# kicad2ems example: a low-loss laminate insert drawn into an FR-4 board on the
+# Draw page (rf_insert_shapes.json): a 50 ohm line 60 mm long on 0.8 mm FR-4
+# (er 4.4, tan d 0.02) crosses an insert 30 mm long and 10 mm wide of a
+# hydrocarbon-ceramic laminate (er 3.66, tan d 0.0037) set through the board's
+# whole thickness, the line widened to 50 ohm over it. Board and drawing:
+# python examples/make_rf_examples.py insert
+#   kicad2ems examples/rf_insert.toml --solvers gfdtd
+# 2026-11-27 (RX 7800 XT, 0.09 M cells, 1 s): S21 at 2 / 5 / 10 GHz -0.28 /
+# -0.75 / -1.38 dB, on FR-4 alone -0.42 / -1.10 / -2.19 dB. The dielectric's
+# share (a lossless run's loss taken off) 0.21 / 0.53 / 1.13 dB, closed form
+# 0.21 / 0.54 / 1.09 dB (Pozar's microstrip attenuation, Kirschning &
+# Jansen's eeff, the laminates' Djordjevic-Sarkar er and tan d).
+board   = "rf_insert.kicad_pcb"   # paths are relative to this file
+shapes  = "rf_insert_shapes.json"
+ground  = "B.Cu"
+fmin    = 0.5           # GHz
+fmax    = 12.0
+points  = 231
+diel    = "wideband"    # tan d nearly flat with frequency, as a laminate's
+diel_fref = 10.0        # er and tan d as given at 10 GHz
+out     = "out"
+
+[solver.openems]
+excite  = ["P1"]

@@ -161,6 +161,28 @@ FR-4 and the air, TM to z) 8.383 GHz; and the foam under the lid (its εr) 7.873
 
 ![rf_can_mode and rf_can_absorber: the lines' coupling and the driven line's S21, without the foam and with it](img/rf_can_mode.png)
 
+<a id="laminate-insert"></a>
+`rf_insert` is a 50 Ω line 60 mm long on 0.8 mm FR-4 (εr 4.4, tan δ 0.02) across an insert of a low-loss
+hydrocarbon-ceramic laminate (εr 3.66, tan δ 0.0037), 30 × 10 mm, drawn through the board's whole thickness
+(`make_rf_examples.py insert`): a dielectric solid in the board takes the FR-4's place. The line over it is 1.752
+mm wide, 50 Ω on it (1.531 mm on FR-4). Both laminates are wideband (`diel = "wideband"`, εr and tan δ as given at
+10 GHz). The copper is perfect, so the loss is the dielectric's, the line's radiation and its ports'; a lossless run
+(tan δ 0) has the last two (0.06, 0.19, 0.27 dB at 2, 5, 10 GHz on FR-4 alone), taken off |S21|² / (1 − |S11|²)
+for the dielectric's share. Its closed form is Pozar's microstrip dielectric attenuation with Kirschning & Jansen's
+dispersive εeff and each laminate's Djordjevic–Sarkar εr and tan δ at the frequency. On gfdtd (0.09 M cells, 4,200
+timesteps, 1 s):
+
+| | 2 GHz | 5 GHz | 10 GHz |
+|---|---|---|---|
+| S21: FR-4 alone / with the insert | −0.42 / −0.28 dB | −1.10 / −0.75 dB | −2.19 / −1.38 dB |
+| the dielectric's loss, FR-4 alone: gfdtd / closed form / the line model (qucsator) | 0.358 / 0.361 / 0.357 dB | 0.912 / 0.915 / 0.906 dB | 1.898 / 1.870 / 1.871 dB |
+| the dielectric's loss with the insert: gfdtd / closed form | 0.207 / 0.211 dB | 0.530 / 0.535 dB | 1.133 / 1.093 dB |
+
+The line model does not see the insert (it builds its sections from the board's tracks); its FR-4 line is the
+closed form's. Above 10 GHz the lossless run's ripple, not the dielectric, sets the agreement (12 GHz: 2.42 against
+2.26 dB).
+
+![rf_insert: S21 with and without the insert, and the dielectric's loss against the closed form](img/rf_insert.png)
 
 The figures above sit at single frequencies; a small reflection there mostly says where its ripple falls. Over the whole band, each solver's agreement with openEMS's reference (the rms of the complex difference of the input reflection, dB, and the rms difference of the transmission's |S|):
 
