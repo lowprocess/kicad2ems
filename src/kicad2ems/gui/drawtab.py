@@ -28,10 +28,11 @@ core.view3d: the 3D view's numbers).
             moves the selection on its level (X / Y / Z while dragging: along
             that axis), a drag on the gizmo's arrows along that one, Shift +
             drag on a solid's top or bottom face stretches it, on its side
-            lifts it; a drag on nothing orbits, Ctrl + drag pans. The camera's
-            presets (Top 7, Front 1, Side 3, Iso 5, Fit F), a clip plane
-            (Clip), what is drawn (Show: the board's layers, each material),
-            the working level's grid. (gui.draw3d)
+            lifts it; Shift + drag on nothing draws a box (as the plan's); a
+            drag on nothing orbits, Ctrl + drag pans. The camera's presets
+            (Top 7, Front 1, Side 3: orthographic; Iso 5: perspective; Fit
+            F), a clip plane (Clip), what is drawn (Show: the board's layers,
+            each material), the working level's grid. (gui.draw3d)
     Shapes  the list in the order they are applied (a cut takes out what is
             drawn before it), each shown or hidden (hidden: not drawn or
             picked, still applied) and locked or not (locked: not moved,
@@ -44,7 +45,20 @@ core.view3d: the 3D view's numbers).
             dragging); a solid made a ferrite with a laminate's er 4.3 takes
             a ferrite's 15); Arrange (move by, rotate
             by any angle about a point, mirror, align, distribute) and Array
-            (a row, a grid, a circle).
+            (a row, a grid, a circle). The list has an icon a shape (its
+            kind's glyph in its material's colour), the form its fields in
+            groups (Shape, Size, Heights, Material, Bias, Points).
+    Menus   Drawing (new, open, save; Use in runs, Region from shape, Ports
+            to settings), Edit (undo, the clipboard, select all, none or
+            alike: the same material, layer, net or kind; lock, hide, the
+            order), Modify (rotate, to polygon; union, subtract, intersect:
+            core.shapeops.combined; fillet and chamfer the corners),
+            Templates (core.templates: a can, a DR, a circulator, an SMA, an
+            absorber, a via fence; a dialog of its numbers, then a click
+            places its shapes, drawn under the mouse till then), View (fit,
+            the camera, orthographic, a ferrite's bias map in plan: H0 in
+            colour over it, drawmagnets.bias_map, the plan and 3D side by
+            side).
 
 Copy, cut and paste go through the clipboard as kicad2ems-shapes text (into
 another drawing, or another session). Use in runs saves the drawing and names
@@ -55,7 +69,9 @@ those settings (KiCad coordinates: y negated). The status bar has the cursor
 Keys while the page has the focus: S R C P T O M the tools, Delete, Esc,
 Enter, Ctrl+Z / Ctrl+Y undo and redo (the settings keep theirs elsewhere),
 Ctrl+A all, Ctrl+C / Ctrl+X / Ctrl+V the clipboard, Ctrl+D duplicate, F fit
-the selection in both views, 7 1 3 5 the 3D camera, X / Y / Z while dragging.
+the selection in both views, 7 1 3 5 the 3D camera, X / Y / Z while dragging,
+the arrows a nudge of a grid step (Shift: ten; one undo step while they go
+on).
 
     tab = DrawTab(win)          # win: the main window, or None (on its own)
     tab.set_board(layout)       # core.layout.board_layout's dict, or None
@@ -64,28 +80,34 @@ the selection in both views, 7 1 3 5 the 3D camera, X / Y / Z while dragging.
     tab.select(i, 'only' | 'toggle' | 'add'); tab.selected; tab.sel
     tab.move_by(dx, dy); tab.rotate_by(30, about); tab.mirror('x')
     tab.align('left'); tab.distribute('x'); tab.make_array('row', n=5, dx=1)
+    tab.combine('union'); tab.round_corners(0.5, 'fillet'); tab.nudge(dx, dy)
+    tab.select_alike('material'); tab.place_template('can', (x, y), values)
+    tab.start_placing('circulator', values)  # the next click places it
 """
-import functools, os
+import functools, os, time
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt, Signal, QEvent, QTimer, QSignalBlocker
-from PySide6.QtGui import QColor, QPen, QBrush, QKeySequence, QPainterPath
+from PySide6.QtCore import Qt, Signal, QEvent, QTimer, QSignalBlocker, QSize
+from PySide6.QtGui import (QColor, QPen, QBrush, QKeySequence, QPainterPath,
+                           QIcon, QPixmap, QPainter, QPolygonF, QAction)
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QToolButton,
-                               QToolBar,
+                               QToolBar, QMenuBar,
                                QButtonGroup, QLabel, QComboBox, QDoubleSpinBox,
                                QSplitter, QFormLayout, QLineEdit, QSpinBox,
                                QPlainTextEdit, QPushButton, QFileDialog,
                                QGridLayout, QFrame, QMessageBox, QCheckBox,
                                QTabWidget, QTreeWidget, QTreeWidgetItem,
-                               QHeaderView, QAbstractItemView,
-                               QScrollArea, QApplication)
+                               QHeaderView, QAbstractItemView, QGroupBox,
+                               QScrollArea, QApplication, QDialog,
+                               QDialogButtonBox, QInputDialog)
 from kicad2ems.core import shapes as sh
 from kicad2ems.core import shapeops as so
+from kicad2ems.core import templates as tpl
 from kicad2ems.core.shapes import Shape, Drawing
 from . import theme
 from . import drawmagnets as dm
 from .planview import _path, _item
-from .volume3d import rings
+from .volume3d import rings, MATERIAL_RGB
 from .draw3d import Draw3D
 
 __all__ = ['DrawTab']
@@ -110,9 +132,7 @@ TOOLS = {
 }
 # RGB of each material, in plan and 3D (a magnet's halves in 3D are its
 # poles': drawmagnets.N_RGB, S_RGB)
-COLOURS = dict(copper=(214, 140, 64), cut=(225, 60, 60), metal=(140, 150, 165),
-               dielectric=(60, 170, 90), air=(110, 165, 235),
-               ferrite=(88, 88, 100), magnet=(190, 40, 95))
+COLOURS = MATERIAL_RGB  # (volume3d's: the Viewer draws the solids in them too)
 PORT_COLOUR = (200, 30, 160)
 SELECTED = QColor(0, 120, 215)
 SNAP_COLOUR = QColor(255, 0, 200)
@@ -167,6 +187,12 @@ class DrawTab(QWidget, Draw3D):
         self.measure_pts, self._pick_point = [], None
         self._axis = None  # a drag held to one axis: 'x', 'y', 'z'
         self._undo, self._redo = [], []
+        # a template being placed: (key, values), its shapes at the origin
+        # (drawn under the mouse until a click places them); the values each
+        # template's dialog had last, for this board and layer
+        self._placing, self._ghost_shapes, self._tpl_values = None, [], {}
+        # the arrow keys' nudges: one undo step while they go on
+        self._nudge = None
         # the bias readout (a ferrite's or a magnet's form): worked out a
         # moment after the form is filled, never while dragging, and kept
         # while the drawn solids are the same: (key, summary, solid index)
@@ -220,9 +246,21 @@ class DrawTab(QWidget, Draw3D):
         # (hidden while empty: its backing painted a small box at the origin)
         self.measure_text.setVisible(False)
         self.vb.addItem(self.measure_text)
+        # a template's shapes under the mouse, before the click places them
+        self.ghost = _item(QPainterPath(), QPen(SELECTED, 1.4, Qt.DashLine),
+                           QBrush(QColor(0, 120, 215, 30)), 58)
+        self.vb.addItem(self.ghost)
+        # the selected ferrite's internal field H0 as a colour map over it
+        # (drawmagnets.bias_map; with the bias readout, of what it shows)
+        self.bias_img = pg.ImageItem(axisOrder='row-major')
+        self.bias_img.setZValue(22)
+        self.bias_img.setOpacity(0.85)
+        self.bias_img.setVisible(False)
+        self.vb.addItem(self.bias_img)
+        self._map_key = None
         self._3d_timer = QTimer(self, singleShot=True, interval=120,
                                 timeout=self._redraw_3d)
-        views = QSplitter(Qt.Vertical)
+        self.views = views = QSplitter(Qt.Vertical)
         views.addWidget(self.plot)
         views.addWidget(self._make_3d())
         views.setSizes([600, 340])
@@ -232,6 +270,9 @@ class DrawTab(QWidget, Draw3D):
         self.split.setStretchFactor(0, 1)
         self.split.setSizes([860, 365])
         lay.addWidget(self.split, 1)
+        lay.setMenuBar(self._menus())
+        # the arrow keys nudge the selection (the plan's view would scroll)
+        self.plot.installEventFilter(self)
         foot = QHBoxLayout()
         self.coords = QLabel(minimumWidth=330, toolTip=(
             'the cursor (snapped), the size being drawn and what it snapped '
@@ -307,11 +348,188 @@ class DrawTab(QWidget, Draw3D):
         row.addWidget(self.osnap)
         return row
 
+    def _menus(self):
+        """The page's own menus: Drawing (the file and the settings it
+        writes), Edit, Modify (turns, booleans, rounded corners), Templates
+        and View. Keys shown in them are the page's own (keyPressEvent, while
+        it has the focus), not the window's shortcuts: Ctrl+Z there undoes
+        the settings."""
+        bar = QMenuBar()
+        bar.setNativeMenuBar(False)
+        self.acts = {}
+
+        def add(menu, key, text, slot, tip='', keys='', check=None):
+            a = menu.addAction(text + (f"\t{keys}" if keys else ''))
+            a.setToolTip(tip or text)
+            a.setStatusTip(tip)
+            if check is not None:
+                a.setCheckable(True)
+                a.setChecked(check)
+                a.toggled.connect(slot)
+            else:
+                a.triggered.connect(lambda _=False: slot())
+            self.acts[key] = a
+            return a
+
+        def menu(title):
+            m = bar.addMenu(title)
+            m.setToolTipsVisible(True)
+            return m
+        m = menu('Drawing')
+        for key, text, slot, tip in (
+                ('new', 'New', self.new, 'an empty drawing'),
+                ('open', 'Open…', lambda: self.load(), 'a drawing (.json)'),
+                ('save', 'Save', lambda: self.save(self.file), 'the drawing'),
+                ('save as', 'Save as…', lambda: self.save(None),
+                 'the drawing, as')):
+            add(m, key, text, slot, tip)
+        m.addSeparator()
+        for key, text, slot, tip in (
+                ('use', 'Use in runs', self.use_in_runs,
+                 'save the drawing and name it in the settings (shapes): a '
+                 'run adds its copper to the board, takes its cuts out and '
+                 'meshes its solids'),
+                ('region', 'Region from shape', self.region_from_selected,
+                 'the selected shape as the region simulated (its bounding '
+                 'box, unless it is a rectangle)'),
+                ('ports', 'Ports to settings', self.ports_to_settings,
+                 'the drawn ports added to the extra ports setting')):
+            add(m, key, text, slot, tip).setEnabled(self.win is not None)
+        m.addSeparator()
+        m.addAction(self.board_act)
+        m = menu('Edit')
+        for e in (
+                ('undo', 'Undo', self.undo, 'Ctrl+Z', ''),
+                ('redo', 'Redo', self.redo, 'Ctrl+Y', ''),
+                None,
+                ('cut', 'Cut', self.cut, 'Ctrl+X', ''),
+                ('copy', 'Copy', self.copy, 'Ctrl+C', 'to the clipboard, as '
+                 'kicad2ems-shapes text'),
+                ('paste', 'Paste', self.paste, 'Ctrl+V', 'shapes from the '
+                 'clipboard: from this drawing or another'),
+                ('duplicate', 'Duplicate', self.duplicate, 'Ctrl+D',
+                 'copies, a grid step along'),
+                ('delete', 'Delete', self.delete, 'Delete', 'not locked '
+                 'ones'),
+                None,
+                ('all', 'Select all', self.select_all, 'Ctrl+A', ''),
+                ('none', 'Select none', lambda: self.select(None), 'Esc',
+                 '')):
+            if e is None:
+                m.addSeparator()
+            else:
+                key, text, slot, keys, tip = e
+                add(m, key, text, slot, tip, keys)
+        alike = m.addMenu('Select alike')
+        alike.setToolTipsVisible(True)
+        for by, text in (('material', 'the same material'),
+                         ('layer', 'on the same layer (or every solid)'),
+                         ('net', 'the same net (copper)'),
+                         ('kind', 'the same kind (rectangle, circle...)')):
+            add(alike, f"alike {by}", text,
+                lambda b=by: self.select_alike(b),
+                f"every shape (not hidden) of {text[4:]} as the last picked")
+        m.addSeparator()
+        for key, text, slot, keys, tip in (
+                ('lock', 'Lock / unlock', lambda: self.set_locked(None), '',
+                 'locked shapes are not moved, turned or deleted'),
+                ('hide', 'Hide / show', lambda: self.set_hidden(None), '',
+                 'hidden shapes are not drawn or picked (a run still '
+                 'applies them)'),
+                ('earlier', 'Apply earlier', lambda: self._reorder(-1), '',
+                 'up the list (a cut takes out what is before it)'),
+                ('later', 'Apply later', lambda: self._reorder(1), '',
+                 'down the list'),
+                ('nudge', 'Nudge', lambda: None, 'Arrows',
+                 'the arrow keys move the selection a grid step (Shift: ten)')):
+            add(m, key, text, slot, tip, keys)
+        self.acts['nudge'].setEnabled(False)
+        m = menu('Modify')
+        add(m, 'rotate', 'Rotate 90°', self.rotate, 'about their centre')
+        add(m, 'polygon', 'To polygon', self.to_polygon,
+            'their outlines as polygons, to reshape corner by corner')
+        m.addSeparator()
+        for op, text, tip in (
+                ('union', 'Union', 'the selected shapes joined into one '
+                 'polygon (or one per piece)'),
+                ('subtract', 'Subtract', 'the others taken out of the first '
+                 'selected (a hole is kept, joined to the outline by a cut of '
+                 'no width)'),
+                ('intersect', 'Intersect', 'what the selected shapes all '
+                 'cover')):
+            add(m, op, text, lambda o=op: self.combine(o),
+                tip + '; of one material, on one layer (solids: between the '
+                'same heights)')
+        m.addSeparator()
+        add(m, 'fillet', 'Fillet corners…', lambda: self._round_clicked(
+            'fillet'), 'every corner of the selected rectangles, polygons and '
+            'traces rounded (a trace: its bends)')
+        add(m, 'chamfer', 'Chamfer corners…', lambda: self._round_clicked(
+            'chamfer'), 'every corner cut at 45° to its legs (a trace: '
+            'mitred bends)')
+        m = menu('Templates')
+        for key, t in tpl.TEMPLATES.items():
+            add(m, f"tpl {key}", t.name + '…',
+                lambda k=key: self.template_dialog(k), t.tip)
+        m = menu('View')
+        add(m, 'fit', 'Fit', self.frame_selection, 'the selection (else '
+            'everything) filling the plan and the 3D view', 'F')
+        for name, key in (('top', '7'), ('front', '1'), ('side', '3'),
+                          ('iso', '5')):
+            add(m, name, f"3D: {name.capitalize()}",
+                lambda n=name: self.camera(n), '', key)
+        add(m, 'ortho', '3D: orthographic', self.set_ortho, 'no '
+            'perspective: Top, Front and Side set it, Iso takes it off',
+            check=False)
+        add(m, 'map', "A ferrite's bias map in plan",
+            lambda on: self._bias_later() if on else self._hide_map(),
+            'the internal field H0 over the selected ferrite (a magnet '
+            'selected: every ferrite) in colour, grey where it is not '
+            'saturated', check=True)
+        m.addSeparator()
+        add(m, 'beside', 'The plan and 3D side by side', self._views_beside,
+            'the two views beside each other (a wide, short page) rather '
+            'than one over the other', check=False)
+        return bar
+
+    def _views_beside(self, on):
+        self.views.setOrientation(Qt.Horizontal if on else Qt.Vertical)
+        k = self.views.width() if on else self.views.height()
+        self.views.setSizes([k // 2, k - k // 2] if on else
+                            [k * 6 // 10, k - k * 6 // 10])
+
     def _side(self):
+        """The shapes' list (with its tool bar), and under it the selected
+        shape's properties, Arrange and Array (each scrolled), Use in runs."""
         side = QSplitter(Qt.Vertical)
         top = QWidget()
         v = QVBoxLayout(top)
         v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(1)
+        bar = QToolBar(movable=False, floatable=False)
+        bar.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        bar.setStyleSheet('QToolBar { border: 0px; spacing: 1px; }')
+        for e in (('Up', lambda: self._reorder(-1), 'applied earlier'),
+                  ('Down', lambda: self._reorder(1), 'applied later'),
+                  None,
+                  ('Duplicate', self.duplicate, 'copies, 1 grid step along '
+                   '(Ctrl+D)'),
+                  ('Delete', self.delete, 'remove them (Delete; not locked '
+                   'ones)'),
+                  None,
+                  ('Lock', lambda: self.set_locked(None), 'lock or unlock '
+                   'the selection: locked shapes are not moved, turned or '
+                   'deleted'),
+                  ('Hide', lambda: self.set_hidden(None), 'hide or show the '
+                   'selection: hidden shapes are not drawn or picked (a run '
+                   'still applies them)')):
+            if e is None:
+                bar.addSeparator()
+            else:
+                a = bar.addAction(e[0])
+                a.setToolTip(f"{e[0]}: {e[2]}")
+                a.triggered.connect(lambda _=False, f=e[1]: f())
+        v.addWidget(bar)
         self.list = QTreeWidget(
             columnCount=3, rootIsDecorated=False, uniformRowHeights=True,
             selectionMode=QAbstractItemView.ExtendedSelection, toolTip=(
@@ -329,77 +547,46 @@ class DrawTab(QWidget, Draw3D):
             h.resizeSection(c, h.fontMetrics().horizontalAdvance(
                 self.list.headerItem().text(c)) + 18)
         h.setStretchLastSection(True)
+        self.list.setIconSize(_ICON_SIZE)
         self.list.itemSelectionChanged.connect(self._listed)
         self.list.itemChanged.connect(self._list_toggled)
         v.addWidget(self.list, 1)
-        grid = QGridLayout()
-        for i, (text, slot, tip) in enumerate((
-                ('Up', lambda: self._reorder(-1), 'applied earlier'),
-                ('Down', lambda: self._reorder(1), 'applied later'),
-                ('Duplicate', self.duplicate,
-                 'copies, 1 grid step along (Ctrl+D)'),
-                ('Delete', self.delete, 'remove them (Delete; not locked '
-                 'ones)'),
-                ('Copy', self.copy, 'to the clipboard, as kicad2ems-shapes '
-                 'text (Ctrl+C; Ctrl+X cuts)'),
-                ('Paste', self.paste, 'shapes from the clipboard (Ctrl+V): '
-                 'from this drawing or another'),
-                ('Lock', lambda: self.set_locked(None),
-                 'lock or unlock the selection: locked shapes are not moved, '
-                 'turned or deleted'),
-                ('Hide', lambda: self.set_hidden(None),
-                 'hide or show the selection: hidden shapes are not drawn or '
-                 'picked (a run still applies them)'),
-                ('Rotate 90°', self.rotate, 'about their centre'),
-                ('To polygon', self.to_polygon,
-                 'their outlines as polygons, to reshape corner by corner'))):
-            grid.addWidget(QPushButton(text, clicked=slot, toolTip=tip), i // 2,
-                           i % 2)
-        v.addLayout(grid)
         side.addWidget(top)
         bottom = QWidget()
         v = QVBoxLayout(bottom)
         v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(2)
         self.side_tabs = QTabWidget()
-        self.side_tabs.addTab(self._form_page(), 'Shape')
-        self.side_tabs.addTab(self._arrange_page(), 'Arrange')
-        self.side_tabs.addTab(self._array_page(), 'Array')
+        # (each page scrolled: the page fits a short dock, the buttons under
+        # the tabs stay in sight)
+        for page, name in ((self._form_page(), 'Shape'),
+                           (self._arrange_page(), 'Arrange'),
+                           (self._array_page(), 'Array')):
+            self.side_tabs.addTab(_FitScroll(page), name)
         self.side_tabs.currentChanged.connect(lambda _: self._bias_later())
         v.addWidget(self.side_tabs, 1)
-        v.addWidget(_hline())
-        files = QGridLayout()
-        for i, (text, slot, tip) in enumerate((
-                ('New', self.new, 'an empty drawing'),
-                ('Open…', lambda: self.load(), 'a drawing (.json)'),
-                ('Save', lambda: self.save(self.file), 'the drawing'),
-                ('Save as…', lambda: self.save(None), 'the drawing, as'),
-                ('Undo', self.undo, 'Ctrl+Z (on this page)'),
-                ('Redo', self.redo, 'Ctrl+Y (on this page)'))):
-            files.addWidget(QPushButton(text, clicked=slot, toolTip=tip),
-                            i // 2, i % 2)
-        v.addLayout(files)
+        row = QHBoxLayout()
         self.use_btn = QPushButton(
             'Use in runs', clicked=self.use_in_runs, toolTip=(
                 'save the drawing and name it in the settings (shapes): a run '
-                'adds its copper to the board and takes its cuts out'))
-        self.region_btn = QPushButton(
-            'Region from shape', clicked=self.region_from_selected,
-            toolTip='the selected shape as the region simulated (its bounding '
-            'box, unless it is a rectangle)')
-        self.ports_btn = QPushButton(
-            'Ports to settings', clicked=self.ports_to_settings,
-            toolTip='the drawn ports added to the extra ports setting')
-        for b in (self.use_btn, self.region_btn, self.ports_btn):
-            v.addWidget(b)
-            b.setEnabled(self.win is not None)
-        self.board_on = QCheckBox('show the board', checked=True,
-                                  toggled=lambda _: self._refresh(board=True))
-        v.addWidget(self.board_on)
-        # (scrolled: the page fits a short dock)
-        scroll = QScrollArea(widgetResizable=True, frameShape=QFrame.NoFrame)
-        scroll.setWidget(bottom)
-        side.addWidget(scroll)
-        side.setSizes([380, 560])
+                'adds its copper to the board, takes its cuts out and meshes '
+                'its solids (Drawing: the region and the ports too)'))
+        self.use_btn.setEnabled(self.win is not None)
+        self.board_on = QCheckBox('the board', checked=True, toolTip=(
+            'the board under the drawing, in the plan and in 3D'))
+        self.board_act = QAction('Show the board', self, checkable=True,
+                                  checked=True)
+        # (the box and the menu's item, one setting)
+        self.board_on.toggled.connect(self.board_act.setChecked)
+        self.board_act.toggled.connect(self.board_on.setChecked)
+        self.board_on.toggled.connect(lambda _: self._refresh(board=True))
+        row.addWidget(self.use_btn)
+        row.addWidget(self.board_on)
+        row.addStretch(1)
+        v.addLayout(row)
+        side.addWidget(bottom)
+        side.setStretchFactor(1, 1)
+        side.setSizes([300, 640])
         return side
 
     def _form_page(self):
@@ -442,30 +629,59 @@ class DrawTab(QWidget, Draw3D):
                 'demagnetising field (core.magnets: along z, the ferrite '
                 'saturated where the field allows): the internal field H0, '
                 'where it is saturated, f0 = γH0 and fm = γ4πMs'))
+        # the bias map's line (the map in plan: View > A ferrite's bias map)
+        self.p_map = QLabel(wordWrap=True, visible=False,
+                            styleSheet='color: gray')
         self.p_rot = QLineEdit(placeholderText='(along the trace)')
         self.p_points = QPlainTextEdit(
             toolTip='one point a line: x, y (model mm, y up)')
         self.p_points.setMaximumHeight(110)
+        self.p_apply = QPushButton('Apply points', clicked=self._edited,
+                                   toolTip='the points typed above')
+        pts = QWidget()
+        pv = QVBoxLayout(pts)
+        pv.setContentsMargins(0, 0, 0, 0)
+        pv.addWidget(self.p_points)
+        pv.addWidget(self.p_apply)
         self.rows = {}
-        for key, text, w in (('name', 'Name', self.p_name),
-                             ('material', 'Material', self.p_material),
-                             ('layer', 'Layer', self.p_layer),
-                             ('net', 'Net', self.p_net),
-                             ('width', 'Width', self.p_width),
-                             ('radius', 'Radius', self.p_radius),
-                             ('z0', 'Bottom z', self.p_z0),
-                             ('z1', 'Top z', self.p_z1),
-                             ('er', 'εr', self.p_er),
-                             ('tand', 'tan δ', self.p_tand),
-                             ('ms', '4πMs', self.p_ms),
-                             ('dh', 'ΔH', self.p_dh),
-                             ('br', 'Br', self.p_br),
-                             ('pole', 'Magnetised', self.p_pole),
-                             ('bias', 'Bias', self.p_bias),
-                             ('rot', 'Rotation (°)', self.p_rot),
-                             ('points', 'Points', self.p_points)):
-            self.form.addRow(text, w)
-            self.rows[key] = w
+        # the fields in groups, each group hidden when none of its rows is
+        # shown (a copper shape has no heights or permittivity); a row with
+        # no label spans the group
+        self.form = _Forms()
+        self.form_groups = {}
+        for title, rows in (
+                ('Shape', (('name', 'Name', self.p_name),
+                           ('material', 'Material', self.p_material),
+                           ('layer', 'Layer', self.p_layer),
+                           ('net', 'Net', self.p_net))),
+                ('Size', (('width', 'Width', self.p_width),
+                          ('radius', 'Radius', self.p_radius),
+                          ('rot', 'Rotation (°)', self.p_rot))),
+                ('Heights', (('z0', 'Bottom z', self.p_z0),
+                             ('z1', 'Top z', self.p_z1))),
+                ('Material', (('er', 'εr', self.p_er),
+                              ('tand', 'tan δ', self.p_tand),
+                              ('ms', '4πMs', self.p_ms),
+                              ('dh', 'ΔH', self.p_dh),
+                              ('br', 'Br', self.p_br),
+                              ('pole', 'Magnetised', self.p_pole))),
+                ('Bias (the drawn magnets)', (('bias', '', self.p_bias),)),
+                ('Points (x, y mm, one a line)', (('points', '', pts),))):
+            box = QGroupBox(title, flat=True)
+            f = QFormLayout(box)
+            f.setContentsMargins(4, 2, 2, 2)
+            f.setRowWrapPolicy(QFormLayout.DontWrapRows)
+            f.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+            for key, text, w in rows:
+                if text:
+                    f.addRow(text, w)
+                else:
+                    f.addRow(w)
+                self.rows[key] = w
+                self.form.add(w, f, box)
+            v.addWidget(box)
+            self.form_groups[title.split()[0]] = box
+        self.form_groups['Bias'].layout().addRow(self.p_map)
         for w in (self.p_name, self.p_net, self.p_rot):
             w.editingFinished.connect(self._edited)
         for w in (self.p_width, self.p_radius, self.p_z0, self.p_z1, self.p_er,
@@ -473,9 +689,6 @@ class DrawTab(QWidget, Draw3D):
             w.editingFinished.connect(self._edited)
         for w in (self.p_material, self.p_layer, self.p_pole):
             w.activated.connect(lambda _: self._edited())
-        v.addLayout(self.form)
-        v.addWidget(QPushButton('Apply points', clicked=self._edited,
-                                toolTip='the points typed above'))
         v.addStretch(1)
         return page
 
@@ -628,6 +841,8 @@ class DrawTab(QWidget, Draw3D):
 
     # ---- tools ----
     def set_tool(self, key):
+        if self._placing is not None:
+            self._stop_placing()
         self.tool, self.pending = key, []
         if key != 'measure':
             self._clear_measure()
@@ -711,6 +926,15 @@ class DrawTab(QWidget, Draw3D):
     def _click(self, p, ev):
         """A click of the plan (model mm). True: taken."""
         right = ev.button() == Qt.RightButton
+        if self._placing is not None:  # a template: here (right: not now)
+            (key, values), at = self._placing, self._snap(p)
+            self._stop_placing()
+            if right:
+                self.status.setText('not placed')
+            else:
+                self.place_template(key, at, values)
+            self.snap_mark.setData([], [])
+            return True
         if self._pick_point is not None and not right:
             then, self._pick_point = self._pick_point, None
             then(self._snap(p))
@@ -778,6 +1002,9 @@ class DrawTab(QWidget, Draw3D):
         x, y = self._snap(p)
         self._show_snap()
         self._say_at(x, y, self._size_text([x, y]))
+        if self._placing is not None:  # (its shapes made at the origin)
+            self.ghost.setPos(x, y)
+            self.ghost.setVisible(True)
         if self.pending:
             self._rubber([x, y])
         elif self.tool == 'measure' and 0 < len(self.measure_pts) < 3:
@@ -1294,6 +1521,166 @@ class DrawTab(QWidget, Draw3D):
         return self._transform(lambda ss: [poly(s) for s in ss],
                                'made polygons')
 
+    def combine(self, op):
+        """The selection's outlines combined (core.shapeops.combined: 'union',
+        'subtract' the others from the first selected, 'intersect') into
+        polygons where the first selected was (its place in the list, and
+        its material, layer or heights, net and name); the others removed.
+        One undo step. The new polygons, or None (not done: why in the
+        status bar)."""
+        ss = self.drawing.shapes
+        idx = [j for j in self.selected if j < len(ss)]
+        if any(ss[j].locked or ss[j].hidden for j in idx):
+            self.status.setText('a locked or hidden shape is selected: unlock '
+                                'or show it first')
+            return None
+        try:
+            new = so.combined([ss[j] for j in idx], op)
+        except ValueError as e:
+            self.status.setText(f"{op}: {e}")
+            return None
+        before = self.drawing.to_dict()
+        first, gone = idx[0], set(idx)
+        out, at = [], None
+        for j, s in enumerate(ss):
+            if j == first:
+                at = len(out)
+                out += new
+            elif j not in gone:
+                out.append(s)
+        self.drawing.shapes = out
+        self.selected = list(range(at, at + len(new)))
+        self._commit(before)
+        self.status.setText(
+            f"{op}: {len(idx)} shapes made {len(new)} polygon(s)" if new else
+            f"{op}: nothing is left (the shapes do not overlap)")
+        return new
+
+    def round_corners(self, r, how='fillet'):
+        """The selected rectangles, polygons and traces with every corner
+        rounded to radius r mm (how 'fillet') or cut r mm along its legs
+        ('chamfer'; core.shapeops.rounded); circles and ports stay."""
+        def one(s):
+            try:
+                return so.rounded(s, r, how)
+            except ValueError:
+                return s
+        done = 'filleted' if how == 'fillet' else 'chamfered'
+        return self._transform(lambda ss: [one(s) for s in ss],
+                               f"{done} {r:g} mm")
+
+    def _round_clicked(self, how):
+        if not self._movable():
+            self.status.setText('select a rectangle, polygon or trace first')
+            return
+        r, ok = QInputDialog.getDouble(
+            self, 'Fillet corners' if how == 'fillet' else 'Chamfer corners',
+            'Radius (mm):' if how == 'fillet' else
+            'Cut along each leg (mm):', self._round_r, 0.001, 1000, 3)
+        if ok:
+            self._round_r = r
+            self.round_corners(r, how)
+
+    _round_r = 0.5
+
+    def select_alike(self, by):
+        """Every shape (not hidden) like the last picked by `by`
+        (core.shapeops.ALIKE: its material, layer, net or kind) selected."""
+        if self.sel is None:
+            self.status.setText('pick a shape first: the others like it are '
+                                'selected')
+            return []
+        idx = so.alike(self.drawing.shapes, self.sel, by)
+        # (the one picked stays the form's)
+        self.select_many([j for j in idx if j != self.sel] + [self.sel])
+        self.status.setText(f"{len(self.selected)} shape(s) of the same {by}")
+        return idx
+
+    def nudge(self, dx, dy):
+        """The selection moved by (dx, dy) mm, as by the arrow keys: nudges
+        one after another (the same selection, within 1.5 s) are one undo
+        step."""
+        key, prev, n = tuple(self.selected), self._nudge, len(self._undo)
+        if not self.move_by(dx, dy):
+            return False
+        # (nothing else done or undone since the last nudge: its step, the
+        # drawing before the first of them, is this one's too)
+        if (prev is not None and prev[0] == key and n == prev[2]
+                and time.monotonic() - prev[1] < 1.5):
+            self._undo.pop()
+        self._nudge = (key, time.monotonic(), len(self._undo))
+        return True
+
+    # ---- templates ----
+    def template_dialog(self, key):
+        """The dialog of template `key`'s parameters; OK places it: with the
+        next click (its shapes follow the mouse until then), or along the
+        selected traces at once (a fence)."""
+        t = tpl.TEMPLATES[key]
+        layer = self.layer.currentText() or 'F.Cu'
+        along = [self.drawing.shapes[j] for j in self.selected]
+        if t.place == 'traces' and not any(s.kind == 'path' for s in along):
+            self.status.setText(f"{t.name}: select a trace (a path) first")
+            return None
+        mem = (key, self._board_ver, layer)
+        values = dict(tpl.defaults(key, self.stack, layer, along))
+        if t.place != 'traces':
+            values.update(self._tpl_values.get(mem, {}))
+        dlg = _TemplateDialog(t, values, self)
+        if dlg.exec() != QDialog.Accepted:
+            return None
+        values = dlg.values()
+        self._tpl_values[mem] = values
+        if t.place == 'traces':
+            return self.place_template(key, values=values)
+        return self.start_placing(key, values)
+
+    def start_placing(self, key, values=None):
+        """Template `key` placed with the next click of the plan (its shapes
+        drawn under the mouse until then; Esc: not now). False: its values
+        make no shapes (why in the status bar)."""
+        layer = self.layer.currentText() or 'F.Cu'
+        try:
+            shapes = tpl.make(key, values, self.stack, layer, at=(0.0, 0.0))
+        except ValueError as e:
+            self.status.setText(f"{tpl.TEMPLATES[key].name}: {e}")
+            return False
+        self.set_tool('select')
+        self._placing, self._ghost_shapes = (key, values), shapes
+        polys = [_rings(g) for g in (_outline(s) for s in shapes)
+                 if g is not None]
+        ports = [[[[x, y + .3], [x + .3, y], [x, y - .3], [x - .3, y],
+                   [x, y + .3]]] for s in shapes if s.kind == 'port'
+                 for x, y in s.points]
+        self.ghost.setPath(_qpath(polys + ports))
+        self.ghost.setVisible(False)  # (till the mouse is over the plan)
+        t = tpl.TEMPLATES[key]
+        self.status.setText(f"{t.name}: {t.prompt or 'click where it goes'} "
+                            f"({len(shapes)} shapes; Esc: not now)")
+        return True
+
+    def _stop_placing(self):
+        self._placing, self._ghost_shapes = None, []
+        self.ghost.setPath(QPainterPath())
+        self.ghost.setVisible(False)
+
+    def place_template(self, key, at=(0.0, 0.0), values=None):
+        """Template `key`'s shapes (core.templates.make, on the layer drawn
+        on) added at `at` (model mm; a fence: along the selected traces),
+        selected: one undo step. The shapes, or [] (why in the status
+        bar)."""
+        t = tpl.TEMPLATES[key]
+        layer = self.layer.currentText() or 'F.Cu'
+        along = [self.drawing.shapes[j] for j in self.selected]
+        try:
+            shapes = tpl.make(key, values, self.stack, layer, at=at,
+                              along=along)
+        except ValueError as e:
+            self.status.setText(f"{t.name}: {e}")
+            return []
+        self._append(shapes, t.name, keep_selection=t.place == 'traces')
+        return shapes
+
     def _reorder(self, step):
         """The selection applied one place earlier (step -1) or later (+1),
         together."""
@@ -1406,35 +1793,45 @@ class DrawTab(QWidget, Draw3D):
 
     def _fill_list(self):
         """The list as the drawing is: rows added or taken off at its end,
-        and a row's text and ticks set where they changed."""
+        and a row's text, icon and ticks set where they changed (each row's
+        kept here: asked of the items, 300 rows took 1.5 ms a refresh)."""
         ss = self.drawing.shapes
         lst = self.list
         flags = (Qt.ItemIsSelectable | Qt.ItemIsEnabled
                  | Qt.ItemIsUserCheckable)
+        rows = self.__dict__.setdefault('_list_rows', [])
+        tick = lambda on: Qt.Checked if on else Qt.Unchecked
         with QSignalBlocker(lst):
             n = lst.topLevelItemCount()
             if n > len(ss):
                 lst.model().removeRows(len(ss), n - len(ss))
+                del rows[len(ss):]
             elif n < len(ss):  # (made as they are: not set again below)
                 items = []
                 for s in ss[n:]:
-                    it = QTreeWidgetItem(['', '', _label(s)])
+                    row = _row(s)
+                    it = QTreeWidgetItem(['', '', row[0]])
                     it.setFlags(flags)
-                    it.setCheckState(0, Qt.Unchecked if s.hidden else
-                                     Qt.Checked)
-                    it.setCheckState(1, Qt.Checked if s.locked else
-                                     Qt.Unchecked)
+                    it.setCheckState(0, tick(not s.hidden))
+                    it.setCheckState(1, tick(s.locked))
+                    it.setIcon(2, _kind_icon(*row[1]))
+                    rows.append(row)
                     items.append(it)
                 lst.addTopLevelItems(items)
             for k, s in enumerate(ss[:n]):
+                row, was = _row(s), rows[k]
+                if row == was:
+                    continue
                 it = lst.topLevelItem(k)
-                text = _label(s)
-                if it.text(2) != text:
-                    it.setText(2, text)
+                if row[0] != was[0]:
+                    it.setText(2, row[0])
+                if row[1] != was[1]:
+                    it.setIcon(2, _kind_icon(*row[1]))
+                # (a tick the mouse set is the shape's already)
                 for c, on in ((0, not s.hidden), (1, s.locked)):
-                    state = Qt.Checked if on else Qt.Unchecked
-                    if it.checkState(c) != state:
-                        it.setCheckState(c, state)
+                    if it.checkState(c) != tick(on):
+                        it.setCheckState(c, tick(on))
+                rows[k] = row
         self._sync_list_selection()
 
     def _sync_list_selection(self):
@@ -1461,11 +1858,14 @@ class DrawTab(QWidget, Draw3D):
             w.setEnabled(s is not None)
         n = len(self.selected)
         self.form_note.setText(
-            '' if n < 2 else f"{n} selected: the last picked is shown; a "
-            "change here applies to them all (not the points or the name)")
-        self.form_note.setVisible(n >= 2)
+            'Nothing selected: click a shape in the plan, the 3D view or the '
+            'list.' if n == 0 else '' if n < 2 else
+            f"{n} selected: the last picked is shown; a change here applies "
+            "to them all (not the points or the name)")
+        self.form_note.setVisible(n != 1)
         if s is None:
-            self.form.setRowVisible(self.p_bias, False)
+            for key, w in self.rows.items():
+                self.form.setRowVisible(w, False)
             self._bias_timer.stop()
             return
         blocks = [QSignalBlocker(w) for w in self.rows.values()]
@@ -1550,12 +1950,26 @@ class DrawTab(QWidget, Draw3D):
         magnet (not now: the form is filled on every change and selection)."""
         s = self.drawing.shapes[self.sel] if self.sel is not None else None
         if s is not None and s.solid and s.material in ('ferrite', 'magnet'):
+            # (the map of other solids, or of another shape: gone till it
+            # is worked out again)
+            if self._map_key is not None and self._map_key != (
+                    self._solids_key(), self.sel):
+                self._hide_map()
             self._bias_timer.start()
         else:
             self._bias_timer.stop()
+            if self._map_key is not None:
+                self._hide_map()
+
+    def _solids_key(self):
+        """What the bias depends on: the board and the drawn solids."""
+        return (self._board_ver, tuple(_solid_key(t)
+                                       for t in self.drawing.shapes
+                                       if t.solid))
 
     def _show_bias(self):
-        """The readout written, when it is seen (a drag puts it off)."""
+        """The readout written when it is seen, and the map drawn (a drag
+        puts them off)."""
         if self._drag_state is not None or getattr(
                 self, '_drag3d', None) is not None:
             self._bias_timer.start()
@@ -1563,6 +1977,46 @@ class DrawTab(QWidget, Draw3D):
         if self.sel is None or not self.p_bias.isVisible():
             return  # (the tab, or the page, shown again asks again)
         self.p_bias.setText(self.bias_text())
+        note = self._show_bias_map()
+        self.p_map.setText(note)
+        self.p_map.setVisible(bool(note))
+
+    def _hide_map(self):
+        self.bias_img.setVisible(False)
+        self._map_key = None
+        self.p_map.setVisible(False)
+
+    def _show_bias_map(self):
+        """The internal field H0 over the selected ferrite (a magnet: every
+        ferrite) as a colour map in plan (drawmagnets.bias_map; viridis from
+        its least to its most, grey where it is not saturated), worked out
+        once while the solids are the same. The readout's line on it."""
+        i = self.sel
+        s = self.drawing.shapes[i] if i is not None else None
+        if (s is None or not s.solid or s.material not in ('ferrite',
+                                                            'magnet')
+                or not self.acts['map'].isChecked()):
+            self._hide_map()
+            return ''
+        self.bias_text(i)  # (the board with the solids: kept)
+        key = (self._bias_cache[0], i)
+        if key != self._map_key:
+            _, _, at, b = self._bias_cache
+            m = dm.bias_map(b, self.drawing.shapes, i, at)
+            if m is None:
+                self._hide_map()
+                return ''
+            x0, y0, x1, y1, h, inside = m
+            rgba, self._map_range = _map_rgba(h, inside)
+            self.bias_img.setImage(rgba)
+            from PySide6.QtCore import QRectF
+            self.bias_img.setRect(QRectF(x0, y0, x1 - x0, y1 - y0))
+            self._map_key = key
+        self.bias_img.setVisible(True)
+        lo, hi = self._map_range
+        return ('In plan: none of it saturated (grey).' if lo is None else
+                f"In plan (at its mid-height): H0 from {lo:.0f} Oe (dark "
+                f"blue) to {hi:.0f} Oe (yellow), grey where not saturated.")
 
     def bias_text(self, i=None):
         """What the form says of shape i's bias (default: the one it shows):
@@ -1574,12 +2028,12 @@ class DrawTab(QWidget, Draw3D):
         if i is None:
             return ''
         ss = self.drawing.shapes
-        key = (self._board_ver, tuple(_solid_key(t) for t in ss if t.solid))
+        key = self._solids_key()
         if self._bias_cache is None or self._bias_cache[0] != key:
             from kicad2ems.core import magnets
             b, at = dm.bias_board(self.layout_, self.stack, ss, _outline)
-            self._bias_cache = (key, magnets.summary(b), at)
-        _, summary, at = self._bias_cache
+            self._bias_cache = (key, magnets.summary(b), at, b)
+        _, summary, at, _ = self._bias_cache
         return dm.readout(summary, ss, i, at)
 
     def showEvent(self, e):
@@ -1628,6 +2082,9 @@ class DrawTab(QWidget, Draw3D):
                 self._cancel_drag()
             elif getattr(self, '_drag3d', None) is not None:
                 self._cancel_drag3d()
+            elif self._placing is not None:
+                self._stop_placing()
+                self.status.setText('not placed')
             elif self._pick_point is not None:
                 self._pick_point = None
                 self.status.setText('not now')
@@ -1652,6 +2109,8 @@ class DrawTab(QWidget, Draw3D):
                 self._drag_to(st)
             self.status.setText(f"dragged along {a} only" if self._axis else
                                 'dragged freely')
+        elif k in _ARROWS and not dragging and self._arrow(e):
+            pass
         elif plain and letter == 'F':
             self.frame_selection()
         elif plain and letter in ('7', '1', '3', '5'):
@@ -1661,6 +2120,26 @@ class DrawTab(QWidget, Draw3D):
             self.set_tool({v[1]: k for k, v in TOOLS.items()}[letter])
         else:
             super().keyPressEvent(e)
+
+    def _arrow(self, e):
+        """An arrow key: the selection nudged a grid step (Shift: ten; the
+        grid off: 0.1 mm). False: nothing selected (the key is the view's)."""
+        if not self.selected:
+            return False
+        g = (self.snap.value() or 0.1) * (
+            10 if e.modifiers() & Qt.ShiftModifier else 1)
+        dx, dy = {Qt.Key_Left: (-g, 0.0), Qt.Key_Right: (g, 0.0),
+                  Qt.Key_Up: (0.0, g), Qt.Key_Down: (0.0, -g)}[e.key()]
+        self.nudge(round(dx, 9), round(dy, 9))
+        return True
+
+    def eventFilter(self, obj, e):
+        # the plan's arrow keys nudge the selection (its view would scroll)
+        if (obj is self.plot and e.type() == QEvent.KeyPress
+                and e.key() in _ARROWS and self._drag_state is None
+                and self._arrow(e)):
+            return True
+        return super().eventFilter(obj, e)
 
     def frame_selection(self):
         """The selection (else the drawing, else the board) filling the plan
@@ -1897,6 +2376,209 @@ class DrawTab(QWidget, Draw3D):
                                  taken=taken)
         if self._set_setting('ports', '; '.join(have + specs)):
             self.status.setText(f"ports added: {', '.join(specs)}")
+
+
+_ARROWS = (Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down)
+# a cell of the bias map where the ferrite is not saturated (RGBA)
+UNSATURATED = (150, 150, 150, 170)
+
+
+def _map_rgba(h, inside):
+    """The bias map's image: H0 (Oe; NaN: not saturated) in viridis from its
+    least to its most where `inside`, grey where not saturated, clear
+    outside the ferrite; and (least, most), None for none saturated."""
+    rgba = np.zeros(h.shape + (4,), np.uint8)
+    ok = inside & np.isfinite(h)
+    rgba[inside & ~ok] = UNSATURATED
+    if not ok.any():
+        return rgba, (None, None)
+    lo, hi = float(h[ok].min()), float(h[ok].max())
+    lut = pg.colormap.get('viridis').getLookupTable(0.0, 1.0, 256,
+                                                    alpha=True)
+    k = np.clip((h[ok] - lo) / max(hi - lo, 1e-9) * 255, 0, 255).astype(int)
+    rgba[ok] = lut[k]
+    return rgba, (lo, hi)
+
+
+class _TemplateDialog(QDialog):
+    """A template's parameters (core.templates.Param: a number, a count, a
+    tick, a choice) in a form, its description over them."""
+
+    def __init__(self, t, values, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(t.name)
+        self.t, self.boxes = t, {}
+        v = QVBoxLayout(self)
+        v.addWidget(QLabel(t.tip[0].upper() + t.tip[1:] + '.', wordWrap=True,
+                           styleSheet='color: gray'))
+        f = QFormLayout()
+        for p in t.params:
+            val = values.get(p.key, p.default)
+            if p.kind == 'bool':
+                w = QCheckBox(checked=bool(val))
+            elif p.kind == 'choice':
+                w = QComboBox()
+                w.addItems(list(p.choices))
+                w.setCurrentText(str(val))
+            elif p.kind == 'int':
+                w = QSpinBox(minimum=int(p.lo), maximum=int(p.hi),
+                             value=int(val))
+            else:
+                w = _spin(float(val), p.lo, p.hi,
+                          f" {p.unit}" if p.unit else '', decimals=p.decimals)
+            w.setToolTip(p.tip)
+            f.addRow(p.label, w)
+            self.boxes[p.key] = w
+        v.addLayout(f)
+        if t.place == 'point':
+            v.addWidget(QLabel('OK, then ' + (t.prompt or 'click where it '
+                                              'goes') + ' in the plan.',
+                               wordWrap=True))
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        v.addWidget(bb)
+
+    def values(self):
+        out = {}
+        for p in self.t.params:
+            w = self.boxes[p.key]
+            out[p.key] = (w.isChecked() if p.kind == 'bool' else
+                          w.currentText() if p.kind == 'choice' else
+                          w.value())
+        return out
+
+
+class _FitScroll(QScrollArea):
+    """A side tab's scroll area: its page at least as tall as its wrapped
+    labels need at the width shown (QScrollArea sizes it by its size hint,
+    taken at another width: the bias readout's last line ran under the
+    map's line after it)."""
+
+    def __init__(self, page):
+        super().__init__(widgetResizable=True, frameShape=QFrame.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setWidget(page)
+        page.installEventFilter(self)
+
+    def _fit(self):
+        w = self.widget()
+        lay = w.layout() if w is not None else None
+        if lay is not None and lay.hasHeightForWidth():
+            h = lay.totalHeightForWidth(self.viewport().width())
+            if h != w.minimumHeight():
+                w.setMinimumHeight(h)
+
+    def resizeEvent(self, e):
+        self._fit()
+        super().resizeEvent(e)
+
+    def eventFilter(self, obj, e):
+        if obj is self.widget() and e.type() == QEvent.LayoutRequest:
+            self._fit()
+        return False
+
+
+class _Forms:
+    """The form's groups (a QFormLayout each) as one form to the page: a row
+    shown or hidden in its own group's, the group hidden with its last
+    row."""
+
+    def __init__(self):
+        self.at = {}  # widget: (its form, its group box)
+        self.on = {}  # widget: shown; a group's rows: [widget]
+        self.rows = {}
+
+    def add(self, w, form, box):
+        self.at[w] = (form, box)
+        self.on[w] = True
+        self.rows.setdefault(id(box), []).append(w)
+
+    def setRowVisible(self, w, on):
+        # (as it was: nothing done; every row hidden and its group checked
+        # at each refresh made the plan's redraw of 300 vias 0.7 ms slower)
+        on = bool(on)
+        if self.on[w] == on:
+            return
+        form, box = self.at[w]
+        self.on[w] = on
+        form.setRowVisible(w, on)
+        box.setVisible(any(self.on[x] for x in self.rows[id(box)]))
+
+    def isRowVisible(self, w):
+        form, box = self.at[w]
+        return form.isRowVisible(w) and not box.isHidden()
+
+
+# the list's icons: a glyph of each kind in its material's colour
+_ICON_SIZE = QSize(16, 16)
+_ICONS = {}
+
+
+def _kind_icon(kind, material, up=True):
+    """The list's icon of a shape (kind, material; up: a magnet magnetised
+    up): its kind's glyph (a square, a disc, a pentagon, a stroke, a
+    diamond) in its material's colour, a cut hatched, a solid edged dark, a
+    magnet in its poles' colours (the one on top above). Made once each."""
+    key = (kind, material, bool(up))
+    icon = _ICONS.get(key)
+    if icon is not None:
+        return icon
+    from PySide6.QtCore import QPointF, QRectF
+    k = 2  # (drawn at twice the size: sharp on a HiDPI screen)
+    n = _ICON_SIZE.width() * k
+    pm = QPixmap(n, n)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    rgb = PORT_COLOUR if kind == 'port' else COLOURS[material]
+    solid = material in sh.SOLID and kind != 'port'
+    edge = QColor(*rgb).darker(160 if solid else 130)
+    p.setPen(QPen(edge, 1.5 * k))
+    if material == 'cut' and kind != 'port':
+        p.setBrush(QBrush(_qc(rgb), Qt.BDiagPattern))
+    elif material == 'magnet' and kind != 'port':
+        from PySide6.QtGui import QLinearGradient
+        top, bottom = dm.poles(1.0 if up else -1.0)
+        g = QLinearGradient(0, 0, 0, n)
+        for at, c in ((0.0, top), (0.499, top), (0.501, bottom),
+                      (1.0, bottom)):
+            g.setColorAt(at, _qc(c))
+        p.setBrush(QBrush(g))
+    else:
+        p.setBrush(QBrush(_qc(rgb)))
+    m = 2.0 * k
+    r = QRectF(m, m, n - 2 * m, n - 2 * m)
+    if kind == 'rect':
+        p.drawRect(r.adjusted(0, 2 * k, 0, -2 * k))
+    elif kind == 'circle':
+        p.drawEllipse(r)
+    elif kind == 'polygon':
+        import math
+        c, rad = n / 2, n / 2 - m
+        p.drawPolygon(QPolygonF([QPointF(
+            c + rad * math.cos(math.radians(90 + 72 * j)),
+            c - rad * math.sin(math.radians(90 + 72 * j))) for j in range(5)]))
+    elif kind == 'path':
+        pen = QPen(_qc(rgb), 4.5 * k, Qt.SolidLine, Qt.RoundCap)
+        p.setPen(pen)
+        p.drawPolyline(QPolygonF([QPointF(m + k, n - m - k),
+                                  QPointF(n / 2, n / 2 + k),
+                                  QPointF(n - m - k, m + k)]))
+    else:  # a port
+        c = n / 2
+        p.drawPolygon(QPolygonF([QPointF(c, m), QPointF(n - m, c),
+                                 QPointF(c, n - m), QPointF(m, c)]))
+    p.end()
+    pm.setDevicePixelRatio(k)
+    icon = _ICONS[key] = QIcon(pm)
+    return icon
+
+
+def _row(s):
+    """A shape's row in the list as data: its label, its icon's key (kind,
+    material, magnetised up), hidden, locked."""
+    return (_label(s), (s.kind, s.material, s.br >= 0), s.hidden, s.locked)
 
 
 def _label(s):

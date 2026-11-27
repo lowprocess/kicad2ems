@@ -275,6 +275,8 @@ those the folder has nothing for hidden:
 - **Parts:** the lumped R / C / L parts as chips at true size, from the footprint's name (0201, 0402, …):
   resistors green, capacitors cyan, inductors pink; one on the bottom layer hangs below the board.
 - **Mesh:** the FDTD grid lines (openEMS's, which gfdtd shares) or mom25d's triangles, written by a preview.
+- **Drawn solids:** the Draw page's solids as the solvers mesh them (`core.solids`'s pieces: a later solid over an
+  earlier one), in its colours; the plan has them too, dashed ([the Draw page](#draw)).
 - **A dump:** a volume dump (`--dump E@volume+5@2.4`: the board plus 5 mm of air) as a translucent cloud; a plane
   dump (an FDTD cut, mom25d's surface currents) as a coloured sheet in place.
 - **Far field:** in antenna mode, the gain pattern at a recorded frequency over the board's centre.
@@ -409,7 +411,14 @@ Arbitrary shapes drawn over the board, in plan and in 3D, for a run to add to it
 *File > Draw shapes*). The board under them is the one chosen in the settings, as drawn; with none, a two-layer
 1.6 mm stack to draw on.
 
-![The Draw page over sma_launch: a fence of metal posts (four selected, with the gizmo), a can (metal with air inside), a dielectric puck, a keep-out cut and a port, in plan and 3D](img/gui/draw.png)
+![The Draw page over rf_circulator's bare board: the circulator template placed at the middle and an edge-launch SMA on arm 1, the magnet selected (its gizmo; its form in groups with the puck's bias; the puck's internal field H0 in colour in plan), in plan and 3D](img/gui/draw.png)
+
+The page has its own menus: **Drawing** (*New*, *Open…*, *Save*, *Save as…*; *Use in runs*, *Region from shape*,
+*Ports to settings*; *Show the board*), **Edit** (undo and redo, the clipboard, *Duplicate*, *Delete*, *Select
+all*, *Select none*, *Select alike*, lock, hide, the order), **Modify** (*Rotate 90°*, *To polygon*, *Union*,
+*Subtract*, *Intersect*, *Fillet corners…*, *Chamfer corners…*), **Templates** and **View** (*Fit*, the 3D camera,
+*orthographic*, a ferrite's bias map, *the plan and 3D side by side*). The keys they name are the page's while it
+has the focus, not the window's (whose Ctrl+Z undoes the settings).
 
 - **Tools**: *Select*, *Rectangle* and *Circle* (two clicks), *Polygon* and *Trace* (a click per point; double-click,
   right-click or Enter ends it, Esc drops it), *Port* (a click), *Measure* (two clicks give the distance, dx, dy and
@@ -429,25 +438,34 @@ Arbitrary shapes drawn over the board, in plan and in 3D, for a run to add to it
 left to right selects what is wholly inside it, right to left what it touches (Shift: added to the selection). A
 drag from a selected shape moves the whole selection, snapped (X or Y while dragging: along that axis only, again:
 free; Esc puts it back); a drag of the handles reshapes the one selected. Ctrl + drag, or the middle button, pans;
-the wheel and the right button zoom. Ctrl+A selects all.
+the wheel and the right button zoom. Ctrl+A selects all; *Edit > Select alike* every shape (not hidden) of the same
+material, layer (a solid: every solid), net or kind as the last picked. The arrow keys nudge the selection a grid
+step (Shift: ten), the nudges one after another one undo step.
 
-- **The list** has each shape's *Shown* and *Locked* ticks: a hidden shape is not drawn or picked (a run still
-  applies it), a locked one is not moved, turned or deleted (aligned to, it stays as an anchor). *Lock* and *Hide*
-  set them for the whole selection. Both are saved with the drawing.
+- **The list** has an icon a shape (its kind, a square, disc, pentagon, stroke or diamond, in its material's colour:
+  a cut hatched, a magnet in its poles' colours, the one on top above) and its *Shown* and *Locked* ticks: a hidden
+  shape is not drawn or picked (a run still applies it), a locked one is not moved, turned or deleted (aligned to, it
+  stays as an anchor). The bar over it has *Up*, *Down*, *Duplicate*, *Delete*, *Lock* and *Hide*, for the whole
+  selection. Both ticks are saved with the drawing.
 - *Duplicate* (Ctrl+D), *Delete*, *Copy* (Ctrl+C), *Cut* (Ctrl+X) and *Paste* (Ctrl+V) work on the whole selection,
   each one undo step. Copy puts the shapes on the clipboard as `kicad2ems-shapes` text, so they paste into another
   drawing or another session (or a text editor); pasted onto the same spot they come one grid step along.
-- **Shape** (the form) shows the last shape picked; with several selected, a change to its material, layer, net,
-  width, radius, heights, εr, tan δ, 4πMs, ΔH or Br applies to them all. A ferrite has εr and tan δ, *4πMs* (its
-  saturation magnetisation, gauss) and *ΔH* (its FMR linewidth, oersted at 9.4 GHz: the datasheets'); a solid made
-  a ferrite while its εr is still a laminate's 4.3 takes a ferrite's 15. A magnet has *Br* (its remanence, tesla) and
-  *Magnetised* up (+z: N on top) or down; the list shows a magnet's Br and direction and a ferrite's 4πMs.
+- **Shape** (the form, its fields in groups: *Shape*, *Size*, *Heights*, *Material*, *Bias*, *Points*, a group
+  hidden when the shape has none of its fields; with nothing selected, a note) shows the last shape picked; with
+  several selected, a change to its material, layer, net, width, radius, heights, εr, tan δ, 4πMs, ΔH or Br applies
+  to them all. A ferrite has εr and tan δ, *4πMs* (its saturation magnetisation, gauss) and *ΔH* (its FMR linewidth,
+  oersted at 9.4 GHz: the datasheets'); a solid made a ferrite while its εr is still a laminate's 4.3 takes a
+  ferrite's 15. A magnet has *Br* (its remanence, tesla) and *Magnetised* up (+z: N on top) or down; the list shows a
+  magnet's Br and direction and a ferrite's 4πMs.
 - **Bias**, with a ferrite or a magnet selected: the static field the drawn magnets give each ferrite with its own
   demagnetising field (`kicad2ems.core.magnets`: along z, the ferrite saturated where the field allows), as the
   internal field's range, how much of the ferrite is saturated, and the gyrotropy's two frequencies f0 = γH0 and
   fm = γ4πMs; with no magnet drawn the ferrite is unbiased. It is worked out a moment after a change (about 20 ms
   for a 3 mm puck under a 5 mm magnet, then kept while the solids are the same), never while dragging, so whether
-  the magnet saturates the puck shows as it is drawn.
+  the magnet saturates the puck shows as it is drawn. The plan shows the internal field H0 over the ferrite in
+  colour (a magnet selected: over every ferrite; at its mid-height, 32 × 32 cells: viridis from its least, dark
+  blue, to its most, yellow, the range under the readout; grey where it is not saturated), so an off-centre or a
+  small magnet shows at a glance; *View > A ferrite's bias map in plan* turns it off.
 - **Arrange**: *Move by* dx, dy (and dz: solids lifted); *Rotate* by any angle about the selection's centre, each
   shape's own, or a point (typed, or *Pick*ed with a click; a rectangle turned off a right angle becomes a polygon);
   *Mirror* x or y about the selection's centre; *Align* left, centre, right, top, middle or bottom; *Distribute*
@@ -456,6 +474,38 @@ the wheel and the right button zoom. Ctrl+A selects all.
   (count, centre typed or picked, angle from the first to the last: 360 spaces them all the way round; each copy
   turned or only carried round): a via fence, stitching, a ring of vias. Named shapes' copies are numbered (via_2,
   via_3...).
+- **Union**, **Subtract** and **Intersect** (*Modify*) make polygons of the selected shapes' outlines
+  (`kicad2ems.core.shapeops.combined`): all of them, the first selected less the others, or where they all
+  overlap. They must be of one material, a sheet's on one layer and a solid's between the same heights; the result
+  takes the first's place in the list and its properties, one polygon a piece. A hole is kept: a polygon is one ring
+  of points, so the hole is joined to its outline by a cut of no width (a 30 × 6 mm plate less 300 posts is 0.11 s).
+  One undo step.
+- **Fillet corners…** and **Chamfer corners…** round every corner of the selected rectangles and polygons, convex or
+  not, to a radius (or cut it that far along each leg: a mitre); a trace's bends become arcs of that radius, or
+  mitres, its ends kept. A corner's cut is held to half its shorter leg. A rectangle becomes a polygon.
+
+**Templates** (`kicad2ems.core.templates`) place a group of ordinary shapes with a click: a dialog has the
+template's few numbers, then its shapes follow the mouse (dashed, snapped) until a click places them, selected, one
+undo step (Esc or a right click: not placed). Lines are sized on the board's stack (50 Ω over the dielectric to the
+next copper layer in, Hammerstad and Jensen's), heights from the copper's face (on the bottom layer a template hangs
+below the board), and each dialog keeps its numbers for the next one on the same board and layer.
+
+![The Shield can template's dialog, and the can (its walls, the air inside and the post fence, dashed) following the mouse over a placed circulator](img/gui/draw_template.png)
+
+- *Shield can*: a metal box over the copper (walls and lid t thick), air inside it drawn after (it hollows the box,
+  open at the bottom), and a fence of metal posts through the board under the walls' middle, at most a pitch apart,
+  one at each corner.
+- *Dielectric resonator*: a puck (εr 36) on the substrate, its rim a gap from a 50 Ω line, the line ported at both
+  ends.
+- *Y-junction circulator*: `rf_circulator`'s design (a garnet puck set into the substrate under a copper junction
+  disc, three 50 Ω arms 120° apart with 30 Ω quarter-wave transformers at f0, a port 0.6 mm in from each arm's end
+  facing the junction, a NdFeB magnet over it); on that example's board, at its centre, it is the example's drawing.
+- *Edge-launch SMA*: a square coax (the solids are prisms): a metal body round a PTFE channel (4.1 mm across), a
+  metal pin sized for the coax's impedance (a square pin of side a in a square channel d across: 60/√εr ln(1.0787 d /
+  1.18 a)) lying on a 50 Ω line; click the board's edge (it snaps to it), *Facing* left, right, up or down.
+- *Absorber sheet*: a lossy dielectric (εr 10, tan δ 0.5: the solvers have no magnetic loss), under a lid say.
+- *Via fence along traces*: metal posts through the board each side of the selected traces, an offset from the centre
+  line, a pitch apart at most (round a bend too); placed at once.
 
 **The 3D view** shows the shapes extruded over the board's substrate and copper (a ferrite charcoal, a magnet in two
 halves coloured by their poles, N red and S blue, so the colour on top says which way it is magnetised), and edits
@@ -464,11 +514,16 @@ them too:
 - a click selects a shape (Shift or Ctrl + click adds or takes off; a click on nothing selects none), and the
   selection is outlined;
 - a drag moves the selection on its level; X, Y or Z while dragging holds it to that axis (Z lifts solids); the
-  gizmo's arrows (red x, green y, blue z) at the selection drag it along one axis; Shift + drag on a solid stretches
-  it by its top or bottom face, or lifts it whole by a side; Esc puts it back;
+  gizmo's arrows (red x, green y, blue z, cone-headed, drawn over everything) at the selection drag it along one
+  axis; Shift + drag on a solid stretches it by its top or bottom face, or lifts it whole by a side; Esc puts it
+  back;
+- Shift + drag on nothing draws a box, as the plan's: left to right selects what is drawn wholly inside it, right to
+  left what it touches (what the clip took off, and hidden shapes, never); Esc drops it;
 - a drag on nothing orbits the view, Ctrl + drag or the middle button pans it, the wheel zooms;
-- *Top*, *Front*, *Side*, *Iso* (keys 7, 1, 3, 5) set the camera, fitted to the board and the drawing; *Fit* (F)
-  fills the view with the selection (and the plan too);
+- *Top*, *Front*, *Side*, *Iso* (keys 7, 1, 3, 5) set the camera, fitted to the board and the drawing: Top, Front
+  and Side orthographic (no perspective: a board's near edge as wide as its far one), Iso in perspective; *Ortho*
+  turns it on or off for any view (an orthographic view is as wide at every depth as the perspective one at its
+  centre, so the zoom and the pan carry over); *Fit* (F) fills the view with the selection (and the plan too);
 - *Clip* cuts the view with a plane across x, y or z at a height (*flip*: keep the other side): solids are cut and
   capped, and what is cut off is not picked;
 - *Show* turns the board's substrate, each copper layer, each drawn material and the ports on or off, the grid at
@@ -477,9 +532,14 @@ them too:
 
 Only drawn shapes are picked, not the board.
 
-- *Use in runs* saves the drawing (`kicad2ems-shapes` JSON, model mm, y up) and names it in the settings
-  (`shapes = "drawing.json"` in a config); *Region from shape* and *Ports to settings* write those settings in
-  KiCad's coordinates. Ctrl+Z / Ctrl+Y undo and redo the drawing while the page has the focus.
+- *Use in runs* (under the tabs, and in *Drawing*) saves the drawing (`kicad2ems-shapes` JSON, model mm, y up) and
+  names it in the settings (`shapes = "drawing.json"` in a config); *Drawing > Region from shape* and *Ports to
+  settings* write those settings in KiCad's coordinates. Ctrl+Z / Ctrl+Y undo and redo the drawing while the page
+  has the focus.
+- The page stays narrow and short: its tools and the 3D view's are tool bars (what does not fit goes into their »
+  menu) and each side tab scrolls; at its least it is 406 × 333 px (412 × 312 with DejaVu Sans; 605 × 381 before
+  its menus, its panel's buttons cut off in a 1500 × 950 window). *View > The plan and 3D side by side* suits a
+  wide, short page (docked under the Plots).
 
 Every solver reads the board's copper, so drawn copper and cuts reach them all; the line model builds its sections
 from the board's own tracks and does not see them. **Solids** (`solids` in `board.json`) are meshed by the FDTD
@@ -490,6 +550,11 @@ solvers, openEMS and gfdtd ([meshing](meshing.md#drawn-solids)), and by Palace (
   insert of another laminate), unless it encloses the whole board (its outline and its stack, and more): then
   the board stays as it is inside it (a can, the air inside one, a potting);
 - metal is a perfect conductor; the board's copper, vias, ports and parts stay over every solid.
+
+The Viewer draws a run's (or a preview's) solids as the solvers mesh them (`core.solids`'s disjoint pieces): in 3D
+(the Board section's *drawn solids*, at the height scale, in the page's colours) and in the plan (*solids*: a dashed
+outline over the copper, filled under it where the layer shown meets the piece), so a preview's mesh lines show
+against the solids' edges.
 
 mom25d's layers are laterally infinite: it refuses a board with solids (`auto` leaves it out and says why). The
 line model and pcbqs leave them out; the run's notes say so. The example `rf_shielded_can` is `rf_shielded` in a

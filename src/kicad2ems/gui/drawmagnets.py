@@ -1,7 +1,7 @@
 """
 The Draw page's ferrites and magnets, without Qt: a magnet drawn in 3D as two
 halves (its poles, N red and S blue), the board core.magnets works their bias
-out on, and the side panel's readout of it.
+out on, the side panel's readout of it and the plan's map of it.
 
     v, f = magnet_mesh(g, z0, z1, zm)    # two halves meeting at zm (no faces
                                          # between them)
@@ -12,6 +12,9 @@ out on, and the side panel's readout of it.
                                          # shape index -> board.solids index
     summary = core.magnets.summary(b)
     text = readout(summary, shapes, i, at)   # what shape i's panel says
+    x0, y0, x1, y1, h, inside = bias_map(b, shapes, i, at)
+                                         # H0 (Oe) on a grid over its
+                                         # ferrite (or every ferrite)
 
 A magnet's remanence `br` is signed (core.shapes): + magnetised up (+z), its N
 pole on top; - down. Its top half is drawn in its top pole's colour. The bias
@@ -23,6 +26,7 @@ fm = gamma 4 pi Ms.
 import numpy as np
 
 __all__ = ['FERRITE_ER', 'N_RGB', 'S_RGB', 'magnet_mesh', 'pole_colours',
+           'bias_map',
            'poles', 'bearing', 'bias_board', 'solid_index', 'readout']
 
 # a new ferrite's permittivity (a dielectric's default, 4.3, is a laminate's:
@@ -117,6 +121,47 @@ def solid_index(shapes, outline=None):
             out[i] = k
             k += 1
     return out
+
+
+def bias_map(board, shapes, i, at, n=32):
+    """The internal field H0 over the ferrite of shape i (a magnet: over
+    every ferrite), along its magnetisation, in Oe, on an n x n grid of cell
+    centres at each ferrite piece's mid-height (core.magnets.bias; board, at:
+    bias_board's): (x0, y0, x1, y1, h, inside): h (n rows along y, n columns
+    along x) NaN outside the ferrite or where it is not saturated, inside
+    the cells in the ferrite; None for no ferrite left (32 x 32 over a 3 mm
+    puck under a 5 mm magnet: about 40 ms)."""
+    import shapely
+    from kicad2ems.core import magnets, solids
+    s = shapes[i]
+    if s.material == 'ferrite':
+        want = {at.get(i)}
+    else:
+        want = {at[j] for j, t in enumerate(shapes)
+                if t.solid and t.material == 'ferrite' and j in at}
+    ps = solids.pieces(board)
+    fer = [p for p in ps if p.ferrite is not None and p.index in want
+           and p.z1 > p.z0]
+    if not fer:
+        return None
+    b = np.array([p.polygon.bounds for p in fer])
+    x0, y0, x1, y1 = (*b[:, :2].min(0), *b[:, 2:].max(0))
+    xs = x0 + (np.arange(n) + 0.5) * (x1 - x0) / n
+    ys = y0 + (np.arange(n) + 0.5) * (y1 - y0) / n
+    X, Y = np.meshgrid(xs, ys)  # (rows: y, columns: x)
+    owner = np.full(X.shape, -1)
+    z = np.zeros(X.shape)
+    for p in fer:
+        inside = shapely.contains_xy(p.polygon, X, Y) & (owner < 0)
+        owner[inside] = p.index
+        z[inside] = (p.z0 + p.z1) / 2
+    m = owner >= 0
+    h = np.full(X.shape, np.nan)
+    if m.any():
+        r = magnets.bias(board, ps, np.c_[X[m], Y[m], z[m]], owner[m])
+        sign = np.array([r['sign'].get(int(o), 1.0) for o in owner[m]])
+        h[m] = r['hz'] * sign / magnets.OE
+    return float(x0), float(y0), float(x1), float(y1), h, m
 
 
 def _range(lo, mean, hi, sign=1.0):

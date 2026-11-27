@@ -1,14 +1,19 @@
 """
 The Draw page's 3D view (gui.drawtab's DrawTab takes it as a mixin): the
 board and the shapes extruded (a magnet in two halves, the pole on top and
-the one below: N red, S blue), picked and dragged with the mouse, the camera's
-presets, a clip plane, what is shown, the selection's outline and its gizmo,
-and the working level's grid. The numbers (the camera's matrices, rays, the
-axis drag, the clip, the outlines, the grid) are kicad2ems.core.view3d's, a
-magnet's halves gui.drawmagnets'.
+the one below: N red, S blue), picked, boxed and dragged with the mouse, the
+camera's presets (orthographic from the top, front and side: pyqtgraph's
+projection overridden), a clip plane, what is shown, the selection's outline
+and its gizmo (arrows with cone heads), and the working level's grid. The
+numbers (the camera's matrices, rays, the axis drag, the box, the clip, the
+outlines, the grid) are kicad2ems.core.view3d's, a magnet's halves
+gui.drawmagnets'.
 
     tab.camera('top' | 'front' | 'side' | 'iso')   # fitted to the drawing
+                                    # (orthographic but for Iso)
+    tab.set_ortho(on)               # the camera orthographic or not
     tab.frame_3d()                  # the selection (else all) filling it
+    tab.box_select3d(x0, y0, x1, y1)  # a pixel box's shapes (Shift + drag)
     tab.set_clip(axis, value, keep) # axis 0 / 1 / 2 or None (off)
     tab.set_shown(key, on)          # 'substrate', 'cu:<layer>', a material,
                                     # 'port'
@@ -32,6 +37,7 @@ SHOWN_MATERIALS = sh.MATERIALS + ('port',)
 AXIS_RGBA = {0: (0.95, 0.25, 0.25, 1.0), 1: (0.25, 0.85, 0.30, 1.0),
              2: (0.30, 0.55, 1.00, 1.0)}
 GIZMO_PX = 9  # how near an arrow a press takes it, pixels
+GIZMO_HEAD = (0.24, 0.08)  # an arrowhead's length and radius, of the arrow's
 
 
 class Draw3D:
@@ -54,8 +60,11 @@ class Draw3D:
         self._entries3d, self._meshes3d, self._shape_gl = {}, {}, {}
         self._press3d_at, self._drag3d = None, None
         self._outline_gl = self._outline_fixed_gl = None
-        self._gizmo_gl = self._grid_gl = None
+        self._gizmo_gl = self._gizmo_cone_gl = self._grid_gl = None
+        self._gizmo_axes = None  # the axes its items were made for
         self._gizmo = None  # (base, length, axes) as drawn
+        self.ortho3d = False  # an orthographic camera (Top, Front, Side)
+        self._band3d = None  # a box selection's rubber band
         try:
             import pyqtgraph.opengl as gl
         except Exception as e:  # noqa: BLE001 (no PyOpenGL)
@@ -76,24 +85,43 @@ class Draw3D:
         v = QVBoxLayout(box)
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(2)
-        v.addLayout(self._toolbar_3d())
+        v.addWidget(self._toolbar_3d())
         v.addWidget(view, 1)
         return box
 
     def _toolbar_3d(self):
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        for name, key, tip in (('Top', '7', 'from above'),
-                               ('Front', '1', 'from the front (along +y)'),
-                               ('Side', '3', 'from the right (along -x)'),
-                               ('Iso', '5', 'from a corner')):
+        """The 3D view's tools: a tool bar, what does not fit in its » menu
+        (a row of them had made the page 46 px wider at its least)."""
+        from PySide6.QtWidgets import QToolBar
+        row = QToolBar(movable=False, floatable=False)
+        row.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        row.setStyleSheet('QToolBar { border: 0px; spacing: 2px; }')
+        for name, key, tip in (('Top', '7', 'from above, orthographic'),
+                               ('Front', '1', 'from the front (along +y), '
+                                'orthographic'),
+                               ('Side', '3', 'from the right (along -x), '
+                                'orthographic'),
+                               ('Iso', '5', 'from a corner, in perspective')):
             row.addWidget(QToolButton(
                 text=name, autoRaise=True, toolTip=f"{tip} ({key})",
                 clicked=lambda _=False, n=name.lower(): self.camera(n)))
+        self.ortho_btn = QToolButton(
+            text='Ortho', autoRaise=True, checkable=True, toolTip=(
+                'an orthographic camera: no perspective, a size the same near '
+                'and far (Top, Front and Side set it, Iso takes it off)'))
+        self.ortho_btn.toggled.connect(self.set_ortho)
+        row.addWidget(self.ortho_btn)
         row.addWidget(QToolButton(
             text='Fit', autoRaise=True, clicked=self.frame_3d,
             toolTip='the selection (else everything) filling the view (F)'))
-        row.addWidget(QLabel(' Clip'))
+        self.show_btn = QToolButton(text='Show', autoRaise=True,
+                                    popupMode=QToolButton.InstantPopup,
+                                    toolTip='layers and materials drawn in '
+                                    '3D, the grid, see-through solids')
+        self.show_menu = QMenu(self.show_btn)
+        self.show_btn.setMenu(self.show_menu)
+        row.addWidget(self.show_btn)
+        row.addSeparator()
         self.clip_axis = QComboBox(toolTip=(
             'a plane through the board: what is past it is not drawn or '
             'picked (a section)'))
@@ -106,15 +134,15 @@ class Draw3D:
         self.clip_flip = QCheckBox('flip', toolTip='keep what is past it '
                                    'instead')
         self.clip_flip.toggled.connect(lambda _: self._clip_changed())
-        for w in (self.clip_axis, self.clip_at, self.clip_flip):
-            row.addWidget(w)
-        self.show_btn = QToolButton(text='Show', autoRaise=True,
-                                    popupMode=QToolButton.InstantPopup,
-                                    toolTip='layers and materials drawn in '
-                                    '3D, the grid, see-through solids')
-        self.show_menu = QMenu(self.show_btn)
-        self.show_btn.setMenu(self.show_menu)
-        row.addWidget(self.show_btn)
+        # (one item: the » menu keeps them together)
+        clip = QWidget()
+        h = QHBoxLayout(clip)
+        h.setContentsMargins(2, 0, 0, 0)
+        h.setSpacing(3)
+        for w in (QLabel('Clip'), self.clip_axis, self.clip_at,
+                  self.clip_flip):
+            h.addWidget(w)
+        row.addWidget(clip)
         self.grid_on = QAction('the grid at the working level', self,
                                checkable=True, checked=True, toolTip=(
                                    'the snap grid at the working level: the '
@@ -126,7 +154,6 @@ class Draw3D:
             toolTip='metal solids and magnets drawn translucent, so what they '
             'cover shows')
         self.see_through.toggled.connect(lambda _: self._3d_timer.start())
-        row.addStretch(1)
         self._fill_show_menu()
         return row
 
@@ -200,7 +227,22 @@ class Draw3D:
         c = o['center']
         return dict(center=(c.x(), c.y(), c.z()), distance=o['distance'],
                     elevation=o['elevation'], azimuth=o['azimuth'],
-                    fov=o['fov'])
+                    fov=o['fov'], ortho=self.ortho3d)
+
+    def set_ortho(self, on=True):
+        """The camera orthographic (on) or in perspective; the view's middle
+        stays as big (an orthographic view is as wide at every depth as the
+        perspective one at its centre)."""
+        from PySide6.QtCore import QSignalBlocker
+        self.ortho3d = bool(on)
+        for w in (getattr(self, 'ortho_btn', None),
+                  getattr(self, 'acts', {}).get('ortho')):
+            if w is not None and w.isChecked() != self.ortho3d:
+                with QSignalBlocker(w):
+                    w.setChecked(self.ortho3d)
+        if self.gl is not None:
+            self.view3d.update()
+            self._update_gizmo_3d()
 
     def _set_cam(self, **kw):
         if 'center' in kw:
@@ -213,13 +255,14 @@ class Draw3D:
         return max(self.view3d.width(), 1) / max(self.view3d.height(), 1)
 
     def camera(self, name):
-        """The camera from the top, front, side or a corner (iso), fitted to
-        the board and the drawing."""
+        """The camera from the top, front, side (orthographic) or a corner
+        (iso, in perspective), fitted to the board and the drawing."""
         if self.gl is None:
             return
+        self.set_ortho(name != 'iso')
         b = self._bounds3d() or (-5, -20, 0, 25, 5, 1.6)
         self._set_cam(**v3.preset(name, b, self.view3d.opts['fov'],
-                                  self._aspect()))
+                                  self._aspect(), ortho=self.ortho3d))
 
     def frame_3d(self):
         """The selection (else everything) filling the 3D view, seen from
@@ -279,7 +322,7 @@ class Draw3D:
             view.removeItem(it)
         self._gl_items = []
         self._outline_gl = self._outline_fixed_gl = None
-        self._gizmo_gl = self._grid_gl = None
+        self._grid_gl = None  # (the gizmo's items are kept: placed again)
         on = self.board_on.isChecked()
         bkey = (self._board_ver, self.clip, on, tuple(sorted(
             k for k, v in self.shown3d.items() if v)))
@@ -574,28 +617,63 @@ class Draw3D:
         return base, length, axes
 
     def _update_gizmo_3d(self):
+        """The gizmo at the movable selection, as long as 70 pixels there:
+        its shafts and arrowheads made once for its axes (x and y, or x, y
+        and z), at unit size, and placed by a transform (made again at each
+        redraw, selection and step of the wheel, they took 0.1-0.3 ms)."""
         if self.gl is None:
             return
-        if self._gizmo_gl is not None:
-            self.view3d.removeItem(self._gizmo_gl)
-            self._gl_items.remove(self._gizmo_gl)
-            self._gizmo_gl = None
         self._gizmo = fr = self._gizmo_frame()
         if fr is None:
+            for it in (self._gizmo_gl, self._gizmo_cone_gl):
+                if it is not None:
+                    it.setVisible(False)
             return
         base, length, axes = fr
-        pos, col = [], []
+        if self._gizmo_gl is None or self._gizmo_axes != axes:
+            self._make_gizmo(axes)
+        self._place_gizmo()
+
+    def _make_gizmo(self, axes):
+        """The gizmo's items, unit-sized from the origin, for these axes."""
+        for it in (self._gizmo_gl, self._gizmo_cone_gl):
+            if it is not None:
+                self.view3d.removeItem(it)
+        pos, col, vs, fs, fc = [], [], [], [], []
         for k in axes:
-            tip = base.copy()
-            tip[k] += length
-            pos += [base, tip]
+            # a shaft, and a cone at its end (its arrowhead)
+            tip = np.zeros(3)
+            tip[k] = 1 - GIZMO_HEAD[0]
+            pos += [np.zeros(3), tip]
             col += [AXIS_RGBA[k]] * 2
+            v, f = v3.arrow_cone(tip, k, *GIZMO_HEAD)
+            fs.append(f + sum(len(x) for x in vs))
+            vs.append(v)
+            fc.append(np.tile(AXIS_RGBA[k], (len(f), 1)))
         it = self.gl.GLLinePlotItem(pos=np.asarray(pos, np.float32),
                                     color=np.asarray(col, np.float32),
                                     mode='lines', width=4.0, antialias=True)
+        it.setDepthValue(19)
         self.view3d.addItem(it)
-        self._gl_items.append(it)
-        self._gizmo_gl = it
+        md = self.gl.MeshData(vertexes=np.concatenate(vs).astype(np.float32),
+                              faces=np.concatenate(fs).astype(np.uint32),
+                              faceColors=np.concatenate(fc).astype(
+                                  np.float32))
+        from .volumetab import copper_shader  # (lit as the shapes are)
+        cone = self.gl.GLMeshItem(meshdata=md, smooth=False,
+                                  shader=copper_shader(), glOptions=_on_top())
+        cone.setDepthValue(20)  # (drawn last, over the scene)
+        self.view3d.addItem(cone)
+        self._gizmo_gl, self._gizmo_cone_gl, self._gizmo_axes = it, cone, axes
+
+    def _place_gizmo(self, d=(0.0, 0.0, 0.0)):
+        """The gizmo's items at its base (moved d: a drag), its length."""
+        base, length, _ = self._gizmo
+        for it in (self._gizmo_gl, self._gizmo_cone_gl):
+            it.resetTransform()
+            it.translate(*(np.asarray(base, float) + d))
+            it.scale(length, length, length)  # (local: first)
+            it.setVisible(True)
 
     def _gizmo_hit(self, x, y):
         """The gizmo's axis (0, 1, 2) whose arrow pixel (x, y) is on, or
@@ -675,7 +753,11 @@ class Draw3D:
                 return True
         i, at = self.pick3d(x, y)
         if i is None:
-            return False
+            if not mods & Qt.ShiftModifier:
+                return False
+            # Shift + drag on nothing: a box (not an orbit)
+            self._drag3d = dict(kind='box', p0=(x, y), moved=False)
+            return True
         s = self.drawing.shapes[i]
         if mods & Qt.ShiftModifier:
             face = None
@@ -728,6 +810,9 @@ class Draw3D:
                                       Qt.ArrowCursor)
             return False
         if st['kind'] == 'none':
+            return True
+        if st['kind'] == 'box':
+            self._box3d_to(st, pos.x(), pos.y())
             return True
         if st.get('toggle') and not st['moved']:  # a Shift drag starts
             if st['i'] not in self.selected:
@@ -782,6 +867,11 @@ class Draw3D:
         """Esc while dragging in 3D: the shapes back where they were (the
         rest of the drag moves nothing)."""
         st = self._drag3d
+        if st['kind'] == 'box':
+            self._box3d_hide()
+            st['kind'] = 'none'
+            self.status.setText('the box dropped (Esc)')
+            return
         if 'd' in st:  # (moved by a transform: the drawing is as it was)
             self._shift3d(st, (0.0, 0.0, 0.0))
         elif st['moved']:
@@ -808,10 +898,11 @@ class Draw3D:
                 it.resetTransform()
                 it.translate(dx, dy, dz if s0.solid else 0.0)
             self._shift_items(j, dx, dy)
-        for it in (self._outline_gl, self._gizmo_gl):
-            if it is not None:
-                it.resetTransform()
-                it.translate(dx, dy, dz)
+        if self._outline_gl is not None:
+            self._outline_gl.resetTransform()
+            self._outline_gl.translate(dx, dy, dz)
+        if self._gizmo is not None and self._gizmo_gl is not None:
+            self._place_gizmo((dx, dy, dz))
         self.status.setText(
             f"3D: moved ({dx:g}, {dy:g}" + (f", {dz:g}" if dz else '') +
             ') mm' + (f" along {'xyz'[st['axis']]}" if st['kind'] == 'axis'
@@ -828,6 +919,13 @@ class Draw3D:
         st, at = self._drag3d, self._press3d_at
         self._drag3d = self._press3d_at = None
         self._axis = None
+        if st is not None and st['kind'] == 'box':
+            pos = ev.position()
+            self._box3d_hide()
+            (x0, y0), (x1, y1) = st['p0'], (pos.x(), pos.y())
+            if abs(x1 - x0) + abs(y1 - y0) >= 4:
+                self.box_select3d(x0, y0, x1, y1)
+            return
         if st is not None:
             self.view3d.setCursor(Qt.OpenHandCursor)
             if st['moved']:
@@ -848,6 +946,41 @@ class Draw3D:
             return
         if self.selected:  # a click on nothing (not an orbit): none
             self.select(None)
+
+    # ---- a box selection ----
+    def box_select3d(self, x0, y0, x1, y1):
+        """The shapes drawn wholly inside the 3D view's pixel box (x0, y0) to
+        (x1, y1) selected (dragged right to left: those it touches), as the
+        plan's box; what the clip took off, hidden shapes and materials not
+        shown are not. The indices."""
+        self._ensure_3d()
+        v = self.view3d
+        crossing = x1 < x0
+        hits = sorted(v3.box_pick(self._meshes3d, self._mvp(),
+                                  max(v.width(), 1), max(v.height(), 1),
+                                  (x0, y0, x1, y1), crossing))
+        self.select_many(hits)
+        self.status.setText(f"3D: {len(hits)} shape(s) " + (
+            'touching the box (right to left)' if crossing else
+            'inside the box (left to right)'))
+        return hits
+
+    def _box3d_to(self, st, x, y):
+        from PySide6.QtCore import QRect, QPoint
+        from PySide6.QtWidgets import QRubberBand
+        if self._band3d is None:
+            self._band3d = QRubberBand(QRubberBand.Rectangle, self.view3d)
+        x0, y0 = st['p0']
+        self._band3d.setGeometry(QRect(QPoint(round(x0), round(y0)),
+                                       QPoint(round(x), round(y))).normalized())
+        self._band3d.show()
+        self.status.setText('3D: a box, ' + (
+            'touching it (right to left)' if x < x0 else
+            'inside it (left to right)'))
+
+    def _box3d_hide(self):
+        if self._band3d is not None:
+            self._band3d.hide()
 
     def _update_shape_3d(self, i):
         """Shape i's 3D mesh, again (while it is dragged: the rest stays)."""
@@ -872,6 +1005,25 @@ def _pick_view(base, tab):
     as before. Its keys are the page's (Delete, Esc, a tool's letter, undo,
     the camera's digits, X / Y / Z while dragging)."""
     class PickView(base):
+        def projectionMatrix(self, region, viewport):
+            if not tab.ortho3d:
+                return super().projectionMatrix(region, viewport)
+            # (view3d.ortho_matrix: as wide as the perspective's centre)
+            from PySide6.QtGui import QMatrix4x4
+            x0, y0, w, h = viewport
+            m = v3.ortho_matrix(self.opts['distance'], self.opts['fov'], w,
+                                h, (region[0] - x0, region[1] - y0,
+                                    region[2], region[3]))
+            return QMatrix4x4(*m.ravel().tolist())
+
+        def pixelSize(self, pos):
+            if not tab.ortho3d:
+                return super().pixelSize(pos)
+            px = v3.ortho_pixel(self.opts['distance'], self.opts['fov'],
+                                self.width())
+            return (np.full(np.shape(pos)[:-1], px)
+                    if isinstance(pos, np.ndarray) else px)
+
         def mousePressEvent(self, ev):
             super().mousePressEvent(ev)  # (where an orbit starts from)
             tab._press3d(ev)
@@ -951,7 +1103,19 @@ def _relook(it, look, mesh=None):
     it.setDepthValue(0 if opaque else 5)
 
 
-_TRANSLUCENT = None
+_TRANSLUCENT = _ON_TOP = None
+
+
+def _on_top():
+    """GL options of what is drawn over the whole scene (the gizmo's
+    arrowheads): no depth test, the faces turned from the camera culled (a
+    cone's far side not drawn over its near side)."""
+    global _ON_TOP
+    if _ON_TOP is None:
+        from OpenGL import GL
+        _ON_TOP = {GL.GL_DEPTH_TEST: False, GL.GL_BLEND: False,
+                   GL.GL_CULL_FACE: True, 'glCullFace': (GL.GL_BACK,)}
+    return _ON_TOP
 
 
 def _gl_options(opaque):
