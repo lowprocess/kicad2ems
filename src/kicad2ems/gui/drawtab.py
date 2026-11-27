@@ -1340,19 +1340,24 @@ class DrawTab(QWidget, Draw3D):
         and a row's text and ticks set where they changed."""
         ss = self.drawing.shapes
         lst = self.list
+        flags = (Qt.ItemIsSelectable | Qt.ItemIsEnabled
+                 | Qt.ItemIsUserCheckable)
         with QSignalBlocker(lst):
             n = lst.topLevelItemCount()
             if n > len(ss):
                 lst.model().removeRows(len(ss), n - len(ss))
-            elif n < len(ss):
+            elif n < len(ss):  # (made as they are: not set again below)
                 items = []
-                for _ in range(len(ss) - n):
-                    it = QTreeWidgetItem()
-                    it.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled
-                                | Qt.ItemIsUserCheckable)
+                for s in ss[n:]:
+                    it = QTreeWidgetItem(['', '', s.label()])
+                    it.setFlags(flags)
+                    it.setCheckState(0, Qt.Unchecked if s.hidden else
+                                     Qt.Checked)
+                    it.setCheckState(1, Qt.Checked if s.locked else
+                                     Qt.Unchecked)
                     items.append(it)
                 lst.addTopLevelItems(items)
-            for k, s in enumerate(ss):
+            for k, s in enumerate(ss[:n]):
                 it = lst.topLevelItem(k)
                 text = s.label()
                 if it.text(2) != text:
@@ -1610,6 +1615,10 @@ class DrawTab(QWidget, Draw3D):
         """A shape's plan items (unstyled): its outline, or a port's marker
         and its name."""
         g = _outline(s)
+        if g is not None and not g.interiors:  # (one ring: no joins to mark)
+            xy = np.asarray(g.exterior.coords)
+            return [_item(pg.functions.arrayToQPath(
+                xy[:, 0], xy[:, 1], connect='all', finiteCheck=False), z=20)]
         if g is not None:
             return [_item(_qpath([_rings(g)]), z=20)]
         x, y = s.points[0]

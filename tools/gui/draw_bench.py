@@ -52,7 +52,8 @@ def fence(n, layout):
     yc = (y0 + y1) / 2
     rows = [yc - 2.0, yc - 1.2, yc + 1.2, yc + 2.0]
     per = -(-n // len(rows))
-    pitch = (x1 - x0 - 3.0) / per
+    # (27 mm long at most: a fence along a trace, sma_launch's length)
+    pitch = min(x1 - x0 - 3.0, 27.0) / per
     out = []
     for r, y in enumerate(rows):
         for k in range(per):
@@ -122,6 +123,13 @@ def main():
     gc.collect()
     base, base_peak = now_mb(), rss_mb()
     shapes = fence(a.n, layout)
+    # the plan on the fence, as one working on it has it (its length, 8 mm
+    # high: a large board's whole is too far out to pick a via)
+    xs = [s.points[0][0] for s in shapes]
+    yc = sum(s.points[0][1] for s in shapes) / len(shapes)
+    tab.vb.setRange(xRange=(min(xs) - 1, max(xs) + 1),
+                    yRange=(yc - 4, yc + 4), padding=0)
+    app.processEvents()
     t = time.perf_counter()
     tab.drawing = Drawing(shapes)
     tab._refresh()
@@ -219,8 +227,8 @@ def main():
             return (time.perf_counter() - a_) * 1e3
         out['select all'] = statistics.median(sel_all() for _ in
                                               range(a.repeat))
-        out['plan drag all'] = drag(vp, at(vx, vy), at(vx + step, vy + step / 2),
-                                    a.repeat)
+        out['plan drag all'] = drag(vp, at(vx, vy),
+                                    at(vx + step, vy + step / 2), a.repeat)
         moved_all = sum(s.points != p for s, p in zip(tab.drawing.shapes,
                                                        before))
         tab.undo()
@@ -257,8 +265,8 @@ def main():
         out['array'] = statistics.median(array() for _ in range(5))
         app.processEvents()
     print(f"board {os.path.basename(a.board)} (read in {load:.2f} s), "
-          f"{a.n} vias, median of {a.repeat}; first drawn in {first * 1e3:.0f} "
-          f"ms; dragged: plan {moved} shape(s)"
+          f"{a.n} vias, median of {a.repeat}; first drawn in "
+          f"{first * 1e3:.0f} ms; dragged: plan {moved} shape(s)"
           + (f" ({moved_all} all)" if many else '') +
           f", 3D {moved3}; box: {n_box}")
     for k, v_ in out.items():
