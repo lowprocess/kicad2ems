@@ -83,11 +83,13 @@ def test_the_heating_from_cold_is_the_boards_time_constant():
     tr = r.transient
     C = 0.04 ** 2 * (1.5e-3 * RHO_C_FR4 + 0.035e-3 * RHO_C_CU)
     G = 0.04 ** 2 * 2 * 10.0
-    # backward Euler, 40 steps a decade
+    # (TR-BDF2: within 2e-4 of it; backward Euler had been 2 % late)
     assert tr['to_63_s']['all'] == pytest.approx(C / G, rel=0.025)
     assert (tr['parts']['all'][0] == pytest.approx(25.0)
             and tr['parts']['all'][-1] == pytest.approx(25 + 1 / G, rel=1e-3))
-    assert (np.all(np.diff(tr['parts']['all']) >= -1e-9)
+    # (TR-BDF2 within its error bound: not monotone to the microkelvin near
+    # the steady state, where its steps are longest)
+    assert (np.all(np.diff(tr["parts"]["all"]) >= -1e-5)
             and tr['times_s'][-1] == pytest.approx(3000.0))
 
 

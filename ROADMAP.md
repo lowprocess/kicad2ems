@@ -303,7 +303,15 @@ the code review of 2026-11-25. Last updated 2026-11-27.
    read quick). The drop at temperature (`pcbqs.electrothermal`), the rest: its transient keeps the hot steady
    state's current pattern (the pattern's shift as the copper warms is the passes' alone); a series part's and a
    load's own resistance against temperature; a circuit run's losses (`--circuit`, as the thermal tool takes
-   them) and its copper's AC loss; several rails at once (their copper heats one board).
+   them) and its copper's AC loss; several rails at once (their copper heats one board). Its speed on the
+   Jetson's SYS_VIN_HV (118 s with a transient, 2026-11-27): pcbqs.pdn's mesh of the rail and its ground 40 s; the
+   viewers 16 s (each writes the board's copper twice, `*_board.json` and again in `dump_info.json`); the figures
+   10 s (the thermal picture's outline, 31,000 `plot` calls: one LineCollection); the DC re-solve of each pass by
+   conjugate gradients on the first pass's factor, 0.8 s against spsolve's 15.0 s on its 1.14 M ground unknowns,
+   left for now as 8 % of a two-pass run (more with more passes). Measured and set aside: SuperLU in a symmetric
+   ordering for the DC solve (6.62 s against spsolve's 6.67); the error-controlled stepping with every step
+   length factored, within a 4 GB budget, on the Jetson grid (786 s: 122 factorisations as the budget evicted them,
+   against 244 s and 18.9 GB keeping 20; the reduced model, 20 s, is the answer).
 10. **Conducted emission, the rest** (`pcbqs.conducted`, docs/pcbqs/conducted.md):
    - radiated emission from a converter: its switch node's loop and its input cable, driven by the conducted
      run's currents (the radiated question's far field);

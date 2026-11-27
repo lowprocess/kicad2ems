@@ -176,3 +176,36 @@ def test_the_command_line_takes_profiles(tmp_path, capsys):
     with pytest.raises(SystemExit):
         main([board, '--loss', 'L1=0.15', '--profile', 'L1=step@3', '--out',
               str(tmp_path / 'p')])
+
+
+def _at(tr, times):
+    t = np.array(tr['times_s'])
+    i = [int(np.argmin(np.abs(t - a))) for a in times]
+    assert np.allclose(t[i], times)
+    return (np.array(tr['hottest_C'])[i],
+            {k: np.array(v)[i] for k, v in tr['parts'].items()})
+
+
+def test_the_reduced_model_is_the_grid_s_response():
+    """transient.reduce (the large grids' way: a Krylov model from two more
+    factors) against the grid stepped itself, with a self-heating heat: at
+    every break and at the end within a few mK, the time constants to 1e-5."""
+    p = Problem.of(plate(40), film=10.0, edge_film=5.0)
+    p.heat('Q1', [('F.Cu', box(5, 5, 10, 10))], 1.5)
+    p.heat('D1', [('F.Cu', box(25, 25, 30, 32))], 0.7)
+    p.theta, p.air = {'Q1': 5.0, 'D1': 3.0}, {'Q1': 30.0}
+    xs, ys = np.meshgrid(np.arange(12.5, 30, 1.0), np.arange(12.5, 20, 1.0))
+    p.heat_points('copper', 'F.Cu', xs, ys, np.full(xs.size, 0.002),
+                  np.full(xs.size, 2e-6))
+    g = build(p, 1.0)
+    prof = {'Q1': TR.profile('pulse:20,60@5'),
+            'copper': TR.profile('step:0.5,1@100'),
+            'D1': TR.profile('off@250')}
+    d = g.transient(400.0, prof, 'steady', log=quiet, method='direct')
+    r = g.transient(400.0, prof, 'steady', log=quiet, method='reduced')
+    times = [5.0, 25.0, 85.0, 100.0, 105.0, 250.0, 400.0]
+    (hd, pd), (hr, pr_) = _at(d, times), _at(r, times)
+    assert np.abs(hd - hr).max() < 5e-3
+    assert max(np.abs(pd[k] - pr_[k]).max() for k in pd) < 5e-3
+    assert np.allclose(d['tau_s'][:3], r['tau_s'][:3], rtol=1e-5)
+    assert r['method'] == 'reduced' and r['reduced'] < g.A.shape[0] // 4

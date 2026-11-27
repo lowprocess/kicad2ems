@@ -213,6 +213,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (the rail setup the two tools share); the thermal grid built once for any heats (`thermal.grid.build`,
   `Grid.place` for heat at points, `Problem.heat_points`). Tests: tests/pcbqs/test_electrothermal.py,
   tests/pcbqs/test_thermal_transient.py.
+  Speed (three passes on the Jetson carrier's SYS_VIN_HV at 6 A, --dmax 3 --size 1: 1.14 M DC unknowns, a 179,000-
+  unknown 10-layer grid; the machine shared with four other runs, load 2-21): (1) the copper's loss points joined
+  once (the barrels' had been appended one by one, copying 6.6 M points for each of 1456 vias: 154 s) and the vias'
+  temperatures a layer at a time: the run 235 -> 138 s, the coupling 135 -> 34 s, results to 5e-12; (2) the
+  viewers' JSON by the C encoder (json.dumps; json.dump to a file takes the pure-Python one): their four files
+  10.7 -> 3.2 s, the same bytes; (3) the transient error-controlled (Hosea and Shampine's estimate, a ladder of
+  powers of two, factors kept within a memory budget) and, above 40,000 unknowns, run as a reduced model (a
+  rational block Krylov basis, six moments at the steady state and at two shifts, PRIMA's congruence,
+  diagonalised): with --transient 1200 and 60 s bursts every 300 s, the transient 244 -> 20 s, the run 357 -> 118 s
+  and its peak memory 18.9 -> 4.7 GB (it had kept 20 factors of 0.8 GB), within 0.1 mK of the grid stepped itself
+  at every break, the time constants 135.4, 78.1, 41.9 s; on the test boards the error control takes 100 -> 46
+  steps for the heating from cold and a pulse train 1898 -> 260 with its error 0.13 -> 0.001 K.
 - **Jitter, noise and BER contours in the time-domain question (2026-11-25; docs/timedomain.md#ber).** The
   statistical eye of a lone bit's response at the far end (`timedomain.stat_eye`): every pattern of the other bits
   (each cursor's two-point distribution convolved on a grid, its mass split between neighbouring levels so the

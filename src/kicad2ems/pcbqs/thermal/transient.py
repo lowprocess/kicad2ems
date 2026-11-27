@@ -27,10 +27,28 @@ trapezoidal stage to t + gamma h, gamma = 2 - sqrt(2), then BDF2 to t + h. It is
 second order and L-stable, so a step far longer than the copper's own time
 constants damps them instead of ringing (the trapezoidal rule alone would), and
 both stages take the one matrix (2 + sqrt 2) C / h + A, factored once for each
-step length. No step crosses a profile's break: within an interval each
-profile is smooth, and the steps grow geometrically from its start (each at
-most GROWTH of the time since the break), on a ladder of lengths RUNG apart, so
-the factors are few and every pulse of a train takes the same ones.
+step length. Each step's local error is estimated from the stages' slopes
+(Hosea and Shampine's, C^-1 (q - A x) at the three points: matrix-vector
+products alone) against ATOL + RTOL x the largest rise: a step over it is taken
+again at half the length, one well inside it lets the next double. The lengths
+are a ladder of powers of two, so the factors are few and every pulse of a
+train reuses them; those kept are held within a memory budget (cache_bytes), the
+longest unused given up first, and an interval's last step, which ends on its
+break, is solved by conjugate gradients preconditioned with the factor of the
+rung below it. No step crosses a profile's break: within an interval each
+profile is smooth, and the first step after a break is the last interval's
+first.
+
+A grid of more than DIRECT_MAX unknowns is run reduced (reduce): a factor per
+step length of the Jetson carrier's 179,000 unknowns is 0.8 GB and 6 s, and a
+pulse train wants a dozen (they had held 16 GB). The heats gathered by profile,
+the start and the self-heating's direction are the inputs of a rational block
+Krylov basis (moments at the steady state, whose factor the steady solve has,
+and at two shifts set by the shortest stretch between breaks: two more
+factors), the grid projected on it by congruence (PRIMA: passive, the steady
+state exact) and diagonalised, and that model stepped as the grid would be, its
+temperatures lifted back at each step. On the test boards it is within 1 mK of
+the grid stepped itself at every break.
 
 The self-heating of the copper (electrothermal.py): a heat may carry a slope,
 dq/dx (W/K at each unknown: the copper's I^2 R at its resistance's temperature
@@ -48,14 +66,57 @@ from scipy.sparse import diags
 
 GAMMA = 2.0 - math.sqrt(2.0)
 KAPPA = 2.0 + math.sqrt(2.0)      # 2 / gamma = (2 - gamma) / (1 - gamma)
-GROWTH = 0.2                      # a step: at most this share of the time
-#                                   since the interval's start
-RUNG = 4.0                        # the step lengths' ladder
-FIRST = 1e-4                      # the first step of an interval: this share
-#                                   of it (or of the run, if shorter)
-FLOOR = 1e-7                      # of the run: no step shorter
+# the local error's constant (Hosea and Shampine 1996): 2 |(-3 g^2 + 4 g - 2) /
+# (12 (2 - g))|
+ERR = 2.0 * abs((-3 * GAMMA ** 2 + 4 * GAMMA - 2) / (12 * (2 - GAMMA)))
+ATOL, RTOL = 1e-3, 1e-4           # K, and of the largest rise: a step's error
+SAFETY = 2.0                      # a rung up only with this margin
+RUNG = 2.0                        # the step lengths' ladder
+FIRST = 1e-3                      # an interval's first step: at most this
+#                                   share of it
+FLOOR = 1e-7                      # of the run: the ladder's foot
 LEVELS = 50                       # the self-heating level's rounding: 1/50
 MAX_STEPS = 50000
+CACHE_MAX = 4 << 30               # bytes of factors kept, at most
+# a system larger than this many unknowns is run reduced (reduce): a factor
+# per step length of a 179,000-unknown grid (the Jetson's, 10 layers) is 0.8 GB
+# and 6 s, and a pulse train wants a dozen
+DIRECT_MAX = 40000
+MOMENTS = 6                       # the reduced model's moments at each shift
+# its shifts, 1/s: times the shortest stretch between breaks over these
+SHIFTS = (0.0, 100.0, 1000.0)
+CACHE_SHARE = 0.25                # of the memory available, at most
+
+
+def cache_bytes():
+    """The factors' memory budget: CACHE_MAX, or CACHE_SHARE of what is
+    available if less (at least one factor is always kept)."""
+    try:
+        from kicad2ems.emsdev.memory import available
+        return int(min(CACHE_MAX, CACHE_SHARE * available()))
+    except Exception:  # noqa: BLE001 (no measure: the cap)
+        return CACHE_MAX
+
+
+def _pcg(A, b, solve, x, tol=1e-12, most=60):
+    """Conjugate gradients on A x = b from x, preconditioned by solve (a
+    factor of a nearby A); stops when the preconditioned residual, the error's
+    estimate, is tol of x; None if not within `most` iterations."""
+    x = np.array(x, float)
+    r = b - A @ x
+    z = solve(r)
+    p, rz = z.copy(), float(r @ z)
+    for _ in range(most):
+        if np.linalg.norm(z) <= tol * max(np.linalg.norm(x), 1e-300):
+            return x
+        Ap = A @ p
+        a = rz / float(p @ Ap)
+        x += a * p
+        r -= a * Ap
+        z = solve(r)
+        rz, old = float(r @ z), rz
+        p = z + (rz / old) * p
+    return None
 
 
 class Profile:
@@ -174,14 +235,13 @@ def _intervals(profiles, t_end):
     return sorted(b)
 
 
-def _rung(h, base):
-    """The ladder's longest length at most h."""
-    k = math.floor(math.log(h / base) / math.log(RUNG) + 1e-9)
-    return base * RUNG ** k
+def _rung_k(h, base):
+    """The ladder's rung at most h: base RUNG^k."""
+    return max(0, int(math.floor(math.log(h / base) / math.log(RUNG) + 1e-9)))
 
 
 def run(A, C, heats, t_end, read, start=None, slope=None, slope_heat=None,
-        log=print):
+        log=print, tol=None, lift=None):
     """The temperature from x(0) = start (None: the ambient everywhere) to
     t_end, s.
 
@@ -190,8 +250,12 @@ def run(A, C, heats, t_end, read, start=None, slope=None, slope_heat=None,
     scales it by its square, a current's); read(x, t) -> {name: value} what is
     reported at each step (its parts' temperatures, the hottest copper); slope:
     (n,) W/K, the self-heating of heat `slope_heat` (its name), scaled by that
-    heat's level. Returns dict(times_s, values={name: [..]} (read's, from
-    t = 0), steps, factors, seconds)."""
+    heat's level, or an (n, n) matrix of it (a reduced model's); tol: K, each
+    step's local error (default ATOL + RTOL x the largest rise so far); lift(x)
+    -> the temperatures x stands for (a reduced model's coordinates: reduce),
+    for the error, the bound and read. Returns dict(times_s, values={name:
+    [..]} (read's, from t = 0), steps, rejected, factors, seconds)."""
+    from collections import OrderedDict
     from .problem import factor_spd
     t0 = time.perf_counter()
     n = A.shape[0]
@@ -199,7 +263,9 @@ def run(A, C, heats, t_end, read, start=None, slope=None, slope_heat=None,
     x = np.zeros(n) if start is None else np.asarray(start, float).copy()
     heats = list(heats)
     sl = None
-    if slope is not None and np.any(slope):
+    full = (lambda v: v) if lift is None else lift
+    matrix = slope is not None and getattr(slope, 'ndim', 1) == 2
+    if slope is not None and (matrix or np.any(slope)):
         sl = next((h for h in heats if h[0] == slope_heat), None)
         if sl is None:
             raise ValueError(f"the self-heating's heat {slope_heat!r} is not "
@@ -218,66 +284,200 @@ def run(A, C, heats, t_end, read, start=None, slope=None, slope_heat=None,
         return q
     edges = _intervals([h[2] for h in heats], t_end)
     base = max(t_end * FLOOR, 1e-12)
-    cache = {}
+    # the factors kept, oldest use first, within a memory budget (each step
+    # length its own: the Jetson's 20 had held 16 GB)
+    cache, made = OrderedDict(), [0]
+    room = cache_bytes()
+    held = [0]
+    capacity = C > 0
+    inv_c = np.where(capacity, 1.0 / np.where(capacity, C, 1.0), 0.0)
 
-    def factor(h, lev):
-        key = (round(h / base, 9), lev)
-        if key not in cache:
-            M = diags(KAPPA * C / h) + A
-            if lev:
-                M = M - diags(lev * slope)
-            cache[key] = factor_spd(M)
-        return cache[key]
+    def factor(k, lev):
+        """The factor of the rung k's matrix, made if not kept."""
+        key = (k, lev)
+        if key in cache:
+            cache.move_to_end(key)
+            return cache[key][0]
+        h = base * RUNG ** k
+        M = diags(KAPPA * C / h) + A
+        if lev:
+            M = M - lev * (slope if matrix else diags(slope))
+        lu = factor_spd(M)
+        made[0] += 1
+        size = 12 * (lu.L.nnz + lu.U.nnz)
+        while cache and held[0] + size > room:
+            _, (_, s) = cache.popitem(last=False)
+            held[0] -= s
+        cache[key] = (lu, size)
+        held[0] += size
+        return lu
+
+    def system(h, k, lev):
+        """solve(rhs) for (KAPPA C / h + A - lev S): the rung's factor, or, for
+        a step off the ladder (an interval's last), conjugate gradients
+        preconditioned by the factor of the rung below (the two a factor of
+        RUNG apart at most: a few iterations)."""
+        lu = factor(k, lev)
+        if abs(h - base * RUNG ** k) <= 1e-12 * h:
+            return lu.solve
+        M = diags(KAPPA * C / h) + A
+        if lev:
+            M = M - lev * (slope if matrix else diags(slope))
+        M = M.tocsr()
+
+        def solve(r):
+            y = _pcg(M, r, lu.solve, lu.solve(r))
+            return lu.solve(r) if y is None else y
+        return solve
+
+    def Sx(v):
+        return slope @ v if matrix else slope * v
 
     def record(t, x):
         times.append(t)
-        for k, v in read(x, t).items():
-            values.setdefault(k, []).append(v)
+        for key, v in read(full(x), t).items():
+            values.setdefault(key, []).append(v)
+    ga = 1.0 / (GAMMA * (2.0 - GAMMA))
+    gb = (1.0 - GAMMA) ** 2 / (GAMMA * (2.0 - GAMMA))
     times, values = [], {}
     record(0.0, x)
-    steps = 0
+    steps = rejected = 0
+    scale = float(np.abs(full(x)).max()) if len(x) else 0.0
+    k_start = None
     for a, b in zip(edges, edges[1:]):
         span = b - a
         lev = 0
         if sl is not None:
             lev = round(level(sl, 0.5 * (a + b)) * LEVELS) / LEVELS
-        tau = 0.0
-        first = max(min(span, t_end) * FIRST, base)
+        eps = 1e-9 * max(span, 1e-300)  # (each interval's own values: a hair
+        #                                  inside it)
+        # the first step: the last interval's first accepted one, at most a
+        # FIRST of this one
+        k_cap = _rung_k(max(span * FIRST, base), base)
+        k = k_cap if k_start is None else min(k_start, k_cap)
+        tau, first = 0.0, True
         while tau < span * (1 - 1e-12):
             left = span - tau
-            h = _rung(max(first, GROWTH * tau), base)
-            if h >= left or left - h < 0.5 * h:
-                h = left            # the interval's last step: its rest
+            h = base * RUNG ** k
+            last = h >= left or left - h < 0.25 * h
+            if last:
+                h = left
+                k = _rung_k(h, base)
             ta = a + tau
-            tg, tb = ta + GAMMA * h, ta + h
-            # (the interval's own values at its ends: a hair inside)
-            eps = 1e-9 * max(span, 1e-300)
             qa = q_at(min(max(ta, a + eps), b - eps))
-            qg, qb = q_at(min(tg, b - eps)), q_at(b - eps if left == h else tb)
-            if lev:
-                Ax = A @ x - lev * slope * x
-            else:
-                Ax = A @ x
-            lu = factor(h, lev)
+            qg = q_at(min(ta + GAMMA * h, b - eps))
+            qb = q_at(b - eps if last else ta + h)
+            Ax = A @ x - (lev * Sx(x) if lev else 0.0)
+            solve = system(h, k, lev)
             kc = KAPPA * C / h
-            xg = lu.solve(kc * x - Ax + qa + qg)
-            # BDF2: (C / (d h) + A) x1 = C (a xg - b x) / (d h) + q1,
-            # 1 / d = KAPPA, a = 1 / (g (2 - g)), b = (1 - g)^2 / (g (2 - g))
-            ga = 1.0 / (GAMMA * (2.0 - GAMMA))
-            gb = (1.0 - GAMMA) ** 2 / (GAMMA * (2.0 - GAMMA))
-            x = lu.solve(kc * (ga * xg - gb * x) + qb)
-            tau = span if h == left else tau + h
+            xg = solve(kc * x - Ax + qa + qg)
+            x1 = solve(kc * (ga * xg - gb * x) + qb)
+            # the local error (Hosea and Shampine): 2 |k| h (f_n / g -
+            # f_g / (g (1 - g)) + f_1 / (1 - g)), f = C^-1 (q - A x), over the
+            # unknowns with a capacity
+            Ag = A @ xg - (lev * Sx(xg) if lev else 0.0)
+            A1 = A @ x1 - (lev * Sx(x1) if lev else 0.0)
+            s = ((qa - Ax) / GAMMA - (qg - Ag) / (GAMMA * (1.0 - GAMMA)) +
+                 (qb - A1) / (1.0 - GAMMA)) * inv_c
+            err = ERR * h * float(np.abs(full(s)).max()) if n else 0.0
+            big = float(np.abs(full(x1)).max()) if n else 0.0
+            bound = tol if tol is not None else ATOL + RTOL * max(scale, big)
+            if err > bound and k > 0 and h > base * 1.0001:
+                rejected += 1
+                k = min(k, _rung_k(h, base)) - 1   # the step again, halved
+                if rejected > MAX_STEPS:
+                    raise ValueError("the transient's steps keep failing")
+                continue
+            x = x1
+            tau = span if last else tau + h
             steps += 1
+            if first:
+                k_start, first = k, False
+            scale = max(scale, big)
             if steps > MAX_STEPS:
                 raise ValueError(
                     f"the transient needs over {MAX_STEPS} steps (a pulse "
                     "train far longer than its pulses): run its average as a "
                     "constant, or a shorter time")
             record(a + tau, x)
-    out = dict(times_s=times, values=values, steps=steps, factors=len(cache),
-               seconds=time.perf_counter() - t0)
-    log(f"thermal transient: {steps} steps to {t_end:g} s, {len(cache)} "
-        f"factorisations, {out['seconds']:.2f} s")
+            # the next step: a rung up while the error is well inside the
+            # bound (second order: a doubled step's is 8 times this one's)
+            if not last and err * RUNG ** 3 * SAFETY <= bound:
+                k += 1
+    out = dict(times_s=times, values=values, steps=steps, rejected=rejected,
+               factors=made[0], seconds=time.perf_counter() - t0)
+    log(f"thermal transient: {steps} steps to {t_end:g} s ({rejected} "
+        f"rejected), {made[0]} factorisations, {out['seconds']:.2f} s")
+    return out
+
+
+def reduce(A, C, heats, start=None, slope=None, factor0=None, shifts=(0.0,),
+           moments=None):
+    """A reduced model of C x' = q(t) - (A - lev S) x (rational block Krylov,
+    PRIMA's congruence: Odabasioglu, Celik and Pileggi 1998) for a system too
+    large for a factor per step length: the inputs are the heats gathered by
+    their profile (those that move together are one), the start and the
+    self-heating's own direction; for each shift s, the moments (A + s C)^-1
+    (C (A + s C)^-1)^j of them, `moments` deep, made orthonormal. With V that
+    basis, V^T A V, V^T C V (positive definite: the congruence keeps it
+    passive and stable) and V^T S V, diagonalised (A_r w = lambda C_r w), so
+    the model is run's own form: A = diag(lambda), C = 1. It matches the
+    response's moments at each shift: at 0 the steady state exactly (any
+    profile's long-time limit), at the others the faster changes.
+
+    factor0: A's factor (the steady solve's), reused for the shift 0. Returns
+    dict(A, C, heats, start, slope (an m x m matrix, or None), T (n, m): the
+    temperatures of the model's coordinates, x = T z), size)."""
+    from scipy.sparse import csc_matrix
+    from .problem import factor_spd
+    n = A.shape[0]
+    C = np.asarray(C, float)
+    groups, order = {}, []
+    for name, q, pr, sq in heats:
+        key = (id(pr), sq)
+        if key not in groups:
+            groups[key] = np.zeros(n)
+            order.append(key)
+        groups[key] += q
+    cols = [groups[k] for k in order if np.any(groups[k])]
+    if start is not None and np.any(start):
+        cols.append(np.asarray(start, float))
+    S = None if slope is None or not np.any(slope) else np.asarray(slope, float)
+    B = np.column_stack(cols) if cols else np.zeros((n, 1))
+    q = moments or MOMENTS
+    blocks = []
+    for s in shifts:
+        lu = (factor0 if (s == 0 and factor0 is not None) else
+              factor_spd((A + diags(s * C)) if s else A))
+        W = lu.solve(B)
+        if S is not None:  # the self-heating's direction from the first block
+            W = np.column_stack([W, lu.solve(S[:, None] * W)])
+        for _ in range(q):
+            blocks.append(W)
+            W = lu.solve(C[:, None] * W)
+    V = np.column_stack(blocks)
+    # orthonormal, the near-dependent dropped (twice: Gram-Schmidt's loss)
+    V /= np.maximum(np.linalg.norm(V, axis=0), 1e-300)
+    for _ in range(2):
+        V, R = np.linalg.qr(V)
+        keep = np.abs(np.diag(R)) > 1e-10 * np.abs(np.diag(R)).max()
+        V = V[:, keep]
+    Ar = V.T @ (A @ V)
+    Cr = V.T @ (C[:, None] * V)
+    Ar, Cr = 0.5 * (Ar + Ar.T), 0.5 * (Cr + Cr.T)
+    # (C_r is positive definite while no basis vector lies on the unknowns
+    # with no capacity alone: none does, A^-1 spreads every one)
+    from scipy.linalg import eigh
+    lam, Wm = eigh(Ar, Cr)
+    T = V @ Wm
+    m = T.shape[1]
+    out = dict(A=csc_matrix(diags(lam)), C=np.ones(m), T=T, size=m,
+               heats=[(name, T.T @ q, pr, sq) for name, q, pr, sq in heats])
+    # z0: x0 = T z0 (x0 is in the basis), z0 = W^T C_r V^T x0
+    out['start'] = (None if start is None else
+                    Wm.T @ (Cr @ (V.T @ np.asarray(start, float))))
+    out['slope'] = (None if S is None else
+                    csc_matrix(T.T @ (S[:, None] * T)))
     return out
 
 

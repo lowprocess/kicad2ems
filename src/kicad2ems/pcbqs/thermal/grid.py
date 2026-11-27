@@ -280,7 +280,7 @@ class Grid:
         return res
 
     def transient(self, seconds, profiles=None, start='cold', log=print,
-                  steady=None, currents=()):
+                  steady=None, currents=(), method='auto'):
         """The temperature over `seconds` (transient.run), each heat by its
         profile ({name: Profile}: a part's, a spot set's, or 'all': every part
         with none of its own), from the ambient (start 'cold') or from the
@@ -292,7 +292,9 @@ class Grid:
         profiles, copper_W (the spots' heat with their self-heating, when
         there are spots)). currents: the parts whose profile is a current's
         (their loss by its square: a series resistor's), as a spot set's
-        is."""
+        is. method: 'direct' (the grid itself, a factor per step length),
+        'reduced' (transient.reduce's model of it, two more factors), or 'auto':
+        reduced above transient.DIRECT_MAX unknowns."""
         from . import transient as TR
         profiles = dict(profiles or {})
         heats_known = sorted(self.q_parts) + sorted(self.q_spots)
@@ -343,9 +345,32 @@ class Grid:
                     lev[k] * (v.sum() + self.s_spots[k] @ x)
                     for k, v in self.q_spots.items()))
             return out
-        out = TR.run(self.A, self.cap, heats, float(seconds), read, start=x0,
-                     slope=slope, slope_heat=spots[0] if spots else None,
-                     log=log)
+        m = self.A.shape[0]
+        if method == 'auto':
+            method = 'reduced' if m > TR.DIRECT_MAX else 'direct'
+        if method not in ('direct', 'reduced'):
+            raise ValueError(f"method: direct, reduced or auto, not {method!r}")
+        red = None
+        if method == 'reduced':
+            # the shifts: the steady state's, and those of times a fraction of
+            # the shortest stretch between the profiles' breaks
+            edges = np.array(TR._intervals([h[2] for h in heats],
+                                           float(seconds)))
+            short = float(np.diff(edges).min())
+            red = TR.reduce(self.A, self.cap, heats, x0, slope, self.factor(),
+                            [k / short for k in TR.SHIFTS])
+            log(f"thermal transient: a reduced model of {red['size']} of the "
+                f"grid's {m:,} unknowns")
+            T = red['T']
+            out = TR.run(red['A'], red['C'], red['heats'], float(seconds),
+                         read, start=red['start'], slope=red['slope'],
+                         slope_heat=spots[0] if spots else None, log=log,
+                         lift=lambda z: T @ z)
+        else:
+            out = TR.run(self.A, self.cap, heats, float(seconds), read,
+                         start=x0, slope=slope,
+                         slope_heat=spots[0] if spots else None, log=log)
+        out['method'] = method
         vals = out.pop('values')
         tr = dict(out, start=start,
                   parts={k: vals[k] for k in self.q_parts if k in vals},
@@ -375,8 +400,17 @@ class Grid:
                         t[hit - 1] + (t[hit] - t[hit - 1]) * (target - a) /
                         max(b - a, 1e-12))
         last = levels(float(seconds)).get(spots[0], 0.0) if spots else 0.0
-        tr['tau_s'] = TR.time_constants(
-            self.A, self.cap, slope=None if slope is None else last * slope)
+        if red is None:
+            tr['tau_s'] = TR.time_constants(
+                self.A, self.cap, slope=None if slope is None else last * slope)
+        else:  # the model's slowest modes (it matches the steady state's
+            #     moments: its slowest are the grid's)
+            M = red['A'] - (last * red['slope'] if red['slope'] is not None
+                            and last else 0.0 * red['A'])
+            lam = np.linalg.eigvalsh(M.toarray())
+            tr['tau_s'] = sorted((float(1 / v) for v in lam if v > 0),
+                                 reverse=True)[:4]
+            tr['reduced'] = red['size']
         return tr
 
 

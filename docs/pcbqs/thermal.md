@@ -109,10 +109,22 @@ ambient, `--start steady` from the steady temperature of the profiles' values be
 
 The stepping (`thermal/transient.py`) is TR-BDF2: a trapezoidal stage then BDF2, second order and L-stable, so a step
 far longer than the copper's own time constants damps them instead of ringing, and both stages take one matrix,
-factored once for each step length. No step crosses a profile's break; within each interval the steps grow from a
-ten-thousandth of it, each at most a fifth of the time since the break, on a ladder of lengths 4× apart, so the
-factors are few and every pulse of a train reuses them. The board's longest time constants come from the
-generalized eigenproblem C v = τ A v (ARPACK on A's factor).
+factored once for each step length. Each step's local error is estimated from the stages' slopes (Hosea and
+Shampine's estimate: matrix-vector products alone) against 1 mK + 1e-4 of the largest rise; a step over it is taken
+again at half the length, one well inside it lets the next double. The lengths are a ladder of powers of two, so the
+factors are few and every pulse of a train reuses them (kept within a memory budget, the longest unused given up
+first; an interval's last step, which ends on its break, by conjugate gradients on the rung below's factor). No step
+crosses a profile's break. The board's longest time constants come from the generalized eigenproblem C v = τ A v
+(ARPACK on A's factor).
+
+**A large grid** (over 40,000 unknowns) is run as a reduced model: a factor per step length of the Jetson carrier's
+179,000 unknowns is 0.8 GB and 6 s, and a pulse train wants a dozen or more. The heats gathered by their profiles,
+the start and the copper's self-heating are the inputs of a rational block Krylov basis (six moments at the steady
+state, whose factor the steady solve has, and at two shifts set by the shortest stretch between breaks: two more
+factors); the grid projected on it by congruence (PRIMA: stable and passive, the steady state exact) and
+diagonalised is stepped as the grid is, each step's temperatures lifted back. On the Jetson's SYS_VIN_HV at 6 A in
+60 s bursts every 300 s over 1200 s: 36 unknowns, 20 s against 244 s and 4.7 GB at most against 18.9, within 0.1 mK
+of the grid stepped itself at every break; its time constants 135.4, 78.1, 41.9 s.
 
 It writes `thermal-transient.json` (the times, each part's temperature and the hottest copper against time, each
 part's peak and when, the time constants, `to_63_s` for the heating from cold: when each part is 63 % of the way
@@ -120,9 +132,10 @@ there) and `thermal-transient.png`; the report's *Over time* section and a curve
 
 Checks (`tests/pcbqs/test_thermal_transient.py`): a lumped RC within 5e-4 of its closed form, and with a self-heating
 loss (the electrothermal one) within 1e-3; a plate heated all over (one mode) through a pulse train, a cooling and a
-load step within 1 % of its exact response; its time constant C / G to 1e-6 and its 63 % time to 1e-3 (backward
+load step within 1 % of its exact response; its time constant C / G to 1e-6 and its 63 % time to 2e-4 (backward
 Euler's, before 2026-11-27: 2 % late); after many time constants every part at its steady temperature (2 mK), and a
-run from the steady state staying there.
+run from the steady state staying there; the reduced model against the grid stepped itself, a self-heating heat with
+it, within 5 mK at every break and its time constants to 1e-5.
 
 The copper's own loss from the DC drop, with its resistance at its temperature, and both over time for a load
 profile: [Drop at temperature](electrothermal.md).
