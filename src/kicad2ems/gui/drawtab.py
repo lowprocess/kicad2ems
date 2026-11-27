@@ -285,8 +285,12 @@ class DrawTab(QWidget, Draw3D):
         self.list.setHeaderLabels(['Shown', 'Locked',
                                    'Shapes (applied in this order)'])
         h = self.list.header()
+        # (fixed: sized to their contents, every row was measured at each
+        # change, 24 ms a change of 300 shapes)
         for c in (0, 1):
-            h.setSectionResizeMode(c, QHeaderView.ResizeToContents)
+            h.setSectionResizeMode(c, QHeaderView.Fixed)
+            h.resizeSection(c, h.fontMetrics().horizontalAdvance(
+                self.list.headerItem().text(c)) + 18)
         h.setStretchLastSection(True)
         self.list.itemSelectionChanged.connect(self._listed)
         self.list.itemChanged.connect(self._list_toggled)
@@ -1332,22 +1336,31 @@ class DrawTab(QWidget, Draw3D):
         self._commit(before)
 
     def _fill_list(self):
+        """The list as the drawing is: rows added or taken off at its end,
+        and a row's text and ticks set where they changed."""
         ss = self.drawing.shapes
-        with QSignalBlocker(self.list):
-            if self.list.topLevelItemCount() != len(ss):
-                self.list.clear()
+        lst = self.list
+        with QSignalBlocker(lst):
+            n = lst.topLevelItemCount()
+            if n > len(ss):
+                lst.model().removeRows(len(ss), n - len(ss))
+            elif n < len(ss):
                 items = []
-                for _ in ss:
+                for _ in range(len(ss) - n):
                     it = QTreeWidgetItem()
                     it.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled
                                 | Qt.ItemIsUserCheckable)
                     items.append(it)
-                self.list.addTopLevelItems(items)
+                lst.addTopLevelItems(items)
             for k, s in enumerate(ss):
-                it = self.list.topLevelItem(k)
-                it.setText(2, s.label())
-                it.setCheckState(0, Qt.Unchecked if s.hidden else Qt.Checked)
-                it.setCheckState(1, Qt.Checked if s.locked else Qt.Unchecked)
+                it = lst.topLevelItem(k)
+                text = s.label()
+                if it.text(2) != text:
+                    it.setText(2, text)
+                for c, on in ((0, not s.hidden), (1, s.locked)):
+                    state = Qt.Checked if on else Qt.Unchecked
+                    if it.checkState(c) != state:
+                        it.setCheckState(c, state)
         self._sync_list_selection()
 
     def _sync_list_selection(self):

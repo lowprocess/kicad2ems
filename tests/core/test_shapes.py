@@ -378,6 +378,33 @@ def test_the_clip_plane():
     assert v3.clip_range(0, 2, 3, keep='above') is None
 
 
+def test_picking_through_boxes():
+    from kicad2ems.core import view3d as v3
+    from kicad2ems.core.shapes import pick
+    st = stack_of(None)
+    rng = np.random.default_rng(3)
+    shapes = [Shape('circle', [[x, y]], radius=0.2, material='metal', z0=0,
+                    z1=rng.uniform(0.5, 2)) for x in range(6) for y in range(5)]
+    shapes.append(Shape('rect', [[-1, -1], [7, 6]], layer='F.Cu'))
+    meshes = {i: shape_mesh(s, st) for i, s in enumerate(shapes)}
+    boxes = {i: np.r_[m[0].min(0), m[0].max(0)] for i, m in meshes.items()}
+    # the box test: entered, missed, from inside, along a slab
+    b = [[0, 0, 0, 1, 1, 1]]
+    assert v3.ray_boxes([0.5, 0.5, 5], [0, 0, -1], b)[0] == pytest.approx(4)
+    assert v3.ray_boxes([2, 0.5, 5], [0, 0, -1], b)[0] == np.inf
+    assert v3.ray_boxes([0.5, 0.5, 0.5], [0, 0, 1], b)[0] == 0
+    assert v3.ray_boxes([0.5, 0.5, 5], [0, 0, 1], b)[0] == np.inf
+    # the same answers as trying every mesh, for rays from all round
+    for _ in range(200):
+        o = rng.uniform([-3, -3, 3], [9, 8, 10])
+        d = rng.uniform([0, 0, 0], [6, 5, 1]) - o
+        d /= np.linalg.norm(d)
+        want, got = pick(meshes, o, d), v3.pick_boxed(meshes, boxes, o, d)
+        assert got[0] == want[0]
+        if want[0] is not None:
+            assert got[1] == pytest.approx(want[1])
+
+
 def test_a_convex_prism_as_a_fan():
     from shapely.geometry import box, Point, Polygon
     from kicad2ems.core import view3d as v3

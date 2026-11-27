@@ -14,6 +14,8 @@ grid.
     cam.update(frame(bounds, cam, w / h))           #  y1, z1)
     s = along_axis(o, d, at, axis)      # how far along axis (0, 1, 2) from
                                         # `at` the ray passes nearest
+    key, t = pick_boxed(meshes, boxes, o, d)    # core.shapes.pick, the
+                                                # meshes' boxes tried first
     v, f = clip_mesh(v, f, axis, value, keep='below')
     g = clip_outline(polygon, axis, value, keep='below')
     v, f = prism_fast(polygon, z0, z1)  # core.shapes.prism, a convex one
@@ -25,11 +27,12 @@ Camera angles are pyqtgraph's (degrees): elevation above the xy plane,
 azimuth from +x anticlockwise to where the camera stands; fov the horizontal
 field of view.
 """
-import math
+import functools, math
 import numpy as np
 
 __all__ = ['view_matrix', 'projection_matrix', 'mvp', 'ray', 'project',
-           'PRESETS', 'preset', 'frame', 'along_axis', 'pixel_to_segment',
+           'PRESETS', 'preset', 'frame', 'along_axis', 'ray_boxes',
+           'pick_boxed', 'pixel_to_segment',
            'clip_mesh', 'clip_outline', 'clip_range', 'prism_fast',
            'prism_edges',
            'grid_spec']
@@ -145,6 +148,46 @@ def along_axis(origin, direction, at, axis):
     return float((b * (d @ w) - (u @ w)) / den)
 
 
+def ray_boxes(origin, direction, boxes):
+    """How far along the ray (t >= 0) it enters each box of (n, 6) boxes
+    (x0, y0, z0, x1, y1, z1): (n,), inf where it misses (the slab test)."""
+    b = np.asarray(boxes, float).reshape(-1, 6)
+    o, d = np.asarray(origin, float), np.asarray(direction, float)
+    lo, hi = b[:, :3] - 1e-9, b[:, 3:] + 1e-9
+    par = np.abs(d) < 1e-15  # along that axis's slabs: in them or not
+    with np.errstate(divide='ignore', invalid='ignore'):
+        t0, t1 = (lo - o) / d, (hi - o) / d
+    inside = (o >= lo) & (o <= hi)
+    near = np.where(par, np.where(inside, -np.inf, np.inf),
+                    np.minimum(t0, t1)).max(1)
+    far = np.where(par, np.where(inside, np.inf, -np.inf),
+                   np.maximum(t0, t1)).min(1)
+    hit = (far >= near) & (far >= 0)
+    return np.where(hit, np.maximum(near, 0.0), np.inf)
+
+
+def pick_boxed(meshes, boxes, origin, direction):
+    """core.shapes.pick ((key, t): the mesh of {key: (vertices, faces)} the
+    ray meets first) with each mesh's box (boxes {key: (x0, y0, z0, x1, y1,
+    z1)}) tried first: the meshes are tried nearest box first, those whose
+    boxes it misses never (300 vias: one or two triangle tests a pick, not
+    300)."""
+    from .shapes import ray_hit
+    keys = [k for k, m in meshes.items() if m is not None and k in boxes]
+    if not keys:
+        return None, None
+    te = ray_boxes(origin, direction, [boxes[k] for k in keys])
+    best = (None, None)
+    for j in np.argsort(te):
+        if not np.isfinite(te[j]) or (best[1] is not None
+                                      and te[j] > best[1]):
+            break
+        t = ray_hit(*meshes[keys[j]], origin, direction)
+        if t is not None and (best[1] is None or t < best[1]):
+            best = (keys[j], t)
+    return best
+
+
 def pixel_to_segment(m, width, height, a, b, x, y):
     """How many pixels pixel (x, y) is from segment a-b (model points) as
     drawn, and where along it (0-1)."""
@@ -226,36 +269,50 @@ def prism_fast(g, z0, z1):
     """core.shapes.prism (polygon g extruded from z0 to z1: vertices, faces,
     wound outward), its caps a fan from the first corner when g is convex
     with no holes (a via, a pad, a box: shapely's triangulation took three
-    quarters of a 300-via 3D view's time); anything else, and a multipolygon
-    part by part, is prism's."""
+    quarters of a 300-via 3D view's time), its corners shared by the faces;
+    anything else, and a multipolygon part by part, is prism's."""
     from .shapes import prism
     if g.geom_type == 'MultiPolygon':
         ms = [prism_fast(p, z0, z1) for p in g.geoms if p.area > 1e-12]
-        v = np.concatenate([m[0] for m in ms]) if ms else np.zeros((0, 3))
-        return v, np.arange(len(v)).reshape(-1, 3)
+        if not ms:
+            return np.zeros((0, 3)), np.zeros((0, 3), int)
+        at = np.cumsum([0] + [len(m[0]) for m in ms[:-1]])
+        return (np.concatenate([m[0] for m in ms]),
+                np.concatenate([m[1] + k for m, k in zip(ms, at)]))
     xy = np.asarray(g.exterior.coords, float)[:-1]
     if g.interiors or len(xy) < 3:
         return prism(g, z0, z1)
-    e = np.roll(xy, -1, axis=0) - xy
-    turn = e[:, 0] * np.roll(e, -1, axis=0)[:, 1] - e[:, 1] * np.roll(
-        e, -1, axis=0)[:, 0]
+    n = len(xy)
+    f, nxt = _fan_faces(n)
+    e = xy[nxt] - xy
+    turn = e[:, 0] * e[nxt, 1] - e[:, 1] * e[nxt, 0]
     if turn.sum() < 0:  # clockwise: anticlockwise
         xy = xy[::-1]
         turn = -turn[::-1]
     if (turn < -1e-12 * max(float(np.abs(e).max()), 1e-9) ** 2).any():
         return prism(g, z0, z1)  # not convex
     z0, z1 = sorted((float(z0), float(z1)))
-    n = len(xy)
-    at = lambda p, z: np.c_[p, np.full(len(p), z)]
-    a = np.repeat(xy[:1], n - 2, axis=0)
-    b, c = xy[1:-1], xy[2:]
-    q = np.roll(xy, -1, axis=0)
-    tri = [np.stack([at(a, z1), at(b, z1), at(c, z1)], 1),  # top: up
-           np.stack([at(a, z0), at(c, z0), at(b, z0)], 1),  # bottom: down
-           np.stack([at(xy, z0), at(q, z0), at(q, z1)], 1),  # walls: out
-           np.stack([at(xy, z0), at(q, z1), at(xy, z1)], 1)]
-    v = np.concatenate(tri).reshape(-1, 3)
-    return v, np.arange(len(v)).reshape(-1, 3)
+    # the corners at z0 (0..n-1) and at z1 (n..2n-1), shared by the faces
+    v = np.empty((2 * n, 3))
+    v[:n, :2] = v[n:, :2] = xy
+    v[:n, 2], v[n:, 2] = z0, z1
+    return v, f
+
+
+@functools.lru_cache(maxsize=256)
+def _fan_faces(n):
+    """The faces of prism_fast's n-cornered prism (its corners at z0 then at
+    z1), and each corner's next: the same for every via of a fence, made
+    once (read-only)."""
+    i, b = np.arange(n), np.arange(1, n - 1)
+    nxt = np.roll(i, -1)
+    f = np.concatenate([
+        np.stack([np.full(n - 2, n), n + b, n + b + 1], 1),  # top: up
+        np.stack([np.zeros(n - 2, int), b + 1, b], 1),       # bottom: down
+        np.stack([i, nxt, n + nxt], 1),                      # walls: out
+        np.stack([i, n + nxt, n + i], 1)])
+    f.flags.writeable = nxt.flags.writeable = False
+    return f, nxt
 
 
 def prism_edges(g, z0, z1):

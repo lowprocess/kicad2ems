@@ -624,7 +624,10 @@ class Draw3D:
         (None, None). Only drawn shapes are picked (not the board; not a
         hidden shape, a material not shown, or what the clip took off)."""
         o, d = self.ray3d(x, y)
-        i, t = sh.pick(self._meshes3d, o, d)
+        # (each mesh's box first: trying all 300 vias' triangles took 14 ms
+        # a pick, and a hover picks on every move)
+        i, t = v3.pick_boxed(self._meshes3d, {
+            k: self._box3d(k) for k in self._meshes3d}, o, d)
         return (None, None) if i is None else (i, o + t * d)
 
     def _ensure_3d(self):

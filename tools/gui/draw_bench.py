@@ -26,7 +26,10 @@ the median of --repeat tries, in ms:
     3D pick       the shape under a pixel (DrawTab.pick3d)
     3D drag       one mouse move of a drag of a via in 3D
     3D drag all   one mouse move of a drag of the whole fence in 3D
-    peak memory   the process's peak RSS over the board's (MB)
+    memory held   resident memory once the fence is drawn in both views,
+                  over the board's (MB)
+    peak memory   the process's peak resident memory over the board's, in the
+                  steps the page of 2026-11-20 has too (the rest after)
 
 (The page of 2026-11-20 had no box, selection of several or array: those
 lines are left out for it.)
@@ -71,7 +74,20 @@ def ms(f, repeat):
 
 
 def rss_mb():
+    """The process's peak resident memory so far, MB."""
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+
+
+def now_mb():
+    """Its resident memory now, MB (Linux; else the peak)."""
+    try:
+        with open('/proc/self/status') as fh:
+            for line in fh:
+                if line.startswith('VmRSS:'):
+                    return int(line.split()[1]) / 1024
+    except OSError:
+        pass
+    return rss_mb()
 
 
 def main():
@@ -102,13 +118,19 @@ def main():
     tab.set_board(layout)
     tab._redraw_3d()
     app.processEvents()
-    base = rss_mb()
+    import gc
+    gc.collect()
+    base, base_peak = now_mb(), rss_mb()
     shapes = fence(a.n, layout)
     t = time.perf_counter()
     tab.drawing = Drawing(shapes)
     tab._refresh()
     app.processEvents()
     first = time.perf_counter() - t
+    tab._redraw_3d()
+    app.processEvents()
+    gc.collect()
+    held = now_mb() - base  # the fence drawn in both views
     out = {}
     out['plan redraw'] = ms(tab._refresh, a.repeat)
     out['plan paint'] = ms(lambda: tab.plot.grab(), a.repeat)
@@ -153,23 +175,43 @@ def main():
         return statistics.median(ts[1:])
 
     vp = tab.plot.viewport()
+    # (0.2 mm a move, two grid steps: every move moves the shapes)
+    step = 0.2 * a.repeat
     tab.set_tool('select')
     before = [s.points for s in tab.drawing.shapes]
-    out['plan drag'] = drag(vp, at(vx, vy), at(vx + 1.0, vy + 0.5), a.repeat)
+    out['plan drag'] = drag(vp, at(vx, vy), at(vx + step, vy + step / 2),
+                            a.repeat)
     moved = sum(s.points != p for s, p in zip(tab.drawing.shapes, before))
     tab.undo()
-    xs = [s.points[0][0] for s in shapes]
-    ys = [s.points[0][1] for s in shapes]
-    if hasattr(tab, 'box_select'):
+    moved3 = None
+    view = tab.view3d
+    if tab.gl is not None:
+        out['3D redraw'] = ms(tab._redraw_3d, a.repeat)
+        view.setCameraPosition(distance=40, elevation=50, azimuth=-90)
+        view.opts['center'] = pg.Vector(vx, vy, 0.7)
+        z1 = v.z1
+        px = tab.project3d([vx, vy, z1])
+        out['3D pick (a via)'] = ms(lambda: tab.pick3d(*px), a.repeat)
+        assert tab.pick3d(*px)[0] == a.n // 2, tab.pick3d(*px)
+        out['3D pick (nothing)'] = ms(lambda: tab.pick3d(5, 5), a.repeat)
+        q = tab.project3d([vx + step, vy + step / 2, z1])
+        tab.select(None)
+        out['3D drag'] = drag(view, px, q, a.repeat)
+        moved3 = tab.drawing.shapes[a.n // 2].points != v.points
+        tab.undo()
+    # (the steps the page of 2026-11-20 has too: their peak, to compare)
+    peak = rss_mb() - max(base, base_peak)
+    n_box = moved_all = None
+    many = hasattr(tab, 'select_all')
+    if many:
+        xs = [s.points[0][0] for s in shapes]
+        ys = [s.points[0][1] for s in shapes]
         x0, x1 = min(xs) - 0.5, max(xs) + 0.5
         y0, y1 = min(ys) - 0.5, max(ys) + 0.5
         out['plan box'] = ms(lambda: tab.box_select(x0, y0, x1, y1), a.repeat)
         n_box = len(tab.selected)
         tab.select(None)
-    else:
-        n_box = None
-    many = hasattr(tab, 'select_all')
-    if many:
+
         def sel_all():
             tab.select(None)
             a_ = time.perf_counter()
@@ -177,11 +219,28 @@ def main():
             return (time.perf_counter() - a_) * 1e3
         out['select all'] = statistics.median(sel_all() for _ in
                                               range(a.repeat))
-        out['plan drag all'] = drag(vp, at(vx, vy), at(vx + 1.0, vy + 0.5),
+        out['plan drag all'] = drag(vp, at(vx, vy), at(vx + step, vy + step / 2),
                                     a.repeat)
         moved_all = sum(s.points != p for s, p in zip(tab.drawing.shapes,
                                                        before))
         tab.undo()
+        if tab.gl is not None:
+            tab.select_all()
+            tab._ensure_3d()
+            out['3D drag all'] = drag(view, px, q, a.repeat)
+            moved3 = (moved3, sum(s.points != p for s, p in zip(
+                tab.drawing.shapes, before)))
+            tab.undo()
+
+            def first3d():
+                for e in tab._entries3d.values():
+                    tab.view3d.removeItem(e['item'])
+                tab._entries3d = {}
+                a_ = time.perf_counter()
+                tab._redraw_3d()
+                return (time.perf_counter() - a_) * 1e3
+            out['3D first draw'] = statistics.median(
+                first3d() for _ in range(a.repeat))
 
         def array():
             keep = tab.drawing
@@ -197,41 +256,6 @@ def main():
             return t_
         out['array'] = statistics.median(array() for _ in range(5))
         app.processEvents()
-    if tab.gl is not None:
-        if hasattr(tab, '_entries3d'):  # (a redraw keeps what is the same)
-            def first3d():
-                for e in tab._entries3d.values():
-                    tab.view3d.removeItem(e['item'])
-                tab._entries3d = {}
-                a_ = time.perf_counter()
-                tab._redraw_3d()
-                return (time.perf_counter() - a_) * 1e3
-            out['3D first draw'] = statistics.median(
-                first3d() for _ in range(a.repeat))
-        out['3D redraw'] = ms(tab._redraw_3d, a.repeat)
-        view = tab.view3d
-        view.setCameraPosition(distance=40, elevation=50, azimuth=-90)
-        view.opts['center'] = pg.Vector(vx, vy, 0.7)
-        z1 = v.z1
-        px = tab.project3d([vx, vy, z1])
-        out['3D pick (a via)'] = ms(lambda: tab.pick3d(*px), a.repeat)
-        assert tab.pick3d(*px)[0] == a.n // 2, tab.pick3d(*px)
-        out['3D pick (nothing)'] = ms(lambda: tab.pick3d(5, 5), a.repeat)
-        q = tab.project3d([vx + 1.0, vy + 0.5, z1])
-        tab.select(None)
-        out['3D drag'] = drag(view, px, q, a.repeat)
-        moved3 = tab.drawing.shapes[a.n // 2].points != v.points
-        tab.undo()
-        if many:
-            tab.select_all()
-            tab._ensure_3d()
-            out['3D drag all'] = drag(view, px, q, a.repeat)
-            moved3 = (moved3, sum(s.points != p for s, p in zip(
-                tab.drawing.shapes, before)))
-            tab.undo()
-    else:
-        moved3 = None
-    peak = rss_mb() - base
     print(f"board {os.path.basename(a.board)} (read in {load:.2f} s), "
           f"{a.n} vias, median of {a.repeat}; first drawn in {first * 1e3:.0f} "
           f"ms; dragged: plan {moved} shape(s)"
@@ -239,8 +263,12 @@ def main():
           f", 3D {moved3}; box: {n_box}")
     for k, v_ in out.items():
         print(f"  {k:22s} {v_:9.2f} ms")
-    print(f"  {'peak memory':22s} {peak:9.1f} MB over the board's "
-          f"({rss_mb():.0f} MB in all)")
+    print(f"  {'memory held':22s} {held:9.1f} MB (the fence drawn in both "
+          "views, over the board's)")
+    print(f"  {'peak memory':22s} {max(peak, 0):9.1f} MB over the board's "
+          "(the steps both pages have)")
+    print(f"  {'peak, all steps':22s} {rss_mb() - max(base, base_peak):9.1f} "
+          f"MB ({rss_mb():.0f} MB in all)")
     tab.close()
 
 
