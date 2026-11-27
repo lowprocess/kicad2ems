@@ -6,10 +6,16 @@ drag of a point along one axis (the gizmo's, and X / Y / Z while dragging),
 a clip plane through the meshes, a solid's outline and the working level's
 grid.
 
-    cam = dict(center=(x, y, z), distance=d, elevation=e, azimuth=a, fov=60)
+    cam = dict(center=(x, y, z), distance=d, elevation=e, azimuth=a, fov=60,
+               ortho=False)             # ortho: an orthographic camera
     m = mvp(cam, w, h)                  # 4x4: model mm -> clip space
     o, d = ray(m, w, h, px, py)         # the ray under pixel (px, py)
     px, py = project(m, w, h, p)
+    xy, front = project_many(m, w, h, pts)      # (n, 2) pixels, in front
+    keys = box_pick(meshes, m, w, h, (x0, y0, x1, y1), crossing)
+                                        # the meshes inside a pixel box (or
+                                        #  touching it: crossing)
+    v, f = arrow_cone(base, axis, length, radius)   # a gizmo's arrowhead
     cam.update(preset('top', bounds, fov, w / h))  # bounds (x0, y0, z0, x1,
     cam.update(frame(bounds, cam, w / h))           #  y1, z1)
     s = along_axis(o, d, at, axis)      # how far along axis (0, 1, 2) from
@@ -25,12 +31,15 @@ grid.
 
 Camera angles are pyqtgraph's (degrees): elevation above the xy plane,
 azimuth from +x anticlockwise to where the camera stands; fov the horizontal
-field of view.
+field of view. An orthographic camera (ortho) sees, at every depth, what the
+perspective one sees at its centre: 2 distance tan(fov / 2) across, so the
+wheel's zoom (the distance) and the pan work alike in both.
 """
 import functools, math
 import numpy as np
 
-__all__ = ['view_matrix', 'projection_matrix', 'mvp', 'ray', 'project',
+__all__ = ['view_matrix', 'projection_matrix', 'ortho_matrix', 'ortho_pixel',
+           'mvp', 'ray', 'project', 'project_many', 'box_pick', 'arrow_cone',
            'PRESETS', 'preset', 'frame', 'along_axis', 'ray_boxes',
            'pick_boxed', 'pixel_to_segment',
            'clip_mesh', 'clip_outline', 'clip_range', 'prism_fast',
@@ -84,11 +93,43 @@ def projection_matrix(distance, fov, width, height):
     return m
 
 
+# an orthographic camera's depth range either side of it: mm, and distances
+# (no near plane cuts off what a zoom puts behind the eye)
+ORTHO_DEPTH = (1000.0, 100.0)
+
+
+def ortho_matrix(distance, fov, width, height, region=None):
+    """The orthographic projection (its centre plane the perspective's at
+    `distance`: 2 distance tan(fov / 2) across) over the whole view, or the
+    pixel region (x, y, w, h) of it (from the bottom left, as pyqtgraph's
+    picking asks); its depth ORTHO_DEPTH either side of the camera."""
+    r = distance * math.tan(0.5 * math.radians(fov))
+    t = r * height / width
+    if region is None:
+        left, right, bottom, top = -r, r, -t, t
+    else:
+        x, y, w, h = region
+        left, right = r * (2 * x / width - 1), r * (2 * (x + w) / width - 1)
+        bottom, top = t * (2 * y / height - 1), t * (2 * (y + h) / height - 1)
+    f = ORTHO_DEPTH[0] + ORTHO_DEPTH[1] * distance
+    m = np.eye(4)
+    m[0, 0], m[1, 1], m[2, 2] = 2 / (right - left), 2 / (top - bottom), -1 / f
+    m[0, 3] = -(right + left) / (right - left)
+    m[1, 3] = -(top + bottom) / (top - bottom)
+    return m
+
+
+def ortho_pixel(distance, fov, width):
+    """An orthographic view's pixel, mm (the same at every depth)."""
+    return 2 * distance * math.tan(0.5 * math.radians(fov)) / max(width, 1)
+
+
 def mvp(cam, width, height):
     """projection @ view of camera `cam` (center, distance, elevation,
-    azimuth, fov) on a view width x height pixels."""
+    azimuth, fov; ortho: orthographic) on a view width x height pixels."""
     w, h = max(width, 1), max(height, 1)
-    return (projection_matrix(cam['distance'], cam.get('fov', 60), w, h)
+    proj = ortho_matrix if cam.get('ortho') else projection_matrix
+    return (proj(cam['distance'], cam.get('fov', 60), w, h)
             @ view_matrix(cam['center'], cam['distance'], cam['elevation'],
                           cam['azimuth']))
 
@@ -113,10 +154,11 @@ def project(m, width, height, p):
 def frame(bounds, cam, aspect, margin=1.1):
     """dict(center, distance) that fit box `bounds` (x0, y0, z0, x1, y1, z1)
     in the view from where `cam` looks (its elevation, azimuth and fov, and
-    the view's width / height `aspect`): the box's eight corners, seen from
-    its centre, inside each axis's own field (`margin` to spare). A bounding
-    sphere in the narrower field put a flat board in a wide view 2-3x too far
-    (sma_launch from the top: 38 % of the height and 20 % of the width)."""
+    the view's width / height `aspect`; ortho: orthographic): the box's eight
+    corners, seen from its centre, inside each axis's own field (`margin` to
+    spare). A bounding sphere in the narrower field put a flat board in a
+    wide view 2-3x too far (sma_launch from the top: 38 % of the height and
+    20 % of the width)."""
     b = np.asarray(bounds, float)
     c = (b[:3] + b[3:]) / 2
     tx = math.tan(math.radians(cam.get('fov', 60)) / 2)
@@ -128,19 +170,87 @@ def frame(bounds, cam, aspect, margin=1.1):
     q = np.array([[x, y, z, 1.0] for x in (b[0], b[3]) for y in (b[1], b[4])
                   for z in (b[2], b[5])]) @ rot.T
     need = np.maximum(margin * np.abs(q[:, 0]) / tx,
-                      margin * np.abs(q[:, 1]) / ty) + q[:, 2]
+                      margin * np.abs(q[:, 1]) / ty)
+    if cam.get('ortho'):  # (no depth: a near corner as wide as a far one)
+        return dict(center=tuple(float(v) for v in c),
+                    distance=max(float(need.max()), 1e-3))
+    need = need + q[:, 2]
     near = float(q[:, 2].max()) + 1e-3 * max(float(np.ptp(b[:3] - b[3:])),
                                               1.0)
     return dict(center=tuple(float(v) for v in c),
                 distance=max(float(need.max()), near, 1e-3))
 
 
-def preset(name, bounds, fov=60.0, aspect=1.0):
-    """The camera of PRESETS[name] (top, front, side, iso) fitting `bounds`:
-    dict(center, distance, elevation, azimuth)."""
+def preset(name, bounds, fov=60.0, aspect=1.0, ortho=False):
+    """The camera of PRESETS[name] (top, front, side, iso) fitting `bounds`
+    (ortho: an orthographic camera): dict(center, distance, elevation,
+    azimuth)."""
     e, a = PRESETS[name]
-    cam = dict(elevation=e, azimuth=a, fov=fov)
+    cam = dict(elevation=e, azimuth=a, fov=fov, ortho=ortho)
     return dict(frame(bounds, cam, aspect), elevation=e, azimuth=a)
+
+
+def project_many(m, width, height, pts):
+    """The pixels (n, 2) of model points pts (n, 3), and whether each is in
+    front of the camera (n,); m: mvp."""
+    p = np.asarray(pts, float).reshape(-1, 3)
+    c = np.c_[p, np.ones(len(p))] @ np.asarray(m, float).T
+    w = c[:, 3]
+    front = w > 1e-12
+    w = np.where(front, w, 1.0)
+    return (np.c_[(c[:, 0] / w + 1) / 2 * width,
+                  (1 - c[:, 1] / w) / 2 * height], front)
+
+
+def box_pick(meshes, m, width, height, box, crossing=False):
+    """The keys of the meshes {key: (vertices, faces)} wholly inside the
+    pixel box (x0, y0, x1, y1) as drawn, or (crossing) touching it (the
+    outline of its corners on the screen), as the plan's box selects; a mesh
+    with a corner behind the camera is never wholly inside. m: mvp."""
+    from shapely.geometry import MultiPoint, box as sbox
+    x0, x1 = sorted(box[0::2])
+    y0, y1 = sorted(box[1::2])
+    keys = [k for k, mv in meshes.items() if mv is not None and len(mv[0])]
+    if not keys:
+        return []
+    at = np.cumsum([0] + [len(meshes[k][0]) for k in keys])
+    xy, front = project_many(m, width, height,
+                             np.concatenate([meshes[k][0] for k in keys]))
+    inside = ((xy[:, 0] >= x0) & (xy[:, 0] <= x1) & (xy[:, 1] >= y0)
+              & (xy[:, 1] <= y1) & front)
+    rect = sbox(x0, y0, x1, y1)
+    out = []
+    for j, k in enumerate(keys):
+        a, b = at[j], at[j + 1]
+        if not crossing:
+            if inside[a:b].all():
+                out.append(k)
+        elif inside[a:b].any():
+            out.append(k)
+        else:  # (corners all outside it: the box inside the outline?)
+            q = xy[a:b][front[a:b]]
+            if (len(q) >= 3 and q[:, 0].min() <= x1 and q[:, 0].max() >= x0
+                    and q[:, 1].min() <= y1 and q[:, 1].max() >= y0
+                    and MultiPoint(q).convex_hull.intersects(rect)):
+                out.append(k)
+    return out
+
+
+def arrow_cone(base, axis, length, radius, n=16):
+    """A cone (vertices, faces wound outward) from `base` along model axis
+    `axis` (0 x, 1 y, 2 z) `length` long and `radius` round at its base: a
+    gizmo's arrowhead."""
+    base = np.asarray(base, float)
+    k = int(axis)
+    u, a, b = np.eye(3)[k], np.eye(3)[(k + 1) % 3], np.eye(3)[(k + 2) % 3]
+    t = 2 * np.pi * np.arange(n) / n
+    ring = base + radius * (np.cos(t)[:, None] * a + np.sin(t)[:, None] * b)
+    v = np.vstack([ring, base + length * u, base])
+    i = np.arange(n)
+    j = (i + 1) % n
+    f = np.concatenate([np.stack([i, j, np.full(n, n)], 1),       # its side
+                        np.stack([j, i, np.full(n, n + 1)], 1)])  # its base
+    return v, f
 
 
 def along_axis(origin, direction, at, axis):
