@@ -207,6 +207,7 @@ engines may answer one question, and one engine several questions from one run.
 | Power | `circuit` | a switching circuit on the board's copper | |
 | Power | `capacitance` | the capacitance between nets | |
 | Thermal | `thermal` | the board's steady temperature | |
+| EMC | `conducted` | a switching circuit's conducted emission through a LISN in each supply line, against CISPR 32 or CISPR 25 | pcbqs's `conducted` |
 
 `study_tree()` is what a front end lists: `[dict(group,
 questions=[dict(question, engines, missing)])]`, every question with the engines

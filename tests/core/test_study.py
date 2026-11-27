@@ -83,11 +83,13 @@ def test_the_tree_lists_every_question_with_its_engines(fakes):
     fakes(Drop, Warm, Elmer)
     tree = study.study_tree()
     assert ([g['group']
-             for g in tree] == ['RF', 'Signal integrity', 'Power', 'Thermal'])
+             for g in tree] == ['RF', 'Signal integrity', 'Power', 'Thermal',
+                                'EMC'])
     rows = {r['question'].name: r for g in tree for r in g['questions']}
     assert (list(rows) == [
         'sparams', 'antenna', 'lines', 'crosstalk', 'coupling', 'timedomain',
-        'dc', 'pdn', 'nearfield', 'circuit', 'coils', 'capacitance', 'thermal'
+        'dc', 'pdn', 'nearfield', 'circuit', 'coils', 'capacitance', 'thermal',
+        'conducted'
     ])
     # kicad2ems's own (analyses.BUILTIN): not these fakes'
     assert (rows['crosstalk']['engines'] == [] == rows['coupling']['engines']

@@ -145,6 +145,7 @@ NAV = [('Using kicad2ems', [
        ('pcbqs: power and quasistatics', [
            'pcbqs/power-workflow', 'pcbqs/quasistatic',
            'pcbqs/quasistatic-validation', 'pcbqs/sparams', 'pcbqs/circuit',
+           'pcbqs/conducted',
            'pcbqs/thermal', 'pcbqs/static-backends', 'pcbqs/peec-memory',
            'pcbqs/benchmarks/cm5-u702', 'pcbqs/benchmarks/cm5-converter/README',
            'pcbqs/migration'

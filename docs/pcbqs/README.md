@@ -55,6 +55,9 @@ remain supported. Another static-fill backend is registered with
 - [Circuits](circuit.md): any circuit of parts, nodes and drives, by ngspice: its parts' losses for the
   thermal analysis, its copper's currents for the fields; ten examples, each with a board whose copper can be put in, and the wpthb full bridge; KiCad boards,
   schematics and netlists read into a model
+- [Conducted emission](conducted.md): a circuit with a CISPR network (LISN) in each supply line, read
+  by a CISPR 16-1-1 receiver (peak, quasi-peak, average) against CISPR 32's or CISPR 25's limits; the
+  differential and common modes, the board's capacitance to the reference plane
 - [Temperature](thermal.md): a trial of a lightweight thermal solver on a grid
 - [Validation and limits](quasistatic-validation.md)
 - [Migration](migration.md)

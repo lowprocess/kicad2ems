@@ -52,7 +52,7 @@ __all__ = ['Study', 'RF', 'study_tree', 'questions', 'engines', 'provided',
            'load_config', 'read_config', 'write_config', 'plan', 'unmet',
            'engine_named', 'compare', 'rf_needs', 'main']
 
-GROUPS = ('RF', 'Signal integrity', 'Power', 'Thermal', 'Other')
+GROUPS = ('RF', 'Signal integrity', 'Power', 'Thermal', 'EMC', 'Other')
 
 
 @dataclass(frozen=True)
@@ -143,6 +143,14 @@ QUESTIONS = {
             order=10,
             figures="hottest: the copper's highest temperature, C; <part>: the "
             "board at the part's pads, C"),
+        Question(
+            'conducted', 'Conducted emission', 'EMC',
+            "a switching circuit's conducted emission through a LISN in each "
+            "supply line, read as a CISPR receiver reads it, against CISPR 32 "
+            "or CISPR 25", order=10,
+            figures="margin: the limit less the reading at the worst band and "
+            "detector, dB (negative: over); at: where, MHz; margin peak, "
+            "margin QP, margin average: each detector's worst, dB"),
     )
 }
 

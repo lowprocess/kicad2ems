@@ -237,7 +237,27 @@ the code review of 2026-11-25. Last updated 2026-11-25.
 8. **Losses and thermal:** a convection film that grows with the rise and radiation, air one part warms reaching
    the next; the heating from cold, a load step's transient; the iGSE's DC-bias and relaxation terms; the DC
    drop's copper at its temperature.
-9. **Speed:** the full bridge on ngspice (1 min 47 s with copper against the old tool's 6 s); two faces in the
+9. **Conducted emission, the rest** (`pcbqs.conducted`, docs/pcbqs/conducted.md):
+   - radiated emission from a converter: its switch node's loop and its input cable, driven by the conducted
+     run's currents (the radiated question's far field);
+   - an AC mains source with its rectifier: a 10-20 ms period, so the lines are unresolved and the QP's
+     slow-rate response matters (it reads 2.1 and 2.5 dB under the standard's at 2 and 1 Hz, cause not found);
+   - spread-spectrum modulation (a period of its modulation);
+   - `cispr16` from the standard's own schematic (it is realised from its impedance) and the networks checked
+     against a measured one;
+   - the plane's images near the board: centroid to centroid holds while the triangles are small against twice
+     the height; a board 5-10 mm over its plane wants the exact moments;
+   - the CISPR 25 tables checked against the standard (FM class 5 matches application notes, the rest is
+     transcribed), and an example config (the buck's) in the window's list.
+
+   Measured and set aside:
+   - a periodic tolerance of 0.07 for the whole circuit instead of leaving the networks out of the test: 4.5 s,
+     readings within 0.016 dB, but then the converter's own states settle only to 7 %;
+   - receiver batches of 2^22 samples (2.06 s, 190 MB) and 2^20 (2.64 s, 50 MB), against 2^21 (1.89 s, 97 MB);
+   - the averaged detector's start with one convergence test for a whole batch: 40 iterations and 2.38 s, because
+     a few rows cycle at 2e-5 at a kink of the period map;
+   - an in-place bisection: 1.08 s against 1.09.
+10. **Speed:** the full bridge on ngspice (1 min 47 s with copper against the old tool's 6 s); two faces in the
    circuit by a local loop basis (iterations 217 at DC, 575 at 20 MHz); the LU of the dense solves compressed (90
    % of a two-face S-parameter solve); whole-board near field's mesh and crop convergence; the quasi-static
    solver's 10× target shown on real boards.

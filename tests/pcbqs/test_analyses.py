@@ -37,14 +37,16 @@ def cells(rep):
 
 
 # ---- the analyses -----------------------------------------------------------
-def test_the_four_register_with_kicad2ems():
+def test_the_five_register_with_kicad2ems():
     """Declared as kicad2ems expects (a name, a result file, options of its
     kinds), in the Study's order."""
     from kicad2ems.core.analyses import Analysis, KINDS
     made = [
-        cls() for cls in (A.PowerIntegrity, A.NearField, A.Circuit, A.Thermal)
+        cls() for cls in (A.PowerIntegrity, A.NearField, A.Circuit, A.Thermal,
+                          A.Conducted)
     ]
-    assert ([a.name for a in made] == ['pdn', 'mqs', 'circuit', 'thermal'] ==
+    assert ([a.name for a in made] == ['pdn', 'mqs', 'circuit', 'thermal',
+                                       'conducted'] ==
             [a.name for a in sorted(made, key=lambda a: a.order)])
     for a in made:
         assert isinstance(a, Analysis)
@@ -65,7 +67,7 @@ def test_the_four_register_with_kicad2ems():
                                   stop='parts'))
     assert (pick(made[1]) == dict(converter='part', inductor='part', vin='net',
                                   ground='net', capacitors='parts'))
-    assert pick(made[2]) == {} and pick(made[3]) == {}
+    assert pick(made[2]) == {} == pick(made[3]) == pick(made[4])
     from kicad2ems.core.analyses import ANALYSES
     # (fem's beside)
     assert ([s for s in ANALYSES if s.startswith('kicad2ems.pcbqs.')] == [

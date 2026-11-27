@@ -1,8 +1,9 @@
 """
 pcbqs's tools as kicad2ems analyses (kicad2ems.core.analyses lists them): power
-integrity, near field, circuit and thermal, and the quasi-static solver.
-kicad2ems lists them as engines of the questions they answer (a rail's drop and
-its impedance, a converter's near field, a circuit, the temperature:
+integrity, near field, circuit, thermal and conducted emission, and the
+quasi-static solver. kicad2ems lists them as engines of the questions they
+answer (a rail's drop and its impedance, a converter's near field, a circuit,
+the temperature, the conducted emission:
 kicad2ems.core.study), a front end builds each one's settings from its options
 table, runs it as its command and shows what its result folder holds
 (reports.py); the circuit examples come as configs beside their models
@@ -586,6 +587,96 @@ class Thermal(_Tool):
         keep = (line.startswith(('thermal ', 'losses of', 'results in'))
                 or ' W into the board' in line)
         return line.strip()[:160] if keep else None
+
+
+class Conducted(Circuit):
+    """The conducted emission of a circuit model (pcbqs.conducted): the
+    circuit with a CISPR network in each supply line, read as a receiver reads
+    it, against CISPR 32's or CISPR 25's limits."""
+    name, label, tool, module, order = ('conducted', 'Conducted emission',
+                                        'kicad2ems.pcbqs.conducted',
+                                        'kicad2ems.pcbqs.conducted', 70)
+    about = (
+        "a switching circuit's conducted emission: a LISN in each supply line, "
+        "the voltage at its EUT terminal read with peak, quasi-peak and "
+        "average detectors against CISPR 32 or CISPR 25")
+    result = 'conducted.json'
+    provides = ('conducted',)
+    fields = ''
+    page = False
+    basic = ('model', 'standard', 'cispr_class', 'cm_cap')
+
+    def owns(self, folder, preview=False):
+        return Analysis.owns(self, folder, preview)
+
+    def options(self):
+        """The model, then pcbqs.conducted's own options (python -m
+        kicad2ems.pcbqs.conducted --describe); the board is a front end's."""
+        from .conducted import OPTIONS
+        out = table([
+            ('model', 'str', '',
+             'The circuit model (JSON); a path beside the config', 'Circuit')
+        ]) + [
+            replace(o, default=self.JOBS) if o.key == 'jobs' else o
+            for o in OPTIONS if o.key != 'board'
+        ]
+        return [replace(o, level='basic' if o.key in self.basic else o.level)
+                for o in out]
+
+    def tag(self, values):
+        return (super().tag(values) + '_'
+                + str(values.get('standard') or 'cispr32').lower())
+
+    def command(self, values, board, out, preview=False, results=None):
+        model = str(values.get('model') or '').strip()
+        if not model or not os.path.isfile(model):
+            raise ValueError('name the circuit model (a JSON file)'
+                             if not model else f'{model}: no such model')
+        on = lambda k: values.get(k) is True or str(values.get(k)).strip(
+        ).lower() in ('1', 'true', 'yes', 'on')
+        values = dict(values, jobs=(values.get('jobs') or self.JOBS))
+        opts = [
+            replace(o, default=None) if o.key == 'jobs' else o
+            for o in self.options()
+            if o.key != 'model'
+        ]
+        cmd = argv(self.module, opts,
+                   {k: v for k, v in values.items() if k != 'model'}, model,
+                   out)
+        cmd.insert(1, '-u')
+        if on('copper'):
+            cmd += ['--board', self._board(board)]
+        return cmd
+
+    def status(self, line):
+        line = line.strip()
+        if line.startswith('conducted:') or ': run ' in line[:40] or (
+                line.startswith('run ') and 'periods' in line):
+            return line[:160]
+        return None
+
+    def suggest(self, folder):
+        return []
+
+    def examples(self):
+        return []
+
+    def figures(self, folder):
+        """margin (the worst over the bands and detectors, dB), margin peak /
+        QP / average (each detector's worst), at (MHz: where the worst is)."""
+        res = self._read(folder)
+        ms = [m for c in res.get('cases', []) for m in c.get('margins', [])]
+        if not ms:
+            return []
+        worst = min(ms, key=lambda m: m['margin_dB'])
+        out = [dict(name='margin', value=float(worst['margin_dB']), unit='dB'),
+               dict(name='at', value=float(worst['f_Hz']) / 1e6, unit='MHz')]
+        for det, label in (('peak', 'peak'), ('qp', 'QP'), ('avg', 'average')):
+            own = [m['margin_dB'] for m in ms if m['detector'] == det]
+            if own:
+                out.append(dict(name=f"margin {label}", value=float(min(own)),
+                                unit='dB'))
+        return out
 
 
 # ---- a solver: S-parameters at low frequency, from the copper's quasi-static

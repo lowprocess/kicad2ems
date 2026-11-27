@@ -31,7 +31,9 @@ One point goes like this (analysis: the model's settings for it, all optional):
     5. The reported run repeats a few periods at the strict tolerance
        (analysis.solver.reltol, 1e-4; the search runs at 1e-3) and with steps
        four times finer (final_samples_per_cycle). If ngspice cannot hold that
-       tolerance the search's result is reported and a note says so.
+       tolerance the search's result is reported and a note says so. A search
+       that ended at the strict tolerance itself is reported as it is, unless
+       final_always (a spectrum's run: its fine steps are what it is for).
 
 Reported for every point, with no request: each part's power; a switch's and a
 diode's average, RMS and peak current and peak voltage; a capacitor's average
@@ -60,6 +62,7 @@ DEFAULTS = dict(cycles=200, final_cycles=8, max_cycles=20000, max_trials=40,
                 periodic_tolerance=0.003, energy_tolerance=0.002,
                 target_tolerance=0.005, search_reltol=1e-3, strict=True,
                 samples_per_cycle=None, final_samples_per_cycle=None,
+                final_always=False,
                 linear_solver='klu', threads=1, timeout_s=600)
 # the fewest periods a knob's run takes (from the settled state of the run
 # before)
@@ -326,12 +329,20 @@ def stored_energy(result, model, deck, period):
     return out
 
 
-def energy_drift(result, model, deck, period):
+def energy_drift(result, model, deck, period, ignore=()):
     """The power going into (+) or coming out of what the circuit stores, period
     by period back over the half-run: [W], the last period first. In a settled
     circuit it is nothing; in one that is not, it is by how much the sources'
-    power and the loads' and losses' fail to add up over that period."""
-    energy = sum(stored_energy(result, model, deck, period).values())
+    power and the loads' and losses' fail to add up over that period. The
+    parts named in `ignore` are not counted (analysis.ignore: not judged for
+    settling)."""
+    stored = stored_energy(result, model, deck, period)
+    # (none at the half-run's ends: a circuit that stores nothing, or all of
+    # whose storage is ignored, had failed here on an empty sum)
+    t = np.asarray(result['time_s'])
+    n = int(np.floor((t[-1] - t[0]) / period + 1e-6))
+    energy = sum((e for ref, e in stored.items() if ref not in ignore),
+                 np.zeros(max(n // 2, 1) + 1))
     return (energy[:-1] - energy[1:]) / period
 
 
@@ -374,7 +385,9 @@ def unsteadiness(result, model, deck, stats):
     """energy_drift over the power the circuit handles: the size nine in ten of
     the half-run's periods are within, and the last period's own (the error of
     what that period's measures add up to)."""
-    drift = np.abs(energy_drift(result, model, deck, deck.period))
+    drift = np.abs(energy_drift(
+        result, model, deck, deck.period,
+        set((model.get('analysis') or {}).get('ignore', ()))))
     scale = max(stats['source_power_W'], stats['load_power_W'],
                 max(abs(p['power_W']) for p in stats['parts'].values()), 1e-12)
     return float(np.quantile(drift, 0.9) / scale), float(drift[0] / scale)
@@ -708,12 +721,14 @@ def fingerprint(model, copper=None):
     return h.hexdigest()
 
 
-def run_case(model, point, out, log=print, copper=None):
+def run_case(model, point, out, log=print, copper=None, start=None):
     """One sweep point: {sweep, knobs, targets, measures, parts, totals,
-    settled, history, ...}, also written to <out>/case.json beside the final
-    run's circuit.cir, transient.npz (every signal, uniformly sampled),
-    measurements.json and waveforms.png. An unchanged model's point is read
-    back, not run again."""
+    settled, history, end_state, ...}, also written to <out>/case.json beside
+    the final run's circuit.cir, transient.npz (every signal, uniformly
+    sampled), measurements.json and waveforms.png. An unchanged model's point
+    is read back, not run again. start: dict(state, knobs) to begin from (a
+    run of nearly the same circuit: its end_state, which its parts not in it
+    begin at rest, and its knobs' values) in place of the DC solution."""
     started = time.perf_counter()
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
@@ -729,6 +744,11 @@ def run_case(model, point, out, log=print, copper=None):
     knobs = [Knob(t) for t in base.get('targets', [])]
     label = (M.case_name(point) + ': ') if point else ''
     state, history, notes, total = None, [], [], 0
+    if start:
+        state = copy.deepcopy(start.get('state')) or None
+        for kn in knobs:
+            if kn.path in (start.get('knobs') or {}):
+                kn.x = min(max(float(start['knobs'][kn.path]), kn.lo), kn.hi)
     # (a model of the piecewise-linear engine's days)
     if a.get('engine', 'ngspice') != 'ngspice':
         notes.append(
@@ -851,7 +871,7 @@ def run_case(model, point, out, log=print, copper=None):
         )
     folder, result, deck, stats, resolved = accepted
     reported = a['search_reltol']
-    if a['strict'] and strict < a['search_reltol']:
+    if a['strict'] and (strict < a['search_reltol'] or a['final_always']):
         final = trials / 'final'
         try:
             n = int(a['final_cycles'])
@@ -984,7 +1004,8 @@ def run_case(model, point, out, log=print, copper=None):
                ], **stats, reltol=reported, settled=True,
         periodic_error=worst(result, deck), energy_drift_relative=unsteadiness(
             result, resolved, deck, stats)[1], runs=len(history), periods=total,
-        notes=notes, history=history, runtime_s=time.perf_counter() - started)
+        notes=notes, history=history, runtime_s=time.perf_counter() - started,
+        end_state=end_state(result, resolved, deck))
     try:                      # what its parts draw from its supply: for a
         from . import supply  # power-integrity or near-field run (supply.py)
         row['supply'] = supply.write(
@@ -1006,7 +1027,7 @@ def run_case(model, point, out, log=print, copper=None):
 
 
 def run(model, out, jobs=1, log=print, copper=False, fields=False,
-        temperatures=None):
+        temperatures=None, starts=None):
     """Every point of the model's sweep, `jobs` at a time; <out>/circuit.json
     has them all: {format, name, complete, cases: [run_case's rows], failed:
     [{sweep, error}]}. A point that fails is reported and the others still run.
@@ -1014,7 +1035,8 @@ def run(model, out, jobs=1, log=print, copper=False, fields=False,
     extracted once for all the points. fields: with copper, and the H and E
     fields over the board for every point (circuit/fields.py). temperatures:
     {case name: {'parts': {ref: C}, 'board': C}}, each case's parts at those
-    (circuit/temperature.py; --warm's)."""
+    (circuit/temperature.py; --warm's). starts: {case name: run_case's start},
+    where each case begins."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
     M.validate(model)
     out = Path(out).resolve()
@@ -1053,7 +1075,8 @@ def run(model, out, jobs=1, log=print, copper=False, fields=False,
             pending = {
                 pool.submit(run_case,
                             at(model, (temperatures or {}).get(M.case_name(p))),
-                            p, f, log, copper or None): i
+                            p, f, log, copper or None,
+                            (starts or {}).get(M.case_name(p))): i
                 for i, (p, f) in enumerate(zip(points, folders))
             }
             try:

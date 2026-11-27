@@ -10,6 +10,48 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- **Conducted emission (`kicad2ems.pcbqs.conducted`, docs/pcbqs/conducted.md, 2026-11-27; the user's ask, item 5's
+  first half).** A circuit model (pcbqs.circuit, ngspice, on its board's copper with `--copper`) with a CISPR
+  network in each supply line: `cispr16`, CISPR 16-1-2's 50 Ω / 50 µH + 5 Ω V-network (CISPR 32's), realised from
+  its impedance 50 ∥ (5 + jω 50 µH) within 0.9 % from 150 kHz to 30 MHz (15 % at 9 kHz, the standard allows 20);
+  `cispr25`, the 5 µH / 50 Ω network, within 5 % to 108 MHz. The source's minus is the reference plane, the return
+  line has its network too; on a board the networks' EUT ends take the source's footprint pads. Each line's voltage
+  at its EUT terminal (the receiver's reading corrected by the voltage-division factor) over the last period as a
+  line spectrum, with the differential (V+ − V−)/2 and common (V+ + V−)/2 modes; read by a CISPR 16-1-1 receiver
+  (bands A, B, C: RBW 200 Hz / 9 kHz / 120 kHz, a Gaussian IF filter, the envelope of a period exact in the steady
+  state; peak, average, and quasi-peak as the detector's charge and discharge run to their periodic state and read
+  by the critically damped meter); against CISPR 32 class A/B (QP, average) or CISPR 25 class 1-5 (peak, QP,
+  average in LW, MW, SW, CB, VHF, FM), or `--limits FILE`: each band's margin, worst frequency, `conducted.csv`,
+  `conducted.png`. The common mode's path: each model node's copper to a plane 50 mm (CISPR 25) or 400 mm (CISPR
+  32) below the board from pcbqs's 1/R moments with the plane as images (`capacitance_to_plane`; a 20 mm plate
+  alone: Hwang and Mascagni's unit square within 0.6 % at a 1 mm mesh), and `--cm-cap NODE=VALUE` (a heatsink). A
+  study question (*Conducted emission*, group *EMC*), its figures margin, at, margin peak / QP / average.
+  Checked: a 1 V square wave with 5 ns edges behind 100 Ω into the networks against its Fourier series times
+  Z / (R + 2Z): within 1.5 % to 30 MHz (cispr16), 0.8 % to 108 MHz (cispr25), common mode below 2e-8 of the
+  differential; a square wave through 100 pF to the reference against the closed form of the two networks in
+  parallel: 2.2 %; CISPR 16-1-1's quasi-peak calibration (impulses of 13.5 / 0.316 / 0.044 µVs at 25 / 100 / 100
+  Hz read 66 ± 1.5 dBµV): 65.6 / 66.6 / 65.9; peak and average exactly the Gaussian filter's 2A × impulse bandwidth
+  and 2A × rate; band B's rate response 70.5 ± 1 / 59.5 ± 1 / 56 ± 1.5 dBµV at 1000 / 20 / 10 Hz: 71.2 / 59.1 /
+  54.6 (2 and 1 Hz read 2.1 and 2.5 dB under the standard's, just outside its ±2 dB: not found why). On the buck
+  example (12 V to 5 V, 2 A, 250 kHz, no input filter) with a 15 pF heatsink on its switch node, CISPR 32 class B:
+  −32.6 dB, average at 250 kHz (84.4 dBµV, the differential mode's 82.3); −25.9 dB at 5 MHz, where the common mode
+  is up to 73.1 dBµV (2 MHz); with `--copper` −34.2 dB at 4.5 MHz; CISPR 25 class 5: −51.4 dB at 76.75 MHz.
+  Speed (four passes, the buck with its heatsink, the machine shared with four other forks' tests, load average
+  6-11): 21.2 s, 1018 MB Python peak (1.66 GB RSS), 4550 periods → 11.3 s, 549 MB (the circuit alone run first and
+  the networks started where it settled: their inductors at its input current, their capacitors at its DC) → 7.4
+  s, 301 MB (the networks' and common-mode capacitors' states not judged for repeating: their 2-4 kHz modes are
+  below the band, a return-line capacitor's swing near nothing) → 7.0 s (no strict reported run of the circuit
+  alone) → 5.5 s, 145 MB (285 MB RSS), 200 periods (nor their stored energy); the readings within 0.007 dB of the
+  DC start's on L+ and L−, 0.003 on CM, 0.08 on DM's weakest lines. CISPR 25 to 108 MHz: 7.8 s. The receiver on
+  an unresolved spectrum (lines every 1 kHz to 30 MHz, 39.8k tuned frequencies): 5.10 s → 1.89 s (the quasi-peak's
+  envelope at 4 × its lines in the filter, not 8; batches of 2^21 samples: 97 MB) → 1.46 s (each row's fixed point
+  by a secant from the averaged detector's state, settled rows left out, to 1e-4) → 1.09 s (16 bisection steps
+  for that start); QP within 0.024 dB of the first's, the calibration unchanged to 0.01 dB. Also, in the circuit
+  engine: each case's `end_state` in its row, `run(..., starts=)` to begin a case there, `analysis.final_always`
+  (the reported run made even when the search ended at the strict tolerance: the buck's spectrum had come from the
+  search's 256 samples a period, its 5-30 MHz lines 26 dB low), `analysis.ignore` counting a named part's stored
+  energy out of the settling test too, and a circuit that stores nothing no longer fails on an empty sum. Test:
+  tests/pcbqs/test_conducted.py.
 - **Jitter, noise and BER contours in the time-domain question (2026-11-25; docs/timedomain.md#ber).** The
   statistical eye of a lone bit's response at the far end (`timedomain.stat_eye`): every pattern of the other bits
   (each cursor's two-point distribution convolved on a grid, its mass split between neighbouring levels so the

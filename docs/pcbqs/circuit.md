@@ -69,8 +69,14 @@ the power it absorbs.
   `periodic_tolerance` (0.003), `energy_tolerance` (0.002), `target_tolerance` (0.005), `max_cycles` (20000),
   `max_trials` (40 runs to meet the targets), `final_cycles` (8: the reported run's), `search_reltol` (1e-3: the
   search's ngspice tolerance; the reported run is at `solver.reltol` when `strict`, the default), `strict`,
-  `samples_per_cycle`, `final_samples_per_cycle` (the reported run's), `linear_solver` (`klu`), `threads` (1),
-  `timeout_s` (600 a run), `period_s`, `ignore`, `solver` (ngspice's `reltol`, `method`, ...).
+  `samples_per_cycle`, `final_samples_per_cycle` (the reported run's), `final_always` (false: a search that
+  ended at the strict tolerance is reported as it is; true: the reported run is made anyway, at its finer
+  steps, as the [conducted emission](conducted.md) needs), `linear_solver` (`klu`), `threads` (1),
+  `timeout_s` (600 a run), `period_s`, `ignore` (signals, or parts, not judged for settling: a part named
+  there has neither its states nor its stored energy counted), `solver` (ngspice's `reltol`, `method`, ...).
+- Each case's `end_state` (in `case.json` and `circuit.json`) is where its run stopped: every capacitor's
+  voltage, every inductor's current. `engine.run(..., starts={case: dict(state, knobs)})` starts a
+  nearly identical circuit there (the conducted emission's networks, put in after the circuit alone).
 
 ## A run
 

@@ -68,14 +68,15 @@ def test_study_dock(window):
     assert st.study is tree and st.isAncestorOf(tree)
     groups = [tree.topLevelItem(i) for i in range(tree.topLevelItemCount())]
     assert ([g.text(0)
-             for g in groups] == ['RF', 'Signal integrity', 'Power', 'Thermal'])
+             for g in groups] == ['RF', 'Signal integrity', 'Power', 'Thermal',
+                                  'EMC'])
     assert ([[g.child(k).text(0) for k in range(g.childCount())] for g in groups
              ] == [['S-parameters', 'Antenna pattern', 'Trace impedances'],
                    ['Crosstalk', 'Board coupling', 'Time domain'],
                    [
                        'Rail drop', 'Rail impedance', 'Converter near field',
                        'Circuit', 'Coils and ferrite', 'Capacitance'
-                   ], ['Temperature']])
+                   ], ['Temperature'], ['Conducted emission']])
     assert (tree.headerItem().text(1) == 'Answered by'
             and tree.headerItem().text(2) == 'Fields')
     by = lambda q: tree.rows[q].text(1).replace('  ▾', '')

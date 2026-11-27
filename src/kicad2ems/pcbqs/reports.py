@@ -20,7 +20,7 @@ import json
 import os
 
 RESULTS = dict(pdn='pdn.json', mqs='mqs.json', thermal='thermal.json',
-               circuit='circuit.json')
+               circuit='circuit.json', conducted='conducted.json')
 PREVIEWS = dict(mqs='mqs-preview.json')
 
 
@@ -696,9 +696,122 @@ def circuit_curves(res, folder=''):
     return sets
 
 
+DETECTOR_NAMES = dict(peak='peak', qp='QP', avg='average')
+
+
+def conducted_report(res, folder=''):
+    """A conducted-emission run: each point's margins (band, detector, where,
+    the reading, the limit), the networks and the capacitances to the
+    reference."""
+    cases = res.get('cases', [])
+    std = (f"{str(res.get('standard', '')).upper()} class "
+           f"{res.get('klass', '')}")
+    worst = min((c['worst'] for c in cases if c.get('worst')),
+                key=lambda w: w['margin_dB'], default=None)
+    out = dict(
+        title=f"Conducted emission, {std}", sections=[], images=[],
+        notes=[f"{f['name']}: failed. {f['error']}"
+               for f in res.get('failed', [])],
+        summary=(f"Conducted emission against {std}: {len(cases)} point"
+                 f"{'s' if len(cases) != 1 else ''}"
+                 + (f", worst margin {worst['margin_dB']:+.1f} dB "
+                    f"({DETECTOR_NAMES.get(worst['detector'], '')} at "
+                    f"{worst['f_Hz'] / 1e6:.4g} MHz)" if worst else '')))
+    for c in cases:
+        rows = [[m['band'], DETECTOR_NAMES.get(m['detector'], m['detector']),
+                 m['f_Hz'] / 1e6, m['reading_dBuV'], m['limit_dBuV'],
+                 m['margin_dB']]
+                for m in sorted(c.get('margins', []),
+                                key=lambda m: m['margin_dB'])]
+        big = c.get('largest_line') or {}
+        out['sections'].append(dict(
+            title=f"{c['name']}: margins (the worse of L+ and L-)",
+            table=_table(['band', 'detector', 'f (MHz)', 'reading (dBuV)',
+                          'limit (dBuV)', 'margin (dB)'], rows,
+                         [None, None, '.4g', '.1f', '.1f', '+.1f']),
+            text=('; '.join(f"{k} largest {v['dBuV']:.1f} dBuV at "
+                            f"{v['f_Hz'] / 1e6:.4g} MHz"
+                            for k, v in big.items())
+                  + ('.' if big else '')),
+            notes=list(c.get('notes') or [])))
+    cm = res.get('cm') or []
+    section = dict(
+        title='The networks and the common mode',
+        text=(f"{res.get('network_label', '')} in "
+              f"{' and '.join('L' + x for x in res.get('lines', []))}; "
+              f"the reference plane {res.get('height_mm', 0):g} mm below the "
+              f"board; read {res.get('fmin_Hz', 0) / 1e6:.4g} to "
+              f"{res.get('fmax_Hz', 0) / 1e6:.4g} MHz."))
+    if cm:
+        section['table'] = _table(['node', 'to the reference (pF)'],
+                                  [[c['node'], 1e12 * c['C_F']] for c in cm],
+                                  [None, '.3g'])
+    out['sections'].append(section)
+    if res.get('limits_file'):
+        out['notes'].append(f"limits from {res['limits_file']}")
+    else:
+        out['notes'].append(
+            "The limits are pcbqs's transcription of the standard: check "
+            "them against the edition your test plan names.")
+    png = os.path.join(folder or '', 'conducted.png')
+    if os.path.isfile(png):
+        out['images'].append(png)
+    out['footer'] = ('Completed.' if not res.get('failed') else
+                     'Partial results.')
+    return out
+
+
+def conducted_curves(res, folder=''):
+    """Each point's readings over frequency (the worse line's peak, QP and
+    average, the modes' QP) and the limit lines."""
+    import csv
+    sets = []
+    for c in res.get('cases', []):
+        d = c.get('folder') or ''
+        d = d if os.path.isdir(d) else os.path.join(folder, 'circuit',
+                                                     c.get('name', ''))
+        path = os.path.join(d, c.get('csv') or 'conducted.csv')
+        if not os.path.isfile(path):
+            continue
+        by = {}
+        with open(path, newline='', encoding='utf-8') as fh:
+            for row in csv.DictReader(fh):
+                by.setdefault(row['detector'], []).append(row)
+        curves = []
+        for det, rows in by.items():
+            rows.sort(key=lambda r: float(r['f_Hz']))
+            x = [float(r['f_Hz']) / 1e6 for r in rows]
+            lines = [k[:-5] for k in rows[0]
+                     if k in ('L+_dBuV', 'L-_dBuV')]
+            curves.append(dict(
+                name=DETECTOR_NAMES.get(det, det), x=x,
+                y=[max(float(r[k + '_dBuV']) for k in lines) for r in rows],
+                role='data', unit='dBuV'))
+            if det == 'qp':
+                for mode in ('CM', 'DM'):
+                    if mode + '_dBuV' in rows[0]:
+                        curves.append(dict(
+                            name=f"{mode} (QP)", x=x,
+                            y=[float(r[mode + '_dBuV']) for r in rows],
+                            role='reference', unit='dBuV'))
+            lim = [(xx, float(r['limit_dBuV'])) for xx, r in zip(x, rows)
+                   if r['limit_dBuV']]
+            if lim:
+                curves.append(dict(
+                    name=f"{DETECTOR_NAMES.get(det, det)} limit",
+                    x=[p[0] for p in lim], y=[p[1] for p in lim],
+                    role='limit', unit='dBuV'))
+        sets.append(dict(
+            title=f"{c['name']}: conducted emission", xlabel='MHz',
+            ylabel='dBuV', logx=True, logy=False,
+            info=conducted_report(res, folder)['summary'], curves=curves))
+    return sets
+
+
 BUILDERS = dict(pdn=(pdn_report, pdn_curves), mqs=(mqs_report, mqs_curves),
                 thermal=(thermal_report, None),
-                circuit=(circuit_report, circuit_curves))
+                circuit=(circuit_report, circuit_curves),
+                conducted=(conducted_report, conducted_curves))
 
 
 def result(kind, folder):
